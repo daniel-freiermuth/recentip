@@ -685,29 +685,8 @@ impl EndpointBuilder {
     }
 }
 
-/// Server runtime
-pub struct Server<Io: IoContext> {
-    _io: Io,
-}
-
-impl<Io: IoContext> Server<Io> {
-    pub fn new(_io: Io, _config: ServerConfig) -> Result<Self> {
-        todo!()
-    }
-
-    /// Offer a service
-    pub fn offer(&mut self, _config: ServiceConfig) -> Result<ServiceOffering<Io>> {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ServerConfig {
-    // SD configuration, etc.
-}
-
 // ============================================================================
-// SERVICE OFFERING (SERVER-SIDE)
+// SERVICE OFFERING
 // ============================================================================
 
 /// An active service offering
@@ -765,6 +744,7 @@ impl<Io: IoContext> Drop for ServiceOffering<Io> {
 // ============================================================================
 
 /// Events received by a service offering
+#[derive(Debug)]
 pub enum ServiceEvent {
     /// A method was called
     MethodCall { request: MethodRequest },
@@ -803,6 +783,7 @@ pub struct ClientInfo {
 }
 
 /// A method request that must be responded to
+#[derive(Debug)]
 pub struct MethodRequest {
     pub method: MethodId,
     pub payload: Vec<u8>,
@@ -810,6 +791,7 @@ pub struct MethodRequest {
 }
 
 /// Response sender - must be consumed (exactly one response)
+#[derive(Debug)]
 pub struct Responder {
     sent: bool,
 }
@@ -846,6 +828,7 @@ impl Drop for Responder {
 }
 
 /// Subscription acknowledgment - must be consumed
+#[derive(Debug)]
 pub struct SubscribeAck {
     handled: bool,
 }
@@ -887,9 +870,9 @@ impl Drop for SubscribeAck {
 
 pub mod prelude {
     pub use crate::{
-        AppPort, Client, ClientConfig, ConcreteInstanceId, Error, Event, EventId, EventgroupId,
-        InstanceId, IoContext, MethodId, MethodRequest, PendingResponse, RejectReason, Responder,
-        Response, Result, ReturnCode, Server, ServerConfig, ServiceConfig, ServiceEvent, ServiceId,
-        ServiceOffering, ServiceProxy, SubscribeAck, Subscription,
+        AppPort, ConcreteInstanceId, Error, Event, EventId, EventgroupId, InstanceId, IoContext,
+        IoResult, MethodId, MethodRequest, PendingResponse, RejectReason, Responder, Response,
+        Result, ReturnCode, Runtime, RuntimeConfig, RuntimeEvent, ServiceConfig, ServiceEvent,
+        ServiceId, ServiceOffering, ServiceProxy, SubscribeAck, Subscription,
     };
 }

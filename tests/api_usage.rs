@@ -63,18 +63,17 @@ fn eventgroup_zero_is_reserved() {
 }
 
 // ============================================================================
-// CLIENT API TESTS
+// RUNTIME API TESTS - Unified client + server
 // ============================================================================
 
 #[test]
-fn client_discovers_available_service() {
+fn runtime_discovers_available_service() {
     let (network, io_a, io_b) = SimulatedNetwork::new_pair();
 
-    // Server side: offer a service
     let service_id = ServiceId::new(0x1234).unwrap();
     let instance_id = ConcreteInstanceId::new(0x0001).unwrap();
 
-    let server_config = ServerConfig {};
+    // Server side: offer a service
     let service_config = ServiceConfig::builder()
         .service(service_id)
         .instance(instance_id)
@@ -82,14 +81,12 @@ fn client_discovers_available_service() {
         .build()
         .unwrap();
 
-    let mut server = Server::new(io_b, server_config).unwrap();
-    let _offering = server.offer(service_config).unwrap();
+    let mut server_runtime = Runtime::new(io_b, RuntimeConfig::default()).unwrap();
+    let _offering = server_runtime.offer(service_config).unwrap();
 
     // Client side: discover the service
-    let client_config = ClientConfig::builder().build().unwrap();
-    let mut client = Client::new(io_a, client_config).unwrap();
-
-    let proxy = client.require(service_id, InstanceId::ANY);
+    let mut client_runtime = Runtime::new(io_a, RuntimeConfig::default()).unwrap();
+    let proxy = client_runtime.require(service_id, InstanceId::ANY);
     
     // Simulate SD exchange
     network.advance(std::time::Duration::from_millis(100));
@@ -102,12 +99,50 @@ fn client_discovers_available_service() {
 }
 
 #[test]
+fn mixed_mode_offer_and_require() {
+    // A single runtime can both offer services AND require services from others
+    let (network, io_a, io_b) = SimulatedNetwork::new_pair();
+
+    let our_service = ServiceId::new(0x1111).unwrap();
+    let their_service = ServiceId::new(0x2222).unwrap();
+
+    // ECU A: offers 0x1111, requires 0x2222
+    let mut runtime_a = Runtime::new(io_a, RuntimeConfig::default()).unwrap();
+    let _offering_a = runtime_a.offer(
+        ServiceConfig::builder()
+            .service(our_service)
+            .instance(ConcreteInstanceId::new(0x01).unwrap())
+            .build()
+            .unwrap()
+    ).unwrap();
+    let proxy_a = runtime_a.require(their_service, InstanceId::ANY);
+
+    // ECU B: offers 0x2222, requires 0x1111
+    let mut runtime_b = Runtime::new(io_b, RuntimeConfig::default()).unwrap();
+    let _offering_b = runtime_b.offer(
+        ServiceConfig::builder()
+            .service(their_service)
+            .instance(ConcreteInstanceId::new(0x01).unwrap())
+            .build()
+            .unwrap()
+    ).unwrap();
+    let proxy_b = runtime_b.require(our_service, InstanceId::ANY);
+
+    // SD exchange - both discover each other
+    network.advance(std::time::Duration::from_millis(200));
+
+    // Both proxies should be available
+    assert!(proxy_a.is_available());
+    assert!(proxy_b.is_available());
+}
+
+#[test]
 fn client_cannot_call_methods_on_unavailable_service() {
     // This is enforced at compile time through typestate!
     // An Unavailable proxy has no call() method.
     //
     // ```compile_fail
-    // let proxy: ServiceProxy<_, Unavailable> = client.require(...);
+    // let proxy: ServiceProxy<_, Unavailable> = runtime.require(...);
     // proxy.call(method, &data);  // ERROR: no method `call` on Unavailable
     // ```
 
@@ -115,7 +150,7 @@ fn client_cannot_call_methods_on_unavailable_service() {
 }
 
 #[test]
-fn client_subscription_receives_events() {
+fn subscription_receives_events() {
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
 
     let service_id = ServiceId::new(0x5678).unwrap();
@@ -123,23 +158,18 @@ fn client_subscription_receives_events() {
     let eventgroup = EventgroupId::new(0x01).unwrap();
     let event_id = EventId::new(0x8001).unwrap();
 
-    // Server setup
-    let mut server = Server::new(
-        io_server,
-        ServerConfig {},
-    ).unwrap();
-
+    // Server runtime
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
     let service_config = ServiceConfig::builder()
         .service(service_id)
         .instance(instance_id)
         .eventgroup(eventgroup)
         .build()
         .unwrap();
-
     let mut offering = server.offer(service_config).unwrap();
 
-    // Client setup
-    let mut client = Client::new(io_client, ClientConfig::builder().build().unwrap()).unwrap();
+    // Client runtime
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     
     network.advance(std::time::Duration::from_millis(100));
@@ -174,11 +204,10 @@ fn subscription_can_call_methods() {
     // without needing to keep the proxy around
     
     let (_network, io, _) = SimulatedNetwork::new_pair();
-    let client_config = ClientConfig::builder().build().unwrap();
-    let mut client = Client::new(io, client_config).unwrap();
+    let mut runtime = Runtime::new(io, RuntimeConfig::default()).unwrap();
     
     let service_id = ServiceId::new(0x1234).unwrap();
-    let _proxy = client.require(service_id, InstanceId::ANY);
+    let _proxy = runtime.require(service_id, InstanceId::ANY);
     
     // This test just documents the API - actual implementation would:
     // let subscription = available.subscribe(eventgroup)?;
@@ -192,8 +221,8 @@ fn subscription_stops_on_drop() {
     let service_id = ServiceId::new(0x9ABC).unwrap();
     let eventgroup = EventgroupId::new(0x01).unwrap();
 
-    // Setup server
-    let mut server = Server::new(io_server, ServerConfig {}).unwrap();
+    // Server runtime
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
         .service(service_id)
         .instance(ConcreteInstanceId::new(0x01).unwrap())
@@ -202,8 +231,8 @@ fn subscription_stops_on_drop() {
         .unwrap();
     let mut offering = server.offer(config).unwrap();
 
-    // Client subscribes
-    let mut client = Client::new(io_client, ClientConfig::builder().build().unwrap()).unwrap();
+    // Client runtime
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     network.advance(std::time::Duration::from_millis(100));
     
@@ -273,8 +302,8 @@ fn server_handles_method_calls() {
     let service_id = ServiceId::new(0x1111).unwrap();
     let method_id = MethodId::new(0x42);
 
-    // Server
-    let mut server = Server::new(io_server, ServerConfig {}).unwrap();
+    // Server runtime
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
         .service(service_id)
         .instance(ConcreteInstanceId::new(0x01).unwrap())
@@ -282,8 +311,8 @@ fn server_handles_method_calls() {
         .unwrap();
     let mut offering = server.offer(config).unwrap();
 
-    // Client
-    let mut client = Client::new(io_client, ClientConfig::builder().build().unwrap()).unwrap();
+    // Client runtime
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     network.advance(std::time::Duration::from_millis(100));
 
@@ -317,8 +346,8 @@ fn server_handles_fire_and_forget() {
     let service_id = ServiceId::new(0x2222).unwrap();
     let method_id = MethodId::new(0x99);
 
-    // Server
-    let mut server = Server::new(io_server, ServerConfig {}).unwrap();
+    // Server runtime
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
         .service(service_id)
         .instance(ConcreteInstanceId::new(0x01).unwrap())
@@ -326,8 +355,8 @@ fn server_handles_fire_and_forget() {
         .unwrap();
     let mut offering = server.offer(config).unwrap();
 
-    // Client
-    let mut client = Client::new(io_client, ClientConfig::builder().build().unwrap()).unwrap();
+    // Client runtime
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     network.advance(std::time::Duration::from_millis(100));
 
@@ -357,8 +386,8 @@ fn server_notify_only_sends_to_subscribers() {
     let eventgroup2 = EventgroupId::new(0x02).unwrap();
     let event_id = EventId::new(0x8001).unwrap();
 
-    // Server with two eventgroups
-    let mut server = Server::new(io_b, ServerConfig {}).unwrap();
+    // Server runtime with two eventgroups
+    let mut server = Runtime::new(io_b, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
         .service(service_id)
         .instance(ConcreteInstanceId::new(0x01).unwrap())
@@ -368,8 +397,8 @@ fn server_notify_only_sends_to_subscribers() {
         .unwrap();
     let mut offering = server.offer(config).unwrap();
 
-    // Client subscribes to eventgroup1 only
-    let mut client = Client::new(io_a, ClientConfig::builder().build().unwrap()).unwrap();
+    // Client runtime subscribes to eventgroup1 only
+    let mut client = Runtime::new(io_a, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     network.advance(std::time::Duration::from_millis(100));
 
@@ -414,8 +443,8 @@ fn client_can_get_and_set_fields() {
     let service_id = ServiceId::new(0x4444).unwrap();
     let field = MethodId::new(0x01); // Fields use method IDs
 
-    // Server
-    let mut server = Server::new(io_server, ServerConfig {}).unwrap();
+    // Server runtime
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
         .service(service_id)
         .instance(ConcreteInstanceId::new(0x01).unwrap())
@@ -425,8 +454,8 @@ fn client_can_get_and_set_fields() {
 
     let mut field_value: Vec<u8> = b"initial".to_vec();
 
-    // Client
-    let mut client = Client::new(io_client, ClientConfig::builder().build().unwrap()).unwrap();
+    // Client runtime
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     network.advance(std::time::Duration::from_millis(100));
 
@@ -501,8 +530,8 @@ fn method_call_returns_error_response() {
     let service_id = ServiceId::new(0x5555).unwrap();
     let method_id = MethodId::new(0x01);
 
-    // Server
-    let mut server = Server::new(io_server, ServerConfig {}).unwrap();
+    // Server runtime
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
         .service(service_id)
         .instance(ConcreteInstanceId::new(0x01).unwrap())
@@ -510,8 +539,8 @@ fn method_call_returns_error_response() {
         .unwrap();
     let mut offering = server.offer(config).unwrap();
 
-    // Client
-    let mut client = Client::new(io_client, ClientConfig::builder().build().unwrap()).unwrap();
+    // Client runtime
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     network.advance(std::time::Duration::from_millis(100));
 
@@ -541,8 +570,8 @@ fn subscription_rejection_is_reported() {
     let service_id = ServiceId::new(0x6666).unwrap();
     let eventgroup = EventgroupId::new(0x99).unwrap();
 
-    // Server
-    let mut server = Server::new(io_server, ServerConfig {}).unwrap();
+    // Server runtime
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
         .service(service_id)
         .instance(ConcreteInstanceId::new(0x01).unwrap())
@@ -551,8 +580,8 @@ fn subscription_rejection_is_reported() {
         .unwrap();
     let mut offering = server.offer(config).unwrap();
 
-    // Client tries to subscribe
-    let mut client = Client::new(io_client, ClientConfig::builder().build().unwrap()).unwrap();
+    // Client runtime tries to subscribe
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     network.advance(std::time::Duration::from_millis(100));
 
@@ -590,8 +619,8 @@ fn simulated_network_can_drop_packets() {
     
     let service_id = ServiceId::new(0x7777).unwrap();
     
-    // Start server
-    let mut server = Server::new(io_b, ServerConfig {}).unwrap();
+    // Server runtime
+    let mut server = Runtime::new(io_b, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
         .service(service_id)
         .instance(ConcreteInstanceId::new(0x01).unwrap())
@@ -599,8 +628,8 @@ fn simulated_network_can_drop_packets() {
         .unwrap();
     let _offering = server.offer(config).unwrap();
 
-    // Client - discovery should still work due to retries
-    let mut client = Client::new(io_a, ClientConfig::builder().build().unwrap()).unwrap();
+    // Client runtime - discovery should still work due to retries
+    let mut client = Runtime::new(io_a, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     
     // Need more time with packet loss
@@ -616,8 +645,8 @@ fn simulated_network_can_partition() {
     
     let service_id = ServiceId::new(0x8888).unwrap();
     
-    // Establish connection
-    let mut server = Server::new(io_b, ServerConfig {}).unwrap();
+    // Server runtime
+    let mut server = Runtime::new(io_b, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
         .service(service_id)
         .instance(ConcreteInstanceId::new(0x01).unwrap())
@@ -625,7 +654,8 @@ fn simulated_network_can_partition() {
         .unwrap();
     let _offering = server.offer(config).unwrap();
 
-    let mut client = Client::new(io_a, ClientConfig::builder().build().unwrap()).unwrap();
+    // Client runtime
+    let mut client = Runtime::new(io_a, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     
     network.advance(std::time::Duration::from_millis(100));
@@ -648,12 +678,12 @@ fn simulated_network_can_partition() {
 
 #[test]
 fn simulated_network_tracks_history() {
-    let (network, io_a, io_b) = SimulatedNetwork::new_pair();
+    let (network, _io_a, io_b) = SimulatedNetwork::new_pair();
     
     let service_id = ServiceId::new(0x9999).unwrap();
     
     // Some activity
-    let mut server = Server::new(io_b, ServerConfig {}).unwrap();
+    let mut server = Runtime::new(io_b, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
         .service(service_id)
         .instance(ConcreteInstanceId::new(0x01).unwrap())
