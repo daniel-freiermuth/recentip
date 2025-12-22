@@ -1,0 +1,29 @@
+[package]
+name = "someip-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Type-safe, platform-agnostic SOME/IP protocol implementation"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/someip-runtime"
+keywords = ["someip", "automotive", "rpc", "embedded"]
+categories = ["embedded", "network-programming"]
+
+[features]
+default = []
+std = ["rand"]
+simulated = ["std"]
+
+[dependencies]
+# Optional: for simulated network random drops
+rand = { version = "0.8", optional = true }
+
+[dev-dependencies]
+rand = "0.8"
+
+[[test]]
+name = "api_usage"
+path = "tests/api_usage.rs"
+
+[[test]]
+name = "simulated"
+path = "tests/simulated.rs"
