@@ -405,6 +405,20 @@ impl<Io: IoContext> Runtime<Io> {
     }
 }
 
+/// Transport protocol selection for SOME/IP communication
+/// 
+/// Per SOME/IP spec, both UDP and TCP are supported. TCP binding is based
+/// on the UDP binding but with additional features like Magic Cookie for
+/// stream resynchronization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Transport {
+    /// UDP transport (default for most SOME/IP deployments)
+    #[default]
+    Udp,
+    /// TCP transport (for reliable delivery, connection-oriented)
+    Tcp,
+}
+
 /// Runtime configuration
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeConfig {
@@ -414,6 +428,10 @@ pub struct RuntimeConfig {
     pub sd_multicast: Option<std::net::Ipv4Addr>,
     /// SD port (default: 30490)
     pub sd_port: Option<u16>,
+    /// Transport protocol (UDP or TCP)
+    pub transport: Transport,
+    /// Enable Magic Cookie support for TCP resynchronization (spec feat_req_recentip_586)
+    pub magic_cookies: bool,
     // ... other SD timing parameters
 }
 
@@ -431,6 +449,26 @@ pub struct RuntimeConfigBuilder {
 impl RuntimeConfigBuilder {
     pub fn local_addr(mut self, addr: std::net::Ipv4Addr) -> Self {
         self.config.local_addr = Some(addr);
+        self
+    }
+
+    /// Set the transport protocol (UDP or TCP)
+    /// 
+    /// Default is UDP. Use TCP for reliable, connection-oriented transport.
+    /// Per spec requirement feat_req_recentip_324, TCP binding uses the same
+    /// message format as UDP.
+    pub fn transport(mut self, transport: Transport) -> Self {
+        self.config.transport = transport;
+        self
+    }
+
+    /// Enable or disable Magic Cookie support for TCP
+    /// 
+    /// Magic Cookies are used for TCP stream resynchronization per
+    /// spec requirements feat_req_recentip_586 through feat_req_recentip_592.
+    /// Has no effect for UDP transport.
+    pub fn magic_cookies(mut self, enable: bool) -> Self {
+        self.config.magic_cookies = enable;
         self
     }
 

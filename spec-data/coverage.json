@@ -1,6 +1,6 @@
 {
-  "total_tests_with_coverage": 121,
-  "total_requirements_covered": 61,
+  "total_tests_with_coverage": 134,
+  "total_requirements_covered": 72,
   "tests": [
     {
       "test_name": "service_id_is_u16",
@@ -616,9 +616,21 @@
       "ignore_reason": "Runtime::new not implemented"
     },
     {
+      "test_name": "reboot_detected_despite_packet_loss",
+      "file_path": "tests/compliance/service_discovery.rs",
+      "line_number": 880,
+      "requirements": [
+        "feat_req_recentipsd_41",
+        "feat_req_recentipsd_764",
+        "feat_req_recentipsd_871"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
       "test_name": "per_peer_session_tracking",
       "file_path": "tests/compliance/service_discovery.rs",
-      "line_number": 876,
+      "line_number": 977,
       "requirements": [
         "feat_req_recentipsd_765"
       ],
@@ -821,6 +833,127 @@
       "line_number": 742,
       "requirements": [
         "feat_req_recentipsd_109"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "client_opens_tcp_connection",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 99,
+      "requirements": [
+        "feat_req_recentip_646"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "single_tcp_connection_reused",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 166,
+      "requirements": [
+        "feat_req_recentip_644"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "client_reestablishes_connection",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 236,
+      "requirements": [
+        "feat_req_recentip_647"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "each_message_has_own_header",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 321,
+      "requirements": [
+        "feat_req_recentip_585"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "multiple_messages_per_segment_parsed",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 386,
+      "requirements": [
+        "feat_req_recentip_702"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "connection_lost_fails_pending_requests",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 447,
+      "requirements": [
+        "feat_req_recentip_326"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "magic_cookie_recognized",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 518,
+      "requirements": [
+        "feat_req_recentip_586"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "tcp_segment_starts_with_magic_cookie",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 587,
+      "requirements": [
+        "feat_req_recentip_591"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "only_one_magic_cookie_per_segment",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 656,
+      "requirements": [
+        "feat_req_recentip_592"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "tcp_header_format_matches_udp",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 730,
+      "requirements": [
+        "feat_req_recentip_324"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "tcp_loss_does_not_reset_session_id",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 792,
+      "requirements": [
+        "feat_req_recentip_326",
+        "feat_req_recentip_647"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "reboot_detection_resets_tcp_connections",
+      "file_path": "tests/compliance/tcp_binding.rs",
+      "line_number": 894,
+      "requirements": [
+        "feat_req_recentipsd_872"
       ],
       "is_ignored": true,
       "ignore_reason": "Runtime::new not implemented"
@@ -1367,19 +1500,22 @@
     "feat_req_recentipsd_41": [
       "reboot_flag_behavior",
       "session_wraparound_clears_reboot_flag",
-      "second_wraparound_keeps_reboot_flag_zero"
+      "second_wraparound_keeps_reboot_flag_zero",
+      "reboot_detected_despite_packet_loss"
     ],
     "feat_req_recentipsd_764": [
       "reboot_flag_behavior",
       "session_wraparound_clears_reboot_flag",
       "second_wraparound_keeps_reboot_flag_zero",
       "reboot_at_max_session_is_detected",
-      "early_reboot_before_wraparound_is_detected"
+      "early_reboot_before_wraparound_is_detected",
+      "reboot_detected_despite_packet_loss"
     ],
     "feat_req_recentipsd_871": [
       "reboot_flag_behavior",
       "reboot_at_max_session_is_detected",
-      "early_reboot_before_wraparound_is_detected"
+      "early_reboot_before_wraparound_is_detected",
+      "reboot_detected_despite_packet_loss"
     ],
     "feat_req_recentipsd_27": [
       "sd_uses_udp_port_30490"
@@ -1419,6 +1555,41 @@
     "feat_req_recentipsd_179": [
       "ttl_zero_in_ack_is_nack",
       "subscribe_nack_has_ttl_zero"
+    ],
+    "feat_req_recentip_646": [
+      "client_opens_tcp_connection"
+    ],
+    "feat_req_recentip_644": [
+      "single_tcp_connection_reused"
+    ],
+    "feat_req_recentip_647": [
+      "client_reestablishes_connection",
+      "tcp_loss_does_not_reset_session_id"
+    ],
+    "feat_req_recentip_585": [
+      "each_message_has_own_header"
+    ],
+    "feat_req_recentip_702": [
+      "multiple_messages_per_segment_parsed"
+    ],
+    "feat_req_recentip_326": [
+      "connection_lost_fails_pending_requests",
+      "tcp_loss_does_not_reset_session_id"
+    ],
+    "feat_req_recentip_586": [
+      "magic_cookie_recognized"
+    ],
+    "feat_req_recentip_591": [
+      "tcp_segment_starts_with_magic_cookie"
+    ],
+    "feat_req_recentip_592": [
+      "only_one_magic_cookie_per_segment"
+    ],
+    "feat_req_recentip_324": [
+      "tcp_header_format_matches_udp"
+    ],
+    "feat_req_recentipsd_872": [
+      "reboot_detection_resets_tcp_connections"
     ],
     "feat_req_recentiptp_760": [
       "large_udp_messages_use_tp"

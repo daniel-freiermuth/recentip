@@ -64,6 +64,9 @@ mod message_types;
 #[path = "compliance/version_handling.rs"]
 mod version_handling;
 
+#[path = "compliance/tcp_binding.rs"]
+mod tcp_binding;
+
 /// Macro to document which requirements a test covers.
 /// This is a no-op at runtime; used for traceability documentation.
 #[macro_export]
