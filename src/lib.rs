@@ -547,7 +547,8 @@ impl<Io: IoContext> ServiceProxy<Io, Unavailable> {
 
 impl<Io: IoContext> ServiceProxy<Io, Available> {
     /// Subscribe to an eventgroup. Returns the subscription which is the event source.
-    pub fn subscribe(self, _eventgroup: EventgroupId) -> Result<Subscription<Io>> {
+    /// Can be called multiple times for different eventgroups.
+    pub fn subscribe(&self, _eventgroup: EventgroupId) -> Result<Subscription<Io>> {
         todo!()
     }
 
