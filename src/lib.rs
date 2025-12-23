@@ -635,11 +635,6 @@ impl<Io: IoContext> Subscription<Io> {
     pub fn eventgroup(&self) -> EventgroupId {
         self.eventgroup
     }
-
-    /// Call a method through this subscription's service
-    pub fn call(&self, _method: MethodId, _payload: &[u8]) -> Result<PendingResponse<Io>> {
-        todo!()
-    }
 }
 
 impl<Io: IoContext> Drop for Subscription<Io> {
