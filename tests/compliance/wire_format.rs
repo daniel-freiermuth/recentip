@@ -23,13 +23,17 @@ use wire::{message_type, return_code, Header};
 /// feat_req_recentip_103: Message Type REQUEST (0x00) and RESPONSE (0x80)
 /// feat_req_recentip_60: Message ID = Service ID || Method ID
 /// feat_req_recentip_83: Request ID = Client ID || Session ID
+/// feat_req_recentip_42: Headers encoded in big-endian (network byte order)
+/// feat_req_recentip_45: SOME/IP header format
 #[test]
 #[ignore = "Runtime::new not implemented"]
 fn request_response_roundtrip() {
     covers!(
         feat_req_recentip_103,
         feat_req_recentip_60,
-        feat_req_recentip_83
+        feat_req_recentip_83,
+        feat_req_recentip_42,
+        feat_req_recentip_45
     );
 
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
@@ -193,11 +197,12 @@ fn notification_message_type() {
 // SESSION ID COMPLIANCE
 // ============================================================================
 
-/// feat_req_recentip_256: Session ID incremented per request
+/// feat_req_recentip_88: Session ID is unique for each call
+/// feat_req_recentip_649: Session ID starts at 0x0001
 #[test]
 #[ignore = "Runtime::new not implemented"]
 fn session_id_increments() {
-    covers!(feat_req_recentip_256);
+    covers!(feat_req_recentip_88, feat_req_recentip_649);
 
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
     let config = RuntimeConfig::default();
@@ -354,11 +359,12 @@ fn protocol_version_in_wire_format() {
 // LENGTH FIELD COMPLIANCE
 // ============================================================================
 
-/// feat_req_recentip_67: Length field interpretation
+/// feat_req_recentip_67: Length field format
+/// feat_req_recentip_77: Length = payload size + 8 (Request ID + Protocol/Interface/MsgType/RetCode)
 #[test]
 #[ignore = "Runtime::new not implemented"]
 fn length_field_includes_header_remainder() {
-    covers!(feat_req_recentip_67);
+    covers!(feat_req_recentip_67, feat_req_recentip_77);
 
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
     let config = RuntimeConfig::default();

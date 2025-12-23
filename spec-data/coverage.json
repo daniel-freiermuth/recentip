@@ -1,6 +1,6 @@
 {
   "total_tests_with_coverage": 121,
-  "total_requirements_covered": 59,
+  "total_requirements_covered": 61,
   "tests": [
     {
       "test_name": "service_id_is_u16",
@@ -1160,11 +1160,13 @@
     {
       "test_name": "request_response_roundtrip",
       "file_path": "tests/compliance/wire_format.rs",
-      "line_number": 26,
+      "line_number": 28,
       "requirements": [
         "feat_req_recentip_103",
         "feat_req_recentip_60",
-        "feat_req_recentip_83"
+        "feat_req_recentip_83",
+        "feat_req_recentip_42",
+        "feat_req_recentip_45"
       ],
       "is_ignored": true,
       "ignore_reason": "Runtime::new not implemented"
@@ -1172,7 +1174,7 @@
     {
       "test_name": "fire_and_forget_message_type",
       "file_path": "tests/compliance/wire_format.rs",
-      "line_number": 101,
+      "line_number": 105,
       "requirements": [
         "feat_req_recentip_103"
       ],
@@ -1182,7 +1184,7 @@
     {
       "test_name": "notification_message_type",
       "file_path": "tests/compliance/wire_format.rs",
-      "line_number": 144,
+      "line_number": 148,
       "requirements": [
         "feat_req_recentip_103",
         "feat_req_recentip_625"
@@ -1193,9 +1195,10 @@
     {
       "test_name": "session_id_increments",
       "file_path": "tests/compliance/wire_format.rs",
-      "line_number": 197,
+      "line_number": 202,
       "requirements": [
-        "feat_req_recentip_256"
+        "feat_req_recentip_88",
+        "feat_req_recentip_649"
       ],
       "is_ignored": true,
       "ignore_reason": "Runtime::new not implemented"
@@ -1203,7 +1206,7 @@
     {
       "test_name": "unknown_method_returns_error",
       "file_path": "tests/compliance/wire_format.rs",
-      "line_number": 252,
+      "line_number": 257,
       "requirements": [
         "feat_req_recentip_371",
         "feat_req_recentip_103"
@@ -1214,7 +1217,7 @@
     {
       "test_name": "protocol_version_in_wire_format",
       "file_path": "tests/compliance/wire_format.rs",
-      "line_number": 312,
+      "line_number": 317,
       "requirements": [
         "feat_req_recentip_90"
       ],
@@ -1224,9 +1227,10 @@
     {
       "test_name": "length_field_includes_header_remainder",
       "file_path": "tests/compliance/wire_format.rs",
-      "line_number": 358,
+      "line_number": 364,
       "requirements": [
-        "feat_req_recentip_67"
+        "feat_req_recentip_67",
+        "feat_req_recentip_77"
       ],
       "is_ignored": true,
       "ignore_reason": "Runtime::new not implemented"
@@ -1389,10 +1393,12 @@
       "request_id_enables_response_matching"
     ],
     "feat_req_recentip_649": [
-      "first_call_has_session_id_one"
+      "first_call_has_session_id_one",
+      "session_id_increments"
     ],
     "feat_req_recentip_88": [
-      "session_id_increments_each_call"
+      "session_id_increments_each_call",
+      "session_id_increments"
     ],
     "feat_req_recentip_699": [
       "client_id_consistent_across_calls"
@@ -1479,8 +1485,11 @@
     "feat_req_recentip_83": [
       "request_response_roundtrip"
     ],
-    "feat_req_recentip_256": [
-      "session_id_increments"
+    "feat_req_recentip_42": [
+      "request_response_roundtrip"
+    ],
+    "feat_req_recentip_45": [
+      "request_response_roundtrip"
     ],
     "feat_req_recentip_371": [
       "unknown_method_returns_error"
@@ -1489,6 +1498,9 @@
       "protocol_version_in_wire_format"
     ],
     "feat_req_recentip_67": [
+      "length_field_includes_header_remainder"
+    ],
+    "feat_req_recentip_77": [
       "length_field_includes_header_remainder"
     ]
   }
