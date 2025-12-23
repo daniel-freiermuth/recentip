@@ -1,6 +1,6 @@
 {
-  "total_tests_with_coverage": 158,
-  "total_requirements_covered": 88,
+  "total_tests_with_coverage": 188,
+  "total_requirements_covered": 109,
   "tests": [
     {
       "test_name": "service_id_is_u16",
@@ -207,6 +207,98 @@
       "ignore_reason": "Runtime::new not implemented"
     },
     {
+      "test_name": "no_error_response_for_events",
+      "file_path": "tests/compliance/error_scenarios.rs",
+      "line_number": 76,
+      "requirements": [
+        "feat_req_recentip_597"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "no_error_response_for_fire_and_forget",
+      "file_path": "tests/compliance/error_scenarios.rs",
+      "line_number": 125,
+      "requirements": [
+        "feat_req_recentip_654"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "error_response_copies_request_header",
+      "file_path": "tests/compliance/error_scenarios.rs",
+      "line_number": 174,
+      "requirements": [
+        "feat_req_recentip_655"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "error_message_has_nonzero_return_code",
+      "file_path": "tests/compliance/error_scenarios.rs",
+      "line_number": 247,
+      "requirements": [
+        "feat_req_recentip_727"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "messages_with_short_length_ignored",
+      "file_path": "tests/compliance/error_scenarios.rs",
+      "line_number": 302,
+      "requirements": [
+        "feat_req_recentip_798"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "uses_known_protocol_version",
+      "file_path": "tests/compliance/error_scenarios.rs",
+      "line_number": 352,
+      "requirements": [
+        "feat_req_recentip_703"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "all_return_codes_are_valid",
+      "file_path": "tests/compliance/error_scenarios.rs",
+      "line_number": 412,
+      "requirements": [
+        "feat_req_recentip_683"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "server_returns_various_error_codes",
+      "file_path": "tests/compliance/error_scenarios.rs",
+      "line_number": 443,
+      "requirements": [
+        "feat_req_recentip_683",
+        "feat_req_recentip_649"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "wrong_protocol_version_returns_error",
+      "file_path": "tests/compliance/error_scenarios.rs",
+      "line_number": 488,
+      "requirements": [
+        "feat_req_recentip_703",
+        "feat_req_recentip_649"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
       "test_name": "server_publishes_events_to_subscribers",
       "file_path": "tests/compliance/events.rs",
       "line_number": 79,
@@ -283,6 +375,157 @@
       "line_number": 480,
       "requirements": [
         "feat_req_recentip_804"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "field_getter_empty_request_payload",
+      "file_path": "tests/compliance/fields.rs",
+      "line_number": 72,
+      "requirements": [
+        "feat_req_recentip_633"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "field_getter_returns_current_value",
+      "file_path": "tests/compliance/fields.rs",
+      "line_number": 128,
+      "requirements": [
+        "feat_req_recentip_633"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "field_setter_sends_value_in_request",
+      "file_path": "tests/compliance/fields.rs",
+      "line_number": 178,
+      "requirements": [
+        "feat_req_recentip_634"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "field_setter_gets_response",
+      "file_path": "tests/compliance/fields.rs",
+      "line_number": 233,
+      "requirements": [
+        "feat_req_recentip_634"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "field_notifier_sends_updated_value",
+      "file_path": "tests/compliance/fields.rs",
+      "line_number": 283,
+      "requirements": [
+        "feat_req_recentip_635"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "field_combines_getter_setter_notifier",
+      "file_path": "tests/compliance/fields.rs",
+      "line_number": 339,
+      "requirements": [
+        "feat_req_recentip_631"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "field_setter_can_reject_invalid_value",
+      "file_path": "tests/compliance/fields.rs",
+      "line_number": 414,
+      "requirements": [
+        "feat_req_recentip_634",
+        "feat_req_recentip_649"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "multiple_instances_have_different_ids",
+      "file_path": "tests/compliance/instances.rs",
+      "line_number": 63,
+      "requirements": [
+        "feat_req_recentip_636"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "messages_dispatched_to_correct_instance",
+      "file_path": "tests/compliance/instances.rs",
+      "line_number": 122,
+      "requirements": [
+        "feat_req_recentip_648"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "different_services_have_different_service_ids",
+      "file_path": "tests/compliance/instances.rs",
+      "line_number": 206,
+      "requirements": [
+        "feat_req_recentip_541"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "instance_uniquely_identified_by_service_and_instance_id",
+      "file_path": "tests/compliance/instances.rs",
+      "line_number": 249,
+      "requirements": [
+        "feat_req_recentip_544"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "different_services_can_share_port",
+      "file_path": "tests/compliance/instances.rs",
+      "line_number": 330,
+      "requirements": [
+        "feat_req_recentip_445"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "client_can_request_any_instance",
+      "file_path": "tests/compliance/instances.rs",
+      "line_number": 397,
+      "requirements": [
+        "feat_req_recentip_636"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "client_can_request_specific_instance",
+      "file_path": "tests/compliance/instances.rs",
+      "line_number": 428,
+      "requirements": [
+        "feat_req_recentip_636"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "nonexistent_instance_not_found",
+      "file_path": "tests/compliance/instances.rs",
+      "line_number": 466,
+      "requirements": [
+        "feat_req_recentip_636"
       ],
       "is_ignored": true,
       "ignore_reason": "Runtime::new not implemented"
@@ -799,6 +1042,66 @@
       "line_number": 977,
       "requirements": [
         "feat_req_recentipsd_765"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "session_id_wraps_to_0001_not_0000",
+      "file_path": "tests/compliance/session_edge_cases.rs",
+      "line_number": 63,
+      "requirements": [
+        "feat_req_recentip_677"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "request_id_differentiates_parallel_calls",
+      "file_path": "tests/compliance/session_edge_cases.rs",
+      "line_number": 141,
+      "requirements": [
+        "feat_req_recentip_79"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "request_id_reusable_after_response",
+      "file_path": "tests/compliance/session_edge_cases.rs",
+      "line_number": 197,
+      "requirements": [
+        "feat_req_recentip_80"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "request_response_uses_session_handling",
+      "file_path": "tests/compliance/session_edge_cases.rs",
+      "line_number": 247,
+      "requirements": [
+        "feat_req_recentip_669"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "events_use_session_handling",
+      "file_path": "tests/compliance/session_edge_cases.rs",
+      "line_number": 297,
+      "requirements": [
+        "feat_req_recentip_667"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "fire_and_forget_uses_session_handling",
+      "file_path": "tests/compliance/session_edge_cases.rs",
+      "line_number": 375,
+      "requirements": [
+        "feat_req_recentip_667"
       ],
       "is_ignored": true,
       "ignore_reason": "Runtime::new not implemented"
@@ -1680,6 +1983,37 @@
     "feat_req_recentip_369": [
       "protocol_version_in_response"
     ],
+    "feat_req_recentip_597": [
+      "no_error_response_for_events"
+    ],
+    "feat_req_recentip_654": [
+      "no_error_response_for_fire_and_forget"
+    ],
+    "feat_req_recentip_655": [
+      "error_response_copies_request_header"
+    ],
+    "feat_req_recentip_727": [
+      "error_message_has_nonzero_return_code"
+    ],
+    "feat_req_recentip_798": [
+      "messages_with_short_length_ignored"
+    ],
+    "feat_req_recentip_703": [
+      "uses_known_protocol_version",
+      "wrong_protocol_version_returns_error"
+    ],
+    "feat_req_recentip_683": [
+      "all_return_codes_are_valid",
+      "server_returns_various_error_codes"
+    ],
+    "feat_req_recentip_649": [
+      "server_returns_various_error_codes",
+      "wrong_protocol_version_returns_error",
+      "field_setter_can_reject_invalid_value",
+      "session_id_increments_per_request",
+      "first_call_has_session_id_one",
+      "session_id_increments"
+    ],
     "feat_req_recentip_352": [
       "server_publishes_events_to_subscribers",
       "event_uses_notification_message_type"
@@ -1700,6 +2034,39 @@
     ],
     "feat_req_recentip_804": [
       "events_can_use_multicast"
+    ],
+    "feat_req_recentip_633": [
+      "field_getter_empty_request_payload",
+      "field_getter_returns_current_value"
+    ],
+    "feat_req_recentip_634": [
+      "field_setter_sends_value_in_request",
+      "field_setter_gets_response",
+      "field_setter_can_reject_invalid_value"
+    ],
+    "feat_req_recentip_635": [
+      "field_notifier_sends_updated_value"
+    ],
+    "feat_req_recentip_631": [
+      "field_combines_getter_setter_notifier"
+    ],
+    "feat_req_recentip_636": [
+      "multiple_instances_have_different_ids",
+      "client_can_request_any_instance",
+      "client_can_request_specific_instance",
+      "nonexistent_instance_not_found"
+    ],
+    "feat_req_recentip_648": [
+      "messages_dispatched_to_correct_instance"
+    ],
+    "feat_req_recentip_541": [
+      "different_services_have_different_service_ids"
+    ],
+    "feat_req_recentip_544": [
+      "instance_uniquely_identified_by_service_and_instance_id"
+    ],
+    "feat_req_recentip_445": [
+      "different_services_can_share_port"
     ],
     "feat_req_recentip_103": [
       "message_type_parse_all_valid_values",
@@ -1766,11 +2133,6 @@
       "session_id_increments_each_call",
       "session_id_increments"
     ],
-    "feat_req_recentip_649": [
-      "session_id_increments_per_request",
-      "first_call_has_session_id_one",
-      "session_id_increments"
-    ],
     "feat_req_recentipsd_26": [
       "offer_service_sd_header_format",
       "sd_session_id_increments"
@@ -1825,6 +2187,22 @@
     ],
     "feat_req_recentipsd_765": [
       "per_peer_session_tracking"
+    ],
+    "feat_req_recentip_677": [
+      "session_id_wraps_to_0001_not_0000"
+    ],
+    "feat_req_recentip_79": [
+      "request_id_differentiates_parallel_calls"
+    ],
+    "feat_req_recentip_80": [
+      "request_id_reusable_after_response"
+    ],
+    "feat_req_recentip_669": [
+      "request_response_uses_session_handling"
+    ],
+    "feat_req_recentip_667": [
+      "events_use_session_handling",
+      "fire_and_forget_uses_session_handling"
     ],
     "feat_req_recentip_711": [
       "server_copies_request_id_to_response",

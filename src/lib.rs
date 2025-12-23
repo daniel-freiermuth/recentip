@@ -100,7 +100,7 @@ impl ServiceId {
 }
 
 /// Instance identifier for servers (0x0001-0xFFFE, no wildcards)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ConcreteInstanceId(u16);
 
 impl ConcreteInstanceId {
@@ -543,6 +543,37 @@ impl<Io: IoContext> ServiceProxy<Io, Unavailable> {
     pub fn is_available(&self) -> bool {
         todo!()
     }
+
+    /// Get all available instances when using InstanceId::ANY
+    /// Per spec feat_req_recentip_636, multiple instances can exist.
+    pub fn available_instances(&self) -> Vec<AvailableInstance> {
+        todo!()
+    }
+}
+
+/// Information about an available service instance
+#[derive(Debug, Clone)]
+pub struct AvailableInstance {
+    service: ServiceId,
+    instance: ConcreteInstanceId,
+    endpoint: std::net::SocketAddr,
+}
+
+impl AvailableInstance {
+    /// Get the instance ID
+    pub fn instance_id(&self) -> ConcreteInstanceId {
+        self.instance
+    }
+
+    /// Get the service ID
+    pub fn service_id(&self) -> ServiceId {
+        self.service
+    }
+
+    /// Get the endpoint address
+    pub fn endpoint(&self) -> std::net::SocketAddr {
+        self.endpoint
+    }
 }
 
 impl<Io: IoContext> ServiceProxy<Io, Available> {
@@ -679,6 +710,7 @@ pub struct ServiceConfigBuilder {
     instance: Option<ConcreteInstanceId>,
     major_version: Option<u8>,
     minor_version: Option<u32>,
+    port: Option<u16>,
     // ...
 }
 
@@ -700,6 +732,13 @@ impl ServiceConfigBuilder {
 
     pub fn minor_version(mut self, version: u32) -> Self {
         self.minor_version = Some(version);
+        self
+    }
+
+    /// Set the port for this service (default assigned by runtime)
+    /// Per spec feat_req_recentip_445, different services can share the same port.
+    pub fn port(mut self, port: u16) -> Self {
+        self.port = Some(port);
         self
     }
 

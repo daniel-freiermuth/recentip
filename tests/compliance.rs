@@ -76,6 +76,18 @@ mod rpc_flow;
 #[path = "compliance/events.rs"]
 mod events;
 
+#[path = "compliance/fields.rs"]
+mod fields;
+
+#[path = "compliance/error_scenarios.rs"]
+mod error_scenarios;
+
+#[path = "compliance/session_edge_cases.rs"]
+mod session_edge_cases;
+
+#[path = "compliance/instances.rs"]
+mod instances;
+
 /// Macro to document which requirements a test covers.
 /// This is a no-op at runtime; used for traceability documentation.
 #[macro_export]
