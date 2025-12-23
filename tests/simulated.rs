@@ -415,6 +415,31 @@ impl SimulatedNetwork {
     pub fn clear_history(&self) {
         self.state.lock().unwrap().history.clear();
     }
+
+    /// Inject raw bytes into the network as a UDP packet.
+    /// Used for testing error handling with crafted/malformed packets.
+    pub fn inject_udp(&self, from: SocketAddr, to: SocketAddr, data: &[u8]) {
+        let mut state = self.state.lock().unwrap();
+        let current_time = state.current_time;
+        let deliver_at = current_time + state.config.latency;
+        let data_vec = data.to_vec();
+
+        state.pending_udp.push_back(Packet {
+            from,
+            to,
+            data: data_vec.clone(),
+            deliver_at,
+        });
+
+        state.history.push(NetworkEvent::UdpSent {
+            from,
+            to,
+            dst_port: to.port(),
+            size: data.len(),
+            data: data_vec,
+            timestamp: current_time,
+        });
+    }
 }
 
 // ============================================================================
