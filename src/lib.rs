@@ -623,6 +623,8 @@ pub struct Response {
 pub struct ServiceConfig {
     service: ServiceId,
     instance: ConcreteInstanceId,
+    major_version: u8,
+    minor_version: u32,
     // ... endpoints, eventgroups, etc.
 }
 
@@ -636,6 +638,8 @@ impl ServiceConfig {
 pub struct ServiceConfigBuilder {
     service: Option<ServiceId>,
     instance: Option<ConcreteInstanceId>,
+    major_version: Option<u8>,
+    minor_version: Option<u32>,
     // ...
 }
 
@@ -647,6 +651,16 @@ impl ServiceConfigBuilder {
 
     pub fn instance(mut self, instance: ConcreteInstanceId) -> Self {
         self.instance = Some(instance);
+        self
+    }
+
+    pub fn major_version(mut self, version: u8) -> Self {
+        self.major_version = Some(version);
+        self
+    }
+
+    pub fn minor_version(mut self, version: u32) -> Self {
+        self.minor_version = Some(version);
         self
     }
 
@@ -671,7 +685,12 @@ impl ServiceConfigBuilder {
             message: "instance is required".into(),
         })?;
 
-        Ok(ServiceConfig { service, instance })
+        Ok(ServiceConfig {
+            service,
+            instance,
+            major_version: self.major_version.unwrap_or(0x01),
+            minor_version: self.minor_version.unwrap_or(0x00000000),
+        })
     }
 }
 
