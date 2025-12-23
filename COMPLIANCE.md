@@ -55,59 +55,69 @@ proptest! {
 
 ## RPC Requirements (someip-rpc.rst)
 
+Total: 181 requirements | Tested: 8 | Pending: 173
+
 ### Identifier Requirements
 
 | Requirement ID | Description | Status | Test / Justification |
 |----------------|-------------|--------|----------------------|
 | feat_req_recentip_538 | Service identified by Service ID | ✅ TESTED | `rpc::identifiers::service_id_is_u16` |
 | feat_req_recentip_539 | Service ID is uint16 | ✅ TESTED | `rpc::identifiers::service_id_is_u16`, proptest |
-| feat_req_recentip_540 | Service ID 0x0000 reserved | ✅ TESTED | `rpc::identifiers::service_id_reserved_rejected` |
-| feat_req_recentip_541 | Service ID 0xFFFF reserved | ✅ TESTED | `rpc::identifiers::service_id_reserved_rejected` |
+| feat_req_recentip_624 | Service ID 0xFFFE for non-RECENT/IP | 📋 CONFIG | Configuration validation |
+| feat_req_recentip_627 | Service ID 0x0000, 0xFFFF reserved | ✅ TESTED | `rpc::identifiers::service_id_reserved_rejected` |
+| feat_req_recentip_541 | Different services have different IDs | 📋 CONFIG | Configuration validation |
+| feat_req_recentip_542 | Instance identified by Instance ID | ✅ TESTED | `rpc::identifiers::instance_id_wildcard` |
+| feat_req_recentip_543 | Instance ID is uint16 | ✅ TESTED | `rpc::identifiers::instance_id_wildcard` |
+| feat_req_recentip_579 | Instance ID 0x0000, 0xFFFF reserved | ✅ TESTED | `rpc::identifiers::instance_id_wildcard` |
+| feat_req_recentip_625 | Method/Event ID 16-bit, events 0x8000+ | ✅ TESTED | `rpc::identifiers::method_event_id_distinction` |
+| feat_req_recentip_545 | Eventgroup identified by ID | ✅ TESTED | `sd::eventgroups::eventgroup_zero_reserved` |
+| feat_req_recentip_546 | Eventgroup ID is uint16 | ✅ TESTED | proptest in `sd::eventgroups` |
 
 ### Message Format Requirements
 
 | Requirement ID | Description | Status | Test / Justification |
 |----------------|-------------|--------|----------------------|
+| feat_req_recentip_42 | Headers in big endian | 📋 SERIALIZATION | Wire format tests |
+| feat_req_recentip_44 | Header layout identical for all impls | 📋 SERIALIZATION | Wire format tests |
 | feat_req_recentip_45 | Header format | 📋 SERIALIZATION | Wire format tests |
-| feat_req_recentip_60 | Message structure | 📋 SERIALIZATION | Wire format tests |
-
-### Request/Response Semantics
-
-| Requirement ID | Description | Status | Test / Justification |
-|----------------|-------------|--------|----------------------|
-| feat_req_recentip_XX | Fire&Forget no response | ✅ TYPE_SYSTEM | `fire_and_forget()` returns `()` |
-| feat_req_recentip_XX | Response required for R/R | ✅ TYPE_SYSTEM | `Responder` must-consume pattern |
-
----
-
-## SD Requirements (someip-sd.rst)
 
 ### Port Requirements
 
 | Requirement ID | Description | Status | Test / Justification |
 |----------------|-------------|--------|----------------------|
-| feat_req_recentipsd_XXX | SD port is 30490 | ✅ TESTED | `sd::sd_port::sd_port_is_30490` |
-| feat_req_recentipsd_XXX | App ports exclude 30490 | ✅ TESTED | proptest `non_sd_ports_valid` |
+| feat_req_recentip_676 | Port 30490 reserved for SD | ✅ TESTED | `sd::port::sd_port_reserved` |
+| feat_req_recentip_658 | SD default port 30490 | ✅ TESTED | `sd::port::sd_port_reserved` |
+
+### Request/Response Semantics
+
+| Requirement ID | Description | Status | Test / Justification |
+|----------------|-------------|--------|----------------------|
+| feat_req_recentip_348 | Fire&Forget no error return | ✅ TYPE_SYSTEM | `fire_and_forget()` returns `()` |
+| feat_req_recentip_141 | Request answered by response | ✅ TYPE_SYSTEM | `Responder` must-consume pattern |
+
+---
+
+## SD Requirements (someip-sd.rst)
+
+Total: 240 requirements | Tested: 2 | Pending: 238
 
 ### Eventgroup Requirements
 
 | Requirement ID | Description | Status | Test / Justification |
 |----------------|-------------|--------|----------------------|
-| feat_req_recentipsd_XXX | Eventgroup 0 reserved | ✅ TESTED | `sd::eventgroups::eventgroup_zero_reserved` |
+| feat_req_recentipids_555 | Eventgroup 0x0000 reserved | ✅ TESTED | `sd::eventgroups::eventgroup_zero_reserved` |
 
 ### Subscription Requirements
 
 | Requirement ID | Description | Status | Test / Justification |
 |----------------|-------------|--------|----------------------|
-| feat_req_recentipsd_XXX | Subscribe to available only | ✅ TYPE_SYSTEM | Typestate pattern |
-| feat_req_recentipsd_XXX | Unsubscribe on cleanup | ✅ TESTED | `api_usage::subscription_stops_on_drop` |
+| feat_req_recentipsd_433 | Unsubscribe with TTL=0 | ✅ TYPE_SYSTEM | RAII: Subscription drop sends StopSubscribe |
 
 ### Offer/Find Requirements
 
 | Requirement ID | Description | Status | Test / Justification |
 |----------------|-------------|--------|----------------------|
-| feat_req_recentipsd_XXX | Offer needs concrete instance | ✅ TYPE_SYSTEM | `ConcreteInstanceId` type |
-| feat_req_recentipsd_XXX | Find allows ANY instance | ✅ TESTED | `InstanceId::ANY` |
+| feat_req_recentip_579 | Concrete instance != 0xFFFF | ✅ TYPE_SYSTEM | `ConcreteInstanceId` rejects wildcard |
 
 ---
 

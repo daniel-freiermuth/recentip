@@ -68,16 +68,19 @@ mod rpc {
                 prop_assert!(ServiceId::new(value).is_some());
             }
 
-            /// Property: Reserved ServiceId values (0x0000, 0xFFFF) are rejected
+            /// feat_req_recentip_627: Service ID 0x0000 and 0xFFFF reserved
             #[test]
             fn service_id_reserved_rejected(value in prop::sample::select(vec![0x0000u16, 0xFFFF])) {
+                covers!(feat_req_recentip_627);
                 prop_assert!(ServiceId::new(value).is_none());
             }
         }
 
-        /// Method IDs vs Event IDs: Events have high bit set (0x8000-0xFFFE)
+        /// feat_req_recentip_625: Methods and events identified by 16 bit Method ID
+        /// Events use range 0x8000-0xFFFE (high bit set)
         #[test]
         fn method_event_id_distinction() {
+            covers!(feat_req_recentip_625);
             // Methods: 0x0000-0x7FFF (any value, including 0)
             assert!(MethodId::new(0x0001).value() < 0x8000);
             assert!(MethodId::new(0x7FFF).value() < 0x8000);
@@ -106,8 +109,12 @@ mod rpc {
             }
         }
 
+        /// feat_req_recentip_542: Service instance identified by Instance ID
+        /// feat_req_recentip_543: Instance IDs are uint16
+        /// feat_req_recentip_579: Instance IDs 0x0000 and 0xFFFF reserved
         #[test]
         fn instance_id_wildcard() {
+            covers!(feat_req_recentip_542, feat_req_recentip_543, feat_req_recentip_579);
             // 0xFFFF means "any instance" for client-side matching
             assert_eq!(InstanceId::ANY.value(), 0xFFFF);
 
@@ -174,9 +181,10 @@ mod sd {
     mod port {
         use super::*;
 
-        /// SD uses well-known port 30490
+        /// feat_req_recentip_676: Port 30490 shall only be used for RECENT/IP-SD
         #[test]
         fn sd_port_reserved() {
+            covers!(feat_req_recentip_676);
             // Application ports cannot use 30490 (reserved for SD)
             assert!(AppPort::new(30490).is_none());
 
@@ -189,6 +197,7 @@ mod sd {
             /// Property: All ports except 30490 are valid for applications
             #[test]
             fn non_sd_ports_valid(port in (1u16..30490).prop_union(30491u16..65535)) {
+                covers!(feat_req_recentip_676);
                 prop_assert!(AppPort::new(port).is_some());
             }
         }
@@ -201,8 +210,10 @@ mod sd {
     mod eventgroups {
         use super::*;
 
+        /// feat_req_recentipids_555: Eventgroup ID 0x0000 is reserved
         #[test]
         fn eventgroup_zero_reserved() {
+            covers!(feat_req_recentipids_555);
             assert!(EventgroupId::new(0x0000).is_none());
             assert!(EventgroupId::new(0x0001).is_some());
         }
