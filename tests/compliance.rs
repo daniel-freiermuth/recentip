@@ -13,6 +13,7 @@
 //! - `transport_protocol`: SOME/IP-TP segmentation and reassembly
 //! - `error_handling`: Return codes and message type handling
 //! - `subscription`: Pub/Sub eventgroup entries and lifecycle
+//! - `session_handling`: Request ID, Client ID, Session ID management
 //!
 //! # Test Summary (as of last update)
 //!
@@ -24,7 +25,8 @@
 //! | transport_protocol | 28      | 10      |
 //! | error_handling     | 24      | 10      |
 //! | subscription       | 28      | 6       |
-//! | **Total**          | **136** | **46**  |
+//! | session_handling   | 25      | 6       |
+//! | **Total**          | **161** | **52**  |
 //!
 //! # Requirement Traceability
 //!
@@ -48,6 +50,9 @@ mod error_handling;
 
 #[path = "compliance/subscription.rs"]
 mod subscription;
+
+#[path = "compliance/session_handling.rs"]
+mod session_handling;
 
 /// Macro to document which requirements a test covers.
 /// This is a no-op at runtime; used for traceability documentation.
