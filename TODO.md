@@ -12,8 +12,8 @@ Create a comprehensive test suite that proves RECENT/IP spec compliance, with a 
 - [x] **1.4** Generate initial requirements database ✅ spec-data/requirements.json
 
 ## Phase 2: Test Implementation
-- [ ] **2.1** Identifier requirements (ServiceId, MethodId, EventId, etc.)
-- [ ] **2.2** Message format requirements (header structure, fields)
+- [x] **2.1** Identifier requirements (ServiceId, MethodId, EventId, etc.) ✅ 11 tests
+- [x] **2.2** Message format requirements (header structure, fields) ✅ 19 tests
 - [ ] **2.3** Request/Response semantics
 - [ ] **2.4** Service Discovery protocol
 - [ ] **2.5** Subscription lifecycle
@@ -35,15 +35,22 @@ Create a comprehensive test suite that proves RECENT/IP spec compliance, with a 
 - [x] Initial COMPLIANCE.md structure
 - [x] 20 property-based tests passing
 
+### 2025-12-23: Wire Format Tests
+- [x] Added `Header` struct to public API for parsing wire bytes
+- [x] Added `message_type` and `return_code` constant modules
+- [x] Extended `SimulatedNetwork` to capture packet bytes in history
+- [x] 19 wire format compliance tests passing (black-box style)
+- [x] 39 total compliance tests passing
+
 ### Current Stats
 | Spec Document | Requirements | Tested | Pending |
 |---------------|--------------|--------|---------|
-| someip-rpc.rst | 181 | 8 | 173 |
+| someip-rpc.rst | 181 | 17 | 164 |
 | someip-sd.rst | 240 | 2 | 238 |
 | someip-tp.rst | 37 | 0 | 37 |
 | someip-ids.rst | 0 (8 info) | 1 | - |
 | someip-compat.rst | 14 | 0 | 14 |
-| **Total** | **472** | **11** | **461** |
+| **Total** | **472** | **20** | **452** |
 
 ### Requirements Covered by Tests
 - `feat_req_recentip_538`: Service ID identification
@@ -58,7 +65,16 @@ Create a comprehensive test suite that proves RECENT/IP spec compliance, with a 
 - `feat_req_recentip_676`: SD port 30490 reserved
 - `feat_req_recentipids_555`: Eventgroup 0x0000 reserved
 
+### Wire Format Requirements (new)
+- `feat_req_recentip_42`: Big-endian header encoding
+- `feat_req_recentip_60`: Message ID = Service ID || Method ID
+- `feat_req_recentip_67`: Length field encoding
+- `feat_req_recentip_83`: Request ID = Client ID || Session ID
+- `feat_req_recentip_90`: Protocol Version = 0x01
+- `feat_req_recentip_103`: Message Type field values
+- `feat_req_recentip_371`: Return Code field values
+
 ---
 
 ## Next Action
-**Phase 1.3**: Categorize remaining requirements by testability to identify which need unit tests, integration tests, or are enforced by type system.
+**Phase 2.3**: Implement Request/Response semantics tests - validate method call/response patterns using public API and captured wire bytes.

@@ -55,7 +55,7 @@ proptest! {
 
 ## RPC Requirements (someip-rpc.rst)
 
-Total: 181 requirements | Tested: 8 | Pending: 173
+Total: 181 requirements | Tested: 17 | Pending: 164
 
 ### Identifier Requirements
 
@@ -77,9 +77,15 @@ Total: 181 requirements | Tested: 8 | Pending: 173
 
 | Requirement ID | Description | Status | Test / Justification |
 |----------------|-------------|--------|----------------------|
-| feat_req_recentip_42 | Headers in big endian | 📋 SERIALIZATION | Wire format tests |
-| feat_req_recentip_44 | Header layout identical for all impls | 📋 SERIALIZATION | Wire format tests |
-| feat_req_recentip_45 | Header format | 📋 SERIALIZATION | Wire format tests |
+| feat_req_recentip_42 | Headers in big endian | ✅ TESTED | `wire_format::header_to_bytes_is_big_endian` |
+| feat_req_recentip_44 | Header layout identical for all impls | ✅ TESTED | `wire_format::header_roundtrip` |
+| feat_req_recentip_45 | Header format (16 bytes) | ✅ TESTED | `wire_format::header_size_is_16_bytes` |
+| feat_req_recentip_60 | Message ID = Service ID + Method ID | ✅ TESTED | `wire_format::message_id_composition` |
+| feat_req_recentip_67 | Length field encoding | ✅ TESTED | `wire_format::header_roundtrip` |
+| feat_req_recentip_83 | Request ID = Client ID + Session ID | ✅ TESTED | `wire_format::request_id_composition` |
+| feat_req_recentip_90 | Protocol Version = 0x01 | ✅ TESTED | `wire_format::protocol_version_constant_is_0x01` |
+| feat_req_recentip_103 | Message Type field values | ✅ TESTED | `wire_format::message_type_values_match_spec` |
+| feat_req_recentip_371 | Return Code values | ✅ TESTED | `wire_format::return_code_values_match_spec` |
 
 ### Port Requirements
 

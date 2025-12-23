@@ -21,12 +21,14 @@ pub enum NetworkEvent {
         to: SocketAddr,
         dst_port: u16,
         size: usize,
+        data: Vec<u8>, // Actual packet bytes for wire format verification
         timestamp: Duration,
     },
     UdpReceived {
         at: SocketAddr,
         from: SocketAddr,
         size: usize,
+        data: Vec<u8>, // Actual packet bytes
         timestamp: Duration,
     },
     TcpConnect {
@@ -43,12 +45,14 @@ pub enum NetworkEvent {
         from: SocketAddr,
         to: SocketAddr,
         size: usize,
+        data: Vec<u8>, // Actual packet bytes
         timestamp: Duration,
     },
     TcpReceived {
         at: SocketAddr,
         from: SocketAddr,
         size: usize,
+        data: Vec<u8>, // Actual packet bytes
         timestamp: Duration,
     },
     TcpReset {
@@ -267,11 +271,14 @@ impl NetworkState {
         // Unicast delivery
         if let Some(socket) = self.udp_sockets.get_mut(&packet.to) {
             if socket.rx_buffer.len() < self.config.buffer_size {
-                socket.rx_buffer.push_back((packet.data.clone(), packet.from));
+                socket
+                    .rx_buffer
+                    .push_back((packet.data.clone(), packet.from));
                 self.history.push(NetworkEvent::UdpReceived {
                     at: packet.to,
                     from: packet.from,
                     size: packet.data.len(),
+                    data: packet.data.clone(),
                     timestamp: self.current_time,
                 });
             } else {
@@ -292,11 +299,14 @@ impl NetworkState {
                 for member in members {
                     if let Some(socket) = self.udp_sockets.get_mut(&member) {
                         if socket.rx_buffer.len() < self.config.buffer_size {
-                            socket.rx_buffer.push_back((packet.data.clone(), packet.from));
+                            socket
+                                .rx_buffer
+                                .push_back((packet.data.clone(), packet.from));
                             self.history.push(NetworkEvent::UdpReceived {
                                 at: member,
                                 from: packet.from,
                                 size: packet.data.len(),
+                                data: packet.data.clone(),
                                 timestamp: self.current_time,
                             });
                         }
@@ -459,8 +469,7 @@ impl IoContext for SimulatedIoContext {
             ));
         }
 
-        let local_addr =
-            SocketAddr::V4(SocketAddrV4::new(self.local_ip, state.allocate_port()));
+        let local_addr = SocketAddr::V4(SocketAddrV4::new(self.local_ip, state.allocate_port()));
 
         // Check partition
         if state.is_partitioned(local_addr, addr) {
@@ -576,6 +585,7 @@ impl UdpSocketOps for SimulatedUdpSocket {
             to: addr,
             dst_port: addr.port(),
             size: buf.len(),
+            data: buf.to_vec(),
             timestamp,
         });
 
@@ -701,7 +711,10 @@ impl TcpStreamOps for SimulatedTcpStream {
             .ok_or_else(|| IoError::new(IoErrorKind::NotConnected, "not connected"))?;
 
         if !conn.connected {
-            return Err(IoError::new(IoErrorKind::ConnectionReset, "connection reset"));
+            return Err(IoError::new(
+                IoErrorKind::ConnectionReset,
+                "connection reset",
+            ));
         }
 
         if conn.rx_buffer.is_empty() {
@@ -709,14 +722,18 @@ impl TcpStreamOps for SimulatedTcpStream {
         }
 
         let len = buf.len().min(conn.rx_buffer.len());
+        let mut received_data = Vec::with_capacity(len);
         for i in 0..len {
-            buf[i] = conn.rx_buffer.pop_front().unwrap();
+            let byte = conn.rx_buffer.pop_front().unwrap();
+            buf[i] = byte;
+            received_data.push(byte);
         }
 
         state.history.push(NetworkEvent::TcpReceived {
             at: self.local_addr,
             from: self.remote_addr,
             size: len,
+            data: received_data,
             timestamp,
         });
 
@@ -728,10 +745,17 @@ impl TcpStreamOps for SimulatedTcpStream {
         let timestamp = state.current_time;
 
         // Check for broken connection
-        if state.broken_tcp.contains(&(self.local_addr, self.remote_addr))
-            || state.broken_tcp.contains(&(self.remote_addr, self.local_addr))
+        if state
+            .broken_tcp
+            .contains(&(self.local_addr, self.remote_addr))
+            || state
+                .broken_tcp
+                .contains(&(self.remote_addr, self.local_addr))
         {
-            return Err(IoError::new(IoErrorKind::ConnectionReset, "connection reset"));
+            return Err(IoError::new(
+                IoErrorKind::ConnectionReset,
+                "connection reset",
+            ));
         }
 
         let key = (self.local_addr, self.remote_addr);
@@ -741,7 +765,10 @@ impl TcpStreamOps for SimulatedTcpStream {
             .ok_or_else(|| IoError::new(IoErrorKind::NotConnected, "not connected"))?;
 
         if !conn.connected {
-            return Err(IoError::new(IoErrorKind::ConnectionReset, "connection reset"));
+            return Err(IoError::new(
+                IoErrorKind::ConnectionReset,
+                "connection reset",
+            ));
         }
 
         // Write to remote's rx buffer
@@ -754,6 +781,7 @@ impl TcpStreamOps for SimulatedTcpStream {
             from: self.local_addr,
             to: self.remote_addr,
             size: buf.len(),
+            data: buf.to_vec(),
             timestamp,
         });
 
