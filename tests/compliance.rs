@@ -10,6 +10,7 @@
 //! - `api_types`: Type system validation (ServiceId, MethodId, etc.)
 //! - `wire_format`: Wire protocol compliance via SimulatedNetwork
 //! - `service_discovery`: SOME/IP-SD message format and behavior
+//! - `transport_protocol`: SOME/IP-TP segmentation and reassembly
 //!
 //! # Requirement Traceability
 //!
@@ -24,6 +25,9 @@ mod wire_format;
 
 #[path = "compliance/service_discovery.rs"]
 mod service_discovery;
+
+#[path = "compliance/transport_protocol.rs"]
+mod transport_protocol;
 
 /// Macro to document which requirements a test covers.
 /// This is a no-op at runtime; used for traceability documentation.
