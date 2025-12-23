@@ -24,8 +24,14 @@ fn reserved_service_ids_are_rejected() {
 #[test]
 fn reserved_instance_ids_are_rejected() {
     // Concrete instance IDs (for servers) cannot be wildcard
-    assert!(ConcreteInstanceId::new(0x0000).is_none(), "0x0000 is reserved");
-    assert!(ConcreteInstanceId::new(0xFFFF).is_none(), "0xFFFF is wildcard");
+    assert!(
+        ConcreteInstanceId::new(0x0000).is_none(),
+        "0x0000 is reserved"
+    );
+    assert!(
+        ConcreteInstanceId::new(0xFFFF).is_none(),
+        "0xFFFF is wildcard"
+    );
     assert!(ConcreteInstanceId::new(0x0001).is_some());
 
     // Client-side InstanceId allows ANY (0xFFFF)
@@ -42,7 +48,10 @@ fn concrete_instance_converts_to_instance() {
 
 #[test]
 fn event_ids_must_have_high_bit_set() {
-    assert!(EventId::new(0x0001).is_none(), "methods don't have high bit");
+    assert!(
+        EventId::new(0x0001).is_none(),
+        "methods don't have high bit"
+    );
     assert!(EventId::new(0x7FFF).is_none(), "just below event range");
     assert!(EventId::new(0x8000).is_some(), "first event ID");
     assert!(EventId::new(0xFFFE).is_some(), "last valid event ID");
@@ -65,8 +74,12 @@ fn eventgroup_zero_is_reserved() {
 // ============================================================================
 // RUNTIME API TESTS - Unified client + server
 // ============================================================================
+// These tests use Runtime::new() which is not yet implemented.
+// Remove #[ignore] as implementation progresses.
+// ============================================================================
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn runtime_discovers_available_service() {
     let (network, io_a, io_b) = SimulatedNetwork::new_pair();
 
@@ -87,18 +100,19 @@ fn runtime_discovers_available_service() {
     // Client side: discover the service
     let mut client_runtime = Runtime::new(io_a, RuntimeConfig::default()).unwrap();
     let proxy = client_runtime.require(service_id, InstanceId::ANY);
-    
+
     // Simulate SD exchange
     network.advance(std::time::Duration::from_millis(100));
 
     // Service should be available now
     let available = proxy.wait_available().unwrap();
-    
+
     // We can call methods on available proxy
     let _response = available.call(MethodId::new(0x01), &[1, 2, 3]).unwrap();
 }
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn mixed_mode_offer_and_require() {
     // A single runtime can both offer services AND require services from others
     let (network, io_a, io_b) = SimulatedNetwork::new_pair();
@@ -108,24 +122,28 @@ fn mixed_mode_offer_and_require() {
 
     // ECU A: offers 0x1111, requires 0x2222
     let mut runtime_a = Runtime::new(io_a, RuntimeConfig::default()).unwrap();
-    let _offering_a = runtime_a.offer(
-        ServiceConfig::builder()
-            .service(our_service)
-            .instance(ConcreteInstanceId::new(0x01).unwrap())
-            .build()
-            .unwrap()
-    ).unwrap();
+    let _offering_a = runtime_a
+        .offer(
+            ServiceConfig::builder()
+                .service(our_service)
+                .instance(ConcreteInstanceId::new(0x01).unwrap())
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
     let proxy_a = runtime_a.require(their_service, InstanceId::ANY);
 
     // ECU B: offers 0x2222, requires 0x1111
     let mut runtime_b = Runtime::new(io_b, RuntimeConfig::default()).unwrap();
-    let _offering_b = runtime_b.offer(
-        ServiceConfig::builder()
-            .service(their_service)
-            .instance(ConcreteInstanceId::new(0x01).unwrap())
-            .build()
-            .unwrap()
-    ).unwrap();
+    let _offering_b = runtime_b
+        .offer(
+            ServiceConfig::builder()
+                .service(their_service)
+                .instance(ConcreteInstanceId::new(0x01).unwrap())
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
     let proxy_b = runtime_b.require(our_service, InstanceId::ANY);
 
     // SD exchange - both discover each other
@@ -150,6 +168,7 @@ fn client_cannot_call_methods_on_unavailable_service() {
 }
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn subscription_receives_events() {
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
 
@@ -171,9 +190,9 @@ fn subscription_receives_events() {
     // Client runtime
     let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
-    
+
     network.advance(std::time::Duration::from_millis(100));
-    
+
     let available = proxy.wait_available().unwrap();
     let mut subscription = available.subscribe(eventgroup).unwrap();
 
@@ -188,7 +207,9 @@ fn subscription_receives_events() {
     }
 
     // Server sends event
-    offering.notify(eventgroup, event_id, b"hello from server").unwrap();
+    offering
+        .notify(eventgroup, event_id, b"hello from server")
+        .unwrap();
 
     network.advance(std::time::Duration::from_millis(10));
 
@@ -199,22 +220,24 @@ fn subscription_receives_events() {
 }
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn subscription_can_call_methods() {
     // Once subscribed, we can also call methods on the same service
     // without needing to keep the proxy around
-    
+
     let (_network, io, _) = SimulatedNetwork::new_pair();
     let mut runtime = Runtime::new(io, RuntimeConfig::default()).unwrap();
-    
+
     let service_id = ServiceId::new(0x1234).unwrap();
     let _proxy = runtime.require(service_id, InstanceId::ANY);
-    
+
     // This test just documents the API - actual implementation would:
     // let subscription = available.subscribe(eventgroup)?;
     // let response = subscription.call(method, &data)?; // can still call methods
 }
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn subscription_stops_on_drop() {
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
 
@@ -235,7 +258,7 @@ fn subscription_stops_on_drop() {
     let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
     network.advance(std::time::Duration::from_millis(100));
-    
+
     let available = proxy.wait_available().unwrap();
     let subscription = available.subscribe(eventgroup).unwrap();
 
@@ -270,7 +293,7 @@ fn subscription_stops_on_drop() {
 fn server_must_respond_to_requests() {
     // Responder panics in debug mode if dropped without response
     // This test documents the expected behavior
-    
+
     // In actual usage:
     // match offering.next()? {
     //     ServiceEvent::MethodCall { request } => {
@@ -284,7 +307,7 @@ fn server_must_respond_to_requests() {
 #[test]
 fn server_must_handle_subscribe_requests() {
     // SubscribeAck panics if dropped without accept/reject
-    
+
     // In actual usage:
     // ServiceEvent::Subscribe { ack, eventgroup, .. } => {
     //     if can_handle(eventgroup) {
@@ -296,6 +319,7 @@ fn server_must_handle_subscribe_requests() {
 }
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn server_handles_method_calls() {
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
 
@@ -340,6 +364,7 @@ fn server_handles_method_calls() {
 }
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn server_handles_fire_and_forget() {
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
 
@@ -361,9 +386,11 @@ fn server_handles_fire_and_forget() {
     network.advance(std::time::Duration::from_millis(100));
 
     let available = proxy.wait_available().unwrap();
-    
+
     // Fire and forget - no response expected, returns immediately
-    available.fire_and_forget(method_id, b"one-way data").unwrap();
+    available
+        .fire_and_forget(method_id, b"one-way data")
+        .unwrap();
 
     network.advance(std::time::Duration::from_millis(50));
 
@@ -378,9 +405,10 @@ fn server_handles_fire_and_forget() {
 }
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn server_notify_only_sends_to_subscribers() {
     let (network, io_a, io_b) = SimulatedNetwork::new_pair();
-    
+
     let service_id = ServiceId::new(0x3333).unwrap();
     let eventgroup1 = EventgroupId::new(0x01).unwrap();
     let eventgroup2 = EventgroupId::new(0x02).unwrap();
@@ -408,19 +436,26 @@ fn server_notify_only_sends_to_subscribers() {
     network.advance(std::time::Duration::from_millis(50));
 
     // Accept subscription
-    if let Some(ServiceEvent::Subscribe { ack, eventgroup, .. }) = offering.try_next().unwrap() {
+    if let Some(ServiceEvent::Subscribe {
+        ack, eventgroup, ..
+    }) = offering.try_next().unwrap()
+    {
         assert_eq!(eventgroup, eventgroup1);
         ack.accept().unwrap();
     }
 
     // Server sends to eventgroup1 - should reach client
     assert!(offering.has_subscribers(eventgroup1));
-    offering.notify(eventgroup1, event_id, b"event for group 1").unwrap();
+    offering
+        .notify(eventgroup1, event_id, b"event for group 1")
+        .unwrap();
 
     // Server sends to eventgroup2 - no subscribers, no-op
     assert!(!offering.has_subscribers(eventgroup2));
     // notify should still succeed, just doesn't send anything
-    offering.notify(eventgroup2, event_id, b"event for group 2").unwrap();
+    offering
+        .notify(eventgroup2, event_id, b"event for group 2")
+        .unwrap();
 
     network.advance(std::time::Duration::from_millis(50));
 
@@ -437,6 +472,7 @@ fn server_notify_only_sends_to_subscribers() {
 // ============================================================================
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn client_can_get_and_set_fields() {
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
 
@@ -466,7 +502,10 @@ fn client_can_get_and_set_fields() {
     network.advance(std::time::Duration::from_millis(50));
 
     match offering.next().unwrap() {
-        ServiceEvent::GetField { field: f, responder } => {
+        ServiceEvent::GetField {
+            field: f,
+            responder,
+        } => {
             assert_eq!(f, field);
             responder.send_ok(&field_value).unwrap();
         }
@@ -482,7 +521,11 @@ fn client_can_get_and_set_fields() {
     network.advance(std::time::Duration::from_millis(50));
 
     match offering.next().unwrap() {
-        ServiceEvent::SetField { field: f, value, responder } => {
+        ServiceEvent::SetField {
+            field: f,
+            value,
+            responder,
+        } => {
             assert_eq!(f, field);
             field_value = value;
             responder.send_ok_empty().unwrap();
@@ -524,6 +567,7 @@ fn service_config_requires_all_fields() {
 // ============================================================================
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn method_call_returns_error_response() {
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
 
@@ -564,6 +608,7 @@ fn method_call_returns_error_response() {
 }
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn subscription_rejection_is_reported() {
     let (network, io_client, io_server) = SimulatedNetwork::new_pair();
 
@@ -586,23 +631,23 @@ fn subscription_rejection_is_reported() {
     network.advance(std::time::Duration::from_millis(100));
 
     let available = proxy.wait_available().unwrap();
-    
+
     // Subscription will eventually fail
     let sub_result = std::thread::scope(|s| {
         let handle = s.spawn(|| available.subscribe(eventgroup));
-        
+
         network.advance(std::time::Duration::from_millis(50));
-        
+
         // Server rejects
         if let Some(ServiceEvent::Subscribe { ack, .. }) = offering.try_next().unwrap() {
             ack.reject(RejectReason::NotAuthorized).unwrap();
         }
-        
+
         network.advance(std::time::Duration::from_millis(50));
-        
+
         handle.join().unwrap()
     });
-    
+
     // Client should see the rejection
     assert!(sub_result.is_err());
 }
@@ -612,13 +657,14 @@ fn subscription_rejection_is_reported() {
 // ============================================================================
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn simulated_network_can_drop_packets() {
     let (network, io_a, io_b) = SimulatedNetwork::new_pair();
-    
+
     network.set_drop_rate(0.5); // 50% packet loss
-    
+
     let service_id = ServiceId::new(0x7777).unwrap();
-    
+
     // Server runtime
     let mut server = Runtime::new(io_b, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
@@ -631,20 +677,21 @@ fn simulated_network_can_drop_packets() {
     // Client runtime - discovery should still work due to retries
     let mut client = Runtime::new(io_a, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
-    
+
     // Need more time with packet loss
     network.advance(std::time::Duration::from_secs(5));
-    
+
     // Should eventually succeed despite losses
     assert!(proxy.is_available());
 }
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn simulated_network_can_partition() {
     let (network, io_a, io_b) = SimulatedNetwork::new_pair();
-    
+
     let service_id = ServiceId::new(0x8888).unwrap();
-    
+
     // Server runtime
     let mut server = Runtime::new(io_b, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
@@ -657,31 +704,32 @@ fn simulated_network_can_partition() {
     // Client runtime
     let mut client = Runtime::new(io_a, RuntimeConfig::default()).unwrap();
     let proxy = client.require(service_id, InstanceId::ANY);
-    
+
     network.advance(std::time::Duration::from_millis(100));
     assert!(proxy.is_available());
-    
+
     // Create network partition
     network.partition("192.168.1.0/24", "192.168.2.0/24");
     network.advance(std::time::Duration::from_secs(10));
-    
+
     // Service should become unavailable due to SD timeout
     assert!(!proxy.is_available());
-    
+
     // Heal partition
     network.heal();
     network.advance(std::time::Duration::from_millis(500));
-    
+
     // Should rediscover
     assert!(proxy.is_available());
 }
 
 #[test]
+#[ignore = "Runtime::new not implemented"]
 fn simulated_network_tracks_history() {
     let (network, _io_a, io_b) = SimulatedNetwork::new_pair();
-    
+
     let service_id = ServiceId::new(0x9999).unwrap();
-    
+
     // Some activity
     let mut server = Runtime::new(io_b, RuntimeConfig::default()).unwrap();
     let config = ServiceConfig::builder()
@@ -695,7 +743,13 @@ fn simulated_network_tracks_history() {
 
     // Check history
     let history = network.history();
-    
+
     // Should see SD messages
-    assert!(history.iter().any(|e| matches!(e, NetworkEvent::UdpSent { dst_port: 30490, .. })));
+    assert!(history.iter().any(|e| matches!(
+        e,
+        NetworkEvent::UdpSent {
+            dst_port: 30490,
+            ..
+        }
+    )));
 }

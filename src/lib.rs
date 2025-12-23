@@ -381,7 +381,11 @@ impl<Io: IoContext> Runtime<Io> {
     }
 
     /// Request a service. Returns a proxy in Unavailable state.
-    pub fn require(&mut self, _service: ServiceId, _instance: InstanceId) -> ServiceProxy<Io, Unavailable> {
+    pub fn require(
+        &mut self,
+        _service: ServiceId,
+        _instance: InstanceId,
+    ) -> ServiceProxy<Io, Unavailable> {
         todo!()
     }
 
@@ -766,7 +770,10 @@ pub enum ServiceEvent {
     },
 
     /// Get field request
-    GetField { field: MethodId, responder: Responder },
+    GetField {
+        field: MethodId,
+        responder: Responder,
+    },
 
     /// Set field request
     SetField {
