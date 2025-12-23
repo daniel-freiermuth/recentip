@@ -137,25 +137,21 @@ impl Default for SessionIdCounter {
 }
 
 // ============================================================================
-// Unit Tests for Request ID
+// Unit Tests for Request ID (test infrastructure, not conformance)
 // ============================================================================
 
 #[cfg(test)]
 mod request_id_tests {
     use super::*;
 
-    /// feat_req_recentip_83: Request ID is Client ID + Session ID
     #[test]
     fn request_id_composition() {
-        covers!(feat_req_recentip_83);
-
         let req_id = RequestId::new(0x1234, 0x5678);
         assert_eq!(req_id.client_id, 0x1234);
         assert_eq!(req_id.session_id, 0x5678);
         assert_eq!(req_id.as_u32(), 0x12345678);
     }
 
-    /// Request ID roundtrip through bytes
     #[test]
     fn request_id_roundtrip() {
         let original = RequestId::new(0xABCD, 0xEF01);
@@ -166,7 +162,6 @@ mod request_id_tests {
         assert_eq!(parsed.session_id, original.session_id);
     }
 
-    /// Request ID from u32 and back
     #[test]
     fn request_id_u32_roundtrip() {
         let value: u32 = 0xDEADBEEF;
@@ -176,7 +171,6 @@ mod request_id_tests {
         assert_eq!(req_id.as_u32(), value);
     }
 
-    /// Wire format is big-endian
     #[test]
     fn request_id_big_endian() {
         let req_id = RequestId::new(0x0102, 0x0304);
@@ -186,34 +180,27 @@ mod request_id_tests {
 }
 
 // ============================================================================
-// Unit Tests for Session ID Counter
+// Unit Tests for Session ID Counter (test infrastructure, not conformance)
 // ============================================================================
 
 #[cfg(test)]
 mod session_id_tests {
     use super::*;
 
-    /// feat_req_recentip_649: Session ID starts at 0x0001
     #[test]
     fn session_id_starts_at_one() {
-        covers!(feat_req_recentip_649);
-
         let mut counter = SessionIdCounter::new();
         assert_eq!(counter.next(), 0x0001);
     }
 
-    /// feat_req_recentip_700: Session ID = 0x0000 if disabled
     #[test]
     fn session_id_zero_when_disabled() {
-        covers!(feat_req_recentip_700);
-
         let mut counter = SessionIdCounter::disabled();
         assert_eq!(counter.next(), 0x0000);
         assert_eq!(counter.next(), 0x0000);
         assert_eq!(counter.next(), 0x0000);
     }
 
-    /// Session ID increments
     #[test]
     fn session_id_increments() {
         let mut counter = SessionIdCounter::new();
@@ -222,11 +209,8 @@ mod session_id_tests {
         assert_eq!(counter.next(), 0x0003);
     }
 
-    /// feat_req_recentip_677: Session ID wraps from 0xFFFF to 0x0001
     #[test]
     fn session_id_wraps_correctly() {
-        covers!(feat_req_recentip_677);
-
         let mut counter = SessionIdCounter {
             current: 0xFFFF,
             enabled: true,
@@ -237,11 +221,8 @@ mod session_id_tests {
         assert_eq!(counter.next(), 0x0002);
     }
 
-    /// Session ID never becomes 0x0000 when enabled
     #[test]
     fn session_id_skips_zero_on_wrap() {
-        covers!(feat_req_recentip_677);
-
         let mut counter = SessionIdCounter {
             current: 0xFFFE,
             enabled: true,

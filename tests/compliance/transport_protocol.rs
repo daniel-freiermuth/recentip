@@ -100,7 +100,7 @@ pub const MAX_SEGMENT_SIZE: usize = 1392;
 pub const TP_FLAG_BIT: u8 = 0x20;
 
 // ============================================================================
-// TP Header Unit Tests (parsing utility verification)
+// TP Header Unit Tests (test infrastructure, not conformance)
 // ============================================================================
 
 #[cfg(test)]
@@ -199,7 +199,7 @@ mod tp_header_tests {
 
     #[test]
     fn tp_header_reserved_ignored_on_receive() {
-        // feat_req_recentiptp_769: Reserved shall be ignored by receiver
+        // Reserved shall be ignored by receiver
         // Even if reserved bits are set, parsing should succeed
         let bytes = [0x00, 0x00, 0x05, 0x7F]; // offset=87*16, reserved=0x07, more=1
         let parsed = TpHeader::from_bytes(&bytes).unwrap();

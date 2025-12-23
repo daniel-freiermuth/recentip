@@ -401,7 +401,7 @@ fn length_field_includes_header_remainder() {
 }
 
 // ============================================================================
-// HEADER PARSING UNIT TESTS (run now, no Runtime needed)
+// HEADER PARSING UNIT TESTS (test infrastructure, not conformance)
 // ============================================================================
 
 mod header_parsing {

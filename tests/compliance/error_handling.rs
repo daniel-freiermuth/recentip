@@ -71,26 +71,23 @@ pub mod message_types {
 }
 
 // ============================================================================
-// Return Code Unit Tests
+// Return Code Unit Tests (test infrastructure, not conformance)
 // ============================================================================
 
 #[cfg(test)]
 mod return_code_tests {
     use super::return_codes::*;
 
-    /// feat_req_recentip_371: E_OK is 0x00
     #[test]
     fn e_ok_is_zero() {
         assert_eq!(E_OK, 0x00);
     }
 
-    /// feat_req_recentip_371: E_NOT_OK is 0x01
     #[test]
     fn e_not_ok_is_one() {
         assert_eq!(E_NOT_OK, 0x01);
     }
 
-    /// feat_req_recentip_371: Return code values match spec
     #[test]
     fn return_code_values_match_spec() {
         assert_eq!(E_UNKNOWN_SERVICE, 0x02);
@@ -104,7 +101,6 @@ mod return_code_tests {
         assert_eq!(E_WRONG_MESSAGE_TYPE, 0x0A);
     }
 
-    /// Verify reserved ranges
     #[test]
     fn reserved_ranges() {
         // 0x0B-0x1F: Generic SOME/IP errors
@@ -115,14 +111,13 @@ mod return_code_tests {
 }
 
 // ============================================================================
-// Message Type Unit Tests
+// Message Type Unit Tests (test infrastructure, not conformance)
 // ============================================================================
 
 #[cfg(test)]
 mod message_type_tests {
     use super::message_types::*;
 
-    /// feat_req_recentip_684: Message type values
     #[test]
     fn message_type_values_match_spec() {
         assert_eq!(REQUEST, 0x00);
@@ -132,7 +127,6 @@ mod message_type_tests {
         assert_eq!(ERROR, 0x81);
     }
 
-    /// feat_req_recentip_142: ACK bit is 0x40
     #[test]
     fn ack_bit_is_0x40() {
         assert_eq!(REQUEST_ACK, REQUEST | 0x40);
@@ -142,13 +136,11 @@ mod message_type_tests {
         assert_eq!(ERROR_ACK, ERROR | 0x40);
     }
 
-    /// feat_req_recentip_761: TP flag is 0x20
     #[test]
     fn tp_flag_is_0x20() {
         assert_eq!(TP_FLAG, 0x20);
     }
 
-    /// Response is request with high bit set
     #[test]
     fn response_is_request_with_high_bit() {
         assert_eq!(RESPONSE, REQUEST | 0x80);
