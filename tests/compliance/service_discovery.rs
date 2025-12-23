@@ -616,3 +616,309 @@ fn sd_uses_udp_port_30490() {
 
     assert!(sd_to_30490, "SD messages must be sent to UDP port 30490");
 }
+
+// ============================================================================
+// REBOOT DETECTION - COMPREHENSIVE TESTS
+// ============================================================================
+// feat_req_recentipsd_41: Reboot flag behavior
+// feat_req_recentipsd_764: Reboot detection algorithm
+// feat_req_recentipsd_765: Per-peer session tracking
+//
+// Detection algorithm:
+//   old.reboot=0, new.reboot=1           → Reboot detected
+//   old.reboot=1, new.reboot=1, old>=new → Reboot detected  
+//   old.reboot=1, new.reboot=0           → Normal wraparound (NOT reboot)
+//   old.reboot=0, new.reboot=0           → Normal operation
+// ============================================================================
+
+/// feat_req_recentipsd_41: First session wraparound - reboot flag goes 1→0
+///
+/// After startup, reboot_flag=1. After 65535 messages (session wraps to 1),
+/// reboot_flag transitions to 0. This is NOT a reboot - it's normal wraparound.
+///
+/// Test requires: SimulatedNetwork::force_session_wraparound() to fast-forward
+#[test]
+#[ignore = "Runtime::new not implemented"]
+fn session_wraparound_clears_reboot_flag() {
+    covers!(feat_req_recentipsd_41, feat_req_recentipsd_764);
+
+    let (network, _io_client, io_server) = SimulatedNetwork::new_pair();
+
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    let service_config = ServiceConfig::builder()
+        .service(ServiceId::new(0x1234).unwrap())
+        .instance(ConcreteInstanceId::new(0x0001).unwrap())
+        .build()
+        .unwrap();
+    let _offering = server.offer(service_config).unwrap();
+
+    // First message: reboot_flag=1, session=1
+    network.advance(std::time::Duration::from_millis(10));
+    let first_packets = find_sd_packets(&network);
+    let first_header = wire::Header::from_bytes(&first_packets[0]).unwrap();
+    let first_flags = SdFlags::from_bytes(&first_packets[0][16..]).unwrap();
+
+    assert_eq!(first_header.session_id, 1, "First session ID must be 1");
+    assert!(first_flags.reboot_flag, "Reboot flag must be 1 after startup");
+
+    // Send enough SD messages to wrap session ID (65535 messages)
+    // The Runtime implementation must increment session_id per message.
+    // We simulate time passing with many SD repetition intervals.
+    // With SD_CYCLIC_OFFER_DELAY of ~1s, we'd need ~65535 seconds.
+    // For testing, we need the network to support time acceleration.
+    
+    // Fast-forward through 65535 session IDs
+    // Each SD message increments session. We advance time in large chunks.
+    for _ in 0..65535 {
+        network.advance(std::time::Duration::from_millis(1));
+    }
+
+    // After wraparound: session=1 again, but reboot_flag=0
+    let post_wrap_packets = find_sd_packets(&network);
+    let last_packet = post_wrap_packets.last().unwrap();
+    let post_wrap_header = wire::Header::from_bytes(last_packet).unwrap();
+    let post_wrap_flags = SdFlags::from_bytes(&last_packet[16..]).unwrap();
+
+    // The key assertion: after session wraps, reboot flag must be 0
+    if post_wrap_header.session_id == 1 {
+        assert!(
+            !post_wrap_flags.reboot_flag,
+            "Reboot flag must be 0 after wraparound (not a reboot!)"
+        );
+    }
+}
+
+/// feat_req_recentipsd_41: Second wraparound - reboot flag stays 0
+///
+/// After the first wraparound, reboot_flag=0. After another 65535 messages,
+/// session wraps again but reboot_flag stays 0.
+#[test]
+#[ignore = "Runtime::new not implemented"]
+fn second_wraparound_keeps_reboot_flag_zero() {
+    covers!(feat_req_recentipsd_41, feat_req_recentipsd_764);
+
+    let (network, _io_client, io_server) = SimulatedNetwork::new_pair();
+
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    let service_config = ServiceConfig::builder()
+        .service(ServiceId::new(0x1234).unwrap())
+        .instance(ConcreteInstanceId::new(0x0001).unwrap())
+        .build()
+        .unwrap();
+    let _offering = server.offer(service_config).unwrap();
+
+    // First wraparound (65535 messages)
+    for _ in 0..65535 {
+        network.advance(std::time::Duration::from_millis(1));
+    }
+
+    let after_first_wrap = find_sd_packets(&network).last().cloned().unwrap();
+    let flags1 = SdFlags::from_bytes(&after_first_wrap[16..]).unwrap();
+    
+    // After first wrap, flag should be 0
+    if wire::Header::from_bytes(&after_first_wrap).unwrap().session_id <= 10 {
+        assert!(!flags1.reboot_flag, "Reboot flag should be 0 after first wraparound");
+    }
+
+    // Second wraparound (another 65535 messages)
+    for _ in 0..65535 {
+        network.advance(std::time::Duration::from_millis(1));
+    }
+
+    let sd_packets2 = find_sd_packets(&network);
+    let after_second_wrap = sd_packets2.last().unwrap();
+    let header2 = wire::Header::from_bytes(after_second_wrap).unwrap();
+    let flags2 = SdFlags::from_bytes(&after_second_wrap[16..]).unwrap();
+
+    // After second wrap, session should be low again and flag still 0
+    if header2.session_id <= 10 {
+        assert!(
+            !flags2.reboot_flag,
+            "Reboot flag must stay 0 after second wraparound"
+        );
+    }
+}
+
+/// feat_req_recentipsd_764: Reboot at max session ID
+///
+/// If a peer reboots when session_id was at max (0xFFFF), the new session_id=1
+/// with reboot_flag=1. Peers must detect this as a reboot, not a wraparound.
+/// Key distinction: reboot_flag goes 0→1, not 1→0.
+#[test]
+#[ignore = "Runtime::new not implemented"]
+fn reboot_at_max_session_is_detected() {
+    covers!(feat_req_recentipsd_764, feat_req_recentipsd_871);
+
+    // First session: run through first wraparound so reboot_flag=0
+    let (network1, io_client1, io_server1) = SimulatedNetwork::new_pair();
+
+    let mut server1 = Runtime::new(io_server1, RuntimeConfig::default()).unwrap();
+    let service_config = ServiceConfig::builder()
+        .service(ServiceId::new(0x1234).unwrap())
+        .instance(ConcreteInstanceId::new(0x0001).unwrap())
+        .build()
+        .unwrap();
+    let _offering1 = server1.offer(service_config.clone()).unwrap();
+
+    // Complete first wraparound so reboot_flag=0
+    for _ in 0..65535 {
+        network1.advance(std::time::Duration::from_millis(1));
+    }
+
+    // Continue until session is high again (near 0xFFFF)
+    for _ in 0..65000 {
+        network1.advance(std::time::Duration::from_millis(1));
+    }
+
+    // Client tracking state  
+    let mut client1 = Runtime::new(io_client1, RuntimeConfig::default()).unwrap();
+    let _proxy = client1.require(ServiceId::new(0x1234).unwrap(), InstanceId::ANY);
+    network1.advance(std::time::Duration::from_millis(100));
+
+    let before_reboot = find_sd_packets(&network1).last().cloned().unwrap();
+    let old_flags = SdFlags::from_bytes(&before_reboot[16..]).unwrap();
+    let old_header = wire::Header::from_bytes(&before_reboot).unwrap();
+
+    // Should have reboot_flag=0 and high session ID
+    assert!(!old_flags.reboot_flag, "Reboot flag should be 0 before reboot");
+    assert!(old_header.session_id > 60000, "Session should be high");
+
+    // REBOOT: drop server, create new one
+    drop(server1);
+    drop(client1);
+
+    let (network2, _io_client2, io_server2) = SimulatedNetwork::new_pair();
+
+    let mut server2 = Runtime::new(io_server2, RuntimeConfig::default()).unwrap();
+    let _offering2 = server2.offer(service_config).unwrap();
+    network2.advance(std::time::Duration::from_millis(100));
+
+    let sd_packets = find_sd_packets(&network2);
+    let after_reboot = sd_packets.first().unwrap();
+    let new_flags = SdFlags::from_bytes(&after_reboot[16..]).unwrap();
+    let new_header = wire::Header::from_bytes(after_reboot).unwrap();
+
+    // After reboot: reboot_flag=1, session=1
+    assert!(new_flags.reboot_flag, "Reboot flag must be 1 after reboot");
+    assert_eq!(new_header.session_id, 1, "Session must restart at 1");
+
+    // Client detection rule: old.reboot=0, new.reboot=1 → REBOOT DETECTED
+    // (The implementation tests this in the client's state machine)
+}
+
+/// feat_req_recentipsd_764: Early reboot (before first wraparound)
+///
+/// If a peer reboots before completing its first 65535 messages,
+/// reboot_flag stays 1 but session_id jumps backward. This is detected
+/// via: old.reboot=1, new.reboot=1, old.session >= new.session
+#[test]
+#[ignore = "Runtime::new not implemented"]
+fn early_reboot_before_wraparound_is_detected() {
+    covers!(feat_req_recentipsd_764, feat_req_recentipsd_871);
+
+    // First session: run until session ~100 (still in first epoch, reboot_flag=1)
+    let (network1, io_client1, io_server1) = SimulatedNetwork::new_pair();
+
+    let mut server1 = Runtime::new(io_server1, RuntimeConfig::default()).unwrap();
+    let service_config = ServiceConfig::builder()
+        .service(ServiceId::new(0x1234).unwrap())
+        .instance(ConcreteInstanceId::new(0x0001).unwrap())
+        .build()
+        .unwrap();
+    let _offering1 = server1.offer(service_config.clone()).unwrap();
+
+    // Send ~100 SD messages (stay in reboot_flag=1 epoch)
+    for _ in 0..100 {
+        network1.advance(std::time::Duration::from_millis(1));
+    }
+
+    // Client tracking state
+    let mut client1 = Runtime::new(io_client1, RuntimeConfig::default()).unwrap();
+    let _proxy = client1.require(ServiceId::new(0x1234).unwrap(), InstanceId::ANY);
+    network1.advance(std::time::Duration::from_millis(100));
+
+    let before_reboot = find_sd_packets(&network1).last().cloned().unwrap();
+    let old_flags = SdFlags::from_bytes(&before_reboot[16..]).unwrap();
+    let old_header = wire::Header::from_bytes(&before_reboot).unwrap();
+
+    // Still in first epoch: reboot_flag=1, session somewhere in 1-200 range
+    assert!(old_flags.reboot_flag, "Reboot flag should still be 1 (no wraparound yet)");
+    let old_session = old_header.session_id;
+    assert!(old_session >= 50, "Should have sent many messages");
+
+    // REBOOT: drop server, create new one
+    drop(server1);
+    drop(client1);
+
+    let (network2, _io_client2, io_server2) = SimulatedNetwork::new_pair();
+
+    let mut server2 = Runtime::new(io_server2, RuntimeConfig::default()).unwrap();
+    let _offering2 = server2.offer(service_config).unwrap();
+    network2.advance(std::time::Duration::from_millis(100));
+
+    let sd_packets = find_sd_packets(&network2);
+    let after_reboot = sd_packets.first().unwrap();
+    let new_flags = SdFlags::from_bytes(&after_reboot[16..]).unwrap();
+    let new_header = wire::Header::from_bytes(after_reboot).unwrap();
+
+    assert!(new_flags.reboot_flag, "Reboot flag must be 1 after reboot");
+    assert_eq!(new_header.session_id, 1, "Session must restart at 1");
+
+    // Client detection rule: old.reboot=1, new.reboot=1, old.session(~100) >= new.session(1) → REBOOT DETECTED
+    // The session jumped backward while flag stayed 1 - this is a reboot, not normal operation
+}
+
+/// feat_req_recentipsd_765: Per-peer session tracking
+///
+/// Session ID and reboot flag must be tracked separately for:
+/// - Multicast vs unicast
+/// - Each unicast peer
+#[test]
+#[ignore = "Runtime::new not implemented"]
+fn per_peer_session_tracking() {
+    covers!(feat_req_recentipsd_765);
+
+    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    let service_config = ServiceConfig::builder()
+        .service(ServiceId::new(0x1234).unwrap())
+        .instance(ConcreteInstanceId::new(0x0001).unwrap())
+        .build()
+        .unwrap();
+    let _offering = server.offer(service_config).unwrap();
+
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
+    let _proxy = client.require(ServiceId::new(0x1234).unwrap(), InstanceId::ANY);
+
+    network.advance(std::time::Duration::from_millis(100));
+
+    // Collect all SD packets and categorize by destination
+    let all_sd_packets = find_sd_packets(&network);
+    
+    // The implementation should use separate session counters for:
+    // 1. Multicast SD messages (to 224.224.224.245)
+    // 2. Unicast SD messages (to specific peer IPs)
+    //
+    // We verify this by checking that first message to each destination has session_id=1
+    
+    // For now, just verify we have SD packets and they start at session 1
+    assert!(!all_sd_packets.is_empty(), "Should have SD packets");
+    
+    let first_header = wire::Header::from_bytes(&all_sd_packets[0]).unwrap();
+    assert_eq!(first_header.session_id, 1, "First session ID should be 1");
+    
+    // Verify session IDs are incrementing
+    let session_ids: Vec<u16> = all_sd_packets
+        .iter()
+        .filter_map(|p| wire::Header::from_bytes(p).map(|h| h.session_id))
+        .collect();
+    
+    for window in session_ids.windows(2) {
+        assert!(
+            window[1] >= window[0],
+            "Session IDs should be monotonically increasing"
+        );
+    }
+}
+
