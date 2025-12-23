@@ -151,6 +151,36 @@ let config = ServerConfig::builder()
 - Simpler API without "Unexpected" variants
 - Debug logging available for troubleshooting
 
+### 7. Session Handling Always Enabled
+
+**Decision**: Session handling is always on. No configuration option to disable.
+
+**Rationale**:
+- SOME/IP specification mandates session handling
+- Session IDs are used for reboot detection
+- Request/response matching requires session tracking
+- Having a "disable" flag implies invalid protocol operation
+
+### 8. Subscribe Takes Reference
+
+**Decision**: `subscribe(&self, ...)` takes a reference, not ownership.
+
+**Rationale**:
+- Clients may need to subscribe to multiple eventgroups from the same service
+- Taking ownership would force awkward workarounds
+- The proxy remains available for additional subscriptions and RPC calls
+- Event flow: `ServiceProxy<Available>` → `subscribe()` → `Subscription` (proxy still usable)
+
+### 9. RPC Through Proxy, Not Subscription
+
+**Decision**: Method calls go through `ServiceProxy<Available>`, not `Subscription`.
+
+**Rationale**:
+- RPC and events are orthogonal concerns
+- A subscription is purely an event receiver
+- User keeps the `Available` proxy and can call methods at any time
+- Cleaner separation: subscription = events, proxy = methods
+
 ---
 
 ## Architecture: Layered Crates
@@ -353,6 +383,10 @@ impl SimulatedNetwork {
     
     /// Create a node (ECU) in the simulation
     pub fn create_node(&self, ip: IpAddr) -> SimulatedIoContext<'_>;
+    
+    /// Create N nodes with sequential IPs (192.168.1.10, .11, .12, ...)
+    /// Returns: (network, Vec<IoContext>)
+    pub fn new_multi(count: usize) -> (Self, Vec<SimulatedIoContext<'static>>);
 }
 ```
 
@@ -580,10 +614,10 @@ The type system guides users through valid protocol states:
     → "I must wait for availability"
 
 "I have a ServiceProxy<Available>"
-    → "I can subscribe or call methods"
+    → "I can subscribe and call methods (multiple times)"
 
 "I have a Subscription"
-    → "I can receive events and call methods"
+    → "I can receive events"
 
 "I have a MethodRequest"
     → "I must respond (responder must be consumed)"
@@ -598,15 +632,18 @@ Client
                           │
                           └── wait_available() ──► ServiceProxy<Available>
                                                         │
-                                ┌───────────────────────┴────────────────────┐
-                                │                                            │
-                          subscribe()                                  call()
-                                │                                            │
-                                ▼                                            ▼
-                          Subscription ◄─── events come from here    PendingResponse
+                                ┌───────────────────────┼────────────────────┐
+                                │                       │                    │
+                          &subscribe()            &subscribe()          call()
+                                │                       │                    │
+                                ▼                       ▼                    ▼
+                          Subscription          Subscription         PendingResponse
+                          (eventgroup 1)       (eventgroup 2)
                                 │
                           next_event() ──► Event
-                          call() ──► PendingResponse
+
+Note: subscribe(&self, ...) takes a reference, so the Available proxy 
+      remains usable for additional subscriptions and RPC calls.
 ```
 
 ### Server-Side Type Flow
@@ -1146,30 +1183,40 @@ The top-level API has been defined with:
 - `Responder` - must-use response sender (panics if dropped)
 - `SubscribeAck` - must-use subscription handler
 
+**Additional Types**:
+- `AvailableInstance` - discovered instance with `instance_id()`, `endpoint()`
+- `ConcreteInstanceId` now implements `Ord, PartialOrd` for sorting
+
 **I/O Abstraction**:
 - `IoContext` - platform abstraction trait
 - `UdpSocketOps`, `TcpStreamOps`, `TcpListenerOps` - socket traits
 - `IoResult<T>` - I/O result type
 
-### Test Suite
+### Test Suite (199 total tests)
 
-**Type Safety Tests** (tests/api_usage.rs) - 14 passing:
-- Reserved ID rejection (ServiceId, InstanceId, EventId, etc.)
-- Port 30490 reservation
-- Instance ID conversion
-- Event ID range validation
+**Compliance Test Modules**:
+| Module | Tests | Description |
+|--------|-------|-------------|
+| api_types | 16 | ID types, ranges, reserved values |
+| wire_format | 22 | Header parsing, message structure |
+| service_discovery | 18 | SD protocol, entries, options |
+| transport_protocol | 28 | TP segmentation, reassembly |
+| tcp_binding | 15 | TCP framing, magic cookies |
+| udp_binding | 12 | UDP message handling |
+| rpc_flow | 10 | Request/response patterns |
+| events | 17 | Pub/sub, multiple subscriptions |
+| fields | 8 | Getter/setter/notifier |
+| error_scenarios | 13 | Error handling, malformed messages |
+| session_edge_cases | 9 | Session ID wrap, request matching |
+| instances | 10 | Multi-instance discovery |
+| multi_party | 10 | N-party network scenarios |
 
-**Simulated Network** (tests/simulated.rs) - 4 passing:
+**Simulated Network** (tests/simulated.rs):
 - UDP roundtrip
 - Multicast delivery
 - Network partitioning
 - TCP connect and transfer
-
-**Integration Tests** (pending implementation):
-- Service discovery
-- Subscription flow
-- Method calls
-- Error handling
+- `new_multi(count)` for N-party testing
 
 ### Running Tests
 
@@ -1177,6 +1224,7 @@ The top-level API has been defined with:
 cd rust-api-design
 cargo test --test api_usage   # Type safety tests
 cargo test --test simulated   # Simulated network tests
+cargo test --test compliance  # Full compliance suite
 ```
 
 ---
