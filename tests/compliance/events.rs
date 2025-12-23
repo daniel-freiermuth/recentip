@@ -9,6 +9,11 @@
 //! - feat_req_recentip_804: Sending events via multicast
 //! - feat_req_recentip_806: Sending to subset of clients
 //! - feat_req_recentip_807: Events not sent to non-subscribers
+//!
+//! Also tests multiple subscription scenarios:
+//! - Subscribing to different eventgroups from same proxy (allowed)
+//! - Subscribing to same eventgroup twice (should fail)
+//! - Subscription independence (dropping one doesn't affect others)
 
 use someip_runtime::*;
 
@@ -536,4 +541,159 @@ fn events_can_use_multicast() {
         !notifications.is_empty() || multicast_event,
         "Event should be sent (multicast or unicast)"
     );
+}
+
+// ============================================================================
+// Multiple Subscription Tests
+// ============================================================================
+
+/// Client can subscribe to multiple different eventgroups from the same proxy
+///
+/// A service may offer multiple eventgroups (e.g., status updates vs. alarms).
+/// The client should be able to subscribe to all of them independently.
+#[test]
+#[ignore = "Runtime::new not implemented"]
+fn subscribe_to_multiple_eventgroups() {
+    covers!(feat_req_recentip_352);
+
+    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+
+    let service_id = ServiceId::new(0x1234).unwrap();
+    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let eventgroup_1 = EventgroupId::new(0x01).unwrap();
+    let eventgroup_2 = EventgroupId::new(0x02).unwrap();
+    let event_1 = EventId::new(0x8001).unwrap();
+    let event_2 = EventId::new(0x8002).unwrap();
+
+    let service_config = ServiceConfig::builder()
+        .service(service_id)
+        .instance(instance_id)
+        .eventgroup(eventgroup_1)
+        .eventgroup(eventgroup_2)
+        .build()
+        .unwrap();
+
+    let mut offering = server.offer(service_config).unwrap();
+    network.advance(std::time::Duration::from_millis(100));
+
+    let proxy = client.require(service_id, InstanceId::ANY);
+    network.advance(std::time::Duration::from_millis(100));
+    let available = proxy.wait_available().unwrap();
+
+    // Subscribe to both eventgroups from the same proxy
+    let mut subscription_1 = available.subscribe(eventgroup_1).unwrap();
+    let mut subscription_2 = available.subscribe(eventgroup_2).unwrap();
+    network.advance(std::time::Duration::from_millis(100));
+
+    // Server sends events on both eventgroups
+    offering.notify(eventgroup_1, event_1, b"event_on_eg1").unwrap();
+    offering.notify(eventgroup_2, event_2, b"event_on_eg2").unwrap();
+    network.advance(std::time::Duration::from_millis(50));
+
+    // Client should receive events on the correct subscriptions
+    let ev1 = subscription_1.try_next_event().unwrap();
+    let ev2 = subscription_2.try_next_event().unwrap();
+
+    assert!(ev1.is_some(), "Should receive event on eventgroup 1");
+    assert!(ev2.is_some(), "Should receive event on eventgroup 2");
+    
+    assert_eq!(ev1.unwrap().event_id, event_1);
+    assert_eq!(ev2.unwrap().event_id, event_2);
+}
+
+/// Subscribing to the same eventgroup twice should fail or return existing
+///
+/// It doesn't make sense to have two subscriptions to the same eventgroup
+/// from the same client - events would be duplicated or cause confusion.
+#[test]
+#[ignore = "Runtime::new not implemented"]
+fn subscribe_same_eventgroup_twice_fails() {
+    covers!(feat_req_recentip_352);
+
+    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+
+    let service_id = ServiceId::new(0x1234).unwrap();
+    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let eventgroup_id = EventgroupId::new(0x01).unwrap();
+
+    let service_config = ServiceConfig::builder()
+        .service(service_id)
+        .instance(instance_id)
+        .eventgroup(eventgroup_id)
+        .build()
+        .unwrap();
+
+    let _offering = server.offer(service_config).unwrap();
+    network.advance(std::time::Duration::from_millis(100));
+
+    let proxy = client.require(service_id, InstanceId::ANY);
+    network.advance(std::time::Duration::from_millis(100));
+    let available = proxy.wait_available().unwrap();
+
+    // First subscription should succeed
+    let _subscription_1 = available.subscribe(eventgroup_id).unwrap();
+    network.advance(std::time::Duration::from_millis(100));
+
+    // Second subscription to same eventgroup should fail
+    let result = available.subscribe(eventgroup_id);
+    assert!(
+        result.is_err(),
+        "Subscribing to the same eventgroup twice should fail"
+    );
+}
+
+/// Dropping one subscription doesn't affect other subscriptions
+#[test]
+#[ignore = "Runtime::new not implemented"]
+fn dropping_one_subscription_keeps_others_active() {
+    covers!(feat_req_recentip_352);
+
+    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+
+    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
+    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+
+    let service_id = ServiceId::new(0x1234).unwrap();
+    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let eventgroup_1 = EventgroupId::new(0x01).unwrap();
+    let eventgroup_2 = EventgroupId::new(0x02).unwrap();
+    let event_2 = EventId::new(0x8002).unwrap();
+
+    let service_config = ServiceConfig::builder()
+        .service(service_id)
+        .instance(instance_id)
+        .eventgroup(eventgroup_1)
+        .eventgroup(eventgroup_2)
+        .build()
+        .unwrap();
+
+    let mut offering = server.offer(service_config).unwrap();
+    network.advance(std::time::Duration::from_millis(100));
+
+    let proxy = client.require(service_id, InstanceId::ANY);
+    network.advance(std::time::Duration::from_millis(100));
+    let available = proxy.wait_available().unwrap();
+
+    // Subscribe to both
+    let subscription_1 = available.subscribe(eventgroup_1).unwrap();
+    let mut subscription_2 = available.subscribe(eventgroup_2).unwrap();
+    network.advance(std::time::Duration::from_millis(100));
+
+    // Drop subscription 1
+    drop(subscription_1);
+    network.advance(std::time::Duration::from_millis(50));
+
+    // Subscription 2 should still work
+    offering.notify(eventgroup_2, event_2, b"still_works").unwrap();
+    network.advance(std::time::Duration::from_millis(50));
+
+    let event = subscription_2.try_next_event().unwrap();
+    assert!(event.is_some(), "Subscription 2 should still receive events");
+    assert!(subscription_2.is_active(), "Subscription 2 should still be active");
 }
