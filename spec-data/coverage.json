@@ -1,6 +1,6 @@
 {
-  "total_tests_with_coverage": 134,
-  "total_requirements_covered": 72,
+  "total_tests_with_coverage": 158,
+  "total_requirements_covered": 88,
   "tests": [
     {
       "test_name": "service_id_is_u16",
@@ -202,6 +202,87 @@
       "line_number": 684,
       "requirements": [
         "feat_req_recentip_369"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "server_publishes_events_to_subscribers",
+      "file_path": "tests/compliance/events.rs",
+      "line_number": 79,
+      "requirements": [
+        "feat_req_recentip_352"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "events_transport_values_only",
+      "file_path": "tests/compliance/events.rs",
+      "line_number": 144,
+      "requirements": [
+        "feat_req_recentip_353"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "events_not_sent_to_non_subscribers",
+      "file_path": "tests/compliance/events.rs",
+      "line_number": 203,
+      "requirements": [
+        "feat_req_recentip_807"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "multiple_subscribers_same_ecu",
+      "file_path": "tests/compliance/events.rs",
+      "line_number": 264,
+      "requirements": [
+        "feat_req_recentip_354"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "event_uses_notification_message_type",
+      "file_path": "tests/compliance/events.rs",
+      "line_number": 320,
+      "requirements": [
+        "feat_req_recentip_352",
+        "feat_req_recentip_684"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "event_method_id_high_bit_set",
+      "file_path": "tests/compliance/events.rs",
+      "line_number": 369,
+      "requirements": [
+        "feat_req_recentip_67"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "unsubscribe_stops_events",
+      "file_path": "tests/compliance/events.rs",
+      "line_number": 423,
+      "requirements": [
+        "feat_req_recentip_807"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "events_can_use_multicast",
+      "file_path": "tests/compliance/events.rs",
+      "line_number": 480,
+      "requirements": [
+        "feat_req_recentip_804"
       ],
       "is_ignored": true,
       "ignore_reason": "Runtime::new not implemented"
@@ -475,6 +556,91 @@
       ],
       "is_ignored": false,
       "ignore_reason": null
+    },
+    {
+      "test_name": "request_response_pattern_works",
+      "file_path": "tests/compliance/rpc_flow.rs",
+      "line_number": 85,
+      "requirements": [
+        "feat_req_recentip_328",
+        "feat_req_recentip_329"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "response_has_matching_request_id",
+      "file_path": "tests/compliance/rpc_flow.rs",
+      "line_number": 137,
+      "requirements": [
+        "feat_req_recentip_338",
+        "feat_req_recentip_83"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "request_message_type_answered_by_response",
+      "file_path": "tests/compliance/rpc_flow.rs",
+      "line_number": 204,
+      "requirements": [
+        "feat_req_recentip_141",
+        "feat_req_recentip_684"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "fire_and_forget_uses_request_no_return",
+      "file_path": "tests/compliance/rpc_flow.rs",
+      "line_number": 264,
+      "requirements": [
+        "feat_req_recentip_345"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "fire_and_forget_no_response",
+      "file_path": "tests/compliance/rpc_flow.rs",
+      "line_number": 310,
+      "requirements": [
+        "feat_req_recentip_348"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "request_can_receive_error_response",
+      "file_path": "tests/compliance/rpc_flow.rs",
+      "line_number": 369,
+      "requirements": [
+        "feat_req_recentip_141"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "concurrent_requests_correctly_matched",
+      "file_path": "tests/compliance/rpc_flow.rs",
+      "line_number": 423,
+      "requirements": [
+        "feat_req_recentip_338",
+        "feat_req_recentip_88"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "session_id_increments_per_request",
+      "file_path": "tests/compliance/rpc_flow.rs",
+      "line_number": 484,
+      "requirements": [
+        "feat_req_recentip_88",
+        "feat_req_recentip_649"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
     },
     {
       "test_name": "offer_service_sd_header_format",
@@ -1041,6 +1207,87 @@
       "ignore_reason": "Runtime::new not implemented"
     },
     {
+      "test_name": "udp_binding_transports_someip_messages",
+      "file_path": "tests/compliance/udp_binding.rs",
+      "line_number": 91,
+      "requirements": [
+        "feat_req_recentip_318"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "udp_each_message_has_own_header",
+      "file_path": "tests/compliance/udp_binding.rs",
+      "line_number": 147,
+      "requirements": [
+        "feat_req_recentip_584"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "udp_multiple_messages_per_datagram",
+      "file_path": "tests/compliance/udp_binding.rs",
+      "line_number": 199,
+      "requirements": [
+        "feat_req_recentip_319"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "udp_supports_unicast_and_multicast",
+      "file_path": "tests/compliance/udp_binding.rs",
+      "line_number": 269,
+      "requirements": [
+        "feat_req_recentip_811"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "udp_client_receives_multicast_offers",
+      "file_path": "tests/compliance/udp_binding.rs",
+      "line_number": 332,
+      "requirements": [
+        "feat_req_recentip_814"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "udp_multicast_eventgroup_with_initial_events",
+      "file_path": "tests/compliance/udp_binding.rs",
+      "line_number": 372,
+      "requirements": [
+        "feat_req_recentip_812"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "udp_handles_datagram_padding",
+      "file_path": "tests/compliance/udp_binding.rs",
+      "line_number": 442,
+      "requirements": [
+        "feat_req_recentip_319",
+        "feat_req_recentip_584"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
+      "test_name": "default_transport_is_udp",
+      "file_path": "tests/compliance/udp_binding.rs",
+      "line_number": 489,
+      "requirements": [
+        "feat_req_recentip_318"
+      ],
+      "is_ignored": true,
+      "ignore_reason": "Runtime::new not implemented"
+    },
+    {
       "test_name": "protocol_version_is_0x01",
       "file_path": "tests/compliance/version_handling.rs",
       "line_number": 109,
@@ -1411,7 +1658,9 @@
     "feat_req_recentip_141": [
       "request_answered_by_response",
       "error_response_has_nonzero_return_code",
-      "response_ids_match_request"
+      "response_ids_match_request",
+      "request_message_type_answered_by_response",
+      "request_can_receive_error_response"
     ],
     "feat_req_recentip_726": [
       "error_response_has_nonzero_return_code"
@@ -1424,10 +1673,33 @@
       "unknown_method_error_optional"
     ],
     "feat_req_recentip_684": [
-      "notification_message_type"
+      "notification_message_type",
+      "event_uses_notification_message_type",
+      "request_message_type_answered_by_response"
     ],
     "feat_req_recentip_369": [
       "protocol_version_in_response"
+    ],
+    "feat_req_recentip_352": [
+      "server_publishes_events_to_subscribers",
+      "event_uses_notification_message_type"
+    ],
+    "feat_req_recentip_353": [
+      "events_transport_values_only"
+    ],
+    "feat_req_recentip_807": [
+      "events_not_sent_to_non_subscribers",
+      "unsubscribe_stops_events"
+    ],
+    "feat_req_recentip_354": [
+      "multiple_subscribers_same_ecu"
+    ],
+    "feat_req_recentip_67": [
+      "event_method_id_high_bit_set",
+      "length_field_includes_header_remainder"
+    ],
+    "feat_req_recentip_804": [
+      "events_can_use_multicast"
     ],
     "feat_req_recentip_103": [
       "message_type_parse_all_valid_values",
@@ -1467,6 +1739,37 @@
       "message_type_notification_classification",
       "message_type_no_responses_to_notification",
       "server_sends_notification_type"
+    ],
+    "feat_req_recentip_328": [
+      "request_response_pattern_works"
+    ],
+    "feat_req_recentip_329": [
+      "request_response_pattern_works"
+    ],
+    "feat_req_recentip_338": [
+      "response_has_matching_request_id",
+      "concurrent_requests_correctly_matched"
+    ],
+    "feat_req_recentip_83": [
+      "response_has_matching_request_id",
+      "request_response_roundtrip"
+    ],
+    "feat_req_recentip_345": [
+      "fire_and_forget_uses_request_no_return"
+    ],
+    "feat_req_recentip_348": [
+      "fire_and_forget_no_response"
+    ],
+    "feat_req_recentip_88": [
+      "concurrent_requests_correctly_matched",
+      "session_id_increments_per_request",
+      "session_id_increments_each_call",
+      "session_id_increments"
+    ],
+    "feat_req_recentip_649": [
+      "session_id_increments_per_request",
+      "first_call_has_session_id_one",
+      "session_id_increments"
     ],
     "feat_req_recentipsd_26": [
       "offer_service_sd_header_format",
@@ -1527,14 +1830,6 @@
       "server_copies_request_id_to_response",
       "parallel_requests_have_unique_request_ids",
       "request_id_enables_response_matching"
-    ],
-    "feat_req_recentip_649": [
-      "first_call_has_session_id_one",
-      "session_id_increments"
-    ],
-    "feat_req_recentip_88": [
-      "session_id_increments_each_call",
-      "session_id_increments"
     ],
     "feat_req_recentip_699": [
       "client_id_consistent_across_calls"
@@ -1621,6 +1916,27 @@
     "feat_req_recentiptp_764": [
       "tp_reassembly_produces_original_payload"
     ],
+    "feat_req_recentip_318": [
+      "udp_binding_transports_someip_messages",
+      "default_transport_is_udp"
+    ],
+    "feat_req_recentip_584": [
+      "udp_each_message_has_own_header",
+      "udp_handles_datagram_padding"
+    ],
+    "feat_req_recentip_319": [
+      "udp_multiple_messages_per_datagram",
+      "udp_handles_datagram_padding"
+    ],
+    "feat_req_recentip_811": [
+      "udp_supports_unicast_and_multicast"
+    ],
+    "feat_req_recentip_814": [
+      "udp_client_receives_multicast_offers"
+    ],
+    "feat_req_recentip_812": [
+      "udp_multicast_eventgroup_with_initial_events"
+    ],
     "feat_req_recentip_300": [
       "protocol_version_is_0x01",
       "protocol_version_offset_is_12",
@@ -1653,9 +1969,6 @@
     "feat_req_recentip_60": [
       "request_response_roundtrip"
     ],
-    "feat_req_recentip_83": [
-      "request_response_roundtrip"
-    ],
     "feat_req_recentip_42": [
       "request_response_roundtrip"
     ],
@@ -1667,9 +1980,6 @@
     ],
     "feat_req_recentip_90": [
       "protocol_version_in_wire_format"
-    ],
-    "feat_req_recentip_67": [
-      "length_field_includes_header_remainder"
     ],
     "feat_req_recentip_77": [
       "length_field_includes_header_remainder"

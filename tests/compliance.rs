@@ -67,6 +67,15 @@ mod version_handling;
 #[path = "compliance/tcp_binding.rs"]
 mod tcp_binding;
 
+#[path = "compliance/udp_binding.rs"]
+mod udp_binding;
+
+#[path = "compliance/rpc_flow.rs"]
+mod rpc_flow;
+
+#[path = "compliance/events.rs"]
+mod events;
+
 /// Macro to document which requirements a test covers.
 /// This is a no-op at runtime; used for traceability documentation.
 #[macro_export]
