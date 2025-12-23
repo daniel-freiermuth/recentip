@@ -39,7 +39,7 @@ Requirements with test coverage, grouped by spec document.
 
 | Requirement | Tests | Description |
 |-------------|-------|-------------|
-| `feat_req_recentip_103` | `message_type_parse_all_valid_values`, `message_type_rejects_invalid_values`, `message_type_tp_flag_is_bit_5` (+15 more) | RECENT/IP Header and E2E header Format |
+| `feat_req_recentip_103` | `message_type_parse_all_valid_values`, `message_type_rejects_invalid_values`, `message_type_tp_flag_is_bit_5` (+18 more) | RECENT/IP Header and E2E header Format |
 | `feat_req_recentip_141` | `request_answered_by_response`, `error_response_has_nonzero_return_code`, `response_ids_match_request` (+2 more) | Regular request (message type 0x00) shall be answered by a response (message typ... |
 | `feat_req_recentip_144` | `request_has_return_code_e_ok`, `fire_and_forget_has_return_code_e_ok` | The Return Code is used to signal whether a request was successfully been proces... |
 | `feat_req_recentip_15` | `fire_and_forget_returns_nothing`, `responder_must_be_consumed` |  |
@@ -54,16 +54,16 @@ Requirements with test coverage, grouped by spec document.
 | `feat_req_recentip_338` | `response_has_matching_request_id`, `concurrent_requests_correctly_matched` |  |
 | `feat_req_recentip_345` | `fire_and_forget_uses_request_no_return` |  |
 | `feat_req_recentip_348` | `fire_and_forget_no_response` | Fire&Forget messages shall not return an error. Error handling shall be implemen... |
-| `feat_req_recentip_352` | `server_publishes_events_to_subscribers`, `event_uses_notification_message_type` | Events describe a general Publish/Subscribe-Concept. Usually the server publishe... |
+| `feat_req_recentip_352` | `server_publishes_events_to_subscribers`, `event_uses_notification_message_type`, `subscribe_to_multiple_eventgroups` (+2 more) | Events describe a general Publish/Subscribe-Concept. Usually the server publishe... |
 | `feat_req_recentip_353` | `events_transport_values_only` | RECENT/IP is used only for transporting the updated value and not for the publis... |
-| `feat_req_recentip_354` | `multiple_subscribers_same_ecu` | When more than one subscribed client on the same ECU exists, the system shall ha... |
+| `feat_req_recentip_354` | `multiple_subscribers_same_ecu`, `multiple_clients_subscribe_to_events` | When more than one subscribed client on the same ECU exists, the system shall ha... |
 | `feat_req_recentip_371` | `unknown_method_returns_error` | The following Return Codes are currently defined and shall be implemented as des... |
 | `feat_req_recentip_42` | `request_response_roundtrip` | All RPC-Headers shall be encoded in network byte order (big endian). The byte or... |
 | `feat_req_recentip_445` | `different_services_can_share_port` | While different Services shall be able to share the same port number of the tran... |
 | `feat_req_recentip_45` | `request_response_roundtrip` | RECENT/IP Header Format |
 | `feat_req_recentip_538` | `service_id_is_u16` | A service shall be identified using the Service ID. |
 | `feat_req_recentip_539` | `service_id_is_u16`, `service_id_valid_range` | Service IDs shall be of type 16 bit length unsigned integer (uint16). |
-| `feat_req_recentip_541` | `different_services_have_different_service_ids` | Different services within the same vehicle shall have different Service IDs. |
+| `feat_req_recentip_541` | `different_services_have_different_service_ids`, `multiple_servers_different_instances` | Different services within the same vehicle shall have different Service IDs. |
 | `feat_req_recentip_542` | `instance_id_wildcard` | A service instance shall be identified using the Service Instance ID. |
 | `feat_req_recentip_543` | `instance_id_wildcard` | Service Instance IDs shall be of type 16 bit length unsigned integer (uint16). |
 | `feat_req_recentip_544` | `instance_uniquely_identified_by_service_and_instance_id` | Different service instances within the same vehicle shall have different Service... |
@@ -81,7 +81,7 @@ Requirements with test coverage, grouped by spec document.
 | `feat_req_recentip_633` | `field_getter_empty_request_payload`, `field_getter_returns_current_value` | The getter of a field shall be a request/response call that has an empty payload... |
 | `feat_req_recentip_634` | `field_setter_sends_value_in_request`, `field_setter_gets_response`, `field_setter_can_reject_invalid_value` | The setter of a field shall be a request/response call that has the desired valu... |
 | `feat_req_recentip_635` | `field_notifier_sends_updated_value` | The notifier shall send a notification event message that communicates the updat... |
-| `feat_req_recentip_636` | `multiple_instances_have_different_ids`, `client_can_request_any_instance`, `client_can_request_specific_instance` (+1 more) | Service-Instances of the same Service are identified through different Instance ... |
+| `feat_req_recentip_636` | `multiple_instances_have_different_ids`, `client_can_request_any_instance`, `client_can_request_specific_instance` (+3 more) | Service-Instances of the same Service are identified through different Instance ... |
 | `feat_req_recentip_644` | `single_tcp_connection_reused` | The client and server shall use a single TCP connection for all methods, events,... |
 | `feat_req_recentip_646` | `client_opens_tcp_connection` | The TCP connection shall be opened by the client, when the first method call sha... |
 | `feat_req_recentip_647` | `client_reestablishes_connection`, `tcp_loss_does_not_reset_session_id` | The client is responsible for reestablishing the TCP connection whenever it fail... |
@@ -107,7 +107,7 @@ Requirements with test coverage, grouped by spec document.
 | `feat_req_recentip_79` | `request_id_differentiates_parallel_calls` | The Request ID allows a client to differentiate multiple calls to the same metho... |
 | `feat_req_recentip_798` | `messages_with_short_length_ignored` | RECENT/IP messages with a length value < 8 bytes shall be ignored. |
 | `feat_req_recentip_80` | `request_id_reusable_after_response` | Request IDs might be reused as soon as the response arrived or is not expected t... |
-| `feat_req_recentip_804` | `events_can_use_multicast` | RECENT/IP implementations should support sending events (but not notification ev... |
+| `feat_req_recentip_804` | `events_can_use_multicast`, `multiple_clients_subscribe_to_events` | RECENT/IP implementations should support sending events (but not notification ev... |
 | `feat_req_recentip_807` | `events_not_sent_to_non_subscribers`, `unsubscribe_stops_events` | Events shall not be sent to clients that are not subscribed. Note: Events sent v... |
 | `feat_req_recentip_811` | `udp_supports_unicast_and_multicast` | The UDP Binding shall support unicast and multicast transmission depending on th... |
 | `feat_req_recentip_812` | `udp_multicast_eventgroup_with_initial_events` | The UDP Binding shall support multicast eventgroups with initial events of field... |
@@ -121,7 +121,7 @@ Requirements with test coverage, grouped by spec document.
 
 | Requirement | Tests | Description |
 |-------------|-------|-------------|
-| `feat_req_recentipsd_109` | `subscribe_eventgroup_entry_format`, `subscribe_ack_entry_format`, `eventgroup_entry_size_is_16_bytes` (+4 more) |  |
+| `feat_req_recentipsd_109` | `sd_reaches_all_participants`, `network_partition_isolates_nodes`, `subscribe_eventgroup_entry_format` (+6 more) |  |
 | `feat_req_recentipsd_26` | `offer_service_sd_header_format`, `sd_session_id_increments` |  |
 | `feat_req_recentipsd_27` | `sd_uses_udp_port_30490` | RECENT/IP-SD messages shall be supported over UDP. |
 | `feat_req_recentipsd_39` | `sd_flags_field_format` | The RECENT/IP-SD Header shall start out with an 8 bit field called Flags. |
@@ -594,6 +594,7 @@ All tests with `covers!()` annotations.
 | `client_can_request_any_instance` | instances.rs | `feat_req_recentip_636` | ⏸️ Ignored |
 | `client_can_request_specific_instance` | instances.rs | `feat_req_recentip_636` | ⏸️ Ignored |
 | `client_discovers_interface_version` | version_handling.rs | `feat_req_recentip_278` | ⏸️ Ignored |
+| `client_failover_to_another_instance` | multi_party.rs | `feat_req_recentip_636` | ⏸️ Ignored |
 | `client_id_consistent_across_calls` | session_handling.rs | `feat_req_recentip_699` | ⏸️ Ignored |
 | `client_opens_tcp_connection` | tcp_binding.rs | `feat_req_recentip_646` | ⏸️ Ignored |
 | `client_reestablishes_connection` | tcp_binding.rs | `feat_req_recentip_647` | ⏸️ Ignored |
@@ -604,6 +605,7 @@ All tests with `covers!()` annotations.
 | `default_transport_is_udp` | udp_binding.rs | `feat_req_recentip_318` | ⏸️ Ignored |
 | `different_services_can_share_port` | instances.rs | `feat_req_recentip_445` | ⏸️ Ignored |
 | `different_services_have_different_service_ids` | instances.rs | `feat_req_recentip_541` | ⏸️ Ignored |
+| `dropping_one_subscription_keeps_others_active` | events.rs | `feat_req_recentip_352` | ⏸️ Ignored |
 | `each_message_has_own_header` | tcp_binding.rs | `feat_req_recentip_585` | ⏸️ Ignored |
 | `early_reboot_before_wraparound_is_detected` | service_discovery.rs | `feat_req_recentipsd_764`, `feat_req_recentipsd_871` | ⏸️ Ignored |
 | `error_message_has_nonzero_return_code` | error_scenarios.rs | `feat_req_recentip_727` | ⏸️ Ignored |
@@ -673,12 +675,17 @@ All tests with `covers!()` annotations.
 | `messages_with_short_length_ignored` | error_scenarios.rs | `feat_req_recentip_798` | ⏸️ Ignored |
 | `method_event_id_distinction` | api_types.rs | `feat_req_recentip_625` | ✅ Active |
 | `more_segments_flag_correct` | transport_protocol.rs | `feat_req_recentiptp_770` | ⏸️ Ignored |
+| `multiple_clients_call_same_server` | multi_party.rs | `feat_req_recentip_103` | ⏸️ Ignored |
+| `multiple_clients_subscribe_to_events` | multi_party.rs | `feat_req_recentip_354`, `feat_req_recentip_804` | ⏸️ Ignored |
 | `multiple_instances_have_different_ids` | instances.rs | `feat_req_recentip_636` | ⏸️ Ignored |
 | `multiple_messages_per_segment_parsed` | tcp_binding.rs | `feat_req_recentip_702` | ⏸️ Ignored |
+| `multiple_servers_different_instances` | multi_party.rs | `feat_req_recentip_636`, `feat_req_recentip_541` | ⏸️ Ignored |
 | `multiple_subscribers_same_ecu` | events.rs | `feat_req_recentip_354` | ⏸️ Ignored |
+| `network_partition_isolates_nodes` | multi_party.rs | `feat_req_recentipsd_109` | ⏸️ Ignored |
 | `no_error_response_for_events` | error_scenarios.rs | `feat_req_recentip_597` | ⏸️ Ignored |
 | `no_error_response_for_fire_and_forget` | error_scenarios.rs | `feat_req_recentip_654` | ⏸️ Ignored |
 | `no_error_response_to_error_message` | error_handling.rs | `feat_req_recentip_704` | ⏸️ Ignored |
+| `nodes_with_mixed_client_server_roles` | multi_party.rs | `feat_req_recentip_103` | ⏸️ Ignored |
 | `non_sd_ports_valid` | api_types.rs | `feat_req_recentip_676` | ✅ Active |
 | `nonexistent_instance_not_found` | instances.rs | `feat_req_recentip_636` | ⏸️ Ignored |
 | `notification_message_type` | error_handling.rs | `feat_req_recentip_684` | ⏸️ Ignored |
@@ -719,6 +726,7 @@ All tests with `covers!()` annotations.
 | `response_ids_match_request` | error_handling.rs | `feat_req_recentip_141` | ⏸️ Ignored |
 | `sd_flags_field_format` | service_discovery.rs | `feat_req_recentipsd_39`, `feat_req_recentipsd_40` (+1) | ⏸️ Ignored |
 | `sd_port_reserved` | api_types.rs | `feat_req_recentip_676` | ✅ Active |
+| `sd_reaches_all_participants` | multi_party.rs | `feat_req_recentipsd_109` | ⏸️ Ignored |
 | `sd_session_id_increments` | service_discovery.rs | `feat_req_recentipsd_26` | ⏸️ Ignored |
 | `sd_uses_udp_port_30490` | service_discovery.rs | `feat_req_recentipsd_27` | ⏸️ Ignored |
 | `second_wraparound_keeps_reboot_flag_zero` | service_discovery.rs | `feat_req_recentipsd_41`, `feat_req_recentipsd_764` | ⏸️ Ignored |
@@ -742,6 +750,7 @@ All tests with `covers!()` annotations.
 | `single_tcp_connection_reused` | tcp_binding.rs | `feat_req_recentip_644` | ⏸️ Ignored |
 | `stop_offer_uses_ttl_zero` | service_discovery.rs | `feat_req_recentipsd_47` | ⏸️ Ignored |
 | `stop_subscribe_has_ttl_zero` | subscription.rs | `feat_req_recentipsd_178` | ⏸️ Ignored |
+| `stress_many_concurrent_clients` | multi_party.rs | `feat_req_recentip_103` | ⏸️ Ignored |
 | `subscribe_ack_entry_format` | service_discovery.rs | `feat_req_recentipsd_109` | ⏸️ Ignored |
 | `subscribe_entry_has_eventgroup_id` | subscription.rs | `feat_req_recentipsd_109` | ⏸️ Ignored |
 | `subscribe_entry_ids_match_service` | subscription.rs | `feat_req_recentipsd_109` | ⏸️ Ignored |
@@ -749,6 +758,8 @@ All tests with `covers!()` annotations.
 | `subscribe_eventgroup_entry_format` | service_discovery.rs | `feat_req_recentipsd_109` | ⏸️ Ignored |
 | `subscribe_eventgroup_type_is_0x06` | subscription.rs | `feat_req_recentipsd_576` | ✅ Active |
 | `subscribe_nack_has_ttl_zero` | subscription.rs | `feat_req_recentipsd_179` | ⏸️ Ignored |
+| `subscribe_same_eventgroup_twice_fails` | events.rs | `feat_req_recentip_352` | ⏸️ Ignored |
+| `subscribe_to_multiple_eventgroups` | events.rs | `feat_req_recentip_352` | ⏸️ Ignored |
 | `tcp_header_format_matches_udp` | tcp_binding.rs | `feat_req_recentip_324` | ⏸️ Ignored |
 | `tcp_loss_does_not_reset_session_id` | tcp_binding.rs | `feat_req_recentip_326`, `feat_req_recentip_647` | ⏸️ Ignored |
 | `tcp_segment_starts_with_magic_cookie` | tcp_binding.rs | `feat_req_recentip_591` | ⏸️ Ignored |

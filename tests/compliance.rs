@@ -88,6 +88,9 @@ mod session_edge_cases;
 #[path = "compliance/instances.rs"]
 mod instances;
 
+#[path = "compliance/multi_party.rs"]
+mod multi_party;
+
 /// Macro to document which requirements a test covers.
 /// This is a no-op at runtime; used for traceability documentation.
 #[macro_export]

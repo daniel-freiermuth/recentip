@@ -347,6 +347,19 @@ impl SimulatedNetwork {
         (network, io_a, io_b)
     }
 
+    /// Create a network with N IoContexts for multi-party testing
+    /// Returns contexts with IPs 192.168.1.10, 192.168.1.11, ...
+    pub fn new_multi(count: usize) -> (Self, Vec<SimulatedIoContext>) {
+        let network = Self::new();
+        let contexts: Vec<_> = (0..count)
+            .map(|i| {
+                let ip = Ipv4Addr::new(192, 168, 1, 10 + i as u8);
+                network.io_context(ip)
+            })
+            .collect();
+        (network, contexts)
+    }
+
     /// Create an IoContext bound to a specific IP address
     pub fn io_context(&self, local_ip: Ipv4Addr) -> SimulatedIoContext {
         SimulatedIoContext {
