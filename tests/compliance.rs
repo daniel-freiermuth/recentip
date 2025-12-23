@@ -14,6 +14,8 @@
 //! - `error_handling`: Return codes and message type handling
 //! - `subscription`: Pub/Sub eventgroup entries and lifecycle
 //! - `session_handling`: Request ID, Client ID, Session ID management
+//! - `message_types`: Message type field values and transitions
+//! - `version_handling`: Protocol and interface version validation
 //!
 //! # Test Summary (as of last update)
 //!
@@ -26,7 +28,9 @@
 //! | error_handling     | 24      | 10      |
 //! | subscription       | 28      | 6       |
 //! | session_handling   | 25      | 6       |
-//! | **Total**          | **161** | **52**  |
+//! | message_types      | 20      | 7       |
+//! | version_handling   | 21      | 4       |
+//! | **Total**          | **202** | **63**  |
 //!
 //! # Requirement Traceability
 //!
@@ -53,6 +57,12 @@ mod subscription;
 
 #[path = "compliance/session_handling.rs"]
 mod session_handling;
+
+#[path = "compliance/message_types.rs"]
+mod message_types;
+
+#[path = "compliance/version_handling.rs"]
+mod version_handling;
 
 /// Macro to document which requirements a test covers.
 /// This is a no-op at runtime; used for traceability documentation.
