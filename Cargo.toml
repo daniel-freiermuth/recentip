@@ -2,29 +2,29 @@
 name = "someip-runtime"
 version = "0.1.0"
 edition = "2021"
-description = "Type-safe, platform-agnostic SOME/IP protocol implementation"
+description = "Type-safe SOME/IP protocol implementation for tokio"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/example/someip-runtime"
-keywords = ["someip", "automotive", "rpc", "embedded"]
-categories = ["embedded", "network-programming"]
+keywords = ["someip", "automotive", "rpc", "async", "tokio"]
+categories = ["asynchronous", "network-programming"]
 
 [features]
 default = []
-std = ["rand"]
-simulated = ["std"]
+turmoil = ["dep:turmoil"]
 
 [dependencies]
-# Optional: for simulated network random drops
-rand = { version = "0.8", optional = true }
+tokio = { version = "1", features = ["net", "sync", "time", "rt", "macros", "io-util"] }
+bytes = "1"
+futures = "0.3"
+tracing = "0.1"
+turmoil = { version = "0.7", optional = true }
 
 [dev-dependencies]
 proptest = "1.9.0"
-rand = "0.8"
+turmoil = "0.7"
+tokio = { version = "1", features = ["net", "sync", "time", "rt", "rt-multi-thread", "macros"] }
+tracing-subscriber = "0.3"
 
 [[test]]
-name = "api_usage"
-path = "tests/api_usage.rs"
-
-[[test]]
-name = "simulated"
-path = "tests/simulated.rs"
+name = "api_tests"
+path = "tests/api_tests.rs"
