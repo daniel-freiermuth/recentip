@@ -43,6 +43,7 @@ mod api_types;
 #[path = "compliance/wire_format.rs"]
 mod wire_format;
 
+#[cfg(feature = "turmoil")]
 #[path = "compliance/service_discovery.rs"]
 mod service_discovery;
 
