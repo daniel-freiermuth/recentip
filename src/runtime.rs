@@ -48,7 +48,8 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            local_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
+            // Use the SD port for multicast group membership to work in turmoil
+            local_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_SD_PORT)),
             sd_multicast: SocketAddr::V4(SocketAddrV4::new(DEFAULT_SD_MULTICAST, DEFAULT_SD_PORT)),
             ttl: DEFAULT_TTL,
             cyclic_offer_delay: DEFAULT_CYCLIC_OFFER_DELAY,
@@ -298,6 +299,10 @@ struct RuntimeState {
     client_id: u16,
     /// SD session ID counter
     session_id: u16,
+    /// Reboot flag - set to true after startup, cleared after first session wraparound
+    reboot_flag: bool,
+    /// Whether the session ID has wrapped around at least once
+    has_wrapped_once: bool,
     /// Configuration
     config: RuntimeConfig,
 }
@@ -316,6 +321,8 @@ impl RuntimeState {
             pending_calls: HashMap::new(),
             client_id,
             session_id: 1,
+            reboot_flag: true,
+            has_wrapped_once: false,
             config,
         }
     }
@@ -325,8 +332,25 @@ impl RuntimeState {
         self.session_id = self.session_id.wrapping_add(1);
         if self.session_id == 0 {
             self.session_id = 1;
+            // After first wraparound, clear the reboot flag
+            if !self.has_wrapped_once {
+                self.has_wrapped_once = true;
+                self.reboot_flag = false;
+            }
         }
         id
+    }
+
+    /// Get the SD flags byte with reboot flag based on current state
+    fn sd_flags(&self, unicast: bool) -> u8 {
+        let mut flags = 0u8;
+        if self.reboot_flag {
+            flags |= SdMessage::FLAG_REBOOT;
+        }
+        if unicast {
+            flags |= SdMessage::FLAG_UNICAST;
+        }
+        flags
     }
 }
 
@@ -913,7 +937,13 @@ fn handle_offer(
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let endpoint = sd_message.get_udp_endpoint(entry).unwrap_or(from);
+    // Get endpoint from SD option, falling back to source address
+    // If the endpoint has unspecified IP (0.0.0.0), use the source IP with the option's port
+    let endpoint = match sd_message.get_udp_endpoint(entry) {
+        Some(ep) if !ep.ip().is_unspecified() => ep,
+        Some(ep) => SocketAddr::new(from.ip(), ep.port()),
+        None => from,
+    };
 
     let key = ServiceKey {
         service_id: entry.service_id,
@@ -981,7 +1011,7 @@ fn handle_find_request(
         if entry.service_id == key.service_id
             && (entry.instance_id == 0xFFFF || entry.instance_id == key.instance_id)
         {
-            let mut response = SdMessage::new(SdMessage::FLAG_UNICAST);
+            let mut response = SdMessage::new(state.sd_flags(true));
             let opt_idx = response.add_option(SdOption::Ipv4Endpoint {
                 addr: match state.local_endpoint {
                     SocketAddr::V4(v4) => *v4.ip(),
@@ -1039,7 +1069,7 @@ fn handle_subscribe_request(
             .or_insert_with(Vec::new)
             .push(from);
 
-        let mut ack = SdMessage::new(SdMessage::FLAG_UNICAST);
+        let mut ack = SdMessage::new(state.sd_flags(true));
         ack.add_entry(SdEntry::subscribe_eventgroup_ack(
             entry.service_id,
             entry.instance_id,
@@ -1130,7 +1160,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
                     },
                 );
 
-                let mut msg = SdMessage::new(SdMessage::FLAG_UNICAST);
+                let mut msg = SdMessage::new(state.sd_flags(true));
                 msg.add_entry(SdEntry::find_service(
                     service_id.value(),
                     instance_id.value(),
@@ -1166,7 +1196,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
                 },
             );
 
-            let mut msg = SdMessage::initial();
+            let mut msg = SdMessage::new(state.sd_flags(true));
             let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
                 addr: match state.local_endpoint {
                     SocketAddr::V4(v4) => *v4.ip(),
@@ -1197,7 +1227,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             let key = ServiceKey::new(service_id, instance_id);
 
             if let Some(offered) = state.offered.remove(&key) {
-                let mut msg = SdMessage::new(0);
+                let mut msg = SdMessage::new(state.sd_flags(false));
                 msg.add_entry(SdEntry::stop_offer_service(
                     service_id.value(),
                     instance_id.value(),
@@ -1215,16 +1245,16 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         Command::Call { service_id, instance_id, method_id, payload, response } => {
             let key = ServiceKey::new(service_id, instance_id);
 
-            // Find the discovered service (try exact match first, then any instance)
+                // Find the discovered service (try exact match first, then any instance)
             let endpoint = state.discovered.get(&key).map(|d| d.endpoint).or_else(|| {
-                // If searching for Any, find any instance of this service
-                if instance_id.is_any() {
-                    state.discovered.iter()
-                        .find(|(k, _)| k.service_id == service_id.value())
-                        .map(|(_, v)| v.endpoint)
-                } else {
-                    None
-                }
+                    // If searching for Any, find any instance of this service
+                    if instance_id.is_any() {
+                        state.discovered.iter()
+                            .find(|(k, _)| k.service_id == service_id.value())
+                            .map(|(_, v)| v.endpoint)
+                    } else {
+                        None
+                    }
             });
 
             if let Some(endpoint) = endpoint {
@@ -1267,7 +1297,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
                         events_tx: events,
                     });
 
-                let mut msg = SdMessage::new(SdMessage::FLAG_UNICAST);
+                let mut msg = SdMessage::new(state.sd_flags(true));
                 let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
                     addr: match state.local_endpoint {
                         SocketAddr::V4(v4) => *v4.ip(),
@@ -1307,7 +1337,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             }
 
             if let Some(discovered) = state.discovered.get(&key) {
-                let mut msg = SdMessage::new(SdMessage::FLAG_UNICAST);
+                let mut msg = SdMessage::new(state.sd_flags(true));
                 msg.add_entry(SdEntry::subscribe_eventgroup(
                     service_id.value(),
                     instance_id.value(),
@@ -1373,19 +1403,23 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
     let mut actions = Vec::new();
     let now = Instant::now();
     let offer_interval = Duration::from_millis(state.config.cyclic_offer_delay);
+    let sd_flags_unicast = state.sd_flags(true);
+    let local_endpoint = state.local_endpoint;
+    let ttl = state.config.ttl;
+    let sd_multicast = state.config.sd_multicast;
 
     // Cyclic offers
     for (key, offered) in &mut state.offered {
         if now.duration_since(offered.last_offer) >= offer_interval {
             offered.last_offer = now;
 
-            let mut msg = SdMessage::new(SdMessage::FLAG_UNICAST);
+            let mut msg = SdMessage::new(sd_flags_unicast);
             let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-                addr: match state.local_endpoint {
+                addr: match local_endpoint {
                     SocketAddr::V4(v4) => *v4.ip(),
                     _ => Ipv4Addr::LOCALHOST,
                 },
-                port: state.local_endpoint.port(),
+                port: local_endpoint.port(),
                 protocol: L4Protocol::Udp,
             });
             msg.add_entry(SdEntry::offer_service(
@@ -1393,14 +1427,14 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
                 key.instance_id,
                 offered.major_version,
                 offered.minor_version,
-                state.config.ttl,
+                ttl,
                 opt_idx,
                 1,
             ));
 
             actions.push(Action::SendSd {
                 message: msg,
-                target: state.config.sd_multicast,
+                target: sd_multicast,
             });
         }
     }
@@ -1414,18 +1448,18 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
             find_req.last_find = now;
             find_req.repetitions_left -= 1;
 
-            let mut msg = SdMessage::new(SdMessage::FLAG_UNICAST);
+            let mut msg = SdMessage::new(sd_flags_unicast);
             msg.add_entry(SdEntry::find_service(
                 key.service_id,
                 key.instance_id,
                 0xFF,
                 0xFFFFFFFF,
-                state.config.ttl,
+                ttl,
             ));
 
             actions.push(Action::SendSd {
                 message: msg,
-                target: state.config.sd_multicast,
+                target: sd_multicast,
             });
         } else if find_req.repetitions_left == 0 {
             expired_finds.push(*key);
@@ -1470,7 +1504,7 @@ async fn send_stop_offers<U: UdpSocket>(
         return;
     }
 
-    let mut msg = SdMessage::new(0);
+    let mut msg = SdMessage::new(state.sd_flags(false));
     for (key, offered) in &state.offered {
         msg.add_entry(SdEntry::stop_offer_service(
             key.service_id,
