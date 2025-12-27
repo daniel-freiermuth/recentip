@@ -672,6 +672,396 @@ fn session_id_increment_on_wire() {
 }
 
 // ============================================================================
+// SUBSCRIPTION WIRE FORMAT TESTS
+// ============================================================================
+
+/// Helper to parse an eventgroup entry from SD message entries
+#[allow(dead_code)]
+fn parse_eventgroup_entry(data: &[u8]) -> Option<EventgroupEntry> {
+    if data.len() < 16 {
+        return None;
+    }
+    Some(EventgroupEntry {
+        entry_type: data[0],
+        index_first_option: data[1],
+        index_second_option: data[2],
+        num_options: data[3],
+        service_id: u16::from_be_bytes([data[4], data[5]]),
+        instance_id: u16::from_be_bytes([data[6], data[7]]),
+        major_version: data[8],
+        ttl: u32::from_be_bytes([0, data[9], data[10], data[11]]),
+        reserved: data[12],
+        flags_and_counter: data[13],
+        eventgroup_id: u16::from_be_bytes([data[14], data[15]]),
+    })
+}
+
+/// Parsed eventgroup entry for verification
+#[allow(dead_code)]
+#[derive(Debug)]
+struct EventgroupEntry {
+    entry_type: u8,
+    index_first_option: u8,
+    index_second_option: u8,
+    num_options: u8,
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    ttl: u32,
+    reserved: u8,
+    flags_and_counter: u8,
+    eventgroup_id: u16,
+}
+
+/// feat_req_recentipsd_576: SubscribeEventgroup entry type is 0x06
+/// 
+/// When a client subscribes to an eventgroup, the SD message must contain
+/// an entry with type 0x06 (SubscribeEventgroup).
+#[test]
+fn subscribe_eventgroup_entry_type() {
+    covers!(feat_req_recentipsd_576);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Raw socket acts as server - sends SD offers, receives subscribe
+    sim.host("raw_server", || async {
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server")
+            .to_string()
+            .parse()
+            .unwrap();
+
+        // RPC socket (also receives SD subscribe messages in SOME/IP)
+        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
+
+        // SD socket to send offers
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+        let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
+
+        let mut buf = [0u8; 1500];
+        let mut found_subscribe = false;
+
+        // Send offers and wait for subscribe
+        for _ in 0..30 {
+            sd_socket.send_to(&offer, sd_multicast).await?;
+
+            let result = tokio::time::timeout(
+                Duration::from_millis(200),
+                rpc_socket.recv_from(&mut buf),
+            ).await;
+
+            if let Ok(Ok((len, _from))) = result {
+                // Check if this is an SD message
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // SubscribeEventgroup = 0x06
+                        if entry.entry_type as u8 == 0x06 {
+                            found_subscribe = true;
+                            eprintln!("Received SubscribeEventgroup: entry_type=0x{:02X}, service=0x{:04X}, eventgroup=0x{:04X}, TTL={}",
+                                entry.entry_type as u8, entry.service_id, entry.eventgroup_id, entry.ttl);
+
+                            assert_eq!(
+                                entry.entry_type as u8, 0x06,
+                                "SubscribeEventgroup entry type must be 0x06"
+                            );
+                            assert!(entry.ttl > 0, "Subscribe TTL should be > 0");
+
+                            // Send SubscribeAck back
+                            let ack = build_sd_subscribe_ack(
+                                entry.service_id,
+                                entry.instance_id,
+                                entry.major_version,
+                                entry.eventgroup_id,
+                                3600,
+                            );
+                            rpc_socket.send_to(&ack, _from).await?;
+                        }
+                    }
+                }
+            }
+
+            if found_subscribe {
+                break;
+            }
+        }
+
+        assert!(found_subscribe, "Should receive SubscribeEventgroup entry");
+        Ok(())
+    });
+
+    // Client subscribes using public API
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::default();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Should discover service via SD");
+
+        // Subscribe to eventgroup using public API
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(eventgroup),
+        ).await.expect("Subscribe timeout").expect("Subscribe should succeed");
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// feat_req_recentipsd_576: SubscribeEventgroupAck entry type is 0x07
+/// 
+/// When a server acknowledges a subscription, the SD message must contain
+/// an entry with type 0x07 (SubscribeEventgroupAck).
+#[test]
+fn subscribe_ack_entry_type() {
+    covers!(feat_req_recentipsd_576);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server offers service and handles subscription
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        // Wait for subscription and accept it
+        if let Some(event) = tokio::time::timeout(
+            Duration::from_secs(10),
+            offering.next(),
+        ).await.ok().flatten() {
+            if let ServiceEvent::Subscribe { ack, .. } = event {
+                ack.accept().await.unwrap();
+            }
+        }
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    // Raw socket sends subscribe and captures SubscribeAck
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Listen for SD offers to find server
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4(
+            "239.255.0.1".parse().unwrap(),
+            "0.0.0.0".parse().unwrap(),
+        )?;
+
+        let mut buf = [0u8; 1500];
+        let mut server_endpoint: Option<SocketAddr> = None;
+
+        // Find server endpoint from SD offer
+        for _ in 0..20 {
+            let result = tokio::time::timeout(
+                Duration::from_millis(200),
+                sd_socket.recv_from(&mut buf),
+            ).await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
+                            // Found offer, get endpoint from options
+                            if let Some(opt) = sd_msg.options.first() {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                    let ip = if addr.is_unspecified() {
+                                        from.ip()
+                                    } else {
+                                        std::net::IpAddr::V4(*addr)
+                                    };
+                                    server_endpoint = Some(SocketAddr::new(ip, *port));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+
+        let server_addr = server_endpoint.expect("Should find server via SD");
+        eprintln!("Found server at {}", server_addr);
+
+        // Send Subscribe message
+        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, 3600);
+        
+        // Need to send from a port the server can respond to
+        let client_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        client_socket.send_to(&subscribe, server_addr).await?;
+
+        // Wait for SubscribeAck
+        let mut found_ack = false;
+        for _ in 0..20 {
+            let result = tokio::time::timeout(
+                Duration::from_millis(200),
+                client_socket.recv_from(&mut buf),
+            ).await;
+
+            if let Ok(Ok((len, _from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // SubscribeEventgroupAck = 0x07
+                        if entry.entry_type as u8 == 0x07 {
+                            found_ack = true;
+                            eprintln!("Received SubscribeEventgroupAck: entry_type=0x{:02X}, TTL={}",
+                                entry.entry_type as u8, entry.ttl);
+
+                            assert_eq!(
+                                entry.entry_type as u8, 0x07,
+                                "SubscribeEventgroupAck entry type must be 0x07"
+                            );
+                            assert!(entry.ttl > 0, "SubscribeAck TTL should be > 0");
+                        }
+                    }
+                }
+            }
+
+            if found_ack {
+                break;
+            }
+        }
+
+        assert!(found_ack, "Should receive SubscribeEventgroupAck");
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// feat_req_recentipsd_178: StopSubscribeEventgroup has TTL=0
+/// 
+/// When a client unsubscribes (drops subscription), it sends a SubscribeEventgroup
+/// entry with TTL=0, which means StopSubscribeEventgroup.
+#[test]
+fn stop_subscribe_has_ttl_zero() {
+    covers!(feat_req_recentipsd_178);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Raw socket acts as server - sends SD offers, receives subscribe and stop-subscribe
+    sim.host("raw_server", || async {
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server")
+            .to_string()
+            .parse()
+            .unwrap();
+
+        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+        let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
+
+        let mut buf = [0u8; 1500];
+        let mut found_subscribe = false;
+        let mut found_stop_subscribe = false;
+
+        // Send offers and wait for subscribe, then stop-subscribe
+        for _ in 0..50 {
+            sd_socket.send_to(&offer, sd_multicast).await?;
+
+            let result = tokio::time::timeout(
+                Duration::from_millis(200),
+                rpc_socket.recv_from(&mut buf),
+            ).await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x06 {
+                            if entry.ttl == 0 {
+                                // StopSubscribe
+                                found_stop_subscribe = true;
+                                eprintln!("Received StopSubscribeEventgroup: TTL=0");
+                                assert_eq!(entry.ttl, 0, "StopSubscribe must have TTL=0");
+                            } else {
+                                // Subscribe
+                                found_subscribe = true;
+                                eprintln!("Received SubscribeEventgroup: TTL={}", entry.ttl);
+
+                                // Send SubscribeAck back
+                                let ack = build_sd_subscribe_ack(
+                                    entry.service_id,
+                                    entry.instance_id,
+                                    entry.major_version,
+                                    entry.eventgroup_id,
+                                    3600,
+                                );
+                                rpc_socket.send_to(&ack, from).await?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if found_stop_subscribe {
+                break;
+            }
+        }
+
+        assert!(found_subscribe, "Should receive SubscribeEventgroup first");
+        assert!(found_stop_subscribe, "Should receive StopSubscribeEventgroup (TTL=0)");
+        Ok(())
+    });
+
+    // Client subscribes, then unsubscribes (drop)
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::default();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Should discover service via SD");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+
+        // Subscribe
+        let subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(eventgroup),
+        ).await.expect("Subscribe timeout").expect("Subscribe should succeed");
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Drop subscription to trigger StopSubscribe
+        drop(subscription);
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+// ============================================================================
 // Helper functions for building raw SOME/IP packets
 // ============================================================================
 
@@ -839,6 +1229,135 @@ fn build_sd_offer(
     packet.extend_from_slice(&endpoint_port.to_be_bytes());
     
     // Fix up length field: total - 8 (first 8 bytes of header)
+    let length = (packet.len() - 8) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
+    
+    packet
+}
+
+/// Build a raw SOME/IP-SD SubscribeEventgroup message
+fn build_sd_subscribe(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    eventgroup_id: u16,
+    ttl: u32,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(64);
+    
+    // === SOME/IP Header (16 bytes) ===
+    // Service ID = 0xFFFF (SD)
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
+    // Method ID = 0x8100 (SD)
+    packet.extend_from_slice(&0x8100u16.to_be_bytes());
+    // Length placeholder
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes());
+    // Client ID
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    // Session ID
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    // Protocol Version
+    packet.push(0x01);
+    // Interface Version
+    packet.push(0x01);
+    // Message Type = NOTIFICATION (0x02)
+    packet.push(0x02);
+    // Return Code = E_OK
+    packet.push(0x00);
+    
+    // === SD Payload ===
+    // Flags
+    packet.push(0xC0);
+    // Reserved (3 bytes)
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+    
+    // Entries array length - 16 bytes for eventgroup entry
+    packet.extend_from_slice(&16u32.to_be_bytes());
+    
+    // === SubscribeEventgroup Entry (16 bytes) ===
+    // Type = SubscribeEventgroup (0x06)
+    packet.push(0x06);
+    // Index 1st options
+    packet.push(0x00);
+    // Index 2nd options
+    packet.push(0x00);
+    // # of options
+    packet.push(0x00);
+    // Service ID
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    // Instance ID
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    // Major Version
+    packet.push(major_version);
+    // TTL (24-bit)
+    let ttl_bytes = ttl.to_be_bytes();
+    packet.extend_from_slice(&ttl_bytes[1..4]);
+    // Reserved
+    packet.push(0x00);
+    // Flags + Counter
+    packet.push(0x00);
+    // Eventgroup ID
+    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
+    
+    // Options array length (0 options)
+    packet.extend_from_slice(&0u32.to_be_bytes());
+    
+    // Fix up length field
+    let length = (packet.len() - 8) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
+    
+    packet
+}
+
+/// Build a raw SOME/IP-SD SubscribeEventgroupAck message
+fn build_sd_subscribe_ack(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    eventgroup_id: u16,
+    ttl: u32,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(64);
+    
+    // === SOME/IP Header (16 bytes) ===
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
+    packet.extend_from_slice(&0x8100u16.to_be_bytes());
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes());
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.push(0x01);
+    packet.push(0x01);
+    packet.push(0x02);
+    packet.push(0x00);
+    
+    // === SD Payload ===
+    packet.push(0xC0);
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+    
+    // Entries array length
+    packet.extend_from_slice(&16u32.to_be_bytes());
+    
+    // === SubscribeEventgroupAck Entry (16 bytes) ===
+    // Type = SubscribeEventgroupAck (0x07)
+    packet.push(0x07);
+    packet.push(0x00);
+    packet.push(0x00);
+    packet.push(0x00);
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    packet.push(major_version);
+    let ttl_bytes = ttl.to_be_bytes();
+    packet.extend_from_slice(&ttl_bytes[1..4]);
+    packet.push(0x00);
+    packet.push(0x00);
+    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
+    
+    // Options array length
+    packet.extend_from_slice(&0u32.to_be_bytes());
+    
+    // Fix up length field
     let length = (packet.len() - 8) as u32;
     packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
     
