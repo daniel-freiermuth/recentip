@@ -111,3 +111,23 @@ The 159 ignored tests will pass once `Runtime::new()` is implemented.
 - SD timing requirements (INITIAL_DELAY, etc.) - runtime config
 - Serialization tests - separate `someip-types` crate responsibility
 
+---
+
+## Future Considerations
+
+### ServiceConfig Builder Pattern
+The old sync API had a `ServiceConfig::builder()` pattern for configuring service offerings:
+```rust
+let config = ServiceConfig::builder()
+    .service(service_id)
+    .instance(instance_id)
+    .eventgroup(eventgroup_id)
+    .build()?;
+```
+
+The current async API uses the `Service` trait + `runtime.offer::<S>(instance_id)` pattern instead.
+Consider whether we need a runtime config for:
+- Per-service eventgroup definitions
+- Port configuration for port sharing
+- TTL and timing parameters
+- Method/event routing configuration

@@ -775,4 +775,44 @@ mod tests {
         assert_eq!(msg.entries.len(), parsed.entries.len());
         assert_eq!(msg.options.len(), parsed.options.len());
     }
+
+    #[test]
+    fn test_header_rejects_short_input() {
+        use bytes::Bytes;
+        
+        // Empty buffer
+        let mut empty = Bytes::new();
+        assert!(Header::parse(&mut empty).is_none(), "Empty buffer should return None");
+        
+        // 1 byte - way too short
+        let mut one_byte = Bytes::from_static(&[0x12]);
+        assert!(Header::parse(&mut one_byte).is_none(), "1 byte should return None");
+        
+        // 15 bytes - just one byte short
+        let mut almost = Bytes::from_static(&[
+            0x12, 0x34, // service_id
+            0x00, 0x01, // method_id
+            0x00, 0x00, 0x00, 0x08, // length
+            0x00, 0x01, // client_id
+            0x00, 0x01, // session_id
+            0x01,       // protocol_version
+            0x01,       // interface_version
+            0x00,       // message_type - only 15 bytes, missing return_code
+        ]);
+        assert!(Header::parse(&mut almost).is_none(), "15 bytes should return None");
+        
+        // 16 bytes - exactly right
+        let mut exact = Bytes::from_static(&[
+            0x12, 0x34, // service_id
+            0x00, 0x01, // method_id
+            0x00, 0x00, 0x00, 0x08, // length
+            0x00, 0x01, // client_id
+            0x00, 0x01, // session_id
+            0x01,       // protocol_version
+            0x01,       // interface_version
+            0x00,       // message_type (Request)
+            0x00,       // return_code
+        ]);
+        assert!(Header::parse(&mut exact).is_some(), "16 bytes should parse successfully");
+    }
 }

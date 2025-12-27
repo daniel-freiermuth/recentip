@@ -1518,3 +1518,79 @@ async fn send_stop_offers<U: UdpSocket>(
     let data = msg.serialize(session_id);
     let _ = sd_socket.send_to(&data, config.sd_multicast).await;
 }
+
+// ============================================================================
+// UNIT TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// feat_req_recentip_677: Session ID wraps from 0xFFFF to 0x0001
+    /// feat_req_recentip_649: Session ID starts at 0x0001
+    ///
+    /// Session ID 0x0000 is reserved for "session handling disabled" and must never be used.
+    #[test]
+    fn session_id_wraps_to_0001_not_0000() {
+        let addr = "127.0.0.1:30490".parse().unwrap();
+        let mut state = RuntimeState::new(addr, RuntimeConfig::default());
+
+        // First session should be 1
+        assert_eq!(state.next_session_id(), 1, "Session ID should start at 1");
+
+        // Iterate through all possible session IDs
+        for expected in 2..=0xFFFFu16 {
+            let id = state.next_session_id();
+            assert_eq!(id, expected, "Session ID should be {}", expected);
+            assert_ne!(id, 0, "Session ID should never be 0");
+        }
+
+        // After 0xFFFF, should wrap to 1 (not 0)
+        let wrapped = state.next_session_id();
+        assert_eq!(wrapped, 1, "Session ID should wrap to 1 after 0xFFFF");
+
+        // Continue a few more to verify
+        assert_eq!(state.next_session_id(), 2);
+        assert_eq!(state.next_session_id(), 3);
+    }
+
+    /// feat_req_recentipsd_41: Reboot flag is cleared after first wraparound
+    #[test]
+    fn reboot_flag_clears_after_wraparound() {
+        let addr = "127.0.0.1:30490".parse().unwrap();
+        let mut state = RuntimeState::new(addr, RuntimeConfig::default());
+
+        // Initially reboot flag should be set
+        assert!(state.reboot_flag, "Reboot flag should be true initially");
+        assert!(!state.has_wrapped_once, "has_wrapped_once should be false initially");
+
+        // Iterate through all session IDs until wraparound
+        for _ in 1..=0xFFFFu16 {
+            state.next_session_id();
+        }
+
+        // After wraparound, reboot flag should be cleared
+        assert!(!state.reboot_flag, "Reboot flag should be false after wraparound");
+        assert!(state.has_wrapped_once, "has_wrapped_once should be true after wraparound");
+
+        // Second wraparound should not change anything
+        for _ in 1..=0xFFFFu16 {
+            state.next_session_id();
+        }
+        assert!(!state.reboot_flag, "Reboot flag should stay false after second wraparound");
+    }
+
+    /// Session ID never returns 0
+    #[test]
+    fn session_id_never_zero() {
+        let addr = "127.0.0.1:30490".parse().unwrap();
+        let mut state = RuntimeState::new(addr, RuntimeConfig::default());
+
+        // Iterate through 2 full cycles + some extra
+        for _ in 0..(0xFFFF * 2 + 1000) {
+            let id = state.next_session_id();
+            assert_ne!(id, 0, "Session ID must never be 0");
+        }
+    }
+}
