@@ -56,6 +56,7 @@ mod error_handling;
 #[path = "compliance/subscription.rs"]
 mod subscription;
 
+#[cfg(feature = "turmoil")]
 #[path = "compliance/session_handling.rs"]
 mod session_handling;
 
