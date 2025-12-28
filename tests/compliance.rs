@@ -103,6 +103,8 @@ mod session_edge_cases;
 #[path = "compliance/instances.rs"]
 mod instances;
 
+// multi_party contains turmoil integration tests for multi-client/multi-server scenarios
+#[cfg(feature = "turmoil")]
 #[path = "compliance/multi_party.rs"]
 mod multi_party;
 
