@@ -100,6 +100,8 @@ mod error_scenarios;
 #[path = "compliance/session_edge_cases.rs"]
 mod session_edge_cases;
 
+// instances contains turmoil integration tests for service instance management
+#[cfg(feature = "turmoil")]
 #[path = "compliance/instances.rs"]
 mod instances;
 
