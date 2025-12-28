@@ -86,6 +86,8 @@ mod udp_binding;
 #[path = "compliance/rpc_flow.rs"]
 mod rpc_flow;
 
+// events contains turmoil integration tests for pub/sub event delivery
+#[cfg(feature = "turmoil")]
 #[path = "compliance/events.rs"]
 mod events;
 
