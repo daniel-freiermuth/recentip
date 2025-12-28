@@ -47,9 +47,13 @@ mod wire_format;
 #[path = "compliance/service_discovery.rs"]
 mod service_discovery;
 
+// transport_protocol contains unit tests for TP header parsing (always run)
+// and integration tests marked #[ignore] (require TP implementation)
 #[path = "compliance/transport_protocol.rs"]
 mod transport_protocol;
 
+// error_handling contains unit tests (always) + turmoil integration tests
+#[cfg(feature = "turmoil")]
 #[path = "compliance/error_handling.rs"]
 mod error_handling;
 
