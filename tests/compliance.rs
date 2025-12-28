@@ -69,6 +69,9 @@ mod session_handling;
 #[path = "compliance/message_types.rs"]
 mod message_types;
 
+// version_handling contains turmoil integration tests only
+// (unit tests + proptests moved to src/wire.rs)
+#[cfg(feature = "turmoil")]
 #[path = "compliance/version_handling.rs"]
 mod version_handling;
 

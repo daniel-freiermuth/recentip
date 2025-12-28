@@ -14,7 +14,7 @@ use tokio::time::{interval, Instant};
 use crate::error::{Error, Result};
 use crate::handle::{OfferingHandle, ProxyHandle, Unavailable};
 use crate::net::UdpSocket;
-use crate::wire::{Header, L4Protocol, MessageType, SdEntry, SdEntryType, SdMessage, SdOption, PROTOCOL_VERSION, SD_METHOD_ID, SD_SERVICE_ID};
+use crate::wire::{Header, L4Protocol, MessageType, SdEntry, SdEntryType, SdMessage, SdOption, PROTOCOL_VERSION, SD_METHOD_ID, SD_SERVICE_ID, validate_protocol_version};
 use crate::{InstanceId, Response, ReturnCode, Service, ServiceId};
 
 /// Default SD multicast address
@@ -696,6 +696,21 @@ fn handle_rpc_message(
     from: SocketAddr,
     state: &mut RuntimeState,
 ) -> Option<Vec<Action>> {
+    // Validate protocol version - silently drop messages with wrong version
+    if validate_protocol_version(header.protocol_version).is_err() {
+        tracing::trace!(
+            "Dropping message with invalid protocol version 0x{:02X} from {}",
+            header.protocol_version,
+            from
+        );
+        // Still consume the payload bytes from the cursor
+        let payload_len = header.payload_length();
+        if cursor.remaining() >= payload_len {
+            cursor.advance(payload_len);
+        }
+        return None;
+    }
+
     let payload_len = header.payload_length();
     if cursor.remaining() < payload_len {
         return None;
