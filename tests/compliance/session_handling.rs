@@ -1073,7 +1073,6 @@ fn request_response_uses_session_handling() {
 ///
 /// Fire-and-forget messages should use session handling (Session ID != 0x0000).
 #[test]
-#[ignore = "ServiceEvent::FireForget variant not yet implemented"]
 fn fire_and_forget_uses_session_handling() {
     covers!(feat_req_recentip_667);
 
@@ -1090,21 +1089,25 @@ fn fire_and_forget_uses_session_handling() {
             .await
             .unwrap();
 
-        // Handle 3 fire-and-forget calls
+        // Handle 3 fire-and-forget calls (order may vary due to network)
+        let mut received = Vec::new();
         for _ in 0..3 {
             if let Some(event) = offering.next().await {
-                // Fire-and-forget would be a different event variant
-                // For now this test is ignored until ServiceEvent::FireForget exists
                 match event {
-                    ServiceEvent::Call { .. } => {
-                        // Would be ServiceEvent::FireForget { payload, method }
+                    ServiceEvent::FireForget { payload, method, .. } => {
+                        assert_eq!(method.value(), 0x0010);
+                        received.push(payload.to_vec());
                     }
-                    _ => {}
+                    other => panic!("Expected FireForget, got {:?}", other),
                 }
             }
         }
+        // Verify we received all 3 messages (order may vary)
+        assert_eq!(received.len(), 3);
+        received.sort();
+        assert_eq!(received, vec![b"ff1".to_vec(), b"ff2".to_vec(), b"ff3".to_vec()]);
 
-        // Wait for client to receive responses before ending simulation
+        // Wait for client to send all messages
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
     });

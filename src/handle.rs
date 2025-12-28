@@ -135,10 +135,20 @@ impl<S: Service> ProxyHandle<S, Available> {
 
     /// Fire and forget - send a request without expecting a response.
     pub async fn fire_and_forget(&self, method: MethodId, payload: &[u8]) -> Result<()> {
-        // TODO: Send request with RequestNoReturn message type
-        let _ = method;
-        let _ = payload;
-        Err(Error::ServiceUnavailable)
+        let payload_bytes = bytes::Bytes::copy_from_slice(payload);
+        
+        self.inner
+            .cmd_tx
+            .send(Command::FireAndForget {
+                service_id: self.service_id,
+                instance_id: self.instance_id,
+                method_id: method.value(),
+                payload: payload_bytes,
+            })
+            .await
+            .map_err(|_| Error::RuntimeShutdown)?;
+
+        Ok(())
     }
 
     /// Subscribe to an eventgroup.
@@ -284,6 +294,13 @@ impl<S: Service> OfferingHandle<S> {
                     responder: Responder { response: Some(response) },
                 })
             }
+            ServiceRequest::FireForget { method_id, payload, client } => {
+                Some(ServiceEvent::FireForget {
+                    method: MethodId::new(method_id),
+                    payload,
+                    client: ClientInfo { address: client },
+                })
+            }
             ServiceRequest::Subscribe { eventgroup_id, client, response } => {
                 Some(ServiceEvent::Subscribe {
                     eventgroup: EventgroupId::new(eventgroup_id).unwrap_or(EventgroupId::new(1).unwrap()),
@@ -349,6 +366,12 @@ pub enum ServiceEvent {
         payload: bytes::Bytes,
         client: ClientInfo,
         responder: Responder,
+    },
+    /// A fire-and-forget method was called (no response expected)
+    FireForget {
+        method: MethodId,
+        payload: bytes::Bytes,
+        client: ClientInfo,
     },
     /// A client wants to subscribe
     Subscribe {

@@ -139,6 +139,13 @@ pub(crate) enum Command {
         payload: bytes::Bytes,
         response: oneshot::Sender<Result<crate::Response>>,
     },
+    /// Fire-and-forget call (no response expected)
+    FireAndForget {
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        method_id: u16,
+        payload: bytes::Bytes,
+    },
     /// Subscribe to an eventgroup
     Subscribe {
         service_id: ServiceId,
@@ -180,6 +187,11 @@ pub(crate) enum ServiceRequest {
         payload: bytes::Bytes,
         client: SocketAddr,
         response: oneshot::Sender<Result<bytes::Bytes>>,
+    },
+    FireForget {
+        method_id: u16,
+        payload: bytes::Bytes,
+        client: SocketAddr,
     },
     Subscribe {
         eventgroup_id: u16,
@@ -697,6 +709,10 @@ fn handle_rpc_message(
             // Incoming request - route to offering
             handle_incoming_request(header, payload, from, state, &mut actions);
         }
+        MessageType::RequestNoReturn => {
+            // Incoming fire-and-forget - route to offering without response tracking
+            handle_incoming_fire_forget(header, payload, from, state);
+        }
         MessageType::Response | MessageType::Error => {
             // Response to our request - route to pending call
             handle_incoming_response(header, payload, state);
@@ -768,6 +784,30 @@ fn handle_incoming_request(
             target: from,
         });
     }
+}
+
+/// Handle an incoming fire-and-forget request (server-side, no response)
+fn handle_incoming_fire_forget(
+    header: &Header,
+    payload: Bytes,
+    from: SocketAddr,
+    state: &mut RuntimeState,
+) {
+    // Find matching offering
+    let offering = state.offered.iter().find(|(k, _)| {
+        k.service_id == header.service_id
+    });
+
+    if let Some((_, offered)) = offering {
+        // Send fire-and-forget request to the offering handle (no response channel)
+        let _ = offered.requests_tx.try_send(ServiceRequest::FireForget {
+            method_id: header.method_id,
+            payload,
+            client: from,
+        });
+        // No response tracking needed - fire and forget
+    }
+    // If unknown service, silently ignore (no error response for fire-and-forget)
 }
 
 /// Handle an incoming response (client-side)
@@ -891,6 +931,36 @@ fn build_request(
         protocol_version: PROTOCOL_VERSION,
         interface_version,
         message_type: MessageType::Request,
+        return_code: 0x00,
+    };
+    
+    header.serialize(&mut buf);
+    buf.extend_from_slice(payload);
+    buf.freeze()
+}
+
+/// Build a SOME/IP fire-and-forget (REQUEST_NO_RETURN) message
+fn build_fire_and_forget(
+    service_id: u16,
+    method_id: u16,
+    client_id: u16,
+    session_id: u16,
+    interface_version: u8,
+    payload: &[u8],
+) -> Bytes {
+    let length = 8 + payload.len() as u32;
+    
+    let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
+    
+    let header = Header {
+        service_id,
+        method_id,
+        length,
+        client_id,
+        session_id,
+        protocol_version: PROTOCOL_VERSION,
+        interface_version,
+        message_type: MessageType::RequestNoReturn,
         return_code: 0x00,
     };
     
@@ -1282,6 +1352,42 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             } else {
                 let _ = response.send(Err(Error::ServiceUnavailable));
             }
+        }
+
+        Command::FireAndForget { service_id, instance_id, method_id, payload } => {
+            let key = ServiceKey::new(service_id, instance_id);
+
+            // Find the discovered service (try exact match first, then any instance)
+            let endpoint = state.discovered.get(&key).map(|d| d.endpoint).or_else(|| {
+                if instance_id.is_any() {
+                    state.discovered.iter()
+                        .find(|(k, _)| k.service_id == service_id.value())
+                        .map(|(_, v)| v.endpoint)
+                } else {
+                    None
+                }
+            });
+
+            if let Some(endpoint) = endpoint {
+                let session_id = state.next_session_id();
+                let client_id = state.client_id;
+                
+                // Build fire-and-forget message (no response tracking needed)
+                let request_data = build_fire_and_forget(
+                    service_id.value(),
+                    method_id,
+                    client_id,
+                    session_id,
+                    1, // interface version
+                    &payload,
+                );
+
+                actions.push(Action::SendMessage {
+                    data: request_data,
+                    target: endpoint,
+                });
+            }
+            // Note: No error response for fire-and-forget - it's best effort
         }
 
         Command::Subscribe { service_id, instance_id, eventgroup_id, events, response } => {

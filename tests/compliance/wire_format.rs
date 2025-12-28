@@ -536,6 +536,240 @@ fn rpc_response_wire_format() {
     sim.run().unwrap();
 }
 
+/// feat_req_recentip_103: REQUEST_NO_RETURN (0x01) message type on wire
+/// feat_req_recentip_284: Fire-and-forget uses REQUEST_NO_RETURN
+///
+/// Verifies that when the library sends a fire-and-forget message,
+/// the raw bytes on the wire contain message type 0x01 (REQUEST_NO_RETURN).
+#[test]
+fn fire_and_forget_wire_format() {
+    covers!(feat_req_recentip_103, feat_req_recentip_284);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Raw socket acts as server - receives fire-and-forget and checks wire bytes
+    sim.host("raw_server", || async {
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server")
+            .to_string()
+            .parse()
+            .unwrap();
+
+        // RPC socket to receive requests
+        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
+        eprintln!("Raw server RPC listening on {}", rpc_socket.local_addr()?);
+
+        // SD socket to send offers
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        
+        // Send SD offer to multicast so the library can discover us
+        let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
+        let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+        
+        // Send offers periodically until we receive a request
+        let mut buf = [0u8; 1500];
+        let mut request_received = false;
+        
+        for _ in 0..20 {
+            // Send an offer
+            sd_socket.send_to(&offer, sd_multicast).await?;
+            eprintln!("Raw server sent SD offer");
+            
+            // Check for RPC request (non-blocking with short timeout)
+            let result = tokio::time::timeout(
+                Duration::from_millis(200),
+                rpc_socket.recv_from(&mut buf),
+            ).await;
+            
+            if let Ok(Ok((len, from))) = result {
+                eprintln!("Raw server received {} bytes from {}", len, from);
+                request_received = true;
+
+                // Verify raw bytes directly
+                let data = &buf[..len];
+                
+                // Header must be at least 16 bytes
+                assert!(
+                    len >= 16,
+                    "SOME/IP packet must be at least 16 bytes (header), got {}",
+                    len
+                );
+
+                // Parse and verify header
+                let header = parse_header(data).expect("Should parse as SOME/IP header");
+
+                // Verify Service ID
+                assert_eq!(
+                    header.service_id, 0x1234,
+                    "Service ID should be 0x1234"
+                );
+
+                // Verify Method ID
+                assert_eq!(
+                    header.method_id, 0x0001,
+                    "Method ID should be 0x0001"
+                );
+
+                // Verify REQUEST_NO_RETURN message type (feat_req_recentip_103)
+                assert_eq!(
+                    header.message_type as u8, 0x01,
+                    "REQUEST_NO_RETURN message type must be 0x01, got 0x{:02X}",
+                    header.message_type as u8
+                );
+                
+                // Also verify at raw byte level (byte 12 is message type)
+                assert_eq!(
+                    data[12], 0x01,
+                    "Message type byte on wire must be 0x01 (REQUEST_NO_RETURN)"
+                );
+
+                // Verify payload
+                let payload = &data[16..];
+                assert_eq!(payload, b"fire_and_forget_payload");
+
+                // No response sent for fire-and-forget
+                break;
+            }
+        }
+
+        assert!(request_received, "Should have received a fire-and-forget request");
+        
+        // Keep alive briefly
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
+
+    // Library side - discovers service via SD and sends fire-and-forget
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let config = RuntimeConfig::default();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        // Use public API: find service and wait for availability via SD
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.available(),
+        ).await.expect("Should discover service via SD");
+
+        // Send fire-and-forget using public API
+        proxy
+            .fire_and_forget(MethodId::new(0x0001), b"fire_and_forget_payload")
+            .await
+            .expect("Fire-and-forget should succeed");
+
+        // Give time for the message to be sent
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Verify that a raw REQUEST_NO_RETURN packet is correctly handled by the library.
+/// Server receives fire-and-forget from raw socket and dispatches as FireForget event.
+#[test]
+fn fire_and_forget_received_wire_format() {
+    covers!(feat_req_recentip_103, feat_req_recentip_284);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Library side - server that receives fire-and-forget
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        // Handle one fire-and-forget
+        if let Some(event) = offering.next().await {
+            match event {
+                ServiceEvent::FireForget { payload, method, .. } => {
+                    assert_eq!(method.value(), 0x0001);
+                    assert_eq!(payload.as_ref(), b"raw_fire_forget");
+                }
+                other => panic!("Expected FireForget, got {:?}", other),
+            }
+        }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
+
+    // Raw socket sends REQUEST_NO_RETURN
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // First, listen for SD to find the server
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4(
+            "239.255.0.1".parse().unwrap(),
+            "0.0.0.0".parse().unwrap(),
+        )?;
+
+        // Find server endpoint from SD offer
+        let mut server_endpoint: Option<SocketAddr> = None;
+        let mut buf = [0u8; 1500];
+        
+        for _ in 0..10 {
+            let result = tokio::time::timeout(
+                Duration::from_millis(200),
+                sd_socket.recv_from(&mut buf),
+            ).await;
+            
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
+                            // Found our service offer
+                            if let Some(opt) = sd_msg.options.first() {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                    let ip = if addr.is_unspecified() {
+                                        from.ip()
+                                    } else {
+                                        std::net::IpAddr::V4(*addr)
+                                    };
+                                    server_endpoint = Some(SocketAddr::new(ip, *port));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+
+        let server_addr = server_endpoint.expect("Should find server via SD");
+        eprintln!("Found server at {}", server_addr);
+
+        // Now send a raw fire-and-forget request
+        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        
+        let request = build_fire_and_forget_request(0x1234, 0x0001, 0xABCD, 0x1234, b"raw_fire_forget");
+        rpc_socket.send_to(&request, server_addr).await?;
+
+        // No response expected - just wait a bit
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
 /// feat_req_recentip_45: SOME/IP header is exactly 16 bytes
 /// feat_req_recentip_42: Big-endian encoding verification
 #[test]
@@ -1157,6 +1391,46 @@ fn build_request(
     
     // Message Type (REQUEST = 0x00)
     packet.push(0x00);
+    
+    // Return Code (E_OK = 0x00)
+    packet.push(0x00);
+    
+    // Payload
+    packet.extend_from_slice(payload);
+    
+    packet
+}
+
+/// Build a raw SOME/IP fire-and-forget (REQUEST_NO_RETURN) packet
+fn build_fire_and_forget_request(
+    service_id: u16,
+    method_id: u16,
+    client_id: u16,
+    session_id: u16,
+    payload: &[u8],
+) -> Vec<u8> {
+    let length = 8 + payload.len() as u32; // 8 bytes of header after length + payload
+    let mut packet = Vec::with_capacity(16 + payload.len());
+    
+    // Message ID (Service ID + Method ID)
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&method_id.to_be_bytes());
+    
+    // Length
+    packet.extend_from_slice(&length.to_be_bytes());
+    
+    // Request ID (Client ID + Session ID)
+    packet.extend_from_slice(&client_id.to_be_bytes());
+    packet.extend_from_slice(&session_id.to_be_bytes());
+    
+    // Protocol Version
+    packet.push(0x01);
+    
+    // Interface Version
+    packet.push(0x01);
+    
+    // Message Type (REQUEST_NO_RETURN = 0x01)
+    packet.push(0x01);
     
     // Return Code (E_OK = 0x00)
     packet.push(0x00);

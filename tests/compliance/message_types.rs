@@ -166,7 +166,6 @@ fn request_can_receive_error_type() {
 /// [feat_req_recentip_284] REQUEST_NO_RETURN gets no response
 #[cfg(feature = "turmoil")]
 #[test]
-#[ignore = "fire_and_forget not yet implemented"]
 fn request_no_return_receives_no_response() {
     covers!(feat_req_recentip_284);
 
@@ -182,14 +181,13 @@ fn request_no_return_receives_no_response() {
             .await
             .unwrap();
 
-        // Server receives fire-and-forget (arrives as Call, but responder is ignored)
+        // Server receives fire-and-forget as FireForget event
         if let Some(event) = offering.next().await {
             match event {
-                ServiceEvent::Call { payload, .. } => {
-                    // Got the fire-and-forget, responder is dropped (no response sent)
+                ServiceEvent::FireForget { payload, .. } => {
                     assert_eq!(payload.as_ref(), &[1, 2, 3]);
                 }
-                _ => {}
+                other => panic!("Expected FireForget, got {:?}", other),
             }
         }
 
