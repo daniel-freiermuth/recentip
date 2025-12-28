@@ -44,6 +44,76 @@ impl MessageType {
             _ => None,
         }
     }
+
+    /// Check if this is a TP-flagged message type
+    pub fn is_tp(&self) -> bool {
+        (*self as u8) & 0x20 != 0
+    }
+
+    /// Check if this is a request type (expects response)
+    pub fn expects_response(&self) -> bool {
+        matches!(self, MessageType::Request | MessageType::TpRequest)
+    }
+
+    /// Check if this is a fire-and-forget request
+    pub fn is_fire_and_forget(&self) -> bool {
+        matches!(self, MessageType::RequestNoReturn | MessageType::TpRequestNoReturn)
+    }
+
+    /// Check if this is a notification
+    pub fn is_notification(&self) -> bool {
+        matches!(self, MessageType::Notification | MessageType::TpNotification)
+    }
+
+    /// Check if this is a response type
+    pub fn is_response(&self) -> bool {
+        matches!(
+            self,
+            MessageType::Response | MessageType::TpResponse | MessageType::Error | MessageType::TpError
+        )
+    }
+
+    /// Get the corresponding TP-flagged type
+    pub fn with_tp_flag(&self) -> Option<MessageType> {
+        match self {
+            MessageType::Request => Some(MessageType::TpRequest),
+            MessageType::RequestNoReturn => Some(MessageType::TpRequestNoReturn),
+            MessageType::Notification => Some(MessageType::TpNotification),
+            MessageType::Response => Some(MessageType::TpResponse),
+            MessageType::Error => Some(MessageType::TpError),
+            _ => None, // Already TP-flagged
+        }
+    }
+
+    /// Get the base type without TP flag
+    pub fn without_tp_flag(&self) -> MessageType {
+        match self {
+            MessageType::TpRequest => MessageType::Request,
+            MessageType::TpRequestNoReturn => MessageType::RequestNoReturn,
+            MessageType::TpNotification => MessageType::Notification,
+            MessageType::TpResponse => MessageType::Response,
+            MessageType::TpError => MessageType::Error,
+            other => *other,
+        }
+    }
+
+    /// Get the expected response type for this message type
+    pub fn expected_response_type(&self) -> Option<MessageType> {
+        match self {
+            MessageType::Request => Some(MessageType::Response),
+            MessageType::TpRequest => Some(MessageType::TpResponse),
+            _ => None, // Other types don't expect responses
+        }
+    }
+
+    /// Check if this type is valid as a response to the given request type
+    pub fn is_valid_response_to(&self, request_type: MessageType) -> bool {
+        match request_type {
+            MessageType::Request => matches!(self, MessageType::Response | MessageType::Error),
+            MessageType::TpRequest => matches!(self, MessageType::TpResponse | MessageType::TpError),
+            _ => false, // Other types don't expect responses
+        }
+    }
 }
 
 /// SOME/IP header (16 bytes)
@@ -814,5 +884,228 @@ mod tests {
             0x00,       // return_code
         ]);
         assert!(Header::parse(&mut exact).is_some(), "16 bytes should parse successfully");
+    }
+
+    // ========================================================================
+    // MessageType Unit Tests
+    // ========================================================================
+
+    #[test]
+    fn message_type_parse_all_valid_values() {
+        // Non-TP types
+        assert_eq!(MessageType::from_u8(0x00), Some(MessageType::Request));
+        assert_eq!(MessageType::from_u8(0x01), Some(MessageType::RequestNoReturn));
+        assert_eq!(MessageType::from_u8(0x02), Some(MessageType::Notification));
+        assert_eq!(MessageType::from_u8(0x80), Some(MessageType::Response));
+        assert_eq!(MessageType::from_u8(0x81), Some(MessageType::Error));
+
+        // TP-flagged types
+        assert_eq!(MessageType::from_u8(0x20), Some(MessageType::TpRequest));
+        assert_eq!(MessageType::from_u8(0x21), Some(MessageType::TpRequestNoReturn));
+        assert_eq!(MessageType::from_u8(0x22), Some(MessageType::TpNotification));
+        assert_eq!(MessageType::from_u8(0xA0), Some(MessageType::TpResponse));
+        assert_eq!(MessageType::from_u8(0xA1), Some(MessageType::TpError));
+    }
+
+    #[test]
+    fn message_type_rejects_invalid_values() {
+        assert!(MessageType::from_u8(0x03).is_none());
+        assert!(MessageType::from_u8(0x23).is_none());
+        assert!(MessageType::from_u8(0x82).is_none());
+        assert!(MessageType::from_u8(0xFF).is_none());
+    }
+
+    #[test]
+    fn message_type_tp_flag_is_bit_5() {
+        assert!(!MessageType::Request.is_tp());
+        assert!(!MessageType::RequestNoReturn.is_tp());
+        assert!(!MessageType::Notification.is_tp());
+        assert!(!MessageType::Response.is_tp());
+        assert!(!MessageType::Error.is_tp());
+
+        assert!(MessageType::TpRequest.is_tp());
+        assert!(MessageType::TpRequestNoReturn.is_tp());
+        assert!(MessageType::TpNotification.is_tp());
+        assert!(MessageType::TpResponse.is_tp());
+        assert!(MessageType::TpError.is_tp());
+    }
+
+    #[test]
+    fn message_type_request_expects_response() {
+        assert!(MessageType::Request.expects_response());
+        assert!(MessageType::TpRequest.expects_response());
+
+        assert!(!MessageType::RequestNoReturn.expects_response());
+        assert!(!MessageType::Notification.expects_response());
+        assert!(!MessageType::Response.expects_response());
+    }
+
+    #[test]
+    fn message_type_request_no_return_is_fire_and_forget() {
+        assert!(MessageType::RequestNoReturn.is_fire_and_forget());
+        assert!(MessageType::TpRequestNoReturn.is_fire_and_forget());
+        assert!(!MessageType::Request.is_fire_and_forget());
+    }
+
+    #[test]
+    fn message_type_notification_classification() {
+        assert!(MessageType::Notification.is_notification());
+        assert!(MessageType::TpNotification.is_notification());
+        assert!(!MessageType::Request.is_notification());
+        assert!(!MessageType::Response.is_notification());
+    }
+
+    #[test]
+    fn message_type_tp_flag_conversion() {
+        assert_eq!(MessageType::Request.with_tp_flag(), Some(MessageType::TpRequest));
+        assert_eq!(MessageType::RequestNoReturn.with_tp_flag(), Some(MessageType::TpRequestNoReturn));
+        assert_eq!(MessageType::Notification.with_tp_flag(), Some(MessageType::TpNotification));
+        assert_eq!(MessageType::Response.with_tp_flag(), Some(MessageType::TpResponse));
+        assert_eq!(MessageType::Error.with_tp_flag(), Some(MessageType::TpError));
+        assert_eq!(MessageType::TpRequest.with_tp_flag(), None);
+    }
+
+    #[test]
+    fn message_type_tp_flag_removal() {
+        assert_eq!(MessageType::TpRequest.without_tp_flag(), MessageType::Request);
+        assert_eq!(MessageType::TpRequestNoReturn.without_tp_flag(), MessageType::RequestNoReturn);
+        assert_eq!(MessageType::TpNotification.without_tp_flag(), MessageType::Notification);
+        assert_eq!(MessageType::TpResponse.without_tp_flag(), MessageType::Response);
+        assert_eq!(MessageType::TpError.without_tp_flag(), MessageType::Error);
+        assert_eq!(MessageType::Request.without_tp_flag(), MessageType::Request);
+    }
+
+    #[test]
+    fn message_type_response_bit_pattern() {
+        assert_eq!(0x00u8 | 0x80, 0x80); // Request -> Response
+        assert_eq!(0x01u8 | 0x80, 0x81); // RequestNoReturn -> Error
+        assert_eq!(0x20u8 | 0x80, 0xA0); // TpRequest -> TpResponse
+        assert_eq!(0x21u8 | 0x80, 0xA1); // TpRequestNoReturn -> TpError
+    }
+
+    #[test]
+    fn message_type_tp_bit_pattern() {
+        assert_eq!(0x00u8 | 0x20, 0x20); // Request -> TpRequest
+        assert_eq!(0x01u8 | 0x20, 0x21); // RequestNoReturn -> TpRequestNoReturn
+        assert_eq!(0x02u8 | 0x20, 0x22); // Notification -> TpNotification
+        assert_eq!(0x80u8 | 0x20, 0xA0); // Response -> TpResponse
+        assert_eq!(0x81u8 | 0x20, 0xA1); // Error -> TpError
+    }
+
+    #[test]
+    fn message_type_valid_responses_to_request() {
+        assert!(MessageType::Response.is_valid_response_to(MessageType::Request));
+        assert!(MessageType::Error.is_valid_response_to(MessageType::Request));
+        assert!(MessageType::TpResponse.is_valid_response_to(MessageType::TpRequest));
+        assert!(MessageType::TpError.is_valid_response_to(MessageType::TpRequest));
+
+        // Cross-type responses are invalid
+        assert!(!MessageType::Response.is_valid_response_to(MessageType::TpRequest));
+        assert!(!MessageType::TpResponse.is_valid_response_to(MessageType::Request));
+    }
+
+    #[test]
+    fn message_type_no_responses_to_fire_and_forget() {
+        assert!(!MessageType::Response.is_valid_response_to(MessageType::RequestNoReturn));
+        assert!(!MessageType::Error.is_valid_response_to(MessageType::RequestNoReturn));
+        assert!(!MessageType::TpResponse.is_valid_response_to(MessageType::TpRequestNoReturn));
+        assert!(!MessageType::TpError.is_valid_response_to(MessageType::TpRequestNoReturn));
+    }
+
+    #[test]
+    fn message_type_no_responses_to_notification() {
+        assert!(!MessageType::Response.is_valid_response_to(MessageType::Notification));
+        assert!(!MessageType::Error.is_valid_response_to(MessageType::Notification));
+    }
+
+    #[test]
+    fn message_type_expected_response() {
+        assert_eq!(MessageType::Request.expected_response_type(), Some(MessageType::Response));
+        assert_eq!(MessageType::TpRequest.expected_response_type(), Some(MessageType::TpResponse));
+        assert_eq!(MessageType::RequestNoReturn.expected_response_type(), None);
+        assert_eq!(MessageType::Notification.expected_response_type(), None);
+        assert_eq!(MessageType::Response.expected_response_type(), None);
+        assert_eq!(MessageType::Error.expected_response_type(), None);
+    }
+
+    #[test]
+    fn message_type_response_classification() {
+        assert!(MessageType::Response.is_response());
+        assert!(MessageType::Error.is_response());
+        assert!(MessageType::TpResponse.is_response());
+        assert!(MessageType::TpError.is_response());
+
+        assert!(!MessageType::Request.is_response());
+        assert!(!MessageType::RequestNoReturn.is_response());
+        assert!(!MessageType::Notification.is_response());
+        assert!(!MessageType::TpRequest.is_response());
+    }
+}
+
+#[cfg(test)]
+mod proptest_suite {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// MessageType round-trips through u8
+        #[test]
+        fn message_type_roundtrip(byte in prop::sample::select(vec![
+            0x00u8, 0x01, 0x02, 0x80, 0x81, 0x20, 0x21, 0x22, 0xA0, 0xA1
+        ])) {
+            let mt = MessageType::from_u8(byte).unwrap();
+            let back = mt as u8;
+            prop_assert_eq!(byte, back);
+        }
+
+        /// Only valid message types parse successfully
+        #[test]
+        fn invalid_message_types_fail(byte in 0u8..=255u8) {
+            let valid = [0x00, 0x01, 0x02, 0x80, 0x81, 0x20, 0x21, 0x22, 0xA0, 0xA1];
+            let result = MessageType::from_u8(byte);
+
+            if valid.contains(&byte) {
+                prop_assert!(result.is_some());
+            } else {
+                prop_assert!(result.is_none());
+            }
+        }
+
+        /// TP flag only affects bit 5
+        #[test]
+        fn tp_flag_only_bit_5(base in prop::sample::select(vec![
+            0x00u8, 0x01, 0x02, 0x80, 0x81
+        ])) {
+            let with_tp = base | 0x20;
+
+            let base_mt = MessageType::from_u8(base).unwrap();
+            prop_assert!(!base_mt.is_tp());
+
+            let tp_mt = MessageType::from_u8(with_tp).unwrap();
+            prop_assert!(tp_mt.is_tp());
+        }
+
+        /// without_tp_flag is inverse of with_tp_flag
+        #[test]
+        fn tp_flag_inverse_operations(base in prop::sample::select(vec![
+            0x00u8, 0x01, 0x02, 0x80, 0x81
+        ])) {
+            let base_mt = MessageType::from_u8(base).unwrap();
+
+            if let Some(tp_mt) = base_mt.with_tp_flag() {
+                prop_assert_eq!(tp_mt.without_tp_flag(), base_mt);
+            }
+        }
+
+        /// Only REQUEST types expect responses
+        #[test]
+        fn only_requests_expect_responses(byte in prop::sample::select(vec![
+            0x00u8, 0x01, 0x02, 0x80, 0x81, 0x20, 0x21, 0x22, 0xA0, 0xA1
+        ])) {
+            let mt = MessageType::from_u8(byte).unwrap();
+            let expects = mt.expects_response();
+
+            prop_assert_eq!(expects, byte == 0x00 || byte == 0x20);
+        }
     }
 }

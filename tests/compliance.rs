@@ -57,6 +57,7 @@ mod transport_protocol;
 #[path = "compliance/error_handling.rs"]
 mod error_handling;
 
+#[cfg(feature = "turmoil")]
 #[path = "compliance/subscription.rs"]
 mod subscription;
 
@@ -64,6 +65,7 @@ mod subscription;
 #[path = "compliance/session_handling.rs"]
 mod session_handling;
 
+// message_types contains unit tests (always) + turmoil integration tests + proptest
 #[path = "compliance/message_types.rs"]
 mod message_types;
 

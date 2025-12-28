@@ -3,6 +3,16 @@
 ## Goal
 Create a comprehensive test suite that proves RECENT/IP spec compliance, with a traceability matrix documenting which requirements are tested and why untested ones are excluded.
 
+- [ ] Dirty state weiter aufräumen
+  - [ ] Commented-out lines
+- [ ] Implement fire'n'forget
+- [ ] Tests with real network
+- [ ] Große Datei splitten
+- [ ] Review. Überblick
+- [ ] Docs
+- [ ] TP
+- [ ] Config
+
 ---
 
 ## Phase 1: Requirements Extraction ✅
@@ -33,46 +43,56 @@ Create a comprehensive test suite that proves RECENT/IP spec compliance, with a 
 
 ---
 
-## Current Stats (2025-12-23)
+## Current Stats (2025-12-28)
 
 | Metric | Value |
 |--------|-------|
-| Total Tests | 199 |
-| Tests Passing (types/parsing) | ~40 |
-| Tests Ignored (need Runtime) | ~159 |
-| Requirements Covered | 99 (verified) |
-| Total Requirements | 639 |
-| Coverage | 15.5% |
+| Total Tests | 136 |
+| Tests Passing | 136 |
+| Tests Skipped (ignored) | 15 |
+| Total Test Functions | 151 |
 
-### Test Modules
+### Ignored Tests by Reason
 
-| Module              | Tests | Description                           |
-|---------------------|-------|---------------------------------------|
-| api_types           | 16    | ID types, ranges, reserved values     |
-| wire_format         | 22    | Header parsing, message structure     |
-| service_discovery   | 18    | SD protocol, entries, options         |
-| transport_protocol  | 28    | TP segmentation, reassembly           |
-| tcp_binding         | 15    | TCP framing, magic cookies            |
-| udp_binding         | 12    | UDP message handling                  |
-| rpc_flow            | 10    | Request/response patterns             |
-| events              | 17    | Pub/sub, multiple subscriptions       |
-| fields              | 8     | Getter/setter/notifier                |
-| error_scenarios     | 13    | Error handling, malformed messages    |
-| session_edge_cases  | 9     | Session ID wrap, request ID           |
-| instances           | 10    | Multi-instance discovery              |
-| multi_party         | 10    | N-party network scenarios             |
-| message_types       | ~5    | Message type field values             |
-| version_handling    | ~6    | Protocol/interface versions           |
+| Reason | Count | Notes |
+|--------|-------|-------|
+| `Runtime::new not implemented` | 75 | Old sync API tests in unported modules |
+| `SOME/IP-TP not yet implemented` | 10 | Transport Protocol segmentation |
+| `fire_and_forget not yet implemented` | 2 | REQUEST_NO_RETURN message type |
+| `ERROR message type handling` | 1 | Error response propagation |
+| `turmoil timing limitation` | 1 | Late server + subscription edge case |
+| `request ID matching` | 1 | Runtime doesn't match responses by request ID |
 
-### Coverage by Spec File
+### Ported Modules (turmoil-based async tests)
 
-| File | Covered | Total | % |
-|------|---------|-------|---|
-| someip-rpc.rst | 77 | 248 | 31% |
-| someip-tp.rst | 10 | 40 | 25% |
-| someip-ids.rst | 1 | 8 | 12.5% |
-| someip-sd.rst | 11 | 328 | 3.4% |
-| someip-compat.rst | 0 | 15 | 0% |
+| Module | Tests | Status |
+|--------|-------|--------|
+| api_types | 22 | ✅ All passing |
+| integration | 8 | ✅ All passing |
+| wire_format | 14 | ✅ All passing |
+| service_discovery | 11 | ✅ All passing |
+| subscription | 6 | ✅ All passing |
+| session_handling | 16 | ✅ 14 passing, 2 ignored |
+| error_handling | 14 | ✅ All passing |
+| transport_protocol | 8 unit + 9 ignored | ✅ Unit tests passing, integration awaits TP |
+| message_types | 23 unit + 5 proptest + 2 turmoil | ✅ Passing, 3 ignored |
+
+### Unported Modules (still use old SimulatedNetwork)
+
+These modules compile but all their integration tests are ignored with
+`#[ignore = "Runtime::new not implemented"]`. They need migration to turmoil:
+
+| Module | Ignored Tests |
+|--------|---------------|
+| error_scenarios | 9 |
+| events | 11 |
+| fields | 7 |
+| instances | 8 |
+| multi_party | 8 |
+| rpc_flow | 8 |
+| tcp_binding | 12 |
+| udp_binding | 8 |
+| version_handling | 4 |
 
 ---
 
@@ -96,20 +116,26 @@ Create a comprehensive test suite that proves RECENT/IP spec compliance, with a 
 
 ## Next Steps
 
-### Priority 1: Implement Runtime
-The 159 ignored tests will pass once `Runtime::new()` is implemented.
+### Priority 1: Implement Missing Features
+| Feature | Ignored Tests | Notes |
+|---------|---------------|-------|
+| `fire_and_forget()` | 2 | REQUEST_NO_RETURN message type |
+| ERROR message handling | 1 | `reply_error()` → client `Err` |
+| SOME/IP-TP | 10 | Large message segmentation |
+| Request ID matching | 1 | Match responses to pending requests |
 
-### Priority 2: Coverage Gaps (if desired)
-| Area | Gap | Notes |
-|------|-----|-------|
-| SD Protocol Internals | 300+ | Timing, state machines - implementation detail |
-| Serialization | 50+ | Structs, arrays, strings - future serde integration |
-| TP Receiver | 18 | Reassembly behavior |
-| Compatibility | 15 | Version negotiation |
-
-### Not Prioritized
-- SD timing requirements (INITIAL_DELAY, etc.) - runtime config
-- Serialization tests - separate `someip-types` crate responsibility
+### Priority 2: Port Remaining Modules to Turmoil
+The 75 tests with `#[ignore = "Runtime::new not implemented"]` are in modules
+that still use the old `SimulatedNetwork` infrastructure. Port them to turmoil:
+- events.rs (11 tests)
+- tcp_binding.rs (12 tests)  
+- error_scenarios.rs (9 tests)
+- rpc_flow.rs (8 tests)
+- instances.rs (8 tests)
+- multi_party.rs (8 tests)
+- udp_binding.rs (8 tests)
+- fields.rs (7 tests)
+- version_handling.rs (4 tests)
 
 ---
 
