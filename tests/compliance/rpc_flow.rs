@@ -1,6 +1,6 @@
 //! Request/Response Communication Flow Compliance Tests
 //!
-//! Tests the RPC request/response patterns per SOME/IP specification.
+//! Integration tests for SOME/IP RPC patterns using turmoil network simulation.
 //!
 //! Key requirements tested:
 //! - feat_req_recentip_328: Request/Response communication pattern
@@ -10,18 +10,13 @@
 //! - feat_req_recentip_348: Fire&Forget shall not return error
 //! - feat_req_recentip_141: Request (0x00) answered by Response (0x80)
 
-use someip_runtime::*;
-
-// Re-use wire format parsing from the shared module
-#[path = "../wire.rs"]
-mod wire;
-
-// Re-use simulated network
-#[path = "../simulated.rs"]
-mod simulated;
-
-use simulated::{NetworkEvent, SimulatedNetwork};
-use wire::Header;
+use bytes::Bytes;
+use someip_runtime::prelude::*;
+use someip_runtime::runtime::Runtime;
+use someip_runtime::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
+use someip_runtime::handle::ServiceEvent;
+use std::net::SocketAddr;
+use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -30,508 +25,471 @@ macro_rules! covers {
     };
 }
 
-// ============================================================================
-// Message Type Constants
-// ============================================================================
+/// Test service definition
+struct TestService;
 
-mod message_type {
-    pub const REQUEST: u8 = 0x00;
-    pub const REQUEST_NO_RETURN: u8 = 0x01;
-    pub const NOTIFICATION: u8 = 0x02;
-    pub const RESPONSE: u8 = 0x80;
-    pub const ERROR: u8 = 0x81;
+impl Service for TestService {
+    const SERVICE_ID: u16 = 0x1234;
+    const MAJOR_VERSION: u8 = 1;
+    const MINOR_VERSION: u32 = 0;
+}
+
+type TurmoilRuntime = Runtime<turmoil::net::UdpSocket>;
+
+/// Helper to parse a SOME/IP header from raw bytes
+fn parse_header(data: &[u8]) -> Option<Header> {
+    if data.len() < Header::SIZE {
+        return None;
+    }
+    Header::parse(&mut Bytes::copy_from_slice(data))
+}
+
+/// Helper to parse an SD message from raw bytes
+fn parse_sd_message(data: &[u8]) -> Option<(Header, SdMessage)> {
+    if data.len() < Header::SIZE {
+        return None;
+    }
+    let mut bytes = Bytes::copy_from_slice(data);
+    let header = Header::parse(&mut bytes)?;
+    if header.service_id == SD_SERVICE_ID && header.method_id == SD_METHOD_ID {
+        let sd_msg = SdMessage::parse(&mut bytes)?;
+        Some((header, sd_msg))
+    } else {
+        None
+    }
+}
+
+/// Build SD offer message
+#[allow(dead_code)]
+fn build_sd_offer(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    minor_version: u32,
+    endpoint_ip: std::net::Ipv4Addr,
+    endpoint_port: u16,
+    ttl: u32,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(60);
+    
+    // SOME/IP Header
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes()); // Service ID (SD)
+    packet.extend_from_slice(&0x8100u16.to_be_bytes()); // Method ID (SD)
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes()); // Length placeholder
+    packet.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
+    packet.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
+    packet.push(0x01); // Protocol version
+    packet.push(0x01); // Interface version
+    packet.push(0x02); // Message type: NOTIFICATION
+    packet.push(0x00); // Return code
+    
+    // SD Payload
+    packet.push(0xC0); // Flags: Unicast + Reboot
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
+    
+    // Entries array length (16 bytes for one entry)
+    packet.extend_from_slice(&16u32.to_be_bytes());
+    
+    // OfferService Entry (16 bytes)
+    packet.push(0x01); // Type: OfferService
+    packet.push(0x00); // Index 1st options
+    packet.push(0x10); // Index 2nd options + # of opts 1
+    packet.push(0x00); // # of opts 2
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    packet.push(major_version);
+    packet.push((ttl >> 16) as u8);
+    packet.push((ttl >> 8) as u8);
+    packet.push(ttl as u8);
+    packet.extend_from_slice(&minor_version.to_be_bytes());
+    
+    // Options array length (12 bytes for IPv4 endpoint)
+    packet.extend_from_slice(&12u32.to_be_bytes());
+    
+    // IPv4 Endpoint Option
+    packet.extend_from_slice(&9u16.to_be_bytes()); // Length
+    packet.push(0x04); // Type: IPv4 Endpoint
+    packet.push(0x00); // Reserved
+    packet.extend_from_slice(&endpoint_ip.octets());
+    packet.push(0x00); // Reserved
+    packet.push(0x11); // Protocol: UDP
+    packet.extend_from_slice(&endpoint_port.to_be_bytes());
+    
+    // Fix length field
+    let payload_len = (packet.len() - 12) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&payload_len.to_be_bytes());
+    
+    packet
+}
+
+/// Build raw SOME/IP fire-and-forget request
+fn build_fire_and_forget(
+    service_id: u16,
+    method_id: u16,
+    client_id: u16,
+    session_id: u16,
+    interface_version: u8,
+    payload: &[u8],
+) -> Vec<u8> {
+    let length = 8 + payload.len() as u32;
+    let mut packet = Vec::with_capacity(16 + payload.len());
+    
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&method_id.to_be_bytes());
+    packet.extend_from_slice(&length.to_be_bytes());
+    packet.extend_from_slice(&client_id.to_be_bytes());
+    packet.extend_from_slice(&session_id.to_be_bytes());
+    packet.push(0x01); // Protocol version
+    packet.push(interface_version);
+    packet.push(0x01); // Message type: REQUEST_NO_RETURN
+    packet.push(0x00); // Return code
+    packet.extend_from_slice(payload);
+    
+    packet
 }
 
 // ============================================================================
-// Helper Functions
+// FIRE & FORGET NO RESPONSE TESTS
 // ============================================================================
 
-/// Find all RPC messages (non-SD) in network history
-fn find_rpc_messages(network: &SimulatedNetwork) -> Vec<(Header, Vec<u8>)> {
-    network
-        .history()
-        .iter()
-        .filter_map(|event| {
-            if let NetworkEvent::UdpSent { data, to, .. } = event {
-                // Exclude SD port
-                if to.port() != 30490 && data.len() >= 16 {
-                    if let Some(header) = Header::from_bytes(data) {
-                        return Some((header, data.clone()));
+/// [feat_req_recentip_348] Fire&Forget shall not receive any response or error
+///
+/// Fire&Forget messages (REQUEST_NO_RETURN) shall not return an error.
+/// This test verifies that when a server receives a fire-and-forget request,
+/// it does NOT send any response or error message back.
+#[test]
+fn fire_and_forget_no_response_or_error() {
+    covers!(feat_req_recentip_348, feat_req_recentip_654);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Library server receives F&F but sends no response
+    sim.host("server", || async {
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        // Wait for the fire-and-forget request
+        let result = tokio::time::timeout(Duration::from_secs(5), offering.next()).await;
+        
+        if let Ok(Some(event)) = result {
+            match event {
+                ServiceEvent::FireForget { method, payload, .. } => {
+                    assert_eq!(method, MethodId::new(0x0001));
+                    assert_eq!(payload.as_ref(), b"ff_data");
+                    // Server receives F&F but does NOT respond
+                }
+                other => panic!("Expected FireForget event, got {:?}", other),
+            }
+        } else {
+            panic!("Did not receive fire-and-forget request");
+        }
+
+        // Keep server running to capture any errant responses
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    // Raw client sends F&F and monitors for any responses
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4(
+            "239.255.0.1".parse().unwrap(),
+            "0.0.0.0".parse().unwrap(),
+        )?;
+        
+        let mut server_endpoint: Option<SocketAddr> = None;
+        let mut buf = [0u8; 1500];
+        
+        // Discover server via SD
+        for _ in 0..20 {
+            let result = tokio::time::timeout(
+                Duration::from_millis(200),
+                sd_socket.recv_from(&mut buf),
+            ).await;
+            
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
+                            if let Some(opt) = sd_msg.options.first() {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                    let ip = if addr.is_unspecified() {
+                                        from.ip()
+                                    } else {
+                                        std::net::IpAddr::V4(*addr)
+                                    };
+                                    server_endpoint = Some(SocketAddr::new(ip, *port));
+                                }
+                            }
+                        }
                     }
                 }
             }
-            None
-        })
-        .collect()
-}
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+        
+        let server_addr = server_endpoint.expect("Should find server via SD");
+        
+        // Send fire-and-forget from RPC socket
+        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:40000").await?;
+        let ff_request = build_fire_and_forget(0x1234, 0x0001, 0xABCD, 0x0001, 0x01, b"ff_data");
+        rpc_socket.send_to(&ff_request, server_addr).await?;
+        
+        // Wait and check for any response (there should be NONE)
+        let mut received_messages = Vec::new();
+        for _ in 0..5 {
+            let result = tokio::time::timeout(
+                Duration::from_millis(100),
+                rpc_socket.recv_from(&mut buf),
+            ).await;
+            
+            if let Ok(Ok((len, _from))) = result {
+                if let Some(header) = parse_header(&buf[..len]) {
+                    received_messages.push(header.message_type);
+                }
+            }
+        }
+        
+        // Verify no RESPONSE or ERROR was received
+        assert!(
+            !received_messages.iter().any(|mt| *mt == MessageType::Response),
+            "Fire&Forget should NOT receive RESPONSE"
+        );
+        assert!(
+            !received_messages.iter().any(|mt| *mt == MessageType::Error),
+            "Fire&Forget should NOT receive ERROR"
+        );
+        
+        Ok(())
+    });
 
-/// Find messages by type
-fn find_by_message_type(network: &SimulatedNetwork, msg_type: u8) -> Vec<Header> {
-    find_rpc_messages(network)
-        .into_iter()
-        .filter(|(h, _)| h.message_type == msg_type)
-        .map(|(h, _)| h)
-        .collect()
+    sim.run().unwrap();
 }
 
 // ============================================================================
-// Request/Response Pattern Tests
+// CONCURRENT REQUEST MATCHING TESTS
 // ============================================================================
 
-/// feat_req_recentip_328: Request/Response communication pattern
+/// [feat_req_recentip_338] Concurrent requests are correctly matched with responses
 ///
-/// One of the most common communication patterns is the request/response pattern.
-/// One communication partner sends a request to another and gets a response.
+/// When multiple requests are pending and responses arrive out of order,
+/// each response must be matched to its correct request using the Request ID.
 #[test]
-#[ignore = "Runtime::new not implemented"]
-fn request_response_pattern_works() {
+fn concurrent_requests_matched_by_request_id() {
+    covers!(feat_req_recentip_338, feat_req_recentip_88);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server responds to requests in REVERSE order
+    sim.host("server", || async {
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        // Collect 3 requests before responding
+        let mut pending_requests = Vec::new();
+        for _ in 0..3 {
+            if let Some(event) = tokio::time::timeout(
+                Duration::from_secs(5),
+                offering.next()
+            ).await.ok().flatten() {
+                if let ServiceEvent::Call { payload, responder, .. } = event {
+                    pending_requests.push((payload, responder));
+                }
+            }
+        }
+
+        // Small delay to simulate processing
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Respond in REVERSE order (3, 2, 1)
+        for (payload, responder) in pending_requests.into_iter().rev() {
+            let value = payload[0];
+            // Response contains the request value + 100 to identify it
+            responder.reply(&[value + 100]).await.unwrap();
+        }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
+
+    // Client sends 3 concurrent requests and verifies each gets correct response
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout waiting for service");
+
+        // Send 3 requests concurrently
+        let call1 = proxy.call(MethodId::new(0x0001), &[1u8]);
+        let call2 = proxy.call(MethodId::new(0x0001), &[2u8]);
+        let call3 = proxy.call(MethodId::new(0x0001), &[3u8]);
+
+        // Wait for all responses
+        let (r1, r2, r3) = tokio::join!(call1, call2, call3);
+
+        // Each response should contain request_value + 100
+        let r1 = r1.expect("Call 1 should succeed");
+        let r2 = r2.expect("Call 2 should succeed");
+        let r3 = r3.expect("Call 3 should succeed");
+
+        assert_eq!(r1.payload[0], 101, "Request 1 should get response 101");
+        assert_eq!(r2.payload[0], 102, "Request 2 should get response 102");
+        assert_eq!(r3.payload[0], 103, "Request 3 should get response 103");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// [feat_req_recentip_328, feat_req_recentip_329] Basic request/response pattern works
+///
+/// One communication partner sends a request and receives a response.
+/// This is a basic integration test for the request/response pattern.
+#[test]
+fn request_triggers_response() {
     covers!(feat_req_recentip_328, feat_req_recentip_329);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    sim.host("server", || async {
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+        if let Some(event) = tokio::time::timeout(
+            Duration::from_secs(5),
+            offering.next()
+        ).await.ok().flatten() {
+            match event {
+                ServiceEvent::Call { payload, responder, .. } => {
+                    assert_eq!(payload.as_ref(), b"request_data");
+                    responder.reply(b"response_data").await.unwrap();
+                }
+                _ => panic!("Expected Call event"),
+            }
+        }
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
 
-    // Client sends request
-    let method_id = MethodId::new(0x0001);
-    let pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout waiting for service");
 
-    // Server receives request
-    let event = offering.try_next().ok().flatten();
-    assert!(
-        matches!(event, Some(ServiceEvent::MethodCall { .. })),
-        "Server should receive method call"
-    );
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(MethodId::new(0x0001), b"request_data"),
+        )
+        .await
+        .expect("Timeout waiting for response")
+        .expect("Call should succeed");
 
-    // Server sends response
-    if let Some(ServiceEvent::MethodCall { request }) = event {
-        request.responder.send_ok(&[4, 5, 6]).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
+        assert_eq!(response.payload.as_ref(), b"response_data");
 
-    // Client receives response
-    let response = pending.wait().unwrap();
-    assert_eq!(response.payload, &[4, 5, 6]);
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }
 
-/// feat_req_recentip_338: Response contains same Request ID
+/// [feat_req_recentip_141] Request (0x00) is answered by Error (0x81) on failure
 ///
-/// The Response shall contain the same Request ID as the Request.
+/// When the server cannot process a request successfully, it responds with
+/// an ERROR message type (0x81) instead of RESPONSE (0x80).
 #[test]
-#[ignore = "Runtime::new not implemented"]
-fn response_has_matching_request_id() {
-    covers!(feat_req_recentip_338, feat_req_recentip_83);
-
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
-
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
-
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    // Clear history to capture just the RPC
-    network.clear_history();
-
-    // Client sends request
-    let method_id = MethodId::new(0x0001);
-    let pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Capture request's Request ID
-    let requests = find_by_message_type(&network, message_type::REQUEST);
-    assert!(!requests.is_empty(), "Should have request message");
-    let request_header = &requests[0];
-    let request_client_id = request_header.client_id;
-    let request_session_id = request_header.session_id;
-
-    // Server responds
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        request.responder.send_ok(&[4, 5, 6]).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Capture response's Request ID
-    let responses = find_by_message_type(&network, message_type::RESPONSE);
-    assert!(!responses.is_empty(), "Should have response message");
-    let response_header = &responses[0];
-
-    // Request ID must match
-    assert_eq!(
-        response_header.client_id, request_client_id,
-        "Response Client ID must match request"
-    );
-    assert_eq!(
-        response_header.session_id, request_session_id,
-        "Response Session ID must match request"
-    );
-}
-
-/// feat_req_recentip_141: Request (0x00) answered by Response (0x80)
-///
-/// Regular request (message type 0x00) shall be answered by a response
-/// (message type 0x80) or error (message type 0x81).
-#[test]
-#[ignore = "Runtime::new not implemented"]
-fn request_message_type_answered_by_response() {
-    covers!(feat_req_recentip_141, feat_req_recentip_684);
-
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
-
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
-
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    network.clear_history();
-
-    // Send request
-    let method_id = MethodId::new(0x0001);
-    let pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Verify request message type is 0x00
-    let requests = find_by_message_type(&network, message_type::REQUEST);
-    assert!(!requests.is_empty(), "Should have REQUEST (0x00) message");
-    assert_eq!(requests[0].message_type, 0x00);
-
-    // Server responds with success
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        request.responder.send_ok(&[]).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Verify response message type is 0x80
-    let responses = find_by_message_type(&network, message_type::RESPONSE);
-    assert!(!responses.is_empty(), "Should have RESPONSE (0x80) message");
-    assert_eq!(responses[0].message_type, 0x80);
-
-    // Client receives response
-    let _result = pending.wait();
-}
-
-// ============================================================================
-// Fire & Forget (REQUEST_NO_RETURN) Tests
-// ============================================================================
-
-/// feat_req_recentip_345: Fire&Forget uses REQUEST_NO_RETURN (0x01)
-///
-/// Fire&Forget messages use Message Type REQUEST_NO_RETURN (0x01).
-#[test]
-#[ignore = "Runtime::new not implemented"]
-fn fire_and_forget_uses_request_no_return() {
-    covers!(feat_req_recentip_345);
-
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
-
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
-
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let _offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    network.clear_history();
-
-    // Send fire-and-forget request
-    let method_id = MethodId::new(0x0001);
-    proxy.fire_and_forget(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Verify message type is REQUEST_NO_RETURN (0x01)
-    let messages = find_by_message_type(&network, message_type::REQUEST_NO_RETURN);
-    assert!(
-        !messages.is_empty(),
-        "Fire&Forget should use REQUEST_NO_RETURN (0x01)"
-    );
-    assert_eq!(messages[0].message_type, 0x01);
-}
-
-/// feat_req_recentip_348: Fire&Forget shall not return error
-///
-/// Fire&Forget messages shall not return an error. Error handling shall
-/// be implemented in the application if needed.
-#[test]
-#[ignore = "Runtime::new not implemented"]
-fn fire_and_forget_no_response() {
-    covers!(feat_req_recentip_348);
-
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
-
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
-
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    network.clear_history();
-
-    // Send fire-and-forget request
-    let method_id = MethodId::new(0x0001);
-    proxy.fire_and_forget(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Server receives but should NOT send response
-    let _event = offering.try_next();
-    network.advance(std::time::Duration::from_millis(100));
-
-    // No response or error should be sent
-    let responses = find_by_message_type(&network, message_type::RESPONSE);
-    let errors = find_by_message_type(&network, message_type::ERROR);
-
-    assert!(
-        responses.is_empty(),
-        "Fire&Forget should not have RESPONSE"
-    );
-    assert!(
-        errors.is_empty(),
-        "Fire&Forget should not have ERROR"
-    );
-}
-
-// ============================================================================
-// Error Response Tests
-// ============================================================================
-
-/// feat_req_recentip_141: Request can be answered by Error (0x81)
-///
-/// Regular request can be answered by error (message type 0x81) instead
-/// of response (0x80) when an error occurs.
-#[test]
-#[ignore = "Runtime::new not implemented"]
 fn request_can_receive_error_response() {
     covers!(feat_req_recentip_141);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    sim.host("server", || async {
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    network.clear_history();
-
-    // Send request
-    let method_id = MethodId::new(0x0001);
-    let pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Server responds with error
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        request.responder.send_error(ReturnCode::NotOk).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Verify error message type is 0x81
-    let errors = find_by_message_type(&network, message_type::ERROR);
-    assert!(!errors.is_empty(), "Should have ERROR (0x81) message");
-    assert_eq!(errors[0].message_type, 0x81);
-
-    // Client should receive error
-    let result = pending.wait();
-    assert!(result.is_err(), "Client should receive error result");
-}
-
-// ============================================================================
-// Multiple Concurrent Requests Tests
-// ============================================================================
-
-/// Multiple concurrent requests are correctly matched with responses
-#[test]
-#[ignore = "Runtime::new not implemented"]
-fn concurrent_requests_correctly_matched() {
-    covers!(feat_req_recentip_338, feat_req_recentip_88);
-
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
-
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
-
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    // Send multiple requests
-    let method_id = MethodId::new(0x0001);
-    let pending1 = proxy.call(method_id, &[1]).unwrap();
-    let pending2 = proxy.call(method_id, &[2]).unwrap();
-    let pending3 = proxy.call(method_id, &[3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Server responds in different order
-    let mut requests = Vec::new();
-    while let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        requests.push(request);
-    }
-
-    // Respond in reverse order
-    for request in requests.into_iter().rev() {
-        let value = request.payload[0];
-        request.responder.send_ok(&[value + 100]).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Each pending should get its correct response
-    let r1 = pending1.wait().unwrap();
-    let r2 = pending2.wait().unwrap();
-    let r3 = pending3.wait().unwrap();
-
-    assert_eq!(r1.payload, &[101], "Request 1 should get response 101");
-    assert_eq!(r2.payload, &[102], "Request 2 should get response 102");
-    assert_eq!(r3.payload, &[103], "Request 3 should get response 103");
-}
-
-// ============================================================================
-// Session ID Behavior in RPC
-// ============================================================================
-
-/// Session ID increments for each request
-#[test]
-#[ignore = "Runtime::new not implemented"]
-fn session_id_increments_per_request() {
-    covers!(feat_req_recentip_88, feat_req_recentip_649);
-
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
-
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
-
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    network.clear_history();
-
-    // Send multiple requests
-    let method_id = MethodId::new(0x0001);
-    for i in 0..5 {
-        let pending = proxy.call(method_id, &[i]).unwrap();
-        network.advance(std::time::Duration::from_millis(10));
-
-        if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-            request.responder.send_ok(&[]).unwrap();
+        if let Some(event) = tokio::time::timeout(
+            Duration::from_secs(5),
+            offering.next()
+        ).await.ok().flatten() {
+            match event {
+                ServiceEvent::Call { responder, .. } => {
+                    // Server replies with error
+                    responder.reply_error(ReturnCode::NotOk).await.unwrap();
+                }
+                _ => panic!("Expected Call event"),
+            }
         }
-        network.advance(std::time::Duration::from_millis(10));
-        let _result = pending.wait();
-    }
 
-    // Check session IDs are incrementing
-    let requests = find_by_message_type(&network, message_type::REQUEST);
-    assert_eq!(requests.len(), 5);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
 
-    let session_ids: Vec<u16> = requests.iter().map(|h| h.session_id).collect();
-    for i in 1..session_ids.len() {
-        assert!(
-            session_ids[i] > session_ids[i - 1]
-                || (session_ids[i] == 1 && session_ids[i - 1] == 0xFFFF),
-            "Session IDs should increment (or wrap)"
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout waiting for service");
+
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(MethodId::new(0x0001), b"request"),
+        )
+        .await
+        .expect("Timeout waiting for response")
+        .expect("Call should complete (even with error)");
+
+        // The response should indicate an error
+        assert_ne!(
+            response.return_code,
+            ReturnCode::Ok,
+            "Error response should have non-Ok return code"
         );
-    }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }

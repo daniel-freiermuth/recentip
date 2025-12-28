@@ -81,6 +81,8 @@ mod tcp_binding;
 #[path = "compliance/udp_binding.rs"]
 mod udp_binding;
 
+// rpc_flow contains turmoil integration tests for request/response patterns
+#[cfg(feature = "turmoil")]
 #[path = "compliance/rpc_flow.rs"]
 mod rpc_flow;
 
