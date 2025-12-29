@@ -270,7 +270,10 @@ struct FindRequest {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]  // Fields used for version matching in future
 struct DiscoveredService {
+    /// RPC endpoint for sending SOME/IP RPC messages
     endpoint: SocketAddr,
+    /// SD endpoint for sending SD messages (SubscribeEventgroup, etc.)
+    sd_endpoint: SocketAddr,
     major_version: u8,
     minor_version: u32,
     ttl_expires: Instant,
@@ -793,9 +796,9 @@ fn handle_sd_message(
             }
             SdEntryType::SubscribeEventgroup => {
                 if entry.is_stop() {
-                    handle_unsubscribe_request(entry, from, state);
+                    handle_unsubscribe_request(entry, &sd_message, from, state);
                 } else {
-                    handle_subscribe_request(entry, from, state, &mut actions);
+                    handle_subscribe_request(entry, &sd_message, from, state, &mut actions);
                 }
             }
             SdEntryType::SubscribeEventgroupAck => {
@@ -1194,6 +1197,7 @@ fn handle_offer(
         key,
         DiscoveredService {
             endpoint,
+            sd_endpoint: from,  // Store the SD source for Subscribe messages
             major_version: entry.major_version,
             minor_version: entry.minor_version,
             ttl_expires: Instant::now() + ttl_duration,
@@ -1273,6 +1277,7 @@ fn handle_find_request(
 /// Handle a SubscribeEventgroup request
 fn handle_subscribe_request(
     entry: &SdEntry,
+    sd_message: &SdMessage,
     from: SocketAddr,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
@@ -1282,15 +1287,23 @@ fn handle_subscribe_request(
         instance_id: entry.instance_id,
     };
 
+    // Get client's event endpoint from SD option, falling back to source address
+    // If the endpoint has unspecified IP (0.0.0.0), use the source IP with the option's port
+    let client_endpoint = match sd_message.get_udp_endpoint(entry) {
+        Some(ep) if !ep.ip().is_unspecified() => ep,
+        Some(ep) => SocketAddr::new(from.ip(), ep.port()),
+        None => from,
+    };
+
     if let Some(offered) = state.offered.get(&key) {
         let (response_tx, _response_rx) = oneshot::channel();
         let _ = offered.requests_tx.try_send(ServiceRequest::Subscribe {
             eventgroup_id: entry.eventgroup_id,
-            client: from,
+            client: client_endpoint,
             response: response_tx,
         });
 
-        // Track the subscriber
+        // Track the subscriber - use the endpoint from the option for event delivery
         let sub_key = SubscriberKey {
             service_id: entry.service_id,
             instance_id: entry.instance_id,
@@ -1299,7 +1312,7 @@ fn handle_subscribe_request(
         state.server_subscribers
             .entry(sub_key)
             .or_insert_with(Vec::new)
-            .push(from);
+            .push(client_endpoint);
 
         let mut ack = SdMessage::new(state.sd_flags(true));
         ack.add_entry(SdEntry::subscribe_eventgroup_ack(
@@ -1311,6 +1324,7 @@ fn handle_subscribe_request(
             entry.counter,
         ));
 
+        // Send ACK to the SD source (not the event endpoint)
         actions.push(Action::SendSd {
             message: ack,
             target: from,
@@ -1319,16 +1333,23 @@ fn handle_subscribe_request(
 }
 
 /// Handle a StopSubscribeEventgroup request
-fn handle_unsubscribe_request(entry: &SdEntry, from: SocketAddr, state: &mut RuntimeState) {
+fn handle_unsubscribe_request(entry: &SdEntry, sd_message: &SdMessage, from: SocketAddr, state: &mut RuntimeState) {
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
     };
 
+    // Get client's event endpoint from SD option (same as subscribe)
+    let client_endpoint = match sd_message.get_udp_endpoint(entry) {
+        Some(ep) if !ep.ip().is_unspecified() => ep,
+        Some(ep) => SocketAddr::new(from.ip(), ep.port()),
+        None => from,
+    };
+
     if let Some(offered) = state.offered.get(&key) {
         let _ = offered.requests_tx.try_send(ServiceRequest::Unsubscribe {
             eventgroup_id: entry.eventgroup_id,
-            client: from,
+            client: client_endpoint,
         });
 
         // Remove the subscriber
@@ -1338,7 +1359,7 @@ fn handle_unsubscribe_request(entry: &SdEntry, from: SocketAddr, state: &mut Run
             eventgroup_id: entry.eventgroup_id,
         };
         if let Some(subscribers) = state.server_subscribers.get_mut(&sub_key) {
-            subscribers.retain(|addr| *addr != from);
+            subscribers.retain(|addr| *addr != client_endpoint);
         }
     }
 }
@@ -1644,7 +1665,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
 
                 actions.push(Action::SendSd {
                     message: msg,
-                    target: discovered.endpoint,
+                    target: discovered.sd_endpoint,  // Send to SD socket, not RPC socket
                 });
 
                 let _ = response.send(Ok(()));
@@ -1673,7 +1694,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
 
                 actions.push(Action::SendSd {
                     message: msg,
-                    target: discovered.endpoint,
+                    target: discovered.sd_endpoint,  // Send to SD socket, not RPC socket
                 });
             }
         }
