@@ -1460,10 +1460,23 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         Command::Find { service_id, instance_id, notify } => {
             let key = ServiceKey::new(service_id, instance_id);
 
-            if let Some(discovered) = state.discovered.get(&key) {
+            // Check if we already have a matching discovered service
+            // Use wildcard-aware matching: if instance_id is Any (0xFFFF), match any instance
+            let found = if instance_id == InstanceId::Any {
+                // Find any service with matching service_id
+                state.discovered.iter()
+                    .find(|(k, _)| k.service_id == service_id.value())
+                    .map(|(k, v)| (k.instance_id, v.endpoint))
+            } else {
+                // Exact match
+                state.discovered.get(&key)
+                    .map(|v| (key.instance_id, v.endpoint))
+            };
+
+            if let Some((discovered_instance_id, endpoint)) = found {
                 let _ = notify.try_send(ServiceAvailability::Available {
-                    endpoint: discovered.endpoint,
-                    instance_id: key.instance_id,
+                    endpoint,
+                    instance_id: discovered_instance_id,
                 });
             } else {
                 state.find_requests.insert(

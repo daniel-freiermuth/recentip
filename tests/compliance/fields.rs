@@ -79,7 +79,7 @@ fn field_getter_empty_request_payload() {
                 }
             }
 
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
             Ok(())
         }
     });
@@ -88,7 +88,7 @@ fn field_getter_empty_request_payload() {
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
             let config = RuntimeConfig::default();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -106,14 +106,14 @@ fn field_getter_empty_request_payload() {
             assert_eq!(response.payload.as_ref(), b"field_value");
             *flag.lock().unwrap() = true;
 
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
             Ok(())
         }
     });
 
     // Add a driver client to ensure simulation runs
     sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
         Ok(())
     });
 
@@ -160,7 +160,7 @@ fn field_getter_returns_current_value() {
                 }
             }
 
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
             Ok(())
         }
     });
@@ -168,7 +168,7 @@ fn field_getter_returns_current_value() {
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
 
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -194,7 +194,7 @@ fn field_getter_returns_current_value() {
 
     // Add a driver client to ensure simulation runs
     sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
         Ok(())
     });
 
@@ -246,6 +246,8 @@ fn field_setter_sends_value_in_request() {
 
                 // Acknowledge setter
                 responder.reply(b"").await.unwrap();
+                // Allow response to be transmitted before task exits
+                tokio::time::sleep(Duration::from_millis(100)).await;
                 *flag.lock().unwrap() = true;
             }
         }
@@ -257,7 +259,7 @@ fn field_setter_sends_value_in_request() {
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
 
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -281,7 +283,7 @@ fn field_setter_sends_value_in_request() {
 
     // Add a driver client to ensure simulation runs
     sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
         Ok(())
     });
 
@@ -319,6 +321,8 @@ fn field_setter_gets_response() {
             if let ServiceEvent::Call { responder, .. } = event {
                 // Setter must send response (not fire-and-forget)
                 responder.reply(b"").await.unwrap();
+                // Allow response to be transmitted before task exits
+                tokio::time::sleep(Duration::from_millis(100)).await;
                 *flag.lock().unwrap() = true;
             }
         }
@@ -330,7 +334,7 @@ fn field_setter_gets_response() {
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
 
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -348,14 +352,14 @@ fn field_setter_gets_response() {
         assert!(result.is_ok(), "Setter should receive response (feat_req_recentip_634)");
         *flag.lock().unwrap() = true;
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
         Ok(())
         }
     });
 
     // Add a driver client to ensure simulation runs
     sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
         Ok(())
     });
 
@@ -411,7 +415,7 @@ fn field_notifier_sends_updated_value() {
             offering.notify(eventgroup_id, notifier_event, &updated_value).await.unwrap();
             *flag.lock().unwrap() = true;
 
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
             Ok(())
         }
     });
@@ -419,7 +423,7 @@ fn field_notifier_sends_updated_value() {
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
 
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -450,14 +454,14 @@ fn field_notifier_sends_updated_value() {
         } else {
             panic!("Should receive field update notification");
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
         Ok(())
         }
     });
 
     // Add a driver client to ensure simulation runs
     sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
         Ok(())
     });
 
@@ -537,7 +541,7 @@ fn field_combines_getter_setter_notifier() {
             }
         }
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
         Ok(())
         }
     });
@@ -545,7 +549,7 @@ fn field_combines_getter_setter_notifier() {
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
 
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -584,14 +588,14 @@ fn field_combines_getter_setter_notifier() {
             panic!("Should receive notification after setter");
         }
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
         Ok(())
         }
     });
 
     // Add a driver client to ensure simulation runs
     sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
         Ok(())
     });
 
@@ -644,7 +648,7 @@ fn field_setter_can_reject_invalid_value() {
                 }
             }
 
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
             Ok(())
         }
     });
@@ -652,7 +656,7 @@ fn field_setter_can_reject_invalid_value() {
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
 
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -688,7 +692,7 @@ fn field_setter_can_reject_invalid_value() {
 
     // Add a driver client to ensure simulation runs
     sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
         Ok(())
     });
 

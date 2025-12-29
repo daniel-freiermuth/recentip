@@ -383,6 +383,8 @@ fn session_increments_across_methods() {
             }
         }
 
+        // Allow responses to be transmitted before task exits
+        tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())
     });
 
