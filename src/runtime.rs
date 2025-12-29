@@ -907,6 +907,15 @@ fn build_response(
     
     let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
     
+    // feat_req_recentip_655: Error message must copy request header fields
+    // feat_req_recentip_727: Error messages have return code != 0x00
+    // Use MessageType::Error when return_code indicates an error
+    let message_type = if return_code == 0x00 {
+        MessageType::Response
+    } else {
+        MessageType::Error
+    };
+    
     let header = Header {
         service_id,
         method_id,
@@ -915,7 +924,7 @@ fn build_response(
         session_id,
         protocol_version: PROTOCOL_VERSION,
         interface_version,
-        message_type: MessageType::Response,
+        message_type,
         return_code,
     };
     

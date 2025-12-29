@@ -248,6 +248,14 @@ impl Header {
 
         let message_type = MessageType::from_u8(message_type_raw)?;
 
+        // feat_req_recentip_798: Messages with Length < 8 shall be ignored
+        // The length field represents payload size + 8 bytes for the header tail
+        // (client_id, session_id, protocol_version, interface_version, message_type, return_code)
+        // Therefore, the minimum valid length is 8 (no payload)
+        if length < 8 {
+            return None;
+        }
+
         Some(Self {
             service_id,
             method_id,
@@ -972,6 +980,68 @@ mod tests {
             0x00,       // return_code
         ]);
         assert!(Header::parse(&mut exact).is_some(), "16 bytes should parse successfully");
+    }
+
+    #[test]
+    fn test_header_rejects_invalid_length() {
+        use bytes::Bytes;
+        
+        // feat_req_recentip_798: Messages with Length < 8 shall be ignored
+        // Test with Length = 0
+        let mut zero_length = Bytes::from_static(&[
+            0x12, 0x34, // service_id
+            0x00, 0x01, // method_id
+            0x00, 0x00, 0x00, 0x00, // length = 0 (INVALID)
+            0x00, 0x01, // client_id
+            0x00, 0x01, // session_id
+            0x01,       // protocol_version
+            0x01,       // interface_version
+            0x00,       // message_type (Request)
+            0x00,       // return_code
+        ]);
+        assert!(Header::parse(&mut zero_length).is_none(), "Length=0 should be rejected");
+        
+        // Test with Length = 4
+        let mut length_four = Bytes::from_static(&[
+            0x12, 0x34, // service_id
+            0x00, 0x01, // method_id
+            0x00, 0x00, 0x00, 0x04, // length = 4 (INVALID, must be >= 8)
+            0x00, 0x01, // client_id
+            0x00, 0x01, // session_id
+            0x01,       // protocol_version
+            0x01,       // interface_version
+            0x00,       // message_type (Request)
+            0x00,       // return_code
+        ]);
+        assert!(Header::parse(&mut length_four).is_none(), "Length=4 should be rejected");
+        
+        // Test with Length = 7 (boundary)
+        let mut length_seven = Bytes::from_static(&[
+            0x12, 0x34, // service_id
+            0x00, 0x01, // method_id
+            0x00, 0x00, 0x00, 0x07, // length = 7 (INVALID, must be >= 8)
+            0x00, 0x01, // client_id
+            0x00, 0x01, // session_id
+            0x01,       // protocol_version
+            0x01,       // interface_version
+            0x00,       // message_type (Request)
+            0x00,       // return_code
+        ]);
+        assert!(Header::parse(&mut length_seven).is_none(), "Length=7 should be rejected");
+        
+        // Test with Length = 8 (minimum valid)
+        let mut length_eight = Bytes::from_static(&[
+            0x12, 0x34, // service_id
+            0x00, 0x01, // method_id
+            0x00, 0x00, 0x00, 0x08, // length = 8 (VALID, minimum)
+            0x00, 0x01, // client_id
+            0x00, 0x01, // session_id
+            0x01,       // protocol_version
+            0x01,       // interface_version
+            0x00,       // message_type (Request)
+            0x00,       // return_code
+        ]);
+        assert!(Header::parse(&mut length_eight).is_some(), "Length=8 should be accepted");
     }
 
     // ========================================================================

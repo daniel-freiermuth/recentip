@@ -94,6 +94,8 @@ mod events;
 #[path = "compliance/fields.rs"]
 mod fields;
 
+// error_scenarios contains turmoil integration tests for error handling behavior
+#[cfg(feature = "turmoil")]
 #[path = "compliance/error_scenarios.rs"]
 mod error_scenarios;
 
