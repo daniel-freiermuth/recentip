@@ -91,6 +91,8 @@ mod rpc_flow;
 #[path = "compliance/events.rs"]
 mod events;
 
+// fields contains turmoil integration tests for field getter/setter/notifier patterns
+#[cfg(feature = "turmoil")]
 #[path = "compliance/fields.rs"]
 mod fields;
 

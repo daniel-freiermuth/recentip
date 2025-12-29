@@ -9,18 +9,11 @@
 //! - feat_req_recentip_634: Setter is request/response with value as request payload
 //! - feat_req_recentip_635: Notifier sends notification event with updated value
 
-use someip_runtime::*;
-
-// Re-use wire format parsing from the shared module
-#[path = "../wire.rs"]
-mod wire;
-
-// Re-use simulated network
-#[path = "../simulated.rs"]
-mod simulated;
-
-use simulated::{NetworkEvent, SimulatedNetwork};
-use wire::Header;
+use someip_runtime::prelude::*;
+use someip_runtime::runtime::Runtime;
+use someip_runtime::handle::ServiceEvent;
+use std::time::Duration;
+use std::sync::{Arc, Mutex};
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -29,36 +22,16 @@ macro_rules! covers {
     };
 }
 
-// ============================================================================
-// Message Type Constants
-// ============================================================================
+/// Type alias for turmoil-based runtime
+type TurmoilRuntime = Runtime<turmoil::net::UdpSocket>;
 
-mod message_type {
-    pub const REQUEST: u8 = 0x00;
-    pub const RESPONSE: u8 = 0x80;
-    pub const NOTIFICATION: u8 = 0x02;
-}
+/// Test service definition
+struct TestService;
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Find RPC messages (non-SD) in network history
-fn find_rpc_messages(network: &SimulatedNetwork) -> Vec<(Header, Vec<u8>)> {
-    network
-        .history()
-        .into_iter()
-        .filter_map(|event| {
-            if let NetworkEvent::UdpSent { data, to, .. } = event {
-                if to.port() != 30490 && data.len() >= 16 {
-                    if let Some(header) = Header::from_bytes(&data) {
-                        return Some((header, data));
-                    }
-                }
-            }
-            None
-        })
-        .collect()
+impl Service for TestService {
+    const SERVICE_ID: u16 = 0x1234;
+    const MAJOR_VERSION: u8 = 1;
+    const MINOR_VERSION: u32 = 0;
 }
 
 // ============================================================================
@@ -70,101 +43,164 @@ fn find_rpc_messages(network: &SimulatedNetwork) -> Vec<(Header, Vec<u8>)> {
 /// The getter of a field shall be a request/response call that has an empty
 /// payload for the request and the current value as payload of the response.
 #[test]
-#[ignore = "Runtime::new not implemented"]
 fn field_getter_empty_request_payload() {
     covers!(feat_req_recentip_633);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let server_called = Arc::new(Mutex::new(false));
+    let client_called = Arc::new(Mutex::new(false));
+    let server_flag = Arc::clone(&server_called);
+    let client_flag = Arc::clone(&client_called);
 
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-    // Getter method ID (by convention, could be any valid method ID)
-    let getter_method = MethodId::new(0x0001);
+    // Server offers service with field getter
+    sim.host("server", move || {
+        let flag = Arc::clone(&server_flag);
+        async move {
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+            let mut offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+            // Handle getter request - should have empty payload
+            if let Some(event) = offering.next().await {
+                if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                    assert_eq!(method, MethodId::new(0x0001), "Expected getter method");
+                    assert!(payload.is_empty(), "Getter request should have empty payload (feat_req_recentip_633)");
+                    
+                    // Respond with current field value
+                    responder.reply(b"field_value").await.unwrap();
+                    *flag.lock().unwrap() = true;
+                }
+            }
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let available = proxy.wait_available().unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            Ok(())
+        }
+    });
 
-    network.clear_history();
+    // Client calls getter
+    sim.host("client", || {
+        let flag = Arc::clone(&client_flag);
+        async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Call getter with empty payload
-    let pending = available.get_field(getter_method).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    // Verify request has empty payload
-    let messages = find_rpc_messages(&network);
-    let request = messages.iter().find(|(h, _)| h.message_type == message_type::REQUEST);
-    assert!(request.is_some(), "Should send REQUEST message");
+            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+                .await
+                .expect("Discovery timeout");
 
-    let (header, data) = request.unwrap();
-    let payload_len = data.len() - 16;
-    assert_eq!(payload_len, 0, "Getter request should have empty payload");
+            // Call getter with empty payload
+            let getter_method = MethodId::new(0x0001);
+            let response = proxy.call(getter_method, b"").await.unwrap();
 
-    // Server responds with field value
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        assert!(request.payload.is_empty(), "Getter request payload should be empty");
-        request.responder.send_ok(b"field_value").unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
+            // Verify we got the field value
+            assert_eq!(response.payload.as_ref(), b"field_value");
+            *flag.lock().unwrap() = true;
 
-    // Client receives value
-    let response = pending.wait().unwrap();
-    assert_eq!(response.payload, b"field_value");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            Ok(())
+        }
+    });
+
+    // Add a driver client to ensure simulation runs
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+    
+    // Verify both server and client actually executed
+    assert!(*server_called.lock().unwrap(), "Server code should have executed");
+    assert!(*client_called.lock().unwrap(), "Client code should have executed");
 }
 
 /// feat_req_recentip_633: Getter returns current value in response
 #[test]
-#[ignore = "Runtime::new not implemented"]
 fn field_getter_returns_current_value() {
     covers!(feat_req_recentip_633);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let server_called = Arc::new(Mutex::new(false));
+    let client_called = Arc::new(Mutex::new(false));
+    let server_flag = Arc::clone(&server_called);
+    let client_flag = Arc::clone(&client_called);
 
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-    let getter_method = MethodId::new(0x0001);
+    sim.host("server", move || {
+        let flag = Arc::clone(&server_flag);
+        async move {
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+            let mut offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+            // Simulate field with current temperature value
+            let current_temperature: u16 = 25;
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let available = proxy.wait_available().unwrap();
+            if let Some(event) = offering.next().await {
+                if let ServiceEvent::Call { responder, .. } = event {
+                    // Return current field value
+                    responder.reply(&current_temperature.to_be_bytes()).await.unwrap();
+                    *flag.lock().unwrap() = true;
+                }
+            }
 
-    // Get current value
-    let pending = available.get_field(getter_method).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            Ok(())
+        }
+    });
 
-    // Server returns current value (e.g., temperature = 25)
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        let current_temp: u16 = 25;
-        request.responder.send_ok(&current_temp.to_be_bytes()).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
+    sim.host("client", || {
+        let flag = Arc::clone(&client_flag);
+        async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let response = pending.wait().unwrap();
-    assert_eq!(response.payload, 25u16.to_be_bytes());
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout");
+
+        let response = proxy.call(MethodId::new(0x0001), b"").await.unwrap();
+
+        // Verify we got the temperature value
+        assert_eq!(
+            u16::from_be_bytes([response.payload[0], response.payload[1]]),
+            25,
+            "Should receive current field value"
+        );
+        *flag.lock().unwrap() = true;
+
+        Ok(())
+        }
+    });
+
+    // Add a driver client to ensure simulation runs
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+    assert!(*server_called.lock().unwrap(), "Server should have executed");
+    assert!(*client_called.lock().unwrap(), "Client should have executed");
 }
 
 // ============================================================================
@@ -176,100 +212,156 @@ fn field_getter_returns_current_value() {
 /// The setter of a field shall be a request/response call that has the
 /// desired value as payload for the request.
 #[test]
-#[ignore = "Runtime::new not implemented"]
 fn field_setter_sends_value_in_request() {
     covers!(feat_req_recentip_634);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let server_called = Arc::new(Mutex::new(false));
+    let client_called = Arc::new(Mutex::new(false));
+    let server_flag = Arc::clone(&server_called);
+    let client_flag = Arc::clone(&client_called);
 
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-    let setter_method = MethodId::new(0x0002);
+    sim.host("server", move || {
+        let flag = Arc::clone(&server_flag);
+        async move {
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        if let Some(event) = offering.next().await {
+            if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                assert_eq!(method, MethodId::new(0x0002), "Expected setter method");
+                
+                // Verify payload contains the new value
+                assert_eq!(payload.len(), 2, "Setter should have value payload");
+                let new_value = u16::from_be_bytes([payload[0], payload[1]]);
+                assert_eq!(new_value, 42, "Setter payload should contain new value (feat_req_recentip_634)");
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let available = proxy.wait_available().unwrap();
+                // Acknowledge setter
+                responder.reply(b"").await.unwrap();
+                *flag.lock().unwrap() = true;
+            }
+        }
 
-    network.clear_history();
+        Ok(())
+        }
+    });
 
-    // Set field to new value
-    let new_value = 42u16.to_be_bytes();
-    let pending = available.set_field(setter_method, &new_value).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+    sim.host("client", || {
+        let flag = Arc::clone(&client_flag);
+        async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Verify request contains the value
-    let messages = find_rpc_messages(&network);
-    let request = messages.iter().find(|(h, _)| h.message_type == message_type::REQUEST);
-    assert!(request.is_some());
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let (_, data) = request.unwrap();
-    let payload = &data[16..];
-    assert_eq!(payload, &new_value, "Setter request should contain the new value");
+        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout");
 
-    // Server receives and acknowledges
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        assert_eq!(request.payload, new_value, "Server should receive the new value");
-        request.responder.send_ok_empty().unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
+        // Set field to new value
+        let setter_method = MethodId::new(0x0002);
+        let new_value = 42u16.to_be_bytes();
+        let response = proxy.call(setter_method, &new_value).await.unwrap();
 
-    let response = pending.wait().unwrap();
-    assert_eq!(response.return_code, ReturnCode::Ok);
+        assert!(response.payload.is_empty(), "Setter response typically empty");
+        *flag.lock().unwrap() = true;
+
+        Ok(())
+        }
+    });
+
+    // Add a driver client to ensure simulation runs
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+    assert!(*server_called.lock().unwrap(), "Server should have executed");
+    assert!(*client_called.lock().unwrap(), "Client should have executed");
 }
 
 /// feat_req_recentip_634: Setter is request/response (not fire&forget)
 #[test]
-#[ignore = "Runtime::new not implemented"]
 fn field_setter_gets_response() {
     covers!(feat_req_recentip_634);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let server_called = Arc::new(Mutex::new(false));
+    let client_called = Arc::new(Mutex::new(false));
+    let server_flag = Arc::clone(&server_called);
+    let client_flag = Arc::clone(&client_called);
 
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-    let setter_method = MethodId::new(0x0002);
+    sim.host("server", move || {
+        let flag = Arc::clone(&server_flag);
+        async move {
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        if let Some(event) = offering.next().await {
+            if let ServiceEvent::Call { responder, .. } = event {
+                // Setter must send response (not fire-and-forget)
+                responder.reply(b"").await.unwrap();
+                *flag.lock().unwrap() = true;
+            }
+        }
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let available = proxy.wait_available().unwrap();
+        Ok(())
+        }
+    });
 
-    // Set field
-    let pending = available.set_field(setter_method, &[1, 2, 3, 4]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+    sim.host("client", || {
+        let flag = Arc::clone(&client_flag);
+        async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Server must respond (setter is request/response)
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        request.responder.send_ok_empty().unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    // Client should receive response
-    let response = pending.wait();
-    assert!(response.is_ok(), "Setter should receive response");
+        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout");
+
+        // Call setter
+        let setter_method = MethodId::new(0x0002);
+        let result = proxy.call(setter_method, &[1, 2, 3, 4]).await;
+
+        // Should receive response (proving it's request/response, not fire-and-forget)
+        assert!(result.is_ok(), "Setter should receive response (feat_req_recentip_634)");
+        *flag.lock().unwrap() = true;
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+        }
+    });
+
+    // Add a driver client to ensure simulation runs
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+    assert!(*server_called.lock().unwrap(), "Server should have executed");
+    assert!(*client_called.lock().unwrap(), "Client should have executed");
 }
 
 // ============================================================================
@@ -280,130 +372,232 @@ fn field_setter_gets_response() {
 ///
 /// The notifier shall send a notification event message that communicates
 /// the updated value of the field.
+///
+/// TODO: This test currently fails with ServiceUnavailable during subscription.
+/// The SOME/IP runtime needs to properly advertise eventgroups in Service Discovery.
+/// Issue tracked in todo #4: "Fix eventgroup advertisement in Service Discovery"
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore]
 fn field_notifier_sends_updated_value() {
     covers!(feat_req_recentip_635);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let server_called = Arc::new(Mutex::new(false));
+    let client_called = Arc::new(Mutex::new(false));
+    let server_flag = Arc::clone(&server_called);
+    let client_flag = Arc::clone(&client_called);
 
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-    let eventgroup_id = EventgroupId::new(0x01).unwrap();
-    // Notifier event ID (high bit set for events)
-    let notifier_event = EventId::new(0x8001).unwrap();
+    sim.host("server", move || {
+        let flag = Arc::clone(&server_flag);
+        async move {
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .eventgroup(eventgroup_id)
-        .build()
-        .unwrap();
+            let offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+            // Wait for subscription to be established
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let available = proxy.wait_available().unwrap();
+            // Field value changes - send notification with updated value
+            let updated_value = 100u32.to_be_bytes();
+            let eventgroup_id = EventgroupId::new(0x01).unwrap();
+            let notifier_event = EventId::new(0x8001).unwrap();
+            offering.notify(eventgroup_id, notifier_event, &updated_value).await.unwrap();
+            *flag.lock().unwrap() = true;
 
-    // Subscribe to field notifications
-    let mut subscription = available.subscribe(eventgroup_id).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            Ok(())
+        }
+    });
 
-    network.clear_history();
+    sim.host("client", || {
+        let flag = Arc::clone(&client_flag);
+        async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Field value changes, server sends notification
-    let updated_value = 100u32.to_be_bytes();
-    offering.notify(eventgroup_id, notifier_event, &updated_value).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    // Verify notification message was sent
-    let messages = find_rpc_messages(&network);
-    let notification = messages.iter().find(|(h, _)| h.message_type == message_type::NOTIFICATION);
-    assert!(notification.is_some(), "Should send NOTIFICATION message");
+        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout");
 
-    let (_, data) = notification.unwrap();
-    let payload = &data[16..];
-    assert_eq!(payload, &updated_value, "Notification should contain updated value");
+        // Subscribe to field notifications
+        let eventgroup_id = EventgroupId::new(0x01).unwrap();
+        let mut subscription = proxy.subscribe(eventgroup_id).await.unwrap();
 
-    // Client receives the notification
-    let event = subscription.try_next_event().ok().flatten();
-    assert!(event.is_some(), "Client should receive field update notification");
+        // Wait for notification
+        if let Some(event) = tokio::time::timeout(
+            Duration::from_secs(5),
+            subscription.next()
+        ).await.ok().flatten() {
+            // Verify notification contains updated field value
+            let value = u32::from_be_bytes([
+                event.payload[0],
+                event.payload[1],
+                event.payload[2],
+                event.payload[3],
+            ]);
+            assert_eq!(value, 100, "Notification should contain updated field value (feat_req_recentip_635)");
+            *flag.lock().unwrap() = true;
+        } else {
+            panic!("Should receive field update notification");
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+        }
+    });
+
+    // Add a driver client to ensure simulation runs
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+    assert!(*server_called.lock().unwrap(), "Server should have executed");
+    assert!(*client_called.lock().unwrap(), "Client should have executed");
 }
 
+// ============================================================================
+// Field Combination Tests
+// ============================================================================
+
 /// feat_req_recentip_631: Field is combination of getter/setter/notifier
+///
+/// A field is a combination of a getter method, setter method, and notifier event.
+///
+/// TODO: This test currently fails with ServiceUnavailable during subscription.
+/// The SOME/IP runtime needs to properly advertise eventgroups in Service Discovery.
+/// Issue tracked in todo #4: "Fix eventgroup advertisement in Service Discovery"
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore]
 fn field_combines_getter_setter_notifier() {
     covers!(feat_req_recentip_631);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let server_called = Arc::new(Mutex::new(false));
+    let client_called = Arc::new(Mutex::new(false));
+    let server_flag = Arc::clone(&server_called);
+    let client_flag = Arc::clone(&client_called);
 
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-    let eventgroup_id = EventgroupId::new(0x01).unwrap();
+    sim.host("server", move || {
+        let flag = Arc::clone(&server_flag);
+        async move {
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    // Field "Temperature" has getter, setter, and notifier
-    let temp_getter = MethodId::new(0x0001);
-    let temp_setter = MethodId::new(0x0002);
-    let temp_notifier = EventId::new(0x8001).unwrap();
+            let mut offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .eventgroup(eventgroup_id)
-        .build()
-        .unwrap();
+            let mut field_value: u16 = 20; // Initial temperature
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+            // Wait for subscription
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let available = proxy.wait_available().unwrap();
+            // Handle getter request
+            if let Some(event) = offering.next().await {
+                if let ServiceEvent::Call { method, responder, .. } = event {
+                    if method == MethodId::new(0x0001) {
+                        // Getter - return current value
+                        responder.reply(&field_value.to_be_bytes()).await.unwrap();
+                    }
+                }
+            }
 
-    // Subscribe to notifications
-    let mut subscription = available.subscribe(eventgroup_id).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+            // Handle setter request
+        if let Some(event) = offering.next().await {
+            if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                if method == MethodId::new(0x0002) {
+                    // Setter - update value
+                    field_value = u16::from_be_bytes([payload[0], payload[1]]);
+                    responder.reply(b"").await.unwrap();
 
-    // 1. GET current value
-    let get_pending = available.get_field(temp_getter).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+                    // Send notification of changed value
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    let eventgroup_id = EventgroupId::new(0x01).unwrap();
+                    let notifier_event = EventId::new(0x8001).unwrap();
+                    offering.notify(eventgroup_id, notifier_event, &field_value.to_be_bytes())
+                        .await
+                        .unwrap();
+                    *flag.lock().unwrap() = true;
+                }
+            }
+        }
 
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        request.responder.send_ok(&20u16.to_be_bytes()).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+        }
+    });
 
-    let current = get_pending.wait().unwrap();
-    assert_eq!(current.payload, 20u16.to_be_bytes());
+    sim.host("client", || {
+        let flag = Arc::clone(&client_flag);
+        async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // 2. SET new value
-    let set_pending = available.set_field(temp_setter, &25u16.to_be_bytes()).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        // Server updates internal state and acknowledges
-        request.responder.send_ok_empty().unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
+        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout");
 
-    let set_response = set_pending.wait().unwrap();
-    assert_eq!(set_response.return_code, ReturnCode::Ok);
+        // Subscribe to get notifier updates
+        let eventgroup_id = EventgroupId::new(0x01).unwrap();
+        let mut subscription = proxy.subscribe(eventgroup_id).await.unwrap();
 
-    // 3. Server sends NOTIFICATION of new value
-    offering.notify(eventgroup_id, temp_notifier, &25u16.to_be_bytes()).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+        tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let notification = subscription.try_next_event().ok().flatten();
-    assert!(notification.is_some(), "Should receive field update notification");
+        // 1. GET current value (Getter)
+        let getter_method = MethodId::new(0x0001);
+        let get_response = proxy.call(getter_method, b"").await.unwrap();
+        let current_value = u16::from_be_bytes([get_response.payload[0], get_response.payload[1]]);
+        assert_eq!(current_value, 20, "Getter should return current value");
+
+        // 2. SET new value (Setter)
+        let setter_method = MethodId::new(0x0002);
+        let new_value = 25u16.to_be_bytes();
+        proxy.call(setter_method, &new_value).await.unwrap();
+
+        // 3. Receive notification of changed value (Notifier)
+        if let Some(event) = tokio::time::timeout(
+            Duration::from_secs(5),
+            subscription.next()
+        ).await.ok().flatten() {
+            let notified_value = u16::from_be_bytes([event.payload[0], event.payload[1]]);
+            assert_eq!(notified_value, 25, "Notifier should send updated value");
+            *flag.lock().unwrap() = true;
+        } else {
+            panic!("Should receive notification after setter");
+        }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+        }
+    });
+
+    // Add a driver client to ensure simulation runs
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+    assert!(*server_called.lock().unwrap(), "Server should have executed");
+    assert!(*client_called.lock().unwrap(), "Client should have executed");
 }
 
 // ============================================================================
@@ -412,43 +606,93 @@ fn field_combines_getter_setter_notifier() {
 
 /// Setter can reject invalid values with error response
 #[test]
-#[ignore = "Runtime::new not implemented"]
 fn field_setter_can_reject_invalid_value() {
-    covers!(feat_req_recentip_634, feat_req_recentip_649);
+    covers!(feat_req_recentip_634);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let server_called = Arc::new(Mutex::new(false));
+    let client_called = Arc::new(Mutex::new(false));
+    let server_flag = Arc::clone(&server_called);
+    let client_flag = Arc::clone(&client_called);
 
-    let mut client = Runtime::new(io_client, RuntimeConfig::default()).unwrap();
-    let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
-    let setter_method = MethodId::new(0x0002);
+    sim.host("server", move || {
+        let flag = Arc::clone(&server_flag);
+        async move {
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+            let mut offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+            if let Some(event) = offering.next().await {
+                if let ServiceEvent::Call { payload, responder, .. } = event {
+                    // Validate value
+                    let new_value = u16::from_be_bytes([payload[0], payload[1]]);
+                    
+                    if new_value > 100 {
+                        // Reject invalid value
+                        responder.reply_error(ReturnCode::NotOk).await.unwrap();
+                    } else {
+                        responder.reply(b"").await.unwrap();
+                    }
+                    *flag.lock().unwrap() = true;
+                }
+            }
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let available = proxy.wait_available().unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            Ok(())
+        }
+    });
 
-    // Try to set invalid value (e.g., temperature > 100)
-    let invalid_value = 150u16.to_be_bytes();
-    let pending = available.set_field(setter_method, &invalid_value).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+    sim.host("client", || {
+        let flag = Arc::clone(&client_flag);
+        async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Server rejects with error
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        request.responder.send_error(ReturnCode::NotOk).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let response = pending.wait().unwrap();
-    assert_eq!(response.return_code, ReturnCode::NotOk, "Invalid value should be rejected");
+        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout");
+
+        // Try to set invalid value (> 100)
+        let setter_method = MethodId::new(0x0002);
+        let invalid_value = 150u16.to_be_bytes();
+        let result = proxy.call(setter_method, &invalid_value).await;
+
+        // Should receive error response (either as Err or Ok with non-Ok return code)
+        match result {
+            Err(_) => {
+                // Error propagated as Err - acceptable
+            }
+            Ok(response) => {
+                assert_ne!(
+                    response.return_code, 
+                    ReturnCode::Ok,
+                    "Invalid value should be rejected with error return code"
+                );
+            }
+        }
+        *flag.lock().unwrap() = true;
+
+        Ok(())
+        }
+    });
+
+    // Add a driver client to ensure simulation runs
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+    assert!(*server_called.lock().unwrap(), "Server should have executed");
+    assert!(*client_called.lock().unwrap(), "Client should have executed");
 }
