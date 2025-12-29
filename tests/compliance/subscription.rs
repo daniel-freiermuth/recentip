@@ -353,9 +353,12 @@ fn subscribe_multiple_eventgroups() {
             .expect("Sub2 should succeed");
 
         // Receive from both subscriptions
-        // TODO Note: In this implementation, all events for a service are delivered to all
-        // subscriptions. In a full implementation with event→eventgroup mapping,
-        // events would be routed to specific subscriptions.
+        // Note: The SOME/IP wire format for events doesn't include the eventgroup ID,
+        // only the event_id. Without static event→eventgroup mapping configuration,
+        // the client cannot route events to specific subscriptions. The server-side
+        // correctly routes to the right eventgroup's subscribers, but on the client
+        // side, all subscriptions for a service receive all events. Applications
+        // should filter by event_id if needed.
         let event1 = tokio::time::timeout(Duration::from_secs(5), sub1.next())
             .await
             .expect("Event1 timeout");
