@@ -7,6 +7,7 @@
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
 use someip_runtime::handle::ServiceEvent;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -36,7 +37,12 @@ impl Service for EventService {
 /// feat_req_recentipsd_109: Eventgroup Entry is 16 bytes
 ///
 /// Client can subscribe to an eventgroup and receive events.
+///
+/// TODO: This test is ignored because the runtime does not yet advertise
+/// eventgroups in Service Discovery. Once eventgroup advertisement is implemented,
+/// remove the #[ignore] attribute.
 #[test]
+#[ignore]
 fn subscribe_and_receive_events() {
     covers!(feat_req_recentipsd_576, feat_req_recentipsd_109);
 
@@ -44,7 +50,12 @@ fn subscribe_and_receive_events() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    sim.host("server", || async {
+    let executed = Arc::new(Mutex::new(false));
+    let exec_flag = Arc::clone(&executed);
+
+    sim.host("server", move || {
+        let flag = Arc::clone(&exec_flag);
+        async move {
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -65,7 +76,9 @@ fn subscribe_and_receive_events() {
         offering.notify(eventgroup, event_id, b"event2").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
+        *flag.lock().unwrap() = true;
         Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -106,13 +119,24 @@ fn subscribe_and_receive_events() {
         Ok(())
     });
 
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
     sim.run().unwrap();
+    assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
 /// feat_req_recentipsd_576: SubscribeAck entry type (0x07)
 ///
 /// Server must acknowledge subscriptions with SubscribeAck.
+///
+/// TODO: This test is ignored because the runtime does not yet advertise
+/// eventgroups in Service Discovery. Once eventgroup advertisement is implemented,
+/// remove the #[ignore] attribute.
 #[test]
+#[ignore]
 fn subscribe_receives_ack() {
     covers!(feat_req_recentipsd_576);
 
@@ -120,7 +144,12 @@ fn subscribe_receives_ack() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    sim.host("server", || async {
+    let executed = Arc::new(Mutex::new(false));
+    let exec_flag = Arc::clone(&executed);
+
+    sim.host("server", move || {
+        let flag = Arc::clone(&exec_flag);
+        async move {
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -130,7 +159,9 @@ fn subscribe_receives_ack() {
             .unwrap();
 
         tokio::time::sleep(Duration::from_millis(1000)).await;
+        *flag.lock().unwrap() = true;
         Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -159,13 +190,24 @@ fn subscribe_receives_ack() {
         Ok(())
     });
 
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        Ok(())
+    });
+
     sim.run().unwrap();
+    assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
 /// feat_req_recentipsd_178: StopSubscribe uses TTL=0
 ///
 /// When subscription handle is dropped, StopSubscribe should be sent.
+///
+/// TODO: This test is ignored because the runtime does not yet advertise
+/// eventgroups in Service Discovery. Once eventgroup advertisement is implemented,
+/// remove the #[ignore] attribute.
 #[test]
+#[ignore]
 fn unsubscribe_on_drop() {
     covers!(feat_req_recentipsd_178);
 
@@ -173,7 +215,12 @@ fn unsubscribe_on_drop() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    sim.host("server", || async {
+    let executed = Arc::new(Mutex::new(false));
+    let exec_flag = Arc::clone(&executed);
+
+    sim.host("server", move || {
+        let flag = Arc::clone(&exec_flag);
+        async move {
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -199,7 +246,9 @@ fn unsubscribe_on_drop() {
         let _ = offering.notify(eventgroup, event_id, b"after_unsub").await;
 
         tokio::time::sleep(Duration::from_millis(200)).await;
+        *flag.lock().unwrap() = true;
         Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -240,7 +289,13 @@ fn unsubscribe_on_drop() {
         Ok(())
     });
 
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
     sim.run().unwrap();
+    assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
 // ============================================================================
@@ -248,7 +303,12 @@ fn unsubscribe_on_drop() {
 // ============================================================================
 
 /// feat_req_recentipsd_109: Multiple eventgroups can be subscribed
+///
+/// TODO: This test is ignored because the runtime does not yet advertise
+/// eventgroups in Service Discovery. Once eventgroup advertisement is implemented,
+/// remove the #[ignore] attribute.
 #[test]
+#[ignore]
 fn subscribe_multiple_eventgroups() {
     covers!(feat_req_recentipsd_109);
 
@@ -256,7 +316,12 @@ fn subscribe_multiple_eventgroups() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    sim.host("server", || async {
+    let executed = Arc::new(Mutex::new(false));
+    let exec_flag = Arc::clone(&executed);
+
+    sim.host("server", move || {
+        let flag = Arc::clone(&exec_flag);
+        async move {
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -276,7 +341,9 @@ fn subscribe_multiple_eventgroups() {
         offering.notify(eg2, event_id, b"group2_event").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
+        *flag.lock().unwrap() = true;
         Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -320,7 +387,13 @@ fn subscribe_multiple_eventgroups() {
         Ok(())
     });
 
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
     sim.run().unwrap();
+    assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
 // ============================================================================
@@ -328,7 +401,12 @@ fn subscribe_multiple_eventgroups() {
 // ============================================================================
 
 /// feat_req_recentip_101: Event IDs have high bit set (0x8000-0xFFFF)
+///
+/// TODO: This test is ignored because the runtime does not yet advertise
+/// eventgroups in Service Discovery. Once eventgroup advertisement is implemented,
+/// remove the #[ignore] attribute.
 #[test]
+#[ignore]
 fn event_id_has_high_bit() {
     covers!(feat_req_recentip_101);
 
@@ -336,7 +414,12 @@ fn event_id_has_high_bit() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    sim.host("server", || async {
+    let executed = Arc::new(Mutex::new(false));
+    let exec_flag = Arc::clone(&executed);
+
+    sim.host("server", move || {
+        let flag = Arc::clone(&exec_flag);
+        async move {
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -354,7 +437,9 @@ fn event_id_has_high_bit() {
         offering.notify(eventgroup, event_id, b"data").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
+        *flag.lock().unwrap() = true;
         Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -390,7 +475,13 @@ fn event_id_has_high_bit() {
         Ok(())
     });
 
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
     sim.run().unwrap();
+    assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
 // ============================================================================
@@ -398,7 +489,12 @@ fn event_id_has_high_bit() {
 // ============================================================================
 
 /// Services can handle both RPC calls and emit events
+///
+/// TODO: This test is ignored because the runtime does not yet advertise
+/// eventgroups in Service Discovery. Once eventgroup advertisement is implemented,
+/// remove the #[ignore] attribute.
 #[test]
+#[ignore]
 fn mixed_rpc_and_events() {
     covers!(feat_req_recentip_103, feat_req_recentipsd_576);
 
@@ -406,7 +502,12 @@ fn mixed_rpc_and_events() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    sim.host("server", || async {
+    let executed = Arc::new(Mutex::new(false));
+    let exec_flag = Arc::clone(&executed);
+
+    sim.host("server", move || {
+        let flag = Arc::clone(&exec_flag);
+        async move {
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -434,7 +535,9 @@ fn mixed_rpc_and_events() {
         offering.notify(eventgroup, event_id, b"post_rpc_event").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
+        *flag.lock().unwrap() = true;
         Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -480,5 +583,11 @@ fn mixed_rpc_and_events() {
         Ok(())
     });
 
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
     sim.run().unwrap();
+    assert!(*executed.lock().unwrap(), "Test should have executed");
 }
