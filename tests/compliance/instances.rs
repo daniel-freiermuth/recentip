@@ -127,11 +127,10 @@ fn multiple_instances_have_different_ids() {
 ///
 /// If a server runs different instances of the same service, messages
 /// belonging to the different instances shall be dispatched correctly.
-///
-/// TODO: This test currently times out. The server handles requests sequentially
-/// which may cause timing issues. Needs investigation.
+/// 
+/// NOTE: Per SOME/IP spec feat_req_recentipsd_782, multiple instances must use
+/// different endpoints (ports). This test uses separate hosts for each instance.
 #[test]
-#[ignore]
 fn messages_dispatched_to_correct_instance() {
     covers!(feat_req_recentip_648);
 
@@ -142,8 +141,8 @@ fn messages_dispatched_to_correct_instance() {
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
 
-    // Server offers 2 instances
-    sim.host("server", move || {
+    // Server 1 offers instance 1
+    sim.host("server1", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
@@ -152,30 +151,12 @@ fn messages_dispatched_to_correct_instance() {
             .offer::<ServiceA>(InstanceId::Id(0x0001))
             .await
             .unwrap();
-        let mut offering2 = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0002))
-            .await
-            .unwrap();
 
         // Handle request for instance 1
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering1.next()
-        ).await.ok().flatten() {
+        if let Some(event) = offering1.next().await {
             if let ServiceEvent::Call { payload, responder, .. } = event {
                 assert_eq!(payload.as_ref(), b"for_instance_1");
                 responder.reply(b"from_instance_1").await.unwrap();
-            }
-        }
-
-        // Handle request for instance 2
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering2.next()
-        ).await.ok().flatten() {
-            if let ServiceEvent::Call { payload, responder, .. } = event {
-                assert_eq!(payload.as_ref(), b"for_instance_2");
-                responder.reply(b"from_instance_2").await.unwrap();
             }
         }
 
@@ -183,6 +164,27 @@ fn messages_dispatched_to_correct_instance() {
         *flag.lock().unwrap() = true;
         Ok(())
         }
+    });
+
+    // Server 2 offers instance 2
+    sim.host("server2", || async {
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+
+        let mut offering2 = runtime
+            .offer::<ServiceA>(InstanceId::Id(0x0002))
+            .await
+            .unwrap();
+
+        // Handle request for instance 2
+        if let Some(event) = offering2.next().await {
+            if let ServiceEvent::Call { payload, responder, .. } = event {
+                assert_eq!(payload.as_ref(), b"for_instance_2");
+                responder.reply(b"from_instance_2").await.unwrap();
+            }
+        }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
     });
 
     // Client calls specific instances
@@ -208,6 +210,129 @@ fn messages_dispatched_to_correct_instance() {
         assert_eq!(response1.payload.as_ref(), b"from_instance_1");
 
         // Call instance 2 specifically
+        let proxy2 = runtime.find::<ServiceA>(InstanceId::Id(0x0002));
+        let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available())
+            .await
+            .expect("Should discover instance 2");
+
+        let response2 = tokio::time::timeout(
+            Duration::from_secs(15),
+            proxy2.call(MethodId::new(0x0001), b"for_instance_2"),
+        )
+        .await
+        .expect("Timeout")
+        .expect("Call should succeed");
+
+        assert_eq!(response2.payload.as_ref(), b"from_instance_2");
+
+        Ok(())
+    });
+
+    sim.client("driver", async move {
+        tokio::time::sleep(Duration::from_secs(25)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+    assert!(*executed.lock().unwrap(), "Test should have executed");
+}
+
+/// feat_req_recentip_648 + feat_req_recentipsd_782: Two instances on same host
+///
+/// Tests that two instances of the same service can run on the same host
+/// with proper message routing. This works because each instance gets its own
+/// dedicated RPC socket (separate from the SD socket on port 30490).
+#[test]
+fn two_instances_same_host() {
+    covers!(feat_req_recentip_648);
+    covers!(feat_req_recentipsd_782);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    let executed = Arc::new(Mutex::new(false));
+    let exec_flag = Arc::clone(&executed);
+
+    // Single server host offering TWO instances of the same service
+    sim.host("server", move || {
+        let flag = Arc::clone(&exec_flag);
+        async move {
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+
+            // Offer instance 1
+            let mut offering1 = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
+
+            // Offer instance 2 on the SAME runtime/host
+            let mut offering2 = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0002))
+                .await
+                .unwrap();
+
+            // Handle requests concurrently
+            tokio::select! {
+                Some(event) = offering1.next() => {
+                    if let ServiceEvent::Call { payload, responder, .. } = event {
+                        assert_eq!(payload.as_ref(), b"for_instance_1");
+                        responder.reply(b"from_instance_1").await.unwrap();
+                    }
+                }
+                Some(event) = offering2.next() => {
+                    if let ServiceEvent::Call { payload, responder, .. } = event {
+                        assert_eq!(payload.as_ref(), b"for_instance_2");
+                        responder.reply(b"from_instance_2").await.unwrap();
+                    }
+                }
+            }
+
+            // Handle the second request
+            tokio::select! {
+                Some(event) = offering1.next() => {
+                    if let ServiceEvent::Call { payload, responder, .. } = event {
+                        assert_eq!(payload.as_ref(), b"for_instance_1");
+                        responder.reply(b"from_instance_1").await.unwrap();
+                    }
+                }
+                Some(event) = offering2.next() => {
+                    if let ServiceEvent::Call { payload, responder, .. } = event {
+                        assert_eq!(payload.as_ref(), b"for_instance_2");
+                        responder.reply(b"from_instance_2").await.unwrap();
+                    }
+                }
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
+        }
+    });
+
+    // Client calls both instances
+    sim.host("client", || async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+
+        // Call instance 1
+        let proxy1 = runtime.find::<ServiceA>(InstanceId::Id(0x0001));
+        let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1.available())
+            .await
+            .expect("Should discover instance 1");
+
+        let response1 = tokio::time::timeout(
+            Duration::from_secs(15),
+            proxy1.call(MethodId::new(0x0001), b"for_instance_1"),
+        )
+        .await
+        .expect("Timeout")
+        .expect("Call should succeed");
+
+        assert_eq!(response1.payload.as_ref(), b"from_instance_1");
+
+        // Call instance 2
         let proxy2 = runtime.find::<ServiceA>(InstanceId::Id(0x0002));
         let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available())
             .await

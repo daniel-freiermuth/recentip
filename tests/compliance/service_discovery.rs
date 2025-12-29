@@ -361,14 +361,13 @@ fn sd_multiple_service_offers() {
 }
 
 /// feat_req_recentipsd_47: Same service, multiple instances
-/// 
-/// TODO: This test currently times out. Similar to messages_dispatched_to_correct_instance,
-/// offering two instances of the same service sequentially may cause discovery issues.
-/// Needs investigation.
+/// feat_req_recentipsd_782: Multiple instances use different endpoints
+///
+/// With proper RPC socket architecture, multiple instances of the same service
+/// can now run on the same host, each with its own dedicated RPC socket.
 #[test]
-#[ignore]
 fn sd_multiple_instances_same_service() {
-    covers!(feat_req_recentipsd_47);
+    covers!(feat_req_recentipsd_47, feat_req_recentipsd_782);
 
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
@@ -377,30 +376,33 @@ fn sd_multiple_instances_same_service() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
+    // Single server offers BOTH instances
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        // Same service, different instances
         let _offering1 = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
             .await
             .unwrap();
+
         let _offering2 = runtime
             .offer::<TestService>(InstanceId::Id(0x0002))
             .await
             .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
         *flag.lock().unwrap() = true;
+        
+        // Keep the runtime alive so services remain available
+        tokio::time::sleep(Duration::from_secs(10)).await;
         Ok(())
     }
     });
 
     sim.host("client", || async {
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
 
         let config = RuntimeConfig::default();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -416,13 +418,14 @@ fn sd_multiple_instances_same_service() {
         let instance = available.instance_id();
         assert!(
             instance == InstanceId::Id(0x0001) || instance == InstanceId::Id(0x0002),
-            "Should find one of the offered instances"
+            "Should find one of the offered instances, but found {:?}", instance
         );
         Ok(())
     });
 
     sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(700)).await;
+        // Keep simulation running long enough for server to complete
+        tokio::time::sleep(Duration::from_secs(15)).await;
         Ok(())
     });
 
