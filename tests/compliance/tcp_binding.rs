@@ -118,7 +118,7 @@ fn client_opens_tcp_connection() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -184,7 +184,7 @@ fn single_tcp_connection_reused() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -254,7 +254,7 @@ fn client_reestablishes_connection() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -339,7 +339,7 @@ fn each_message_has_own_header() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -404,7 +404,7 @@ fn multiple_messages_per_segment_parsed() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -465,7 +465,7 @@ fn connection_lost_fails_pending_requests() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -538,7 +538,7 @@ fn magic_cookie_recognized() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -607,7 +607,7 @@ fn tcp_segment_starts_with_magic_cookie() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -676,7 +676,7 @@ fn only_one_magic_cookie_per_segment() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -748,7 +748,7 @@ fn tcp_header_format_matches_udp() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -813,7 +813,7 @@ fn tcp_loss_does_not_reset_session_id() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -912,7 +912,7 @@ fn reboot_detection_resets_tcp_connections() {
     let mut server = Runtime::new(io_server, server_config).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)

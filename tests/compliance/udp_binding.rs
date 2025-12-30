@@ -100,7 +100,7 @@ fn udp_binding_transports_someip_messages() {
     let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -155,7 +155,7 @@ fn udp_each_message_has_own_header() {
     let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -207,7 +207,7 @@ fn udp_multiple_messages_per_datagram() {
     let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -277,7 +277,7 @@ fn udp_supports_unicast_and_multicast() {
     let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -340,7 +340,7 @@ fn udp_client_receives_multicast_offers() {
     let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -380,7 +380,7 @@ fn udp_multicast_eventgroup_with_initial_events() {
     let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
     let eventgroup_id = EventgroupId::new(0x01).unwrap();
 
     let service_config = ServiceConfig::builder()
@@ -450,7 +450,7 @@ fn udp_handles_datagram_padding() {
     let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)
@@ -498,7 +498,7 @@ fn default_transport_is_udp() {
     let mut server = Runtime::new(io_server, RuntimeConfig::default()).unwrap();
 
     let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = ConcreteInstanceId::new(1).unwrap();
+    let instance_id = InstanceId::Id(1);
 
     let service_config = ServiceConfig::builder()
         .service(service_id)

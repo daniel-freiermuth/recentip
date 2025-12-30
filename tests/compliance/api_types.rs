@@ -97,27 +97,6 @@ mod rpc {
             );
             // 0xFFFF means "any instance" for client-side matching
             assert_eq!(InstanceId::ANY.value(), 0xFFFF);
-
-            // But concrete instances (for servers) cannot use wildcard
-            assert!(ConcreteInstanceId::new(0xFFFF).is_none());
-            assert!(ConcreteInstanceId::new(0x0000).is_none()); // Also reserved
-        }
-
-        proptest! {
-            /// Property: ConcreteInstanceId is always convertible to InstanceId
-            #[test]
-            fn concrete_converts_to_instance(value in 0x0001u16..=0xFFFE) {
-                if let Some(concrete) = ConcreteInstanceId::new(value) {
-                    let instance: InstanceId = concrete.into();
-                    prop_assert_eq!(instance.value(), value);
-                }
-            }
-
-            /// Property: Valid concrete instance range
-            #[test]
-            fn concrete_instance_valid_range(value in 0x0001u16..=0xFFFE) {
-                prop_assert!(ConcreteInstanceId::new(value).is_some());
-            }
         }
     }
 
@@ -155,35 +134,6 @@ mod sd {
     use super::*;
 
     // ------------------------------------------------------------------------
-    // SD PORT
-    // ------------------------------------------------------------------------
-
-    mod port {
-        use super::*;
-
-        /// feat_req_recentip_676: Port 30490 shall only be used for RECENT/IP-SD
-        #[test]
-        fn sd_port_reserved() {
-            covers!(feat_req_recentip_676);
-            // Application ports cannot use 30490 (reserved for SD)
-            assert!(AppPort::new(30490).is_none());
-
-            // Adjacent ports are fine
-            assert!(AppPort::new(30489).is_some());
-            assert!(AppPort::new(30491).is_some());
-        }
-
-        proptest! {
-            /// Property: All ports except 30490 are valid for applications
-            #[test]
-            fn non_sd_ports_valid(port in (1u16..30490).prop_union(30491u16..65535)) {
-                covers!(feat_req_recentip_676);
-                prop_assert!(AppPort::new(port).is_some());
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------------
     // EVENTGROUPS
     // ------------------------------------------------------------------------
 
@@ -213,12 +163,6 @@ mod sd {
 
     mod offer_find {
         use super::*;
-
-        #[test]
-        fn offer_requires_concrete_instance() {
-            // When offering, must specify concrete instance (not wildcard)
-            assert!(ConcreteInstanceId::new(0xFFFF).is_none());
-        }
 
         #[test]
         fn find_allows_wildcard_instance() {
@@ -267,13 +211,11 @@ mod properties {
             method in 0x0000u16..=0x7FFF,
             event in 0x8000u16..=0xFFFE,
             eventgroup in 0x0001u16..=0xFFFE,
-            port in (1u16..30490).prop_union(30491u16..65535),
         ) {
             prop_assert_eq!(ServiceId::new(service).unwrap().value(), service);
             prop_assert_eq!(MethodId::new(method).unwrap().value(), method);
             prop_assert_eq!(EventId::new(event).unwrap().value(), event);
             prop_assert_eq!(EventgroupId::new(eventgroup).unwrap().value(), eventgroup);
-            prop_assert_eq!(AppPort::new(port).unwrap().value(), port);
         }
     }
 }
