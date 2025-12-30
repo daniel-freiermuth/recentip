@@ -96,7 +96,7 @@ fn field_getter_empty_request_payload() {
             let proxy = runtime.find::<TestService>(InstanceId::Any);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
                 .await
-                .expect("Discovery timeout");
+                .expect("Discovery timeout").expect("Service available");
 
             // Call getter with empty payload
             let getter_method = MethodId::new(0x0001);
@@ -176,7 +176,7 @@ fn field_getter_returns_current_value() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let response = proxy.call(MethodId::new(0x0001), b"").await.unwrap();
 
@@ -267,7 +267,7 @@ fn field_setter_sends_value_in_request() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Set field to new value
         let setter_method = MethodId::new(0x0002);
@@ -342,7 +342,7 @@ fn field_setter_gets_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Call setter
         let setter_method = MethodId::new(0x0002);
@@ -426,7 +426,7 @@ fn field_notifier_sends_updated_value() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Subscribe to field notifications
         let eventgroup_id = EventgroupId::new(0x01).unwrap();
@@ -557,7 +557,7 @@ fn field_combines_getter_setter_notifier() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Subscribe to get notifier updates
         let eventgroup_id = EventgroupId::new(0x01).unwrap();
@@ -664,7 +664,7 @@ fn field_setter_can_reject_invalid_value() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Try to set invalid value (> 100)
         let setter_method = MethodId::new(0x0002);

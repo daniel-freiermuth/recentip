@@ -226,7 +226,7 @@ fn rpc_request_has_protocol_version_0x01() {
         
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
         
         let _ = tokio::time::timeout(
             Duration::from_secs(3),
@@ -414,7 +414,7 @@ fn rpc_request_has_interface_version_at_offset_13() {
         
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
         
         let _ = tokio::time::timeout(
             Duration::from_secs(3),

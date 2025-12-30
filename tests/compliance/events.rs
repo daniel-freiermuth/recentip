@@ -169,7 +169,7 @@ fn event_transports_value_data() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let mut subscription = tokio::time::timeout(
@@ -373,7 +373,7 @@ fn unsubscribe_stops_event_delivery() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let mut subscription = tokio::time::timeout(
@@ -450,7 +450,7 @@ fn event_uses_notification_message_type_on_wire() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let mut subscription = tokio::time::timeout(

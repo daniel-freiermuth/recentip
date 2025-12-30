@@ -73,15 +73,17 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
     ///
     /// This registers a find request with the runtime and waits for
     /// Service Discovery to locate the service.
-    pub async fn available(self) -> ProxyHandle<S, Available> {
+    ///
+    /// Returns an error if the runtime shuts down before the service is found.
+    pub async fn available(self) -> Result<ProxyHandle<S, Available>> {
         let (notify_tx, mut notify_rx) = mpsc::channel(1);
         
         // Register find request
-        let _ = self.inner.cmd_tx.send(Command::Find {
+        self.inner.cmd_tx.send(Command::Find {
             service_id: self.service_id,
             instance_id: self.instance_id,
             notify: notify_tx,
-        }).await;
+        }).await.map_err(|_| Error::RuntimeShutdown)?;
 
         // Wait for availability notification
         let (endpoint, discovered_instance_id) = loop {
@@ -91,20 +93,19 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
                 },
                 Some(ServiceAvailability::Unavailable) => continue,
                 None => {
-                    // Runtime shut down - use a dummy endpoint
-                    // This will fail on first call attempt
-                    break "0.0.0.0:0".parse().unwrap();
+                    // Runtime shut down before service was found
+                    return Err(Error::RuntimeShutdown);
                 }
             }
         };
 
-        ProxyHandle {
+        Ok(ProxyHandle {
             inner: Arc::clone(&self.inner),
             service_id: self.service_id,
             instance_id: InstanceId::Id(discovered_instance_id),
             state: Available { endpoint },
             _phantom: PhantomData,
-        }
+        })
     }
 
     /// Check if the service is available without blocking.

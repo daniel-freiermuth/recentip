@@ -81,7 +81,7 @@ fn request_response_roundtrip() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service");
+            .expect("Timeout waiting for service").expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
@@ -143,7 +143,7 @@ fn multiple_calls_succeed() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service");
+            .expect("Timeout waiting for service").expect("Service available");
 
         for i in 0..3u8 {
             let response = tokio::time::timeout(
@@ -251,7 +251,7 @@ fn notification_delivery() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service");
+            .expect("Timeout waiting for service").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let mut subscription = tokio::time::timeout(
@@ -316,7 +316,8 @@ fn successful_call_returns_ok() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout");
+            .expect("Timeout")
+            .expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
@@ -395,7 +396,7 @@ fn network_partition_handling() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service");
+            .expect("Timeout waiting for service").expect("Service available");
 
         // Call should succeed before partition
         let response = tokio::time::timeout(
@@ -518,7 +519,7 @@ fn service_restart_recovery() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service");
+            .expect("Timeout waiting for service").expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(2),
@@ -550,7 +551,8 @@ fn service_restart_recovery() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service after restart");
+            .expect("Timeout waiting for service after restart")
+            .expect("Service available");
 
         // Call the restarted server
         let response = tokio::time::timeout(
@@ -652,7 +654,7 @@ fn many_concurrent_requests() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service");
+            .expect("Timeout waiting for service").expect("Service available");
 
         // Spawn 100 truly concurrent requests
         // ProxyHandle is Clone, and call() accepts owned data (Vec<u8>)

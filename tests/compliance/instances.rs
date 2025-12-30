@@ -97,13 +97,13 @@ fn multiple_instances_have_different_ids() {
         let proxy1 = runtime.find::<ServiceA>(InstanceId::Id(0x0001));
         tokio::time::timeout(Duration::from_secs(5), proxy1.available())
             .await
-            .expect("Should discover instance 1");
+            .expect("Should discover instance 1").expect("Service available");
 
         // Discover instance 2
         let proxy2 = runtime.find::<ServiceA>(InstanceId::Id(0x0002));
         tokio::time::timeout(Duration::from_secs(5), proxy2.available())
             .await
-            .expect("Should discover instance 2");
+            .expect("Should discover instance 2").expect("Service available");
 
         // Discover instance 3
         let proxy3 = runtime.find::<ServiceA>(InstanceId::Id(0x0003));
@@ -197,7 +197,7 @@ fn messages_dispatched_to_correct_instance() {
         let proxy1 = runtime.find::<ServiceA>(InstanceId::Id(0x0001));
         let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1.available())
             .await
-            .expect("Should discover instance 1");
+            .expect("Should discover instance 1").expect("Service available");
 
         let response1 = tokio::time::timeout(
             Duration::from_secs(15),
@@ -213,7 +213,7 @@ fn messages_dispatched_to_correct_instance() {
         let proxy2 = runtime.find::<ServiceA>(InstanceId::Id(0x0002));
         let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available())
             .await
-            .expect("Should discover instance 2");
+            .expect("Should discover instance 2").expect("Service available");
 
         let response2 = tokio::time::timeout(
             Duration::from_secs(15),
@@ -320,7 +320,7 @@ fn two_instances_same_host() {
         let proxy1 = runtime.find::<ServiceA>(InstanceId::Id(0x0001));
         let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1.available())
             .await
-            .expect("Should discover instance 1");
+            .expect("Should discover instance 1").expect("Service available");
 
         let response1 = tokio::time::timeout(
             Duration::from_secs(15),
@@ -336,7 +336,7 @@ fn two_instances_same_host() {
         let proxy2 = runtime.find::<ServiceA>(InstanceId::Id(0x0002));
         let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available())
             .await
-            .expect("Should discover instance 2");
+            .expect("Should discover instance 2").expect("Service available");
 
         let response2 = tokio::time::timeout(
             Duration::from_secs(15),
@@ -490,7 +490,7 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
         let proxy_a = runtime.find::<ServiceA>(InstanceId::Id(0x0001));
         let proxy_a = tokio::time::timeout(Duration::from_secs(5), proxy_a.available())
             .await
-            .expect("Should discover ServiceA");
+            .expect("Should discover ServiceA").expect("Service available");
 
         let response_a = tokio::time::timeout(
             Duration::from_secs(5),
@@ -506,7 +506,7 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
         let proxy_b = runtime.find::<ServiceB>(InstanceId::Id(0x0001));
         let proxy_b = tokio::time::timeout(Duration::from_secs(5), proxy_b.available())
             .await
-            .expect("Should discover ServiceB");
+            .expect("Should discover ServiceB").expect("Service available");
 
         let response_b = tokio::time::timeout(
             Duration::from_secs(5),

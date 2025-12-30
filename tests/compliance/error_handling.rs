@@ -206,7 +206,7 @@ fn request_answered_by_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
         let response = tokio::time::timeout(
@@ -271,7 +271,7 @@ fn error_response_has_nonzero_return_code() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
         let result = tokio::time::timeout(
@@ -351,7 +351,7 @@ fn notification_message_type() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(1).unwrap();
@@ -422,7 +422,7 @@ fn response_ids_match_request() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -500,7 +500,7 @@ fn successful_response_has_e_ok() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
         let response = tokio::time::timeout(

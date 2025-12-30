@@ -85,7 +85,7 @@ fn subscribe_and_receive_events() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(0x0001).unwrap();
@@ -163,7 +163,7 @@ fn subscribe_receives_ack() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         
@@ -245,7 +245,7 @@ fn unsubscribe_on_drop() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         
@@ -336,7 +336,7 @@ fn subscribe_multiple_eventgroups() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Subscribe to both eventgroups
         let eg1 = EventgroupId::new(0x0001).unwrap();
@@ -453,7 +453,7 @@ fn event_id_has_high_bit() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let mut subscription = tokio::time::timeout(
@@ -555,7 +555,7 @@ fn mixed_rpc_and_events() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Subscribe to events
         let eventgroup = EventgroupId::new(0x0001).unwrap();

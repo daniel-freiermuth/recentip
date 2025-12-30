@@ -80,7 +80,7 @@ fn no_error_response_for_events() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let mut subscription = tokio::time::timeout(
@@ -150,7 +150,7 @@ fn no_error_response_for_fire_and_forget() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Send fire&forget - no response expected
         proxy.fire_and_forget(MethodId::new(0x0010), b"ff_payload").await.unwrap();
@@ -262,7 +262,7 @@ fn server_returns_various_error_codes() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // First call - expect NotReady
         let result1 = tokio::time::timeout(

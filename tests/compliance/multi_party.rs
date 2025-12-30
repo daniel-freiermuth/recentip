@@ -109,7 +109,7 @@ fn multiple_clients_call_same_server() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
@@ -132,7 +132,7 @@ fn multiple_clients_call_same_server() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
@@ -155,7 +155,7 @@ fn multiple_clients_call_same_server() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
@@ -231,7 +231,7 @@ fn multiple_clients_subscribe_to_events() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let mut subscription = tokio::time::timeout(
@@ -261,7 +261,7 @@ fn multiple_clients_subscribe_to_events() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let mut subscription = tokio::time::timeout(
@@ -290,7 +290,7 @@ fn multiple_clients_subscribe_to_events() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let mut subscription = tokio::time::timeout(
@@ -452,7 +452,8 @@ fn nodes_with_mixed_client_server_roles() {
         let proxy_b = runtime.find::<ServiceB>(InstanceId::Any);
         let proxy_b = tokio::time::timeout(Duration::from_secs(5), proxy_b.available())
             .await
-            .expect("Should discover ServiceB");
+            .expect("Should discover ServiceB")
+            .expect("Service available");
 
         // Call ServiceB
         let response = tokio::time::timeout(
@@ -505,7 +506,8 @@ fn nodes_with_mixed_client_server_roles() {
         let proxy_a = runtime.find::<ServiceA>(InstanceId::Any);
         let proxy_a = tokio::time::timeout(Duration::from_secs(5), proxy_a.available())
             .await
-            .expect("Should discover ServiceA");
+            .expect("Should discover ServiceA")
+            .expect("Service available");
 
         // Call ServiceA
         let response = tokio::time::timeout(
@@ -609,7 +611,7 @@ fn multiple_servers_different_instances() {
         let proxy1 = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1.available())
             .await
-            .expect("Should discover instance 1");
+            .expect("Should discover instance 1").expect("Service available");
 
         let response1 = tokio::time::timeout(
             Duration::from_secs(5),
@@ -625,7 +627,7 @@ fn multiple_servers_different_instances() {
         let proxy2 = runtime.find::<TestService>(InstanceId::Id(0x0002));
         let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available())
             .await
-            .expect("Should discover instance 2");
+            .expect("Should discover instance 2").expect("Service available");
 
         let response2 = tokio::time::timeout(
             Duration::from_secs(5),

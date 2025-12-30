@@ -87,7 +87,7 @@ fn request_receives_response_type() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Call should get response
         let method = MethodId::new(0x0001);
@@ -145,7 +145,7 @@ fn request_can_receive_error_type() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Call should get error response
         let method = MethodId::new(0x0001);
@@ -203,7 +203,7 @@ fn request_no_return_receives_no_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Fire-and-forget returns immediately (no response expected)
         let method = MethodId::new(0x0001);
@@ -261,7 +261,7 @@ fn server_sends_notification_type() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(1).unwrap();

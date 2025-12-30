@@ -338,7 +338,8 @@ fn concurrent_requests_matched_by_request_id() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service");
+            .expect("Timeout waiting for service")
+            .expect("Service available");
 
         // Send 3 requests concurrently
         let call1 = proxy.call(MethodId::new(0x0001), &[1u8]);
@@ -408,7 +409,8 @@ fn request_triggers_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service");
+            .expect("Timeout waiting for service")
+            .expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
@@ -471,7 +473,8 @@ fn request_can_receive_error_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service");
+            .expect("Timeout waiting for service")
+            .expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),

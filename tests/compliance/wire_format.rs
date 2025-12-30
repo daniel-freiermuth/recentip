@@ -399,7 +399,7 @@ fn rpc_request_wire_format() {
         let proxy = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.available(),
-        ).await.expect("Should discover service via SD");
+        ).await.expect("Should discover service via SD").expect("Service available");
 
         // Make an RPC call using public API
         let result = tokio::time::timeout(
@@ -654,7 +654,7 @@ fn fire_and_forget_wire_format() {
         let proxy = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.available(),
-        ).await.expect("Should discover service via SD");
+        ).await.expect("Should discover service via SD").expect("Service available");
 
         // Send fire-and-forget using public API
         proxy
@@ -951,7 +951,7 @@ fn session_id_increment_on_wire() {
         let proxy = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.available(),
-        ).await.expect("Should discover service via SD");
+        ).await.expect("Should discover service via SD").expect("Service available");
 
         // Make 3 calls using public API
         for _ in 0..3 {
@@ -1099,7 +1099,7 @@ fn subscribe_eventgroup_entry_type() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Should discover service via SD");
+            .expect("Should discover service via SD").expect("Service available");
 
         // Subscribe to eventgroup using public API
         let eventgroup = EventgroupId::new(0x0001).unwrap();
@@ -1335,7 +1335,7 @@ fn stop_subscribe_has_ttl_zero() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Should discover service via SD");
+            .expect("Should discover service via SD").expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
 

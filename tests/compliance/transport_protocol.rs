@@ -287,7 +287,7 @@ fn large_udp_messages_use_tp() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Send a large message (2000 bytes payload - larger than 1400 byte limit)
         let large_payload = vec![0xABu8; 2000];

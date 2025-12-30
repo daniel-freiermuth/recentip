@@ -97,7 +97,7 @@ fn multiple_calls_incrementing_session() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -169,7 +169,7 @@ fn first_call_session_id() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -240,7 +240,7 @@ fn concurrent_calls_unique_sessions() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -315,7 +315,7 @@ fn error_response_preserves_request_id() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -397,7 +397,7 @@ fn session_increments_across_methods() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Call different methods
         let method1 = MethodId::new(0x0001);
@@ -478,7 +478,7 @@ fn client_id_consistent_across_calls() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -569,7 +569,7 @@ fn out_of_order_response_matching() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -655,7 +655,7 @@ fn events_use_session_handling() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(0x0001).unwrap();
@@ -743,7 +743,7 @@ fn parallel_requests_have_unique_request_ids() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -828,7 +828,7 @@ fn request_id_reusable_after_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -931,7 +931,7 @@ fn session_id_wraps_to_0001_not_0000() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -1047,7 +1047,7 @@ fn request_response_uses_session_handling() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -1127,7 +1127,7 @@ fn fire_and_forget_uses_session_handling() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0010);
 
@@ -1191,7 +1191,7 @@ fn server_copies_request_id_to_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -1262,7 +1262,7 @@ fn request_id_differentiates_parallel_calls() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout");
+            .expect("Discovery timeout").expect("Service available");
 
         let method = MethodId::new(0x0001);
 
@@ -1323,7 +1323,8 @@ fn late_server_discovery_rpc() {
         // Wait for service to become available (server will start after 2 seconds)
         let proxy = tokio::time::timeout(Duration::from_secs(10), proxy.available())
             .await
-            .expect("Service should become available within timeout");
+            .expect("Service should become available within timeout")
+            .expect("Service available");
 
         // Service is now available, make RPC call
         let method = MethodId::new(0x0001);
@@ -1424,7 +1425,8 @@ fn late_server_discovery_subscribe_event() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(10), proxy.available())
             .await
-            .expect("Service should become available within timeout");
+            .expect("Service should become available within timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let mut subscription = tokio::time::timeout(

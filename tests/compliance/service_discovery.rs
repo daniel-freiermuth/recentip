@@ -154,7 +154,8 @@ fn sd_offer_with_specific_instance() {
 
         let available = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for specific instance");
+            .expect("Timeout waiting for specific instance")
+            .expect("Service available");
 
         assert_eq!(available.instance_id(), InstanceId::Id(0x0042));
         Ok(())
@@ -211,7 +212,8 @@ fn sd_offer_with_version_info() {
 
         let available = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout");
+            .expect("Timeout")
+            .expect("Service available");
 
         // Service with correct version discovered
         assert_eq!(available.service_id(), ServiceId::new(0x5678).unwrap());
@@ -412,7 +414,8 @@ fn sd_multiple_instances_same_service() {
 
         let available = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Should find at least one instance");
+            .expect("Should find at least one instance")
+            .expect("Service available");
 
         // Should find one of the instances
         let instance = available.instance_id();
@@ -462,7 +465,8 @@ fn sd_find_service_discovery() {
         // Wait with long timeout - service will appear later
         let available = tokio::time::timeout(Duration::from_secs(10), proxy.available())
             .await
-            .expect("Should eventually find service");
+            .expect("Should eventually find service")
+            .expect("Service available");
 
         assert_eq!(available.service_id(), ServiceId::new(0x1234).unwrap());
         Ok(())
@@ -681,7 +685,8 @@ fn sd_discovery_then_rpc() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery should succeed");
+            .expect("Discovery should succeed")
+            .expect("Service available");
 
         // Make RPC call
         let method = MethodId::new(0x0001);
