@@ -64,10 +64,13 @@ pub mod net;
 pub mod error;
 pub mod runtime;
 pub mod handle;
-mod wire;
+
+/// Wire format parsing for SOME/IP headers and messages.
+/// Exposed for testing and interoperability verification.
+pub mod wire;
 
 pub use error::*;
-pub use runtime::{Runtime, RuntimeConfig};
+pub use runtime::{MethodConfig, Runtime, RuntimeConfig};
 pub use handle::*;
 
 // ============================================================================
@@ -103,6 +106,9 @@ pub enum InstanceId {
 }
 
 impl InstanceId {
+    /// Match any instance (0xFFFF wildcard) - alias for `Any`
+    pub const ANY: Self = Self::Any;
+    
     /// Create a specific instance ID. Returns None for reserved values.
     pub fn new(id: u16) -> Option<Self> {
         match id {
@@ -290,8 +296,8 @@ pub struct ClientInfo {
 
 pub mod prelude {
     pub use crate::{
-        Error, Event, EventId, EventgroupId, InstanceId, MajorVersion, MethodId,
-        MinorVersion, Response, Result, ReturnCode, Runtime, RuntimeConfig,
-        Service, ServiceId,
+        Error, Event, EventId, EventgroupId, 
+        InstanceId, MajorVersion, MethodConfig, MethodId, MinorVersion, Response, Result, 
+        ReturnCode, Runtime, RuntimeConfig, Service, ServiceId,
     };
 }
