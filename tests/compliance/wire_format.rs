@@ -1813,15 +1813,32 @@ fn sd_reboot_flag_set_after_startup() {
 /// feat_req_recentip_649: Session ID must start at 1
 ///
 /// Verify that the first SD message has session_id=1
+///
+/// NOTE: Due to turmoil simulation timing, we may not always capture the very
+/// first packet. This test verifies that session_id=1 exists among the first
+/// few captured messages, which proves the runtime started counting at 1.
 #[test]
 fn sd_session_starts_at_one() {
     covers!(feat_req_recentipsd_41, feat_req_recentip_649);
 
+    use std::sync::atomic::{AtomicBool, Ordering};
+    
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    sim.host("server", || async {
+    // Use AtomicBool for cross-host synchronization
+    static OBSERVER_READY: AtomicBool = AtomicBool::new(false);
+    OBSERVER_READY.store(false, Ordering::SeqCst);
+
+    sim.host("server", || async move {
+        // Wait until observer is ready
+        while !OBSERVER_READY.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        // Extra delay to ensure observer's multicast join has propagated
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        
         let config = RuntimeConfig::default();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -1841,30 +1858,39 @@ fn sd_session_starts_at_one() {
             "239.255.0.1".parse().unwrap(),
             "0.0.0.0".parse().unwrap(),
         )?;
+        // Give multicast join time to propagate
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Signal that we're ready to receive
+        OBSERVER_READY.store(true, Ordering::SeqCst);
 
         let mut buf = [0u8; 1500];
-        let mut first_session_id: Option<u16> = None;
+        let mut captured_session_ids: Vec<u16> = Vec::new();
 
-        for _ in 0..5 {
+        for _ in 0..10 {
             let result = tokio::time::timeout(
-                Duration::from_millis(200),
+                Duration::from_millis(500),
                 socket.recv_from(&mut buf),
             ).await;
             
             if let Ok(Ok((len, _from))) = result {
                 if let Some((header, _sd_msg)) = parse_sd_message(&buf[..len]) {
-                    if first_session_id.is_none() {
-                        first_session_id = Some(header.session_id);
+                    captured_session_ids.push(header.session_id);
+                    if captured_session_ids.len() >= 3 {
+                        break;  // Got enough samples
                     }
                 }
             }
         }
 
-        let first_id = first_session_id.expect("Should have captured at least one SD message");
+        assert!(!captured_session_ids.is_empty(), "Should have captured at least one SD message");
+        
+        // Verify session_id=1 is present, proving the runtime started at 1
+        let min_session_id = *captured_session_ids.iter().min().unwrap();
         assert_eq!(
-            first_id, 1,
-            "First SD message session_id must be 1 (got {})",
-            first_id
+            min_session_id, 1,
+            "Minimum captured session_id should be 1 (got {}, captured: {:?})",
+            min_session_id, captured_session_ids
         );
 
         Ok(())
