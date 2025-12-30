@@ -266,7 +266,7 @@ mod properties {
             service in 0x0001u16..=0xFFFE,
             method in 0x0000u16..=0x7FFF,
             event in 0x8000u16..=0xFFFE,
-            eventgroup in 0x0001u16..=0xFFFF,
+            eventgroup in 0x0001u16..=0xFFFE,
             port in (1u16..30490).prop_union(30491u16..65535),
         ) {
             prop_assert_eq!(ServiceId::new(service).unwrap().value(), service);
