@@ -163,7 +163,7 @@ fn test_service_discovery_offer_find() {
         ).await;
         
         assert!(result.is_ok(), "Service should be discovered within timeout");
-        let available_proxy = result.unwrap();
+        let available_proxy = result.unwrap().expect("Service available");
         assert_eq!(available_proxy.service_id(), ServiceId::new(0x1234).unwrap());
         
         Ok(())
@@ -258,7 +258,7 @@ fn test_specific_instance_id() {
         ).await;
         
         assert!(result.is_ok(), "Specific instance should be discovered");
-        let available = result.unwrap();
+        let available = result.unwrap().expect("Service available");
         // Note: After discovery, the instance ID might be updated to the actual ID
         assert_eq!(available.service_id(), ServiceId::new(0x1234).unwrap());
         
@@ -371,7 +371,7 @@ fn test_method_call_rpc() {
         let proxy = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.available()
-        ).await.expect("Timeout waiting for service");
+        ).await.expect("Timeout waiting for service").expect("Service available");
         
         // Call a method
         let method = MethodId::new(0x0042).unwrap();
@@ -439,7 +439,7 @@ fn test_event_subscription() {
         let proxy = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.available()
-        ).await.expect("Timeout waiting for service");
+        ).await.expect("Timeout waiting for service").expect("Service available");
         
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(0x0001).unwrap();
