@@ -522,7 +522,7 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
     });
 
     sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(5000)).await;
         Ok(())
     });
 

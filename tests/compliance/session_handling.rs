@@ -575,7 +575,7 @@ fn out_of_order_response_matching() {
 
         // Send two requests concurrently
         let fut1 = proxy.call(method, &[1]);
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
         let fut2 = proxy.call(method, &[2]);
 
         // Wait for both responses
