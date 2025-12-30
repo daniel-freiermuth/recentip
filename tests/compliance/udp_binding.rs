@@ -116,7 +116,7 @@ fn udp_binding_transports_someip_messages() {
     let proxy = proxy.wait_available().unwrap();
 
     // Send RPC request
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     let _pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
     network.advance(std::time::Duration::from_millis(10));
 
@@ -171,7 +171,7 @@ fn udp_each_message_has_own_header() {
     let proxy = proxy.wait_available().unwrap();
 
     // Send multiple requests
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     for i in 0u8..3 {
         let _pending = proxy.call(method_id, &[i]).unwrap();
     }
@@ -223,7 +223,7 @@ fn udp_multiple_messages_per_datagram() {
     let proxy = proxy.wait_available().unwrap();
 
     // Send requests rapidly (may be coalesced)
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     for i in 0u8..5 {
         let _pending = proxy.call(method_id, &[i]).unwrap();
     }
@@ -466,7 +466,7 @@ fn udp_handles_datagram_padding() {
     let proxy = proxy.wait_available().unwrap();
 
     // Send request
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     let pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
     network.advance(std::time::Duration::from_millis(10));
 
@@ -514,7 +514,7 @@ fn default_transport_is_udp() {
     let proxy = proxy.wait_available().unwrap();
 
     // Send request
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     let _pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
     network.advance(std::time::Duration::from_millis(10));
 

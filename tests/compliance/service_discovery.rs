@@ -689,7 +689,7 @@ fn sd_discovery_then_rpc() {
             .expect("Service available");
 
         // Make RPC call
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
         let response = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.call(method, b"test"),

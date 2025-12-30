@@ -404,7 +404,7 @@ fn rpc_request_wire_format() {
         // Make an RPC call using public API
         let result = tokio::time::timeout(
             Duration::from_secs(3),
-            proxy.call(MethodId::new(0x0001), b"hello"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"hello"),
         ).await;
         
         assert!(result.is_ok(), "RPC call should complete");
@@ -658,7 +658,7 @@ fn fire_and_forget_wire_format() {
 
         // Send fire-and-forget using public API
         proxy
-            .fire_and_forget(MethodId::new(0x0001), b"fire_and_forget_payload")
+            .fire_and_forget(MethodId::new(0x0001).unwrap(), b"fire_and_forget_payload")
             .await
             .expect("Fire-and-forget should succeed");
 
@@ -957,7 +957,7 @@ fn session_id_increment_on_wire() {
         for _ in 0..3 {
             let _ = tokio::time::timeout(
                 Duration::from_secs(3),
-                proxy.call(MethodId::new(0x0001), b"test"),
+                proxy.call(MethodId::new(0x0001).unwrap(), b"test"),
             ).await.expect("Timeout").expect("Call should succeed");
         }
 

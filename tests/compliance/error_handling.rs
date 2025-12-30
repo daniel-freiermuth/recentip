@@ -208,7 +208,7 @@ fn request_answered_by_response() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
         let response = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.call(method, b"request"),
@@ -273,7 +273,7 @@ fn error_response_has_nonzero_return_code() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
         let result = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.call(method, b"request"),
@@ -424,7 +424,7 @@ fn response_ids_match_request() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Send multiple requests - each response should match its request
         for i in 0u8..3 {
@@ -502,7 +502,7 @@ fn successful_response_has_e_ok() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
         let response = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.call(method, b"test"),

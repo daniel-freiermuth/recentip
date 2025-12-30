@@ -113,7 +113,7 @@ fn multiple_clients_call_same_server() {
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy.call(MethodId::new(0x0001), b"client1"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"client1"),
         )
         .await
         .expect("Timeout")
@@ -136,7 +136,7 @@ fn multiple_clients_call_same_server() {
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy.call(MethodId::new(0x0001), b"client2"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"client2"),
         )
         .await
         .expect("Timeout")
@@ -159,7 +159,7 @@ fn multiple_clients_call_same_server() {
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy.call(MethodId::new(0x0001), b"client3"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"client3"),
         )
         .await
         .expect("Timeout")
@@ -458,7 +458,7 @@ fn nodes_with_mixed_client_server_roles() {
         // Call ServiceB
         let response = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy_b.call(MethodId::new(0x0001), b"from_nodeA"),
+            proxy_b.call(MethodId::new(0x0001).unwrap(), b"from_nodeA"),
         )
         .await
         .expect("Timeout")
@@ -512,7 +512,7 @@ fn nodes_with_mixed_client_server_roles() {
         // Call ServiceA
         let response = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy_a.call(MethodId::new(0x0001), b"from_nodeB"),
+            proxy_a.call(MethodId::new(0x0001).unwrap(), b"from_nodeB"),
         )
         .await
         .expect("Timeout")
@@ -615,7 +615,7 @@ fn multiple_servers_different_instances() {
 
         let response1 = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy1.call(MethodId::new(0x0001), b"hello"),
+            proxy1.call(MethodId::new(0x0001).unwrap(), b"hello"),
         )
         .await
         .expect("Timeout")
@@ -631,7 +631,7 @@ fn multiple_servers_different_instances() {
 
         let response2 = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy2.call(MethodId::new(0x0001), b"hello"),
+            proxy2.call(MethodId::new(0x0001).unwrap(), b"hello"),
         )
         .await
         .expect("Timeout")

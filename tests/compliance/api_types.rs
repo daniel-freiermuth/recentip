@@ -58,9 +58,9 @@ mod rpc {
         fn method_event_id_distinction() {
             covers!(feat_req_recentip_625);
             // Methods: 0x0000-0x7FFF (any value, including 0)
-            assert!(MethodId::new(0x0001).value() < 0x8000);
-            assert!(MethodId::new(0x7FFF).value() < 0x8000);
-            assert_eq!(MethodId::new(0x0000).value(), 0x0000); // Allowed for methods
+            assert!(MethodId::new(0x0001).unwrap().value() < 0x8000);
+            assert!(MethodId::new(0x7FFF).unwrap().value() < 0x8000);
+            assert_eq!(MethodId::new(0x0000).unwrap().value(), 0x0000); // Allowed for methods
 
             // Events: 0x8000-0xFFFE (high bit set, 0xFFFF reserved)
             let event = EventId::new(0x8000).unwrap();
@@ -270,7 +270,7 @@ mod properties {
             port in (1u16..30490).prop_union(30491u16..65535),
         ) {
             prop_assert_eq!(ServiceId::new(service).unwrap().value(), service);
-            prop_assert_eq!(MethodId::new(method).value(), method);
+            prop_assert_eq!(MethodId::new(method).unwrap().value(), method);
             prop_assert_eq!(EventId::new(event).unwrap().value(), event);
             prop_assert_eq!(EventgroupId::new(eventgroup).unwrap().value(), eventgroup);
             prop_assert_eq!(AppPort::new(port).unwrap().value(), port);

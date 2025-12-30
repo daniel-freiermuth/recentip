@@ -201,7 +201,7 @@ fn messages_dispatched_to_correct_instance() {
 
         let response1 = tokio::time::timeout(
             Duration::from_secs(15),
-            proxy1.call(MethodId::new(0x0001), b"for_instance_1"),
+            proxy1.call(MethodId::new(0x0001).unwrap(), b"for_instance_1"),
         )
         .await
         .expect("Timeout")
@@ -217,7 +217,7 @@ fn messages_dispatched_to_correct_instance() {
 
         let response2 = tokio::time::timeout(
             Duration::from_secs(15),
-            proxy2.call(MethodId::new(0x0001), b"for_instance_2"),
+            proxy2.call(MethodId::new(0x0001).unwrap(), b"for_instance_2"),
         )
         .await
         .expect("Timeout")
@@ -324,7 +324,7 @@ fn two_instances_same_host() {
 
         let response1 = tokio::time::timeout(
             Duration::from_secs(15),
-            proxy1.call(MethodId::new(0x0001), b"for_instance_1"),
+            proxy1.call(MethodId::new(0x0001).unwrap(), b"for_instance_1"),
         )
         .await
         .expect("Timeout")
@@ -340,7 +340,7 @@ fn two_instances_same_host() {
 
         let response2 = tokio::time::timeout(
             Duration::from_secs(15),
-            proxy2.call(MethodId::new(0x0001), b"for_instance_2"),
+            proxy2.call(MethodId::new(0x0001).unwrap(), b"for_instance_2"),
         )
         .await
         .expect("Timeout")
@@ -494,7 +494,7 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
 
         let response_a = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy_a.call(MethodId::new(0x0001), b"call_a"),
+            proxy_a.call(MethodId::new(0x0001).unwrap(), b"call_a"),
         )
         .await
         .expect("Timeout")
@@ -510,7 +510,7 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
 
         let response_b = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy_b.call(MethodId::new(0x0001), b"call_b"),
+            proxy_b.call(MethodId::new(0x0001).unwrap(), b"call_b"),
         )
         .await
         .expect("Timeout")

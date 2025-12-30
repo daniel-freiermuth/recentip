@@ -153,7 +153,7 @@ fn no_error_response_for_fire_and_forget() {
             .expect("Discovery timeout").expect("Service available");
 
         // Send fire&forget - no response expected
-        proxy.fire_and_forget(MethodId::new(0x0010), b"ff_payload").await.unwrap();
+        proxy.fire_and_forget(MethodId::new(0x0010).unwrap(), b"ff_payload").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())
@@ -267,7 +267,7 @@ fn server_returns_various_error_codes() {
         // First call - expect NotReady
         let result1 = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy.call(MethodId::new(0x0001), b"data1"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"data1"),
         )
         .await
         .expect("Timeout");
@@ -284,7 +284,7 @@ fn server_returns_various_error_codes() {
         // Second call - expect UnknownMethod
         let result2 = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy.call(MethodId::new(0x0002), b"data2"),
+            proxy.call(MethodId::new(0x0002).unwrap(), b"data2"),
         )
         .await
         .expect("Timeout");
@@ -301,7 +301,7 @@ fn server_returns_various_error_codes() {
         // Third call - expect NotOk
         let result3 = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy.call(MethodId::new(0x0003), b"data3"),
+            proxy.call(MethodId::new(0x0003).unwrap(), b"data3"),
         )
         .await
         .expect("Timeout");

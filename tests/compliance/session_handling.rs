@@ -99,7 +99,7 @@ fn multiple_calls_incrementing_session() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Make 3 calls - session IDs should increment
         for i in 0..3 {
@@ -171,7 +171,7 @@ fn first_call_session_id() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // First call should succeed (implying session ID is valid)
         let response = tokio::time::timeout(
@@ -242,7 +242,7 @@ fn concurrent_calls_unique_sessions() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Launch concurrent calls (though due to turmoil's execution model, 
         // they may be serialized)
@@ -317,7 +317,7 @@ fn error_response_preserves_request_id() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Error response should result in Err from call (or Ok with non-Ok return_code)
         let result = tokio::time::timeout(
@@ -400,9 +400,9 @@ fn session_increments_across_methods() {
             .expect("Discovery timeout").expect("Service available");
 
         // Call different methods
-        let method1 = MethodId::new(0x0001);
-        let method2 = MethodId::new(0x0002);
-        let method3 = MethodId::new(0x0003);
+        let method1 = MethodId::new(0x0001).unwrap();
+        let method2 = MethodId::new(0x0002).unwrap();
+        let method3 = MethodId::new(0x0003).unwrap();
 
         let r1 = tokio::time::timeout(Duration::from_secs(5), proxy.call(method1, b""))
             .await
@@ -480,7 +480,7 @@ fn client_id_consistent_across_calls() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Make 5 calls - all should succeed (client ID consistency is internal)
         for i in 0..5 {
@@ -571,7 +571,7 @@ fn out_of_order_response_matching() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Send two requests concurrently
         let fut1 = proxy.call(method, &[1]);
@@ -745,7 +745,7 @@ fn parallel_requests_have_unique_request_ids() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Send 5 parallel requests
         let f1 = proxy.call(method, &[1]);
@@ -830,7 +830,7 @@ fn request_id_reusable_after_response() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Make 1000 sequential requests
         for i in 0u16..1000 {
@@ -933,7 +933,7 @@ fn session_id_wraps_to_0001_not_0000() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Make 65536 calls - if session ID ever becomes 0x0000, something is wrong
         // The runtime should handle wraparound from 0xFFFF -> 0x0001
@@ -1049,7 +1049,7 @@ fn request_response_uses_session_handling() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Make 3 calls - session handling means each gets unique session ID
         for i in 0..3 {
@@ -1129,7 +1129,7 @@ fn fire_and_forget_uses_session_handling() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0010);
+        let method = MethodId::new(0x0010).unwrap();
 
         // Send 3 fire-and-forget messages
         proxy.fire_and_forget(method, b"ff1").await.unwrap();
@@ -1193,7 +1193,7 @@ fn server_copies_request_id_to_response() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Send request and verify response matches
         let response = tokio::time::timeout(
@@ -1264,7 +1264,7 @@ fn request_id_differentiates_parallel_calls() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
 
         // Send 10 parallel requests
         let payloads: Vec<[u8; 1]> = (1u8..=10).map(|i| [i]).collect();
@@ -1327,7 +1327,7 @@ fn late_server_discovery_rpc() {
             .expect("Service available");
 
         // Service is now available, make RPC call
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
         let response = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.call(method, b"late-client"),

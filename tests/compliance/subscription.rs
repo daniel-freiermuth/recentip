@@ -568,7 +568,7 @@ fn mixed_rpc_and_events() {
         .expect("Subscribe should succeed");
 
         // Make RPC call
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
         let response = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.call(method, b"request"),

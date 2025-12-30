@@ -230,7 +230,7 @@ fn rpc_request_has_protocol_version_0x01() {
         
         let _ = tokio::time::timeout(
             Duration::from_secs(3),
-            proxy.call(MethodId::new(0x0001), b"test"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"test"),
         ).await;
         
         Ok(())
@@ -418,7 +418,7 @@ fn rpc_request_has_interface_version_at_offset_13() {
         
         let _ = tokio::time::timeout(
             Duration::from_secs(3),
-            proxy.call(MethodId::new(0x0001), b"test"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"test"),
         ).await;
         
         Ok(())

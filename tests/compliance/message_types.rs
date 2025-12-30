@@ -90,7 +90,7 @@ fn request_receives_response_type() {
             .expect("Discovery timeout").expect("Service available");
 
         // Call should get response
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
         let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, &[1, 2, 3]))
             .await
             .expect("RPC timeout")
@@ -148,7 +148,7 @@ fn request_can_receive_error_type() {
             .expect("Discovery timeout").expect("Service available");
 
         // Call should get error response
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
         let result = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, &[1, 2, 3]))
             .await
             .expect("RPC timeout")
@@ -206,7 +206,7 @@ fn request_no_return_receives_no_response() {
             .expect("Discovery timeout").expect("Service available");
 
         // Fire-and-forget returns immediately (no response expected)
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
         proxy
             .fire_and_forget(method, &[1, 2, 3])
             .await

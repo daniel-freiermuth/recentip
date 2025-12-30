@@ -142,7 +142,7 @@ fn client_opens_tcp_connection() {
     let proxy = proxy.wait_available().unwrap();
 
     // Send first request - this should open TCP connection
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     let _pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
     network.advance(std::time::Duration::from_millis(100));
 
@@ -199,7 +199,7 @@ fn single_tcp_connection_reused() {
     network.advance(std::time::Duration::from_millis(100));
     let proxy = proxy.wait_available().unwrap();
 
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
 
     // Send multiple requests
     for i in 0..5 {
@@ -269,7 +269,7 @@ fn client_reestablishes_connection() {
     network.advance(std::time::Duration::from_millis(100));
     let proxy = proxy.wait_available().unwrap();
 
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
 
     // First request establishes connection
     let pending = proxy.call(method_id, &[1]).unwrap();
@@ -355,7 +355,7 @@ fn each_message_has_own_header() {
     let proxy = proxy.wait_available().unwrap();
 
     // Send multiple requests with different payloads
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     let payloads = [b"short".to_vec(), b"medium length".to_vec(), b"a".to_vec()];
 
     for payload in &payloads {
@@ -420,7 +420,7 @@ fn multiple_messages_per_segment_parsed() {
     let proxy = proxy.wait_available().unwrap();
 
     // Send requests quickly (may be coalesced in TCP)
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     for i in 0u8..3 {
         let _pending = proxy.call(method_id, &[i]).unwrap();
     }
@@ -481,7 +481,7 @@ fn connection_lost_fails_pending_requests() {
     let proxy = proxy.wait_available().unwrap();
 
     // Send request but don't respond
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     let pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
     network.advance(std::time::Duration::from_millis(10));
 
@@ -554,7 +554,7 @@ fn magic_cookie_recognized() {
     let proxy = proxy.wait_available().unwrap();
 
     // First TCP segment should start with Magic Cookie
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     let _pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
     network.advance(std::time::Duration::from_millis(10));
 
@@ -625,7 +625,7 @@ fn tcp_segment_starts_with_magic_cookie() {
     // Clear history to capture just the RPC
     network.clear_history();
 
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     let _pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
     network.advance(std::time::Duration::from_millis(10));
 
@@ -694,7 +694,7 @@ fn only_one_magic_cookie_per_segment() {
     network.clear_history();
 
     // Send multiple requests quickly
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     for i in 0u8..5 {
         let _pending = proxy.call(method_id, &[i]).unwrap();
     }
@@ -763,7 +763,7 @@ fn tcp_header_format_matches_udp() {
     network.advance(std::time::Duration::from_millis(100));
     let proxy = proxy.wait_available().unwrap();
 
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
     let _pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
     network.advance(std::time::Duration::from_millis(10));
 
@@ -828,7 +828,7 @@ fn tcp_loss_does_not_reset_session_id() {
     network.advance(std::time::Duration::from_millis(100));
     let proxy = proxy.wait_available().unwrap();
 
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
 
     // Send first request, capture session ID
     let _pending = proxy.call(method_id, &[1]).unwrap();
@@ -927,7 +927,7 @@ fn reboot_detection_resets_tcp_connections() {
     network.advance(std::time::Duration::from_millis(100));
     let proxy = proxy.wait_available().unwrap();
 
-    let method_id = MethodId::new(0x0001);
+    let method_id = MethodId::new(0x0001).unwrap();
 
     // Establish TCP connection with first request
     let pending = proxy.call(method_id, &[1]).unwrap();

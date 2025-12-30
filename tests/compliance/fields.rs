@@ -70,7 +70,7 @@ fn field_getter_empty_request_payload() {
             // Handle getter request - should have empty payload
             if let Some(event) = offering.next().await {
                 if let ServiceEvent::Call { method, payload, responder, .. } = event {
-                    assert_eq!(method, MethodId::new(0x0001), "Expected getter method");
+                    assert_eq!(method, MethodId::new(0x0001).unwrap(), "Expected getter method");
                     assert!(payload.is_empty(), "Getter request should have empty payload (feat_req_recentip_633)");
                     
                     // Respond with current field value
@@ -99,7 +99,7 @@ fn field_getter_empty_request_payload() {
                 .expect("Discovery timeout").expect("Service available");
 
             // Call getter with empty payload
-            let getter_method = MethodId::new(0x0001);
+            let getter_method = MethodId::new(0x0001).unwrap();
             let response = proxy.call(getter_method, b"").await.unwrap();
 
             // Verify we got the field value
@@ -178,7 +178,7 @@ fn field_getter_returns_current_value() {
             .await
             .expect("Discovery timeout").expect("Service available");
 
-        let response = proxy.call(MethodId::new(0x0001), b"").await.unwrap();
+        let response = proxy.call(MethodId::new(0x0001).unwrap(), b"").await.unwrap();
 
         // Verify we got the temperature value
         assert_eq!(
@@ -237,7 +237,7 @@ fn field_setter_sends_value_in_request() {
 
         if let Some(event) = offering.next().await {
             if let ServiceEvent::Call { method, payload, responder, .. } = event {
-                assert_eq!(method, MethodId::new(0x0002), "Expected setter method");
+                assert_eq!(method, MethodId::new(0x0002).unwrap(), "Expected setter method");
                 
                 // Verify payload contains the new value
                 assert_eq!(payload.len(), 2, "Setter should have value payload");
@@ -270,7 +270,7 @@ fn field_setter_sends_value_in_request() {
             .expect("Discovery timeout").expect("Service available");
 
         // Set field to new value
-        let setter_method = MethodId::new(0x0002);
+        let setter_method = MethodId::new(0x0002).unwrap();
         let new_value = 42u16.to_be_bytes();
         let response = proxy.call(setter_method, &new_value).await.unwrap();
 
@@ -345,7 +345,7 @@ fn field_setter_gets_response() {
             .expect("Discovery timeout").expect("Service available");
 
         // Call setter
-        let setter_method = MethodId::new(0x0002);
+        let setter_method = MethodId::new(0x0002).unwrap();
         let result = proxy.call(setter_method, &[1, 2, 3, 4]).await;
 
         // Should receive response (proving it's request/response, not fire-and-forget)
@@ -509,11 +509,11 @@ fn field_combines_getter_setter_notifier() {
                 if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next()).await.ok().flatten() {
                     match event {
                         ServiceEvent::Call { method, payload, responder, .. } => {
-                            if method == MethodId::new(0x0001) && !getter_handled {
+                            if method == MethodId::new(0x0001).unwrap() && !getter_handled {
                                 // Getter - return current value
                                 responder.reply(&field_value.to_be_bytes()).await.unwrap();
                                 getter_handled = true;
-                            } else if method == MethodId::new(0x0002) && !setter_handled {
+                            } else if method == MethodId::new(0x0002).unwrap() && !setter_handled {
                                 // Setter - update value
                                 field_value = u16::from_be_bytes([payload[0], payload[1]]);
                                 responder.reply(b"").await.unwrap();
@@ -566,13 +566,13 @@ fn field_combines_getter_setter_notifier() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         // 1. GET current value (Getter)
-        let getter_method = MethodId::new(0x0001);
+        let getter_method = MethodId::new(0x0001).unwrap();
         let get_response = proxy.call(getter_method, b"").await.unwrap();
         let current_value = u16::from_be_bytes([get_response.payload[0], get_response.payload[1]]);
         assert_eq!(current_value, 20, "Getter should return current value");
 
         // 2. SET new value (Setter)
-        let setter_method = MethodId::new(0x0002);
+        let setter_method = MethodId::new(0x0002).unwrap();
         let new_value = 25u16.to_be_bytes();
         proxy.call(setter_method, &new_value).await.unwrap();
 
@@ -667,7 +667,7 @@ fn field_setter_can_reject_invalid_value() {
             .expect("Discovery timeout").expect("Service available");
 
         // Try to set invalid value (> 100)
-        let setter_method = MethodId::new(0x0002);
+        let setter_method = MethodId::new(0x0002).unwrap();
         let invalid_value = 150u16.to_be_bytes();
         let result = proxy.call(setter_method, &invalid_value).await;
 

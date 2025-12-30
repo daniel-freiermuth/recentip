@@ -291,7 +291,7 @@ fn large_udp_messages_use_tp() {
 
         // Send a large message (2000 bytes payload - larger than 1400 byte limit)
         let large_payload = vec![0xABu8; 2000];
-        let method = MethodId::new(0x0001);
+        let method = MethodId::new(0x0001).unwrap();
         let response = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.call(method, &large_payload),

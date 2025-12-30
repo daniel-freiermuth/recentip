@@ -323,34 +323,64 @@ impl<S: Service> OfferingHandle<S> {
     ///
     /// Returns `None` if the runtime has shut down.
     pub async fn next(&mut self) -> Option<ServiceEvent> {
-        match self.requests.recv().await? {
-            ServiceRequest::MethodCall { method_id, payload, client, response } => {
-                Some(ServiceEvent::Call {
-                    method: MethodId::new(method_id).unwrap_or(MethodId::new(1).unwrap()),
-                    payload,
-                    client: ClientInfo { address: client },
-                    responder: Responder { response: Some(response) },
-                })
-            }
-            ServiceRequest::FireForget { method_id, payload, client } => {
-                Some(ServiceEvent::FireForget {
-                    method: MethodId::new(method_id),
-                    payload,
-                    client: ClientInfo { address: client },
-                })
-            }
-            ServiceRequest::Subscribe { eventgroup_id, client, response } => {
-                Some(ServiceEvent::Subscribe {
-                    eventgroup: EventgroupId::new(eventgroup_id).unwrap_or(EventgroupId::new(1).unwrap()),
-                    client: ClientInfo { address: client },
-                    ack: SubscribeAck { response: Some(response) },
-                })
-            }
-            ServiceRequest::Unsubscribe { eventgroup_id, client } => {
-                Some(ServiceEvent::Unsubscribe {
-                    eventgroup: EventgroupId::new(eventgroup_id).unwrap_or(EventgroupId::new(1).unwrap()),
-                    client: ClientInfo { address: client },
-                })
+        loop {
+            match self.requests.recv().await? {
+                ServiceRequest::MethodCall { method_id, payload, client, response } => {
+                    let Some(method) = MethodId::new(method_id) else {
+                        tracing::error!(
+                            "BUG: runtime sent invalid method_id 0x{:04x} (high bit set = event, not method)",
+                            method_id
+                        );
+                        continue;
+                    };
+                    return Some(ServiceEvent::Call {
+                        method,
+                        payload,
+                        client: ClientInfo { address: client },
+                        responder: Responder { response: Some(response) },
+                    });
+                }
+                ServiceRequest::FireForget { method_id, payload, client } => {
+                    let Some(method) = MethodId::new(method_id) else {
+                        tracing::error!(
+                            "BUG: runtime sent invalid method_id 0x{:04x} (high bit set = event, not method)",
+                            method_id
+                        );
+                        continue;
+                    };
+                    return Some(ServiceEvent::FireForget {
+                        method,
+                        payload,
+                        client: ClientInfo { address: client },
+                    });
+                }
+                ServiceRequest::Subscribe { eventgroup_id, client, response } => {
+                    let Some(eventgroup) = EventgroupId::new(eventgroup_id) else {
+                        tracing::error!(
+                            "BUG: runtime sent invalid eventgroup_id 0x{:04x} (reserved value)",
+                            eventgroup_id
+                        );
+                        continue;
+                    };
+                    return Some(ServiceEvent::Subscribe {
+                        eventgroup,
+                        client: ClientInfo { address: client },
+                        ack: SubscribeAck { response: Some(response) },
+                    });
+                }
+                ServiceRequest::Unsubscribe { eventgroup_id, client } => {
+                    let Some(eventgroup) = EventgroupId::new(eventgroup_id) else {
+                        tracing::error!(
+                            "BUG: runtime sent invalid eventgroup_id 0x{:04x} (reserved value)",
+                            eventgroup_id
+                        );
+                        continue;
+                    };
+                    return Some(ServiceEvent::Unsubscribe {
+                        eventgroup,
+                        client: ClientInfo { address: client },
+                    });
+                }
             }
         }
     }

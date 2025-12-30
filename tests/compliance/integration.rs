@@ -85,7 +85,7 @@ fn request_response_roundtrip() {
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy.call(MethodId::new(0x0001), b"hello"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"hello"),
         )
         .await
         .expect("Timeout waiting for response")
@@ -148,7 +148,7 @@ fn multiple_calls_succeed() {
         for i in 0..3u8 {
             let response = tokio::time::timeout(
                 Duration::from_secs(5),
-                proxy.call(MethodId::new(0x0001), &[i]),
+                proxy.call(MethodId::new(0x0001).unwrap(), &[i]),
             )
             .await
             .expect("Timeout")
@@ -321,7 +321,7 @@ fn successful_call_returns_ok() {
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy.call(MethodId::new(0x0001), b"test"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"test"),
         )
         .await
         .expect("Timeout")
@@ -401,7 +401,7 @@ fn network_partition_handling() {
         // Call should succeed before partition
         let response = tokio::time::timeout(
             Duration::from_secs(2),
-            proxy.call(MethodId::new(0x0001), b"ping"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"ping"),
         )
         .await
         .expect("Timeout")
@@ -414,7 +414,7 @@ fn network_partition_handling() {
         // Call should fail/timeout during partition
         let result = tokio::time::timeout(
             Duration::from_millis(500),
-            proxy.call(MethodId::new(0x0001), b"ping"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"ping"),
         )
         .await;
         
@@ -433,7 +433,7 @@ fn network_partition_handling() {
         // Call should succeed after repair
         let response = tokio::time::timeout(
             Duration::from_secs(2),
-            proxy.call(MethodId::new(0x0001), b"ping"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"ping"),
         )
         .await
         .expect("Timeout after repair")
@@ -523,7 +523,7 @@ fn service_restart_recovery() {
 
         let response = tokio::time::timeout(
             Duration::from_secs(2),
-            proxy.call(MethodId::new(0x0001), b"call1"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"call1"),
         )
         .await
         .expect("Timeout")
@@ -557,7 +557,7 @@ fn service_restart_recovery() {
         // Call the restarted server
         let response = tokio::time::timeout(
             Duration::from_secs(2),
-            proxy.call(MethodId::new(0x0001), b"call2"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"call2"),
         )
         .await
         .expect("Timeout after restart")
@@ -665,7 +665,7 @@ fn many_concurrent_requests() {
                 let payload = (i as u32).to_be_bytes().to_vec();
                 let response = tokio::time::timeout(
                     Duration::from_secs(30),
-                    proxy.call(MethodId::new(0x0001), payload.clone()),
+                    proxy.call(MethodId::new(0x0001).unwrap(), payload.clone()),
                 )
                 .await
                 .expect("Timeout")

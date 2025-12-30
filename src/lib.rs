@@ -131,10 +131,10 @@ impl InstanceId {
 pub struct MethodId(u16);
 
 impl MethodId {
-    /// Create a new MethodId. Valid range: 0x0001-0x7FFF (high bit reserved for events)
+    /// Create a new MethodId. Valid range: 0x0000-0x7FFF (high bit reserved for events)
     pub fn new(id: u16) -> Option<Self> {
-        if id == 0 || id >= 0x8000 {
-            None
+        if id >= 0x8000 {
+            None  // High bit set = event, not method
         } else {
             Some(Self(id))
         }

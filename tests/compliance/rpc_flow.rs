@@ -181,7 +181,7 @@ fn fire_and_forget_no_response_or_error() {
         if let Ok(Some(event)) = result {
             match event {
                 ServiceEvent::FireForget { method, payload, .. } => {
-                    assert_eq!(method, MethodId::new(0x0001));
+                    assert_eq!(method, MethodId::new(0x0001).unwrap());
                     assert_eq!(payload.as_ref(), b"ff_data");
                     // Server receives F&F but does NOT respond
                 }
@@ -342,9 +342,9 @@ fn concurrent_requests_matched_by_request_id() {
             .expect("Service available");
 
         // Send 3 requests concurrently
-        let call1 = proxy.call(MethodId::new(0x0001), &[1u8]);
-        let call2 = proxy.call(MethodId::new(0x0001), &[2u8]);
-        let call3 = proxy.call(MethodId::new(0x0001), &[3u8]);
+        let call1 = proxy.call(MethodId::new(0x0001).unwrap(), &[1u8]);
+        let call2 = proxy.call(MethodId::new(0x0001).unwrap(), &[2u8]);
+        let call3 = proxy.call(MethodId::new(0x0001).unwrap(), &[3u8]);
 
         // Wait for all responses
         let (r1, r2, r3) = tokio::join!(call1, call2, call3);
@@ -414,7 +414,7 @@ fn request_triggers_response() {
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy.call(MethodId::new(0x0001), b"request_data"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"request_data"),
         )
         .await
         .expect("Timeout waiting for response")
@@ -478,7 +478,7 @@ fn request_can_receive_error_response() {
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
-            proxy.call(MethodId::new(0x0001), b"request"),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"request"),
         )
         .await
         .expect("Timeout waiting for response")
