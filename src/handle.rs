@@ -17,9 +17,11 @@ use crate::{ClientInfo, Event, EventgroupId, EventId, InstanceId, MethodId, Resp
 // ============================================================================
 
 /// Marker: service not yet available
+#[derive(Clone)]
 pub struct Unavailable;
 
 /// Marker: service is available
+#[derive(Clone)]
 pub struct Available {
     endpoint: std::net::SocketAddr,
 }
@@ -29,12 +31,27 @@ pub struct Available {
 /// Use `runtime.find::<MyService>(instance)` to create a proxy.
 /// The proxy starts in `Unavailable` state and transitions to `Available`
 /// when the service is discovered via Service Discovery.
+///
+/// `ProxyHandle` is `Clone`, allowing it to be shared across tasks for
+/// concurrent requests.
 pub struct ProxyHandle<S: Service, State> {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
     instance_id: InstanceId,
     state: State,
     _phantom: PhantomData<S>,
+}
+
+impl<S: Service, State: Clone> Clone for ProxyHandle<S, State> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+            service_id: self.service_id,
+            instance_id: self.instance_id,
+            state: self.state.clone(),
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<S: Service> ProxyHandle<S, Unavailable> {
@@ -115,7 +132,25 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
 
 impl<S: Service> ProxyHandle<S, Available> {
     /// Call a method and wait for the response.
-    pub async fn call(&self, method: MethodId, payload: &[u8]) -> Result<Response> {
+    ///
+    /// Accepts any type that implements `AsRef<[u8]>`, including:
+    /// - `&[u8]`, `&[u8; N]` (will be copied)
+    /// - `Vec<u8>` (will be copied, but you can use `Bytes` for zero-copy)
+    /// - `b"string literals"`
+    ///
+    /// The payload is copied internally to ensure it lives long enough for
+    /// the async operation. For large payloads where zero-copy is important,
+    /// consider using `call_owned` with a `Bytes` value directly.
+    ///
+    /// For concurrent requests, clone the proxy handle:
+    /// ```ignore
+    /// let proxy = proxy.clone();
+    /// tokio::spawn(async move {
+    ///     proxy.call(method, b"hello").await
+    /// });
+    /// ```
+    pub async fn call(&self, method: MethodId, payload: impl AsRef<[u8]>) -> Result<Response> {
+        let payload_bytes = bytes::Bytes::copy_from_slice(payload.as_ref());
         let (response_tx, response_rx) = oneshot::channel();
         
         self.inner
@@ -124,7 +159,7 @@ impl<S: Service> ProxyHandle<S, Available> {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
                 method_id: method.value(),
-                payload: bytes::Bytes::copy_from_slice(payload),
+                payload: payload_bytes,
                 response: response_tx,
             })
             .await
