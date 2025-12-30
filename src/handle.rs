@@ -84,9 +84,11 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
         }).await;
 
         // Wait for availability notification
-        let endpoint = loop {
+        let (endpoint, discovered_instance_id) = loop {
             match notify_rx.recv().await {
-                Some(ServiceAvailability::Available { endpoint }) => break endpoint,
+                Some(ServiceAvailability::Available { endpoint, instance_id }) => {
+                    break (endpoint, instance_id)
+                },
                 Some(ServiceAvailability::Unavailable) => continue,
                 None => {
                     // Runtime shut down - use a dummy endpoint
@@ -99,7 +101,7 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
         ProxyHandle {
             inner: Arc::clone(&self.inner),
             service_id: self.service_id,
-            instance_id: self.instance_id,
+            instance_id: InstanceId::Id(discovered_instance_id),
             state: Available { endpoint },
             _phantom: PhantomData,
         }
