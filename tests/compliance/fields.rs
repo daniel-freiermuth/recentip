@@ -376,12 +376,7 @@ fn field_setter_gets_response() {
 ///
 /// The notifier shall send a notification event message that communicates
 /// the updated value of the field.
-///
-/// TODO: This test currently fails with ServiceUnavailable during subscription.
-/// The SOME/IP runtime needs to properly advertise eventgroups in Service Discovery.
-/// Issue tracked in todo #4: "Fix eventgroup advertisement in Service Discovery"
 #[test]
-#[ignore]
 fn field_notifier_sends_updated_value() {
     covers!(feat_req_recentip_635);
 
@@ -406,7 +401,7 @@ fn field_notifier_sends_updated_value() {
                 .unwrap();
 
             // Wait for subscription to be established
-            tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(800)).await;
 
             // Field value changes - send notification with updated value
             let updated_value = 100u32.to_be_bytes();
@@ -477,12 +472,7 @@ fn field_notifier_sends_updated_value() {
 /// feat_req_recentip_631: Field is combination of getter/setter/notifier
 ///
 /// A field is a combination of a getter method, setter method, and notifier event.
-///
-/// TODO: This test currently fails with ServiceUnavailable during subscription.
-/// The SOME/IP runtime needs to properly advertise eventgroups in Service Discovery.
-/// Issue tracked in todo #4: "Fix eventgroup advertisement in Service Discovery"
 #[test]
-#[ignore]
 fn field_combines_getter_setter_notifier() {
     covers!(feat_req_recentip_631);
 
@@ -511,35 +501,45 @@ fn field_combines_getter_setter_notifier() {
             // Wait for subscription
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            // Handle getter request
-            if let Some(event) = offering.next().await {
-                if let ServiceEvent::Call { method, responder, .. } = event {
-                    if method == MethodId::new(0x0001) {
-                        // Getter - return current value
-                        responder.reply(&field_value.to_be_bytes()).await.unwrap();
+            // Handle events - may receive Subscribe first
+            let mut getter_handled = false;
+            let mut setter_handled = false;
+            
+            for _ in 0..10 {
+                if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next()).await.ok().flatten() {
+                    match event {
+                        ServiceEvent::Call { method, payload, responder, .. } => {
+                            if method == MethodId::new(0x0001) && !getter_handled {
+                                // Getter - return current value
+                                responder.reply(&field_value.to_be_bytes()).await.unwrap();
+                                getter_handled = true;
+                            } else if method == MethodId::new(0x0002) && !setter_handled {
+                                // Setter - update value
+                                field_value = u16::from_be_bytes([payload[0], payload[1]]);
+                                responder.reply(b"").await.unwrap();
+
+                                // Send notification of changed value
+                                tokio::time::sleep(Duration::from_millis(10)).await;
+                                let eventgroup_id = EventgroupId::new(0x01).unwrap();
+                                let notifier_event = EventId::new(0x8001).unwrap();
+                                offering.notify(eventgroup_id, notifier_event, &field_value.to_be_bytes())
+                                    .await
+                                    .unwrap();
+                                *flag.lock().unwrap() = true;
+                                setter_handled = true;
+                            }
+                        }
+                        ServiceEvent::Subscribe { .. } => {
+                            // Expected - continue processing
+                        }
+                        _ => {}
+                    }
+                    
+                    if getter_handled && setter_handled {
+                        break;
                     }
                 }
             }
-
-            // Handle setter request
-        if let Some(event) = offering.next().await {
-            if let ServiceEvent::Call { method, payload, responder, .. } = event {
-                if method == MethodId::new(0x0002) {
-                    // Setter - update value
-                    field_value = u16::from_be_bytes([payload[0], payload[1]]);
-                    responder.reply(b"").await.unwrap();
-
-                    // Send notification of changed value
-                    tokio::time::sleep(Duration::from_millis(10)).await;
-                    let eventgroup_id = EventgroupId::new(0x01).unwrap();
-                    let notifier_event = EventId::new(0x8001).unwrap();
-                    offering.notify(eventgroup_id, notifier_event, &field_value.to_be_bytes())
-                        .await
-                        .unwrap();
-                    *flag.lock().unwrap() = true;
-                }
-            }
-        }
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         Ok(())

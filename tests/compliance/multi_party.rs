@@ -186,12 +186,7 @@ fn multiple_clients_call_same_server() {
 ///
 /// Three clients subscribe to the same eventgroup. When the server sends an event,
 /// all three subscribers should receive it.
-///
-/// TODO: This test is currently ignored because the runtime does not yet advertise
-/// eventgroups in Service Discovery. Once eventgroup advertisement is implemented,
-/// remove the #[ignore] attribute.
 #[test]
-#[ignore]
 fn multiple_clients_subscribe_to_events() {
     covers!(feat_req_recentip_354, feat_req_recentip_804);
 
@@ -316,7 +311,7 @@ fn multiple_clients_subscribe_to_events() {
     });
 
     sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(2000)).await;
         Ok(())
     });
 
