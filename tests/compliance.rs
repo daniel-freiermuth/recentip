@@ -40,6 +40,12 @@
 #[path = "compliance/api_types.rs"]
 mod api_types;
 
+// Async compliance tests using turmoil
+#[cfg(feature = "turmoil")]
+#[path = "compliance/integration.rs"]
+mod integration;
+
+#[cfg(feature = "turmoil")]
 #[path = "compliance/wire_format.rs"]
 mod wire_format;
 
@@ -100,9 +106,6 @@ mod fields;
 #[cfg(feature = "turmoil")]
 #[path = "compliance/error_scenarios.rs"]
 mod error_scenarios;
-
-#[path = "compliance/session_edge_cases.rs"]
-mod session_edge_cases;
 
 // instances contains turmoil integration tests for service instance management
 #[cfg(feature = "turmoil")]
