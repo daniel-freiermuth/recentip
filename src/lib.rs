@@ -64,13 +64,14 @@ pub mod net;
 pub mod error;
 pub mod runtime;
 pub mod handle;
+pub mod tcp;
 
 /// Wire format parsing for SOME/IP headers and messages.
 /// Exposed for testing and interoperability verification.
 pub mod wire;
 
 pub use error::*;
-pub use runtime::{MethodConfig, Runtime, RuntimeConfig};
+pub use runtime::{MethodConfig, Runtime, RuntimeConfig, Transport};
 pub use handle::*;
 
 // ============================================================================

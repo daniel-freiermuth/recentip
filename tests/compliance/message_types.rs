@@ -22,7 +22,7 @@ use someip_runtime::runtime::Runtime;
 use someip_runtime::handle::ServiceEvent;
 
 #[cfg(feature = "turmoil")]
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket>;
+type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {

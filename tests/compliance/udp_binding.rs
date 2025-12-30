@@ -26,8 +26,8 @@ macro_rules! covers {
     };
 }
 
-/// Type alias for turmoil-based runtime
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket>;
+/// Type alias for turmoil-based runtime (UDP for networking, TCP for connection pool)
+type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct TestService;

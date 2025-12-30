@@ -6,7 +6,7 @@ use someip_runtime::runtime::Runtime;
 use someip_runtime::handle::ServiceEvent;
 
 /// Type alias for turmoil-based runtime for convenience
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket>;
+type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct TestService;

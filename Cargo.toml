@@ -28,3 +28,4 @@ tracing-subscriber = "0.3"
 [[test]]
 name = "api_tests"
 path = "tests/api_tests.rs"
+required-features = ["turmoil"]

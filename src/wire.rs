@@ -19,6 +19,78 @@ pub const PROTOCOL_VERSION_OFFSET: usize = 12;
 pub const INTERFACE_VERSION_OFFSET: usize = 13;
 
 // ============================================================================
+// Magic Cookie (TCP Resynchronization)
+// ============================================================================
+
+/// Magic Cookie Service ID (0xFFFF)
+pub const MAGIC_COOKIE_SERVICE_ID: u16 = 0xFFFF;
+
+/// Magic Cookie Method ID for client requests (0x0000)
+pub const MAGIC_COOKIE_CLIENT_METHOD_ID: u16 = 0x0000;
+
+/// Magic Cookie Method ID for server responses (0x8000)
+pub const MAGIC_COOKIE_SERVER_METHOD_ID: u16 = 0x8000;
+
+/// Generate a Magic Cookie message (16 bytes).
+///
+/// Per feat_req_recentip_591: Each TCP segment shall start with a Magic Cookie.
+/// Per feat_req_recentip_592: Only one Magic Cookie per segment.
+///
+/// Magic Cookie format:
+/// - Service ID: 0xFFFF
+/// - Method ID: 0x0000 (client) or 0x8000 (server)
+/// - Length: 8 (minimal header, no payload)
+/// - Client ID, Session ID: 0xDEAD, 0xBEEF (recognizable pattern)
+/// - Protocol Version: 0x01
+/// - Interface Version: 0x01
+/// - Message Type: 0x01 (Request)
+/// - Return Code: 0x00
+pub fn magic_cookie_client() -> [u8; 16] {
+    [
+        0xFF, 0xFF,             // Service ID: 0xFFFF
+        0x00, 0x00,             // Method ID: 0x0000 (client)
+        0x00, 0x00, 0x00, 0x08, // Length: 8
+        0xDE, 0xAD,             // Client ID: 0xDEAD
+        0xBE, 0xEF,             // Session ID: 0xBEEF
+        0x01,                   // Protocol Version
+        0x01,                   // Interface Version
+        0x01,                   // Message Type: Request
+        0x00,                   // Return Code
+    ]
+}
+
+/// Generate a server-side Magic Cookie message (16 bytes).
+pub fn magic_cookie_server() -> [u8; 16] {
+    [
+        0xFF, 0xFF,             // Service ID: 0xFFFF
+        0x80, 0x00,             // Method ID: 0x8000 (server)
+        0x00, 0x00, 0x00, 0x08, // Length: 8
+        0xDE, 0xAD,             // Client ID: 0xDEAD
+        0xBE, 0xEF,             // Session ID: 0xBEEF
+        0x01,                   // Protocol Version
+        0x01,                   // Interface Version
+        0x01,                   // Message Type: Request
+        0x00,                   // Return Code
+    ]
+}
+
+/// Check if bytes represent a Magic Cookie message.
+///
+/// Returns true if the first 4 bytes match Magic Cookie pattern
+/// (Service ID 0xFFFF, Method ID 0x0000 or 0x8000).
+pub fn is_magic_cookie(data: &[u8]) -> bool {
+    if data.len() < 4 {
+        return false;
+    }
+    // Check Service ID is 0xFFFF
+    if data[0] != 0xFF || data[1] != 0xFF {
+        return false;
+    }
+    // Check Method ID is 0x0000 (client) or 0x8000 (server)
+    (data[2] == 0x00 && data[3] == 0x00) || (data[2] == 0x80 && data[3] == 0x00)
+}
+
+// ============================================================================
 // Version Types
 // ============================================================================
 

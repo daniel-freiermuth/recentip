@@ -1,0 +1,554 @@
+//! TCP connection management for SOME/IP runtime.
+//!
+//! Handles TCP connections per SOME/IP specification:
+//! - feat_req_recentip_644: Single TCP connection per client-server pair
+//! - feat_req_recentip_646: Client opens TCP connection on first request
+//! - feat_req_recentip_647: Client reestablishes connection after failure
+
+use std::collections::HashMap;
+use std::io;
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use bytes::{Buf, Bytes, BytesMut};
+use tokio::sync::{mpsc, Mutex};
+
+use crate::net::{TcpListener, TcpStream};
+use crate::wire::{Header, is_magic_cookie, magic_cookie_client, magic_cookie_server};
+
+/// Message received from a TCP connection (client-side response or server-side request)
+#[derive(Debug)]
+pub struct TcpMessage {
+    /// The raw message data including SOME/IP header
+    pub data: Vec<u8>,
+    /// The peer address this message came from
+    pub from: SocketAddr,
+}
+
+/// TCP connection pool manages connections to remote peers.
+///
+/// Per SOME/IP spec, there should be a single TCP connection per client-server pair.
+/// The pool handles connection establishment, reuse, and reconnection.
+///
+/// For client-side TCP: When a connection is established, a reader task is spawned
+/// to receive responses and forward them to the runtime.
+pub struct TcpConnectionPool<T: TcpStream> {
+    /// Active connections indexed by peer address (just for tracking, not for sending)
+    connections: Arc<Mutex<HashMap<SocketAddr, TcpConnectionHandle>>>,
+    /// Sender for each connection
+    senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Vec<u8>>>>>,
+    /// Channel to forward received messages to the runtime
+    msg_tx: mpsc::Sender<TcpMessage>,
+    /// Enable Magic Cookies for TCP resync (feat_req_recentip_586)
+    magic_cookies: bool,
+    /// Phantom data for the stream type - use fn() -> T for Send+Sync
+    _phantom: std::marker::PhantomData<fn() -> T>,
+}
+
+/// Handle to track a TCP connection
+struct TcpConnectionHandle {
+    // The task is spawned and runs independently
+    // We just track that a connection exists
+}
+
+impl<T: TcpStream> Clone for TcpConnectionPool<T> {
+    fn clone(&self) -> Self {
+        Self {
+            connections: Arc::clone(&self.connections),
+            senders: Arc::clone(&self.senders),
+            msg_tx: self.msg_tx.clone(),
+            magic_cookies: self.magic_cookies,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: TcpStream> TcpConnectionPool<T> {
+    /// Create a new connection pool with a message receiver channel
+    pub fn new(msg_tx: mpsc::Sender<TcpMessage>, magic_cookies: bool) -> Self {
+        Self {
+            connections: Arc::new(Mutex::new(HashMap::new())),
+            senders: Arc::new(Mutex::new(HashMap::new())),
+            msg_tx,
+            magic_cookies,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Send data to a peer, establishing connection if needed.
+    ///
+    /// This implements:
+    /// - feat_req_recentip_646: Opens connection on first request
+    /// - feat_req_recentip_644: Reuses existing connection
+    ///
+    /// When a new connection is established, a reader task is spawned to receive
+    /// responses and forward them to the runtime via the msg_tx channel.
+    pub async fn send(&self, target: SocketAddr, data: &[u8]) -> io::Result<()> {
+        // Check if we have a sender for this connection
+        let sender = {
+            let senders = self.senders.lock().await;
+            senders.get(&target).cloned()
+        };
+        
+        if let Some(tx) = sender {
+            // Use existing connection
+            tx.send(data.to_vec()).await
+                .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Connection task closed"))?;
+            return Ok(());
+        }
+        
+        // Need to establish new connection
+        tracing::debug!("Establishing TCP connection to {}", target);
+        let stream = T::connect(target).await?;
+        
+        // Create channel for sending data to this connection
+        let (send_tx, send_rx) = mpsc::channel::<Vec<u8>>(32);
+        
+        // Store the sender
+        {
+            let mut senders = self.senders.lock().await;
+            senders.insert(target, send_tx.clone());
+        }
+        {
+            let mut connections = self.connections.lock().await;
+            connections.insert(target, TcpConnectionHandle {});
+        }
+        
+        // Spawn connection handler task
+        let msg_tx = self.msg_tx.clone();
+        let senders = Arc::clone(&self.senders);
+        let connections = Arc::clone(&self.connections);
+        let magic_cookies = self.magic_cookies;
+        
+        tokio::spawn(async move {
+            handle_client_tcp_connection(stream, target, msg_tx, send_rx, senders, connections, magic_cookies).await;
+        });
+        
+        // Send the data via the new connection
+        send_tx.send(data.to_vec()).await
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Connection task closed"))?;
+        
+        Ok(())
+    }
+
+    /// Check if we have an active connection to a peer
+    pub async fn has_connection(&self, target: &SocketAddr) -> bool {
+        self.connections.lock().await.contains_key(target)
+    }
+
+    /// Close connection to a peer
+    pub async fn close(&self, target: &SocketAddr) {
+        self.connections.lock().await.remove(target);
+        self.senders.lock().await.remove(target);
+    }
+
+    /// Close all connections
+    pub async fn close_all(&self) {
+        self.connections.lock().await.clear();
+        self.senders.lock().await.clear();
+    }
+}
+
+/// Handle a client-side TCP connection - both reading and writing
+///
+/// When `magic_cookies` is enabled:
+/// - Each write is prepended with a Magic Cookie (feat_req_recentip_591)
+/// - Magic Cookies in received data are skipped (feat_req_recentip_586)
+async fn handle_client_tcp_connection<T: TcpStream>(
+    mut stream: T,
+    peer_addr: SocketAddr,
+    msg_tx: mpsc::Sender<TcpMessage>,
+    mut send_rx: mpsc::Receiver<Vec<u8>>,
+    senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Vec<u8>>>>>,
+    connections: Arc<Mutex<HashMap<SocketAddr, TcpConnectionHandle>>>,
+    magic_cookies: bool,
+) {
+    let mut read_buffer = BytesMut::new();
+    let mut read_buf = [0u8; 8192];
+    
+    loop {
+        tokio::select! {
+            // Read from the stream
+            result = stream.read(&mut read_buf) => {
+                match result {
+                    Ok(0) => {
+                        // Connection closed
+                        tracing::debug!("TCP connection to {} closed", peer_addr);
+                        break;
+                    }
+                    Ok(n) => {
+                        read_buffer.extend_from_slice(&read_buf[..n]);
+                        
+                        // Try to parse complete messages
+                        while read_buffer.len() >= Header::SIZE {
+                            // Skip Magic Cookies (feat_req_recentip_586)
+                            if is_magic_cookie(&read_buffer) {
+                                let length = u32::from_be_bytes([
+                                    read_buffer[4], read_buffer[5], read_buffer[6], read_buffer[7]
+                                ]) as usize;
+                                let total_size = 8 + length;
+                                if read_buffer.len() >= total_size {
+                                    read_buffer.advance(total_size);
+                                    continue;
+                                } else {
+                                    break; // Need more data for magic cookie
+                                }
+                            }
+                            
+                            // Parse length from header (offset 4-8, big-endian u32)
+                            let length = u32::from_be_bytes([
+                                read_buffer[4], read_buffer[5], read_buffer[6], read_buffer[7]
+                            ]) as usize;
+                            
+                            let total_size = 8 + length;
+                            
+                            if read_buffer.len() >= total_size {
+                                // Extract complete message
+                                let message_data = read_buffer.split_to(total_size);
+                                let msg = TcpMessage {
+                                    data: message_data.to_vec(),
+                                    from: peer_addr,
+                                };
+                                if msg_tx.send(msg).await.is_err() {
+                                    tracing::debug!("Runtime closed, stopping TCP client connection");
+                                    break;
+                                }
+                            } else {
+                                // Need more data
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("TCP read error from {}: {}", peer_addr, e);
+                        break;
+                    }
+                }
+            }
+            
+            // Write to the stream
+            Some(data) = send_rx.recv() => {
+                // Prepend Magic Cookie if enabled (feat_req_recentip_591)
+                if magic_cookies {
+                    let cookie = magic_cookie_client();
+                    if let Err(e) = stream.write_all(&cookie).await {
+                        tracing::error!("TCP write error (magic cookie) to {}: {}", peer_addr, e);
+                        break;
+                    }
+                }
+                if let Err(e) = stream.write_all(&data).await {
+                    tracing::error!("TCP write error to {}: {}", peer_addr, e);
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Clean up
+    senders.lock().await.remove(&peer_addr);
+    connections.lock().await.remove(&peer_addr);
+}
+
+/// Read SOME/IP messages from a TCP stream with framing.
+///
+/// SOME/IP uses the length field in the header for framing:
+/// - Header is 16 bytes, includes length field at offset 4-8
+/// - Length field = 8 + payload length (includes client_id through end)
+/// - Total message size = 8 (first part of header) + length field value
+pub async fn read_framed_message<T: TcpStream>(
+    stream: &mut T,
+    buffer: &mut BytesMut,
+) -> io::Result<Option<Bytes>> {
+    loop {
+        // Check if we have enough data for a complete message
+        if buffer.len() >= Header::SIZE {
+            // Parse length from header (offset 4-8, big-endian u32)
+            let length = u32::from_be_bytes([
+                buffer[4], buffer[5], buffer[6], buffer[7]
+            ]) as usize;
+            
+            // Total message size = 8 (service_id, method_id, length) + length
+            let total_size = 8 + length;
+            
+            if buffer.len() >= total_size {
+                // We have a complete message
+                let message = buffer.split_to(total_size).freeze();
+                return Ok(Some(message));
+            }
+        }
+
+        // Need more data - read from stream
+        let mut read_buf = [0u8; 8192];
+        let n = stream.read(&mut read_buf).await?;
+        if n == 0 {
+            // Connection closed
+            return if buffer.is_empty() {
+                Ok(None)
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "Connection closed with partial message",
+                ))
+            };
+        }
+        buffer.extend_from_slice(&read_buf[..n]);
+    }
+}
+
+/// Message to send to a specific TCP connection
+#[derive(Debug)]
+pub struct TcpSendMessage {
+    /// Data to send
+    pub data: Vec<u8>,
+    /// Target peer address
+    pub to: SocketAddr,
+}
+
+/// Manages a TCP server for an offered service.
+/// 
+/// This handles:
+/// - Accepting incoming TCP connections
+/// - Reading framed SOME/IP messages from clients
+/// - Sending responses back to the correct client
+pub struct TcpServer<T: TcpStream> {
+    /// Local address the server is listening on
+    pub local_addr: SocketAddr,
+    /// Channel to send responses to clients
+    pub send_tx: mpsc::Sender<TcpSendMessage>,
+    /// Phantom for the stream type
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: TcpStream> TcpServer<T> {
+    /// Spawn a new TCP server for an offered service.
+    ///
+    /// Returns the server handle and immediately starts accepting connections.
+    /// Messages received from clients are forwarded via `msg_tx`.
+    pub async fn spawn<L: TcpListener<Stream = T>>(
+        listener: L,
+        service_id: u16,
+        instance_id: u16,
+        msg_tx: mpsc::Sender<TcpMessage>,
+        magic_cookies: bool,
+    ) -> io::Result<Self> {
+        let local_addr = listener.local_addr()?;
+        
+        // Channel for sending responses to clients
+        let (send_tx, mut send_rx) = mpsc::channel::<TcpSendMessage>(100);
+        
+        // Track active client connections - maps peer addr to a response sender
+        let client_senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Vec<u8>>>>> = 
+            Arc::new(Mutex::new(HashMap::new()));
+        let client_senders_for_responses = Arc::clone(&client_senders);
+        
+        // Spawn the main server task
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    // Accept new connections
+                    result = listener.accept() => {
+                        match result {
+                            Ok((stream, peer_addr)) => {
+                                tracing::debug!(
+                                    "TCP server: accepted connection from {} for service {:04x}:{:04x}",
+                                    peer_addr, service_id, instance_id
+                                );
+                                
+                                // Create per-connection response channel
+                                let (conn_send_tx, conn_send_rx) = mpsc::channel::<Vec<u8>>(32);
+                                
+                                // Register this connection
+                                {
+                                    let mut senders = client_senders.lock().await;
+                                    senders.insert(peer_addr, conn_send_tx);
+                                }
+                                
+                                // Spawn task to handle this client connection
+                                let msg_tx = msg_tx.clone();
+                                let senders = Arc::clone(&client_senders);
+                                tokio::spawn(handle_tcp_connection(
+                                    stream,
+                                    peer_addr,
+                                    service_id,
+                                    instance_id,
+                                    msg_tx,
+                                    conn_send_rx,
+                                    senders,
+                                    magic_cookies,
+                                ));
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "TCP accept error for service {:04x}:{:04x}: {}",
+                                    service_id, instance_id, e
+                                );
+                            }
+                        }
+                    }
+                    
+                    // Route responses to the appropriate client connection
+                    Some(send_msg) = send_rx.recv() => {
+                        let senders = client_senders_for_responses.lock().await;
+                        if let Some(sender) = senders.get(&send_msg.to) {
+                            if sender.send(send_msg.data).await.is_err() {
+                                tracing::warn!("Failed to send response to {}: connection closed", send_msg.to);
+                            }
+                        } else {
+                            tracing::warn!("No TCP connection for peer {}", send_msg.to);
+                        }
+                    }
+                }
+            }
+        });
+        
+        Ok(Self {
+            local_addr,
+            send_tx,
+            _phantom: std::marker::PhantomData,
+        })
+    }
+}
+
+/// Handle a single TCP client connection (server-side).
+///
+/// Reads messages and forwards them to the runtime, while also
+/// handling outgoing responses.
+///
+/// When `magic_cookies` is enabled:
+/// - Each write is prepended with a Magic Cookie (feat_req_recentip_591)
+/// - Magic Cookies in received data are skipped (feat_req_recentip_586)
+async fn handle_tcp_connection<T: TcpStream>(
+    mut stream: T,
+    peer_addr: SocketAddr,
+    service_id: u16,
+    instance_id: u16,
+    msg_tx: mpsc::Sender<TcpMessage>,
+    mut response_rx: mpsc::Receiver<Vec<u8>>,
+    client_senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Vec<u8>>>>>,
+    magic_cookies: bool,
+) {
+    let mut read_buffer = BytesMut::new();
+    let mut read_buf = [0u8; 8192];
+    
+    loop {
+        tokio::select! {
+            // Read from client
+            result = stream.read(&mut read_buf) => {
+                match result {
+                    Ok(0) => {
+                        // Connection closed
+                        tracing::debug!("TCP client {} disconnected from service {:04x}:{:04x}",
+                            peer_addr, service_id, instance_id);
+                        break;
+                    }
+                    Ok(n) => {
+                        read_buffer.extend_from_slice(&read_buf[..n]);
+                        
+                        // Try to parse complete messages
+                        while read_buffer.len() >= Header::SIZE {
+                            // Skip Magic Cookies (feat_req_recentip_586)
+                            if is_magic_cookie(&read_buffer) {
+                                let length = u32::from_be_bytes([
+                                    read_buffer[4], read_buffer[5], read_buffer[6], read_buffer[7]
+                                ]) as usize;
+                                let total_size = 8 + length;
+                                if read_buffer.len() >= total_size {
+                                    read_buffer.advance(total_size);
+                                    continue;
+                                } else {
+                                    break; // Need more data for magic cookie
+                                }
+                            }
+                            
+                            // Parse length from header (offset 4-8, big-endian u32)
+                            let length = u32::from_be_bytes([
+                                read_buffer[4], read_buffer[5], read_buffer[6], read_buffer[7]
+                            ]) as usize;
+                            
+                            let total_size = 8 + length;
+                            
+                            if read_buffer.len() >= total_size {
+                                // Extract complete message
+                                let message_data = read_buffer.split_to(total_size);
+                                let msg = TcpMessage {
+                                    data: message_data.to_vec(),
+                                    from: peer_addr,
+                                };
+                                if msg_tx.send(msg).await.is_err() {
+                                    tracing::debug!("Runtime closed, stopping TCP connection handler");
+                                    break;
+                                }
+                            } else {
+                                // Need more data
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("TCP read error from {} for service {:04x}:{:04x}: {}",
+                            peer_addr, service_id, instance_id, e);
+                        break;
+                    }
+                }
+            }
+            
+            // Write responses to client
+            Some(data) = response_rx.recv() => {
+                // Prepend Magic Cookie if enabled (feat_req_recentip_591)
+                if magic_cookies {
+                    let cookie = magic_cookie_server();
+                    if let Err(e) = stream.write_all(&cookie).await {
+                        tracing::error!("TCP write error (magic cookie) to {} for service {:04x}:{:04x}: {}",
+                            peer_addr, service_id, instance_id, e);
+                        break;
+                    }
+                }
+                if let Err(e) = stream.write_all(&data).await {
+                    tracing::error!("TCP write error to {} for service {:04x}:{:04x}: {}",
+                        peer_addr, service_id, instance_id, e);
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Clean up: remove from senders map
+    let mut senders = client_senders.lock().await;
+    senders.remove(&peer_addr);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::BufMut;
+
+    #[test]
+    fn test_frame_parsing_logic() {
+        // Simulate a SOME/IP message: header (16 bytes) + 4 bytes payload
+        let mut msg = BytesMut::new();
+        // Service ID: 0x1234
+        msg.put_u16(0x1234);
+        // Method ID: 0x0001
+        msg.put_u16(0x0001);
+        // Length: 8 (rest of header) + 4 (payload) = 12
+        msg.put_u32(12);
+        // Client ID, Session ID
+        msg.put_u16(0x0001);
+        msg.put_u16(0x0001);
+        // Protocol version, interface version, message type, return code
+        msg.put_u8(0x01);
+        msg.put_u8(0x01);
+        msg.put_u8(0x00);
+        msg.put_u8(0x00);
+        // Payload
+        msg.put_slice(b"test");
+
+        // The total size should be 8 + 12 = 20 bytes
+        assert_eq!(msg.len(), 20);
+
+        // Check length field parsing
+        let length = u32::from_be_bytes([msg[4], msg[5], msg[6], msg[7]]) as usize;
+        assert_eq!(length, 12);
+        assert_eq!(8 + length, 20);
+    }
+}

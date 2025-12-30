@@ -40,7 +40,7 @@ impl Service for TestService {
     const MINOR_VERSION: u32 = 0;
 }
 
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket>;
+type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Helper to parse a SOME/IP header from raw bytes
 fn parse_header(data: &[u8]) -> Option<Header> {
