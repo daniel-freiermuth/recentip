@@ -267,6 +267,16 @@ pub struct Response {
     pub payload: bytes::Bytes,
 }
 
+impl Response {
+    pub fn is_ok(&self) -> bool {
+        self.return_code == ReturnCode::Ok
+    }
+
+    pub fn is_err(&self) -> bool {
+        self.return_code != ReturnCode::Ok
+    }
+}
+
 /// Information about a client (for server-side)
 #[derive(Debug, Clone)]
 pub struct ClientInfo {

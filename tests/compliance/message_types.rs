@@ -108,7 +108,6 @@ fn request_receives_response_type() {
 /// [feat_req_recentip_282] REQUEST can get ERROR type response
 #[cfg(feature = "turmoil")]
 #[test]
-#[ignore = "ERROR message type handling not yet implemented"]
 fn request_can_receive_error_type() {
     covers!(feat_req_recentip_282);
 
@@ -152,10 +151,11 @@ fn request_can_receive_error_type() {
         let method = MethodId::new(0x0001);
         let result = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, &[1, 2, 3]))
             .await
-            .expect("RPC timeout");
+            .expect("RPC timeout")
+            .expect("Call should have succeeded");
 
         // Should be an error (ERROR message type maps to Err result)
-        assert!(result.is_err(), "Error response should return Err");
+        assert!(result.is_err(), "Error response should return Err. Got {:?}", result);
 
         Ok(())
     });
