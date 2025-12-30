@@ -511,7 +511,6 @@ fn client_id_consistent_across_calls() {
 /// When multiple requests are outstanding and responses arrive out of order,
 /// the client must correctly match each response to its request.
 #[test]
-#[ignore = "Known issue: runtime doesn't match responses by request ID yet"]
 fn out_of_order_response_matching() {
     covers!(feat_req_recentip_711, feat_req_recentip_83);
 
@@ -576,6 +575,7 @@ fn out_of_order_response_matching() {
 
         // Send two requests concurrently
         let fut1 = proxy.call(method, &[1]);
+        tokio::time::sleep(Duration::from_millis(50)).await;
         let fut2 = proxy.call(method, &[2]);
 
         // Wait for both responses
