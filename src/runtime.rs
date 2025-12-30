@@ -102,6 +102,47 @@ impl RuntimeConfigBuilder {
 }
 
 // ============================================================================
+// METHOD CONFIGURATION
+// ============================================================================
+
+use std::collections::HashSet;
+
+/// Configuration for how a service handles error responses.
+///
+/// Per SOME/IP specification (feat_req_recentip_106, feat_req_recentip_726):
+/// - By default, errors use RESPONSE (0x80) with non-OK return code
+/// - EXCEPTION (0x81) is optional and must be explicitly configured per-method
+///
+/// This configuration is typically defined in the interface specification (IDL/FIDL)
+/// at design time, not decided per-call at runtime.
+#[derive(Debug, Clone, Default)]
+pub struct MethodConfig {
+    /// Set of method IDs that use EXCEPTION (0x81) message type for errors.
+    /// Methods not in this set use RESPONSE (0x80) with error return code.
+    exception_methods: HashSet<u16>,
+}
+
+impl MethodConfig {
+    /// Create a new empty configuration (all methods use RESPONSE for errors)
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Configure a method to use EXCEPTION (0x81) message type for errors.
+    ///
+    /// Per spec, this should match the interface specification for the method.
+    pub fn use_exception_for(mut self, method_id: u16) -> Self {
+        self.exception_methods.insert(method_id);
+        self
+    }
+
+    /// Check if a method uses EXCEPTION message type for errors.
+    pub fn uses_exception(&self, method_id: u16) -> bool {
+        self.exception_methods.contains(&method_id)
+    }
+}
+
+// ============================================================================
 // COMMANDS
 // ============================================================================
 
@@ -124,6 +165,7 @@ pub(crate) enum Command {
         instance_id: InstanceId,
         major_version: u8,
         minor_version: u32,
+        method_config: MethodConfig,
         response: oneshot::Sender<Result<mpsc::Receiver<ServiceRequest>>>,
     },
     /// Stop offering a service
@@ -257,6 +299,8 @@ struct OfferedService {
     rpc_endpoint: SocketAddr,
     /// Channel to send outgoing RPC messages to this service's socket task
     rpc_tx: mpsc::Sender<RpcSendMessage>,
+    /// Configuration for which methods use EXCEPTION message type
+    method_config: MethodConfig,
 }
 
 /// Tracked find request
@@ -315,6 +359,8 @@ struct PendingServerResponse {
     session_id: u16,
     interface_version: u8,
     client_addr: SocketAddr,
+    /// Whether this method uses EXCEPTION (0x81) for errors instead of RESPONSE (0x80)
+    uses_exception: bool,
 }
 
 /// Runtime state managed by the runtime task
@@ -466,7 +512,37 @@ impl<U: UdpSocket> Runtime<U> {
     /// Offer a service.
     ///
     /// Returns an offering handle to receive requests and send events.
+    /// By default, all methods use RESPONSE (0x80) for errors.
+    /// Use `offer_with_config` to configure specific methods to use EXCEPTION (0x81).
     pub async fn offer<S: Service>(&self, instance: InstanceId) -> Result<OfferingHandle<S>> {
+        self.offer_with_config::<S>(instance, MethodConfig::default()).await
+    }
+
+    /// Offer a service with custom method configuration.
+    ///
+    /// Use this to configure which methods use EXCEPTION (0x81) message type for errors
+    /// instead of the default RESPONSE (0x80) with error return code.
+    ///
+    /// Per SOME/IP specification (feat_req_recentip_106, feat_req_recentip_726):
+    /// - By default, errors use RESPONSE (0x80) with non-OK return code
+    /// - EXCEPTION (0x81) is optional and must be explicitly configured per-method
+    ///
+    /// # Example
+    /// ```ignore
+    /// let config = MethodConfig::new()
+    ///     .use_exception_for(0x0001)  // Method 0x0001 uses EXCEPTION for errors
+    ///     .use_exception_for(0x0002); // Method 0x0002 also uses EXCEPTION
+    ///
+    /// let offering = runtime.offer_with_config::<MyService>(
+    ///     InstanceId::Id(1),
+    ///     config,
+    /// ).await?;
+    /// ```
+    pub async fn offer_with_config<S: Service>(
+        &self,
+        instance: InstanceId,
+        method_config: MethodConfig,
+    ) -> Result<OfferingHandle<S>> {
         let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
 
         let (response_tx, response_rx) = oneshot::channel();
@@ -478,6 +554,7 @@ impl<U: UdpSocket> Runtime<U> {
                 instance_id: instance,
                 major_version: S::MAJOR_VERSION,
                 minor_version: S::MINOR_VERSION,
+                method_config,
                 response: response_tx,
             })
             .await
@@ -611,9 +688,9 @@ async fn runtime_task<U: UdpSocket>(
                         break;
                     }
                     // Special handling for Offer - needs async socket creation
-                    Some(Command::Offer { service_id, instance_id, major_version, minor_version, response }) => {
+                    Some(Command::Offer { service_id, instance_id, major_version, minor_version, method_config, response }) => {
                         if let Some(actions) = handle_offer_command::<U>(
-                            service_id, instance_id, major_version, minor_version, response,
+                            service_id, instance_id, major_version, minor_version, method_config, response,
                             &config, &mut state, &rpc_tx
                         ).await {
                             for action in actions {
@@ -651,6 +728,7 @@ async fn runtime_task<U: UdpSocket>(
                         context.interface_version,
                         0x00, // OK
                         &payload,
+                        false, // uses_exception doesn't matter for OK responses
                     ),
                     Err(_) => build_response(
                         context.service_id,
@@ -660,6 +738,7 @@ async fn runtime_task<U: UdpSocket>(
                         context.interface_version,
                         0x01, // NOT_OK
                         &[],
+                        context.uses_exception,
                     ),
                 };
                 
@@ -901,6 +980,9 @@ fn handle_incoming_request(
         // Create a response channel
         let (response_tx, response_rx) = oneshot::channel();
         
+        // Check if this method uses EXCEPTION for errors
+        let uses_exception = offered.method_config.uses_exception(header.method_id);
+        
         // Send request to the offering handle
         if offered.requests_tx.try_send(ServiceRequest::MethodCall {
             method_id: header.method_id,
@@ -917,11 +999,13 @@ fn handle_incoming_request(
                 session_id: header.session_id,
                 interface_version: header.interface_version,
                 client_addr: from,
+                uses_exception,
             };
             actions.push(Action::TrackServerResponse { context, receiver: response_rx });
         }
     } else {
         // Unknown service - send error response via SD socket
+        // Use RESPONSE (0x80) since we don't have method config for unknown services
         let response_data = build_response(
             header.service_id,
             header.method_id,
@@ -930,6 +1014,7 @@ fn handle_incoming_request(
             header.interface_version,
             0x02, // UNKNOWN_SERVICE
             &[],
+            false, // No exception config for unknown services
         );
         actions.push(Action::SendClientMessage {
             data: response_data,
@@ -1032,6 +1117,11 @@ fn handle_incoming_notification(
 }
 
 /// Build a SOME/IP response message
+///
+/// Per SOME/IP specification:
+/// - feat_req_recentip_726: If EXCEPTION is not configured, errors use RESPONSE (0x80)
+/// - feat_req_recentip_106: EXCEPTION (0x81) is optional and must be configured per-method
+/// - feat_req_recentip_107: Receiving errors on both 0x80 and 0x81 must be supported
 fn build_response(
     service_id: u16,
     method_id: u16,
@@ -1040,6 +1130,7 @@ fn build_response(
     interface_version: u8,
     return_code: u8,
     payload: &[u8],
+    uses_exception: bool,
 ) -> Bytes {
     let length = 8 + payload.len() as u32;
     
@@ -1047,11 +1138,11 @@ fn build_response(
     
     // feat_req_recentip_655: Error message must copy request header fields
     // feat_req_recentip_727: Error messages have return code != 0x00
-    // Use MessageType::Error when return_code indicates an error
-    let message_type = if return_code == 0x00 {
-        MessageType::Response
-    } else {
+    // Only use EXCEPTION (0x81) if configured for this method AND it's an error
+    let message_type = if return_code != 0x00 && uses_exception {
         MessageType::Error
+    } else {
+        MessageType::Response
     };
     
     let header = Header {
@@ -1397,6 +1488,7 @@ async fn handle_offer_command<U: UdpSocket>(
     instance_id: InstanceId,
     major_version: u8,
     minor_version: u32,
+    method_config: MethodConfig,
     response: oneshot::Sender<Result<mpsc::Receiver<ServiceRequest>>>,
     config: &RuntimeConfig,
     state: &mut RuntimeState,
@@ -1434,6 +1526,7 @@ async fn handle_offer_command<U: UdpSocket>(
                     last_offer: Instant::now() - Duration::from_secs(10),
                     rpc_endpoint,
                     rpc_tx: rpc_send_tx,
+                    method_config,
                 },
             );
 
