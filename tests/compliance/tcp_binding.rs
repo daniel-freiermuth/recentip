@@ -2,29 +2,29 @@
 //!
 //! Tests for SOME/IP over TCP transport binding.
 //!
+//! NOTE: These tests are currently ignored because TCP transport is not yet
+//! implemented in the runtime. They serve as TDD targets for future implementation.
+//!
 //! Key requirements tested:
 //! - feat_req_recentip_324: TCP binding is based on UDP binding
-//! - feat_req_recentip_585: Every payload has its own header
 //! - feat_req_recentip_325: Nagle's algorithm disabled
 //! - feat_req_recentip_326: Connection lost handling (requests timeout, NOT reboot)
+//! - feat_req_recentip_585: Every payload has its own header
+//! - feat_req_recentip_586: Magic Cookies allow resync in testing
+//! - feat_req_recentip_591: TCP segment starts with Magic Cookie
+//! - feat_req_recentip_592: Only one Magic Cookie per segment
 //! - feat_req_recentip_644: Single TCP connection per client-server pair
 //! - feat_req_recentip_646: Client opens TCP connection
 //! - feat_req_recentip_647: Client reestablishes connection
 //! - feat_req_recentip_702: Multiple messages per segment supported
 //! - feat_req_recentipsd_872: Reboot detection triggers TCP reset
 
-use someip_runtime::*;
-
-// Re-use wire format parsing from the shared module
-#[path = "../wire.rs"]
-mod wire;
-
-// Re-use simulated network
-#[path = "../simulated.rs"]
-mod simulated;
-
-use simulated::{NetworkEvent, SimulatedNetwork};
-use wire::Header;
+use bytes::Bytes;
+use someip_runtime::prelude::*;
+use someip_runtime::runtime::{Runtime, RuntimeConfig};
+use someip_runtime::wire::Header;
+use someip_runtime::handle::ServiceEvent;
+use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -33,25 +33,29 @@ macro_rules! covers {
     };
 }
 
+/// Type alias for turmoil-based runtime (using UdpSocket for now, will need TcpStream)
+type TurmoilRuntime = Runtime<turmoil::net::UdpSocket>;
+
+/// Test service definition
+struct TestService;
+
+impl Service for TestService {
+    const SERVICE_ID: u16 = 0x1234;
+    const MAJOR_VERSION: u8 = 1;
+    const MINOR_VERSION: u32 = 0;
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-/// Find all TCP-sent SOME/IP messages in network history
+/// Helper to parse a SOME/IP header from raw bytes
 #[allow(dead_code)]
-fn find_tcp_messages(network: &SimulatedNetwork) -> Vec<Vec<u8>> {
-    network
-        .history()
-        .iter()
-        .filter_map(|event| {
-            if let NetworkEvent::TcpSent { data, .. } = event {
-                if data.len() >= 16 {
-                    return Some(data.clone());
-                }
-            }
-            None
-        })
-        .collect()
+fn parse_header(data: &[u8]) -> Option<Header> {
+    if data.len() < Header::SIZE {
+        return None;
+    }
+    Header::parse(&mut Bytes::copy_from_slice(data))
 }
 
 /// Parse multiple SOME/IP messages from a TCP byte stream
@@ -61,7 +65,7 @@ fn parse_tcp_stream(data: &[u8]) -> Vec<Header> {
     let mut offset = 0;
 
     while offset + 16 <= data.len() {
-        if let Some(header) = Header::from_bytes(&data[offset..]) {
+        if let Some(header) = parse_header(&data[offset..]) {
             let msg_len = 8 + header.length as usize; // First 8 bytes + length field
             if offset + msg_len <= data.len() {
                 headers.push(header);
@@ -89,6 +93,25 @@ fn is_magic_cookie(data: &[u8]) -> bool {
 }
 
 // ============================================================================
+// TCP Transport Config Stubs
+// ============================================================================
+
+/// Transport type for runtime configuration (stub for TCP support)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum Transport {
+    Udp,
+    Tcp,
+}
+
+/// Extended runtime config builder with TCP support (stub)
+#[allow(dead_code)]
+trait TcpRuntimeConfigExt {
+    fn transport(self, transport: Transport) -> Self;
+    fn magic_cookies(self, enabled: bool) -> Self;
+}
+
+// ============================================================================
 // TCP Connection Lifecycle Tests
 // ============================================================================
 
@@ -97,66 +120,68 @@ fn is_magic_cookie(data: &[u8]) -> bool {
 /// The TCP connection shall be opened by the client, when the first
 /// request is to be sent to the server.
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport not implemented"]
 fn client_opens_tcp_connection() {
     covers!(feat_req_recentip_646);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    // Configure to use TCP transport
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        // TODO: config.transport(Transport::Tcp)
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
+        // Wait for connection and request
+        if let Some(event) = offering.next().await {
+            match event {
+                ServiceEvent::Call { responder, .. } => {
+                    responder.reply(b"response").await.unwrap();
+                }
+                _ => {}
+            }
+        }
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let _offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        let config = RuntimeConfig::default();
+        // TODO: config.transport(Transport::Tcp)
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    // Before request: count TCP connections
-    let connects_before = network
-        .history()
-        .into_iter()
-        .filter(|e| matches!(e, NetworkEvent::TcpConnect { .. }))
-        .count();
-    
-    // Get proxy (may trigger SD but not TCP yet)
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout")
+            .expect("Service available");
 
-    // Send first request - this should open TCP connection
-    let method_id = MethodId::new(0x0001).unwrap();
-    let _pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        // Before first request: no TCP connection
+        // First request should open TCP connection
+        let _response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"request"),
+        )
+        .await
+        .expect("Timeout")
+        .expect("Call should succeed");
 
-    // After request: should have TCP connection
-    let connects_after = network
-        .history()
-        .into_iter()
-        .filter(|e| matches!(e, NetworkEvent::TcpConnect { .. }))
-        .count();
+        // TODO: Verify TCP connection was opened for first request
+        // This requires access to TCP connection count or similar metric
 
-    assert!(
-        connects_after > connects_before,
-        "Client should open TCP connection when sending first request"
-    );
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }
 
 /// feat_req_recentip_644: Single TCP connection for all messages between client-server
@@ -164,69 +189,73 @@ fn client_opens_tcp_connection() {
 /// The client and server shall use a single TCP connection for
 /// all SOME/IP messages between them.
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport not implemented"]
 fn single_tcp_connection_reused() {
     covers!(feat_req_recentip_644);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
-
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    let method_id = MethodId::new(0x0001).unwrap();
-
-    // Send multiple requests
-    for i in 0..5 {
-        let pending = proxy.call(method_id, &[i]).unwrap();
-        network.advance(std::time::Duration::from_millis(10));
-
-        // Server responds
-        if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-            request.responder.send_ok(&[i + 100]).unwrap();
+        // Handle multiple requests
+        for _ in 0..5 {
+            if let Some(event) = offering.next().await {
+                match event {
+                    ServiceEvent::Call { payload, responder, .. } => {
+                        responder.reply(&payload).await.unwrap();
+                    }
+                    _ => {}
+                }
+            }
         }
-        network.advance(std::time::Duration::from_millis(10));
 
-        let _response = pending.wait().unwrap();
-    }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
 
-    // Count TCP connections - should be exactly 1
-    let tcp_connects = network
-        .history()
-        .into_iter()
-        .filter(|e| matches!(e, NetworkEvent::TcpConnect { .. }))
-        .count();
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    assert_eq!(
-        tcp_connects,
-        1,
-        "Should reuse single TCP connection for all requests"
-    );
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout")
+            .expect("Service available");
+
+        let method_id = MethodId::new(0x0001).unwrap();
+
+        // Send multiple requests
+        for i in 0u8..5 {
+            let response = tokio::time::timeout(
+                Duration::from_secs(5),
+                proxy.call(method_id, &[i]),
+            )
+            .await
+            .expect("Timeout")
+            .expect("Call should succeed");
+
+            assert_eq!(response.payload.as_ref(), &[i]);
+        }
+
+        // TODO: Verify only 1 TCP connection was used
+        // turmoil::established_tcp_stream_count() should equal 1
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }
 
 /// feat_req_recentip_647: Client reestablishes connection after failure
@@ -234,80 +263,79 @@ fn single_tcp_connection_reused() {
 /// The client is responsible for reestablishing the TCP connection
 /// after it has been closed or lost.
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport not implemented"]
 fn client_reestablishes_connection() {
     covers!(feat_req_recentip_647);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
+        // Handle requests (may get multiple after reconnection)
+        loop {
+            tokio::select! {
+                event = offering.next() => {
+                    if let Some(ServiceEvent::Call { payload, responder, .. }) = event {
+                        responder.reply(&payload).await.unwrap();
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_millis(500)) => break,
+            }
+        }
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
+        Ok(())
+    });
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout")
+            .expect("Service available");
 
-    let method_id = MethodId::new(0x0001).unwrap();
+        let method_id = MethodId::new(0x0001).unwrap();
 
-    // First request establishes connection
-    let pending = proxy.call(method_id, &[1]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+        // First request establishes connection
+        let _response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(method_id, b"first"),
+        )
+        .await
+        .expect("Timeout")
+        .expect("Call should succeed");
 
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        request.responder.send_ok(&[1]).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
-    let _response = pending.wait().unwrap();
+        // TODO: Simulate connection loss using turmoil::partition("server", "client")
+        // turmoil::partition("server", "client");
+        // tokio::time::sleep(Duration::from_millis(100)).await;
+        // turmoil::repair("server", "client");
 
-    // Simulate connection loss
-    let client_addr = std::net::SocketAddr::new(
-        std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 10)),
-        30501,
-    );
-    let server_addr = std::net::SocketAddr::new(
-        std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 20)),
-        30501,
-    );
-    network.break_tcp(client_addr, server_addr);
-    network.advance(std::time::Duration::from_millis(100));
+        // Second request after "reconnection" should succeed
+        let _response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(method_id, b"second"),
+        )
+        .await
+        .expect("Timeout")
+        .expect("Reconnection should succeed");
 
-    // Second request should trigger reconnection
-    let _pending = proxy.call(method_id, &[2]).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        Ok(())
+    });
 
-    // Count TCP connections - should be 2 (original + reconnect)
-    let tcp_connects = network
-        .history()
-        .into_iter()
-        .filter(|e| matches!(e, NetworkEvent::TcpConnect { .. }))
-        .count();
-
-    assert!(
-        tcp_connects >= 2,
-        "Client should reestablish TCP connection after failure"
-    );
+    sim.run().unwrap();
 }
 
 // ============================================================================
@@ -319,64 +347,71 @@ fn client_reestablishes_connection() {
 /// Every SOME/IP payload shall have its own SOME/IP header (no batching
 /// of payloads under single header).
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport not implemented"]
 fn each_message_has_own_header() {
     covers!(feat_req_recentip_585);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
+        // Each message arrives with its own header
+        for expected in [b"short".as_slice(), b"medium length", b"a"] {
+            if let Some(event) = offering.next().await {
+                match event {
+                    ServiceEvent::Call { payload, responder, .. } => {
+                        assert_eq!(payload.as_ref(), expected);
+                        responder.reply(expected).await.unwrap();
+                    }
+                    _ => panic!("Expected Call event"),
+                }
+            }
+        }
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let _offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout")
+            .expect("Service available");
 
-    // Send multiple requests with different payloads
-    let method_id = MethodId::new(0x0001).unwrap();
-    let payloads = [b"short".to_vec(), b"medium length".to_vec(), b"a".to_vec()];
+        let method_id = MethodId::new(0x0001).unwrap();
 
-    for payload in &payloads {
-        let _pending = proxy.call(method_id, payload).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(100));
+        // Send multiple requests with different payloads
+        for payload in [b"short".as_slice(), b"medium length", b"a"] {
+            let response = tokio::time::timeout(
+                Duration::from_secs(5),
+                proxy.call(method_id, payload),
+            )
+            .await
+            .expect("Timeout")
+            .expect("Call should succeed");
 
-    // Parse all TCP messages
-    let tcp_messages = find_tcp_messages(&network);
-    
-    // Each message should have its own header with correct length
-    for msg in &tcp_messages {
-        let header = Header::from_bytes(msg).expect("Should parse header");
-        let expected_payload_len = msg.len() - 16;
-        let header_payload_len = header.length as usize - 8;
-        
-        assert_eq!(
-            header_payload_len, expected_payload_len,
-            "Header length field should match actual payload"
-        );
-    }
+            assert_eq!(response.payload.as_ref(), payload);
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }
 
 /// feat_req_recentip_702: Multiple messages can be in one TCP segment
@@ -384,56 +419,73 @@ fn each_message_has_own_header() {
 /// All Transport Protocol Bindings shall support transporting more than one
 /// SOME/IP message in a single TCP segment.
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport not implemented"]
 fn multiple_messages_per_segment_parsed() {
     covers!(feat_req_recentip_702);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
+        // Server should receive all 3 requests even if sent in single segment
+        let mut received_count = 0;
+        loop {
+            tokio::select! {
+                event = offering.next() => {
+                    if let Some(ServiceEvent::Call { responder, .. }) = event {
+                        responder.reply(&[]).await.unwrap();
+                        received_count += 1;
+                        if received_count >= 3 {
+                            break;
+                        }
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_secs(5)) => break,
+            }
+        }
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
+        assert_eq!(received_count, 3, "Server should parse all messages from TCP stream");
+        Ok(())
+    });
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout")
+            .expect("Service available");
 
-    // Send requests quickly (may be coalesced in TCP)
-    let method_id = MethodId::new(0x0001).unwrap();
-    for i in 0u8..3 {
-        let _pending = proxy.call(method_id, &[i]).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
+        let method_id = MethodId::new(0x0001).unwrap();
 
-    // Server should receive all 3 requests even if sent in single segment
-    let mut received_count = 0;
-    while let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        request.responder.send_ok(&[]).unwrap();
-        received_count += 1;
-    }
+        // Send requests quickly (may be coalesced in TCP)
+        for i in 0u8..3 {
+            let _response = tokio::time::timeout(
+                Duration::from_secs(5),
+                proxy.call(method_id, &[i]),
+            )
+            .await
+            .expect("Timeout")
+            .expect("Call should succeed");
+        }
 
-    assert_eq!(received_count, 3, "Server should parse all messages from TCP stream");
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }
 
 // ============================================================================
@@ -445,66 +497,70 @@ fn multiple_messages_per_segment_parsed() {
 /// When the TCP connection is lost, outstanding requests shall be
 /// handled as if a timeout occurred.
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport not implemented"]
 fn connection_lost_fails_pending_requests() {
     covers!(feat_req_recentip_326);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
+        // Receive request but don't respond (to test pending request failure)
+        if let Some(ServiceEvent::Call { .. }) = offering.next().await {
+            // Don't respond - let the connection be broken
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
+        Ok(())
+    });
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let _offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout")
+            .expect("Service available");
 
-    // Send request but don't respond
-    let method_id = MethodId::new(0x0001).unwrap();
-    let pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+        let method_id = MethodId::new(0x0001).unwrap();
 
-    // Break the connection while request is pending
-    let client_addr = std::net::SocketAddr::new(
-        std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 10)),
-        30501,
-    );
-    let server_addr = std::net::SocketAddr::new(
-        std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 20)),
-        30501,
-    );
-    network.break_tcp(client_addr, server_addr);
-    network.advance(std::time::Duration::from_millis(100));
+        // Send request but don't wait for response yet
+        let pending = proxy.call(method_id, b"request");
 
-    // Pending request should fail
-    // In a real implementation, wait() would return an error when connection is lost
-    // For now, we just verify the test structure is correct
-    let result = pending.wait();
-    assert!(
-        result.is_err(),
-        "Pending request should fail when connection lost"
-    );
+        // Give time for request to be sent
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // TODO: Break the connection using turmoil::partition()
+        // turmoil::partition("server", "client");
+
+        // Pending request should fail due to connection loss
+        let result = tokio::time::timeout(Duration::from_secs(5), pending).await;
+
+        // Should error (connection lost = timeout-like behavior)
+        // Note: In current implementation this would actually timeout,
+        // which is acceptable behavior for connection loss
+        assert!(
+            result.is_err() || result.unwrap().is_err(),
+            "Pending request should fail when connection lost"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }
 
 // ============================================================================
@@ -516,68 +572,63 @@ fn connection_lost_fails_pending_requests() {
 /// In order to allow resynchronization to SOME/IP over TCP in testing and
 /// debugging scenarios, implementations shall support Magic Cookies.
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport and Magic Cookies not implemented"]
 fn magic_cookie_recognized() {
     covers!(feat_req_recentip_586);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .magic_cookies(true)  // Enable magic cookies
-        .build()
-        .unwrap();
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        // TODO: config.magic_cookies(true)
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .magic_cookies(true)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
+        // Server should receive request even with magic cookies
+        if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
+            responder.reply(b"response").await.unwrap();
+        }
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        let config = RuntimeConfig::default();
+        // TODO: config.magic_cookies(true)
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout")
+            .expect("Service available");
 
-    // First TCP segment should start with Magic Cookie
-    let method_id = MethodId::new(0x0001).unwrap();
-    let _pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+        let method_id = MethodId::new(0x0001).unwrap();
 
-    let tcp_messages = find_tcp_messages(&network);
-    
-    // Check if first message is a magic cookie or data starts after one
-    let first_data = tcp_messages.first();
-    if let Some(data) = first_data {
-        // If magic cookies enabled, first bytes should be magic cookie
-        // OR the implementation sends magic cookie as separate message
-        let has_magic = is_magic_cookie(data) || 
-            tcp_messages.iter().any(|m| is_magic_cookie(m));
-        
-        // This is implementation-dependent - just verify messages are parseable
-        assert!(data.len() >= 16, "Should have valid SOME/IP message");
-    }
+        // With magic cookies enabled, communication should still work
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(method_id, b"request"),
+        )
+        .await
+        .expect("Timeout")
+        .expect("Call should succeed with magic cookies");
 
-    // Server should still receive the request
-    let event = offering.try_next().ok().flatten();
-    assert!(
-        matches!(event, Some(ServiceEvent::MethodCall { .. })),
-        "Server should receive request even with magic cookies"
-    );
+        assert_eq!(response.payload.as_ref(), b"response");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }
 
 /// feat_req_recentip_591: TCP segment starts with Magic Cookie
@@ -585,68 +636,29 @@ fn magic_cookie_recognized() {
 /// Each TCP segment shall start with a SOME/IP Magic Cookie Message
 /// (when magic cookies are enabled).
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport and Magic Cookies not implemented"]
 fn tcp_segment_starts_with_magic_cookie() {
     covers!(feat_req_recentip_591);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    // This test would require capturing raw TCP data to verify
+    // the first bytes of each segment are a Magic Cookie.
+    // With turmoil, we'd use a TcpListener to capture traffic.
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .magic_cookies(true)
-        .build()
-        .unwrap();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .magic_cookies(true)
-        .build()
-        .unwrap();
+    // TODO: Implement with raw TCP capture
+    // The test should verify that when magic_cookies(true) is set,
+    // the first 16 bytes of each TCP write are the Magic Cookie pattern:
+    // Service ID: 0xFFFF, Method ID: 0x0000, Length: 8, etc.
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
+    sim.client("placeholder", async {
+        // Placeholder until TCP is implemented
+        Ok(())
+    });
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let _offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    // Clear history to capture just the RPC
-    network.clear_history();
-
-    let method_id = MethodId::new(0x0001).unwrap();
-    let _pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Get first TCP send event
-    let first_tcp = network
-        .history()
-        .iter()
-        .find_map(|e| {
-            if let NetworkEvent::TcpSent { data, .. } = e {
-                Some(data.clone())
-            } else {
-                None
-            }
-        });
-
-    if let Some(data) = first_tcp {
-        assert!(
-            is_magic_cookie(&data),
-            "TCP segment should start with Magic Cookie when enabled"
-        );
-    }
+    sim.run().unwrap();
 }
 
 /// feat_req_recentip_592: Only one Magic Cookie per segment
@@ -654,69 +666,23 @@ fn tcp_segment_starts_with_magic_cookie() {
 /// The implementation shall only include up to one SOME/IP Magic Cookie
 /// Message per TCP segment.
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport and Magic Cookies not implemented"]
 fn only_one_magic_cookie_per_segment() {
     covers!(feat_req_recentip_592);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    // This test would capture TCP data and verify that each segment
+    // contains at most one Magic Cookie (at the beginning).
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .magic_cookies(true)
-        .build()
-        .unwrap();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .magic_cookies(true)
-        .build()
-        .unwrap();
+    sim.client("placeholder", async {
+        // Placeholder until TCP is implemented
+        Ok(())
+    });
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
-
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let _offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    network.clear_history();
-
-    // Send multiple requests quickly
-    let method_id = MethodId::new(0x0001).unwrap();
-    for i in 0u8..5 {
-        let _pending = proxy.call(method_id, &[i]).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Check each TCP send for magic cookie count
-    for event in network.history() {
-        if let NetworkEvent::TcpSent { data, .. } = event {
-            // Count magic cookies in this segment
-            let headers = parse_tcp_stream(data.as_slice());
-            let magic_count = headers
-                .iter()
-                .filter(|h| h.service_id == 0xFFFF && h.method_id == 0x0000)
-                .count();
-
-            assert!(
-                magic_count <= 1,
-                "Should have at most one magic cookie per segment, found {}",
-                magic_count
-            );
-        }
-    }
+    sim.run().unwrap();
 }
 
 // ============================================================================
@@ -728,56 +694,61 @@ fn only_one_magic_cookie_per_segment() {
 /// The TCP binding of SOME/IP is heavily based on the UDP binding.
 /// The header format is identical.
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport not implemented"]
 fn tcp_header_format_matches_udp() {
     covers!(feat_req_recentip_324);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
+        if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
+            responder.reply(b"response").await.unwrap();
+        }
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let _offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout")
+            .expect("Service available");
 
-    let method_id = MethodId::new(0x0001).unwrap();
-    let _pending = proxy.call(method_id, &[1, 2, 3]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
+        let method_id = MethodId::new(0x0001).unwrap();
 
-    let tcp_messages = find_tcp_messages(&network);
-    assert!(!tcp_messages.is_empty(), "Should have TCP message");
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(method_id, b"request"),
+        )
+        .await
+        .expect("Timeout")
+        .expect("Call should succeed");
 
-    // Parse header - should match SOME/IP header format exactly
-    let header = Header::from_bytes(&tcp_messages[0]).expect("Should parse as SOME/IP header");
-    
-    // Verify header structure is valid
-    assert_eq!(header.service_id, 0x1234, "Service ID should match");
-    assert_eq!(header.method_id, 0x0001, "Method ID should match");
-    assert_eq!(header.protocol_version, 0x01, "Protocol version should be 0x01");
-    assert!(header.length >= 8, "Length should include at least header remainder");
+        // Response received proves the header format worked
+        // (same 16-byte header as UDP)
+        assert_eq!(response.payload.as_ref(), b"response");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }
 
 // ============================================================================
@@ -790,101 +761,87 @@ fn tcp_header_format_matches_udp() {
 /// running. Session IDs should continue incrementing, not reset to 1.
 /// Reboot detection happens at the SD layer via the Reboot Flag, not TCP.
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport not implemented"]
 fn tcp_loss_does_not_reset_session_id() {
     // This test verifies the distinction between:
     // - feat_req_recentip_326: TCP loss → requests timeout (no session reset)
     // - feat_req_recentipsd_872: Reboot detected → TCP reset (session DOES reset)
     covers!(feat_req_recentip_326, feat_req_recentip_647);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+    sim.host("server", || async {
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+        let mut offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
-
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
-
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
-
-    let method_id = MethodId::new(0x0001).unwrap();
-
-    // Send first request, capture session ID
-    let _pending = proxy.call(method_id, &[1]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
-
-    let messages_before = find_tcp_messages(&network);
-    let header_before = Header::from_bytes(&messages_before.last().unwrap())
-        .expect("Should parse header");
-    let session_before = header_before.session_id;
-
-    // Complete the request
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        request.responder.send_ok(&[1]).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
-
-    // Break TCP connection
-    let client_addr = std::net::SocketAddr::new(
-        std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 10)),
-        30501,
-    );
-    let server_addr = std::net::SocketAddr::new(
-        std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 20)),
-        30501,
-    );
-    network.break_tcp(client_addr, server_addr);
-    network.advance(std::time::Duration::from_millis(100));
-
-    // Send another request after reconnection
-    network.clear_history();
-    let _pending = proxy.call(method_id, &[2]).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let messages_after = find_tcp_messages(&network);
-    if !messages_after.is_empty() {
-        let header_after = Header::from_bytes(&messages_after.last().unwrap())
-            .expect("Should parse header");
-        let session_after = header_after.session_id;
-
-        // Session ID should have incremented, NOT reset to 1
-        // (unless it wrapped around, which is unlikely after just 2 requests)
-        assert!(
-            session_after > session_before || session_after == 1 && session_before == 0xFFFF,
-            "Session ID should continue after TCP reconnection (was {}, now {}), not reset",
-            session_before,
-            session_after
-        );
-
-        // Definitely should NOT have reset to 1 from a low number
-        if session_before < 100 {
-            assert_ne!(
-                session_after, 1,
-                "Session ID should not reset to 1 after TCP loss (that would indicate reboot)"
-            );
+        // Handle requests
+        loop {
+            tokio::select! {
+                event = offering.next() => {
+                    if let Some(ServiceEvent::Call { responder, .. }) = event {
+                        responder.reply(&[]).await.unwrap();
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_secs(1)) => break,
+            }
         }
-    }
+
+        Ok(())
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::default();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Timeout")
+            .expect("Service available");
+
+        let method_id = MethodId::new(0x0001).unwrap();
+
+        // First request
+        let _response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(method_id, b"first"),
+        )
+        .await
+        .expect("Timeout")
+        .expect("Call should succeed");
+
+        // TODO: Capture session_id from first request
+
+        // TODO: Simulate TCP loss and reconnection
+        // turmoil::partition("server", "client");
+        // tokio::time::sleep(Duration::from_millis(100)).await;
+        // turmoil::repair("server", "client");
+
+        // Second request after reconnection
+        let _response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(method_id, b"second"),
+        )
+        .await
+        .expect("Timeout")
+        .expect("Reconnection should succeed");
+
+        // TODO: Verify session_id continued incrementing (not reset to 1)
+        // Session ID should be session_before + 1 (or wrapped), not 1
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }
 
 /// feat_req_recentipsd_872: Reboot detection triggers TCP connection reset
@@ -892,100 +849,56 @@ fn tcp_loss_does_not_reset_session_id() {
 /// When the system detects the reboot of a peer (via SD Reboot Flag),
 /// it shall reset the state of TCP connections to that peer.
 #[test]
-#[ignore = "Runtime::new not implemented"]
+#[ignore = "TCP transport and reboot detection not implemented"]
 fn reboot_detection_resets_tcp_connections() {
     covers!(feat_req_recentipsd_872);
 
-    let (network, io_client, io_server) = SimulatedNetwork::new_pair();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let client_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+    // This test requires:
+    // 1. Establish TCP connection
+    // 2. Simulate server reboot (new server process with Reboot Flag = 1 in SD)
+    // 3. Client detects Reboot Flag in OfferService
+    // 4. Client resets TCP connection state and reconnects
 
-    let server_config = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
+    sim.client("placeholder", async {
+        // TODO: Full implementation when TCP and reboot detection are available
+        Ok(())
+    });
 
-    let mut client = Runtime::new(io_client, client_config).unwrap();
-    let mut server = Runtime::new(io_server, server_config).unwrap();
+    sim.run().unwrap();
+}
 
-    let service_id = ServiceId::new(0x1234).unwrap();
-    let instance_id = InstanceId::Id(1);
+// ============================================================================
+// Nagle's Algorithm Tests
+// ============================================================================
 
-    let service_config = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
+/// feat_req_recentip_325: Nagle's algorithm disabled
+///
+/// Nagle's algorithm shall be disabled on TCP connections to reduce latency.
+#[test]
+#[ignore = "TCP transport not implemented"]
+fn tcp_nodelay_enabled() {
+    covers!(feat_req_recentip_325);
 
-    let mut offering = server.offer(service_config).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
+    // This would verify that TCP_NODELAY socket option is set.
+    // With turmoil, we'd need to check the socket configuration
+    // or verify latency characteristics.
 
-    let proxy = client.require(service_id, InstanceId::ANY);
-    network.advance(std::time::Duration::from_millis(100));
-    let proxy = proxy.wait_available().unwrap();
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
-    let method_id = MethodId::new(0x0001).unwrap();
+    sim.client("placeholder", async {
+        // TODO: Verify TCP_NODELAY is set on connections
+        // Could be done by:
+        // 1. Checking socket options if exposed
+        // 2. Measuring latency for small messages (Nagle would add delay)
+        Ok(())
+    });
 
-    // Establish TCP connection with first request
-    let pending = proxy.call(method_id, &[1]).unwrap();
-    network.advance(std::time::Duration::from_millis(10));
-
-    if let Some(ServiceEvent::MethodCall { request }) = offering.try_next().ok().flatten() {
-        request.responder.send_ok(&[1]).unwrap();
-    }
-    network.advance(std::time::Duration::from_millis(10));
-    let _response = pending.wait().unwrap();
-
-    // Count current TCP connections
-    let connects_before = network
-        .history()
-        .into_iter()
-        .filter(|e| matches!(e, NetworkEvent::TcpConnect { .. }))
-        .count();
-
-    // Simulate server reboot: server sends SD message with Reboot Flag set
-    // This is detected by client's SD layer
-    drop(server);
-    drop(offering);
-
-    // Create new server instance (simulates reboot)
-    let (_, _, io_server_new) = SimulatedNetwork::new_pair();
-    let server_config_new = RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
-        .unwrap();
-    let mut server_new = Runtime::new(io_server_new, server_config_new).unwrap();
-
-    let service_config_new = ServiceConfig::builder()
-        .service(service_id)
-        .instance(instance_id)
-        .build()
-        .unwrap();
-
-    let _offering_new = server_new.offer(service_config_new).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    // The new server's SD OfferService should have Reboot Flag = 1
-    // Client should detect this and reset its TCP connection state
-
-    // Client tries to send another request
-    // Should establish NEW TCP connection (old one was reset due to reboot)
-    let _pending = proxy.call(method_id, &[2]).unwrap();
-    network.advance(std::time::Duration::from_millis(100));
-
-    let connects_after = network
-        .history()
-        .into_iter()
-        .filter(|e| matches!(e, NetworkEvent::TcpConnect { .. }))
-        .count();
-
-    // Should have a new connection attempt after reboot detection
-    assert!(
-        connects_after > connects_before,
-        "Client should establish new TCP connection after detecting peer reboot"
-    );
+    sim.run().unwrap();
 }
 

@@ -81,9 +81,13 @@ mod message_types;
 #[path = "compliance/version_handling.rs"]
 mod version_handling;
 
+// TCP binding tests (ignored until TCP transport implemented)
+#[cfg(feature = "turmoil")]
 #[path = "compliance/tcp_binding.rs"]
 mod tcp_binding;
 
+// UDP binding tests
+#[cfg(feature = "turmoil")]
 #[path = "compliance/udp_binding.rs"]
 mod udp_binding;
 
