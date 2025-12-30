@@ -870,7 +870,11 @@ fn request_id_reusable_after_response() {
 ///
 /// This integration test serves as an end-to-end stress test that the full
 /// request/response cycle works correctly across session ID rollover.
+///
+/// NOTE: This test is slow (~100s) because it makes 65536+ RPC calls.
+/// Run with `cargo test -- --ignored` to include it.
 #[test]
+#[ignore]
 fn session_id_wraps_to_0001_not_0000() {
     covers!(feat_req_recentip_677);
 
@@ -1376,12 +1380,7 @@ fn late_server_discovery_rpc() {
 ///
 /// This tests the "find -> wait -> server starts -> subscribe -> receive event" flow.
 ///
-/// NOTE: This test is currently ignored due to turmoil limitations with late-starting
-/// servers and event subscription. The sim.host() closure execution timing makes it
-/// difficult to reliably test this scenario. The RPC variant (late_server_discovery_rpc)
-/// demonstrates the core late-discovery pattern works correctly.
 #[test]
-#[ignore = "turmoil limitation with late server + event subscription timing"]
 fn late_server_discovery_subscribe_event() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(60))
@@ -1416,7 +1415,7 @@ fn late_server_discovery_subscribe_event() {
         Ok(())
     });
 
-    sim.host("client", || async {
+    sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let config = RuntimeConfig::default();
