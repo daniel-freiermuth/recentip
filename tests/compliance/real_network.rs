@@ -1,0 +1,500 @@
+//! Real Network Integration Tests
+//!
+//! These tests use the actual tokio network stack instead of turmoil simulation.
+//! They verify that the runtime works correctly with real sockets.
+//!
+//! **NOTE**: These tests require that all participants listen on the same multicast port (30490).
+//! On Linux and recent macOS, this is supported via `SO_REUSEPORT`.
+//!
+//! To run these tests, you need either:
+//! - A platform with `SO_REUSEPORT` support (Linux, recent macOS)
+//! - Separate machines or containers with their own network stacks
+//!
+//! The turmoil-based tests (run with `--features turmoil`) provide comprehensive
+//! network testing with simulated separate hosts.
+
+use serial_test::serial;
+use someip_runtime::{
+    EventgroupId, EventId, InstanceId, MethodId, Runtime, RuntimeConfig, Service, ServiceEvent,
+    Transport,
+};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::time::Duration;
+use tokio::sync::mpsc;
+
+// ============================================================================
+// Test Service Definition
+// ============================================================================
+
+/// Test service for real network tests
+struct EchoService;
+
+impl Service for EchoService {
+    const SERVICE_ID: u16 = 0x1234;
+    const MAJOR_VERSION: u8 = 1;
+    const MINOR_VERSION: u32 = 0;
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Get the local network IP address (not localhost)
+fn get_local_ip() -> Ipv4Addr {
+    // Try to get a local IP by connecting to a public address
+    // This doesn't actually send packets, just determines the outgoing interface
+    use std::net::UdpSocket;
+    let socket = UdpSocket::bind("0.0.0.0:0").expect("bind");
+    socket.connect("8.8.8.8:80").expect("connect");
+    match socket.local_addr().expect("local_addr") {
+        SocketAddr::V4(addr) => *addr.ip(),
+        _ => Ipv4Addr::LOCALHOST,
+    }
+}
+
+/// Create config bound to the local network IP for proper multicast
+fn test_config(port: u16) -> RuntimeConfig {
+    let local_ip = get_local_ip();
+    RuntimeConfig::builder()
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(local_ip, port)))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            30490,
+        )))
+        .build()
+}
+
+fn tcp_test_config(port: u16) -> RuntimeConfig {
+    let local_ip = get_local_ip();
+    RuntimeConfig::builder()
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(local_ip, port)))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            30490,
+        )))
+        .transport(Transport::Tcp)
+        .build()
+}
+
+fn tcp_test_config_with_magic_cookies(port: u16) -> RuntimeConfig {
+    let local_ip = get_local_ip();
+    RuntimeConfig::builder()
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(local_ip, port)))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            30490,
+        )))
+        .transport(Transport::Tcp)
+        .magic_cookies(true)
+        .build()
+}
+
+// ============================================================================
+// UDP Tests
+// ============================================================================
+
+/// Test basic UDP request/response on real network
+#[tokio::test]
+#[serial]
+async fn udp_request_response_real_network() {
+    // Use different ports to avoid conflicts
+    let server_port = 40100;
+    let client_port = 40200;
+
+    // Create server runtime and offer service
+    let server_config = test_config(server_port);
+    let server_runtime = Runtime::new(server_config).await.expect("Server runtime");
+
+    let mut offering = server_runtime
+        .offer::<EchoService>(InstanceId::Id(0x0001))
+        .await
+        .expect("Offer service");
+
+    // Create client runtime
+    let client_config = test_config(client_port);
+    let client_runtime = Runtime::new(client_config).await.expect("Client runtime");
+
+    // Spawn server handler task
+    let server_task = tokio::spawn(async move {
+        if let Some(ServiceEvent::Call { responder, payload, .. }) = offering.next().await {
+            let mut response = b"ECHO:".to_vec();
+            response.extend_from_slice(&payload);
+            responder.reply(&response).await.expect("Reply");
+        }
+    });
+
+    // Small delay for SD messages to propagate
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Client discovers and calls service
+    let proxy = client_runtime.find::<EchoService>(InstanceId::Id(0x0001));
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        .await
+        .expect("Discovery timeout")
+        .expect("Service available");
+
+    let method_id = MethodId::new(0x0001).unwrap();
+    let response = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.call(method_id, b"hello"),
+    )
+    .await
+    .expect("Call timeout")
+    .expect("Call success");
+
+    assert_eq!(response.payload.as_ref(), b"ECHO:hello");
+
+    server_task.await.expect("Server task");
+}
+
+/// Test UDP service discovery on real network
+#[tokio::test]
+#[serial]
+async fn udp_service_discovery_real_network() {
+    let server_port = 40300;
+    let client_port = 40400;
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let config = test_config(server_port);
+        let runtime = Runtime::new(config).await.expect("Server runtime");
+
+        let _offering = runtime
+            .offer::<EchoService>(InstanceId::Id(0x0002))
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let config = test_config(client_port);
+    let runtime = Runtime::new(config).await.expect("Client runtime");
+
+    let proxy = runtime.find::<EchoService>(InstanceId::Id(0x0002));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), proxy.available()).await;
+    assert!(result.is_ok(), "Should discover service");
+    assert!(result.unwrap().is_ok(), "Service should be available");
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+}
+
+// ============================================================================
+// TCP Tests
+// ============================================================================
+
+/// Test basic TCP request/response on real network
+#[tokio::test]
+#[serial]
+async fn tcp_request_response_real_network() {
+    let server_port = 40500;
+    let client_port = 40600;
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let config = tcp_test_config(server_port);
+        let runtime = Runtime::new(config).await.expect("Server runtime");
+
+        let mut offering = runtime
+            .offer::<EchoService>(InstanceId::Id(0x0001))
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        if let Some(ServiceEvent::Call { responder, payload, .. }) = offering.next().await {
+            let mut response = b"TCP:".to_vec();
+            response.extend_from_slice(&payload);
+            responder.reply(&response).await.expect("Reply");
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let config = tcp_test_config(client_port);
+    let runtime = Runtime::new(config).await.expect("Client runtime");
+
+    let proxy = runtime.find::<EchoService>(InstanceId::Id(0x0001));
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        .await
+        .expect("Discovery timeout")
+        .expect("Service available");
+
+    let method_id = MethodId::new(0x0001).unwrap();
+    let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"world"))
+        .await
+        .expect("Call timeout")
+        .expect("Call success");
+
+    assert_eq!(response.payload.as_ref(), b"TCP:world");
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+}
+
+/// Test TCP with Magic Cookies on real network
+#[tokio::test]
+#[serial]
+async fn tcp_magic_cookies_real_network() {
+    let server_port = 40700;
+    let client_port = 40800;
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let config = tcp_test_config_with_magic_cookies(server_port);
+        let runtime = Runtime::new(config).await.expect("Server runtime");
+
+        let mut offering = runtime
+            .offer::<EchoService>(InstanceId::Id(0x0001))
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        if let Some(ServiceEvent::Call { responder, payload, .. }) = offering.next().await {
+            let mut response = b"MAGIC:".to_vec();
+            response.extend_from_slice(&payload);
+            responder.reply(&response).await.expect("Reply");
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let config = tcp_test_config_with_magic_cookies(client_port);
+    let runtime = Runtime::new(config).await.expect("Client runtime");
+
+    let proxy = runtime.find::<EchoService>(InstanceId::Id(0x0001));
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        .await
+        .expect("Discovery timeout")
+        .expect("Service available");
+
+    let method_id = MethodId::new(0x0001).unwrap();
+    let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"cookie"))
+        .await
+        .expect("Call timeout")
+        .expect("Call success");
+
+    assert_eq!(response.payload.as_ref(), b"MAGIC:cookie");
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+}
+
+/// Test multiple TCP requests on same connection
+#[tokio::test]
+#[serial]
+async fn tcp_multiple_requests_real_network() {
+    let server_port = 40900;
+    let client_port = 41000;
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let config = tcp_test_config(server_port);
+        let runtime = Runtime::new(config).await.expect("Server runtime");
+
+        let mut offering = runtime
+            .offer::<EchoService>(InstanceId::Id(0x0001))
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        for _ in 0..5 {
+            if let Some(ServiceEvent::Call { responder, payload, .. }) = offering.next().await {
+                let mut response = b"MULTI:".to_vec();
+                response.extend_from_slice(&payload);
+                responder.reply(&response).await.expect("Reply");
+            }
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let config = tcp_test_config(client_port);
+    let runtime = Runtime::new(config).await.expect("Client runtime");
+
+    let proxy = runtime.find::<EchoService>(InstanceId::Id(0x0001));
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        .await
+        .expect("Discovery timeout")
+        .expect("Service available");
+
+    let method_id = MethodId::new(0x0001).unwrap();
+
+    for i in 0..5 {
+        let request = format!("req{}", i);
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(method_id, request.as_bytes()),
+        )
+        .await
+        .expect("Call timeout")
+        .expect("Call success");
+
+        let expected = format!("MULTI:req{}", i);
+        assert_eq!(response.payload.as_ref(), expected.as_bytes());
+    }
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+}
+
+// ============================================================================
+// Event/Subscription Tests
+// ============================================================================
+
+/// Test event subscription on real UDP network
+#[tokio::test]
+#[serial]
+async fn udp_events_real_network() {
+    /// Test two runtimes binding to the same SD port (SO_REUSEPORT)
+    #[tokio::test]
+    #[serial]
+    async fn udp_two_runtimes_same_sd_port() {
+        let sd_port = 30490;
+        let server_port = 41300;
+        let client_port = 41400;
+
+        // Both runtimes bind to the same SD multicast port
+        let server_config = RuntimeConfig::builder()
+            .local_addr(SocketAddr::V4(SocketAddrV4::new(get_local_ip(), server_port)))
+            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(239,255,255,250), sd_port)))
+            .build();
+        let client_config = RuntimeConfig::builder()
+            .local_addr(SocketAddr::V4(SocketAddrV4::new(get_local_ip(), client_port)))
+            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(239,255,255,250), sd_port)))
+            .build();
+
+        let server_runtime = Runtime::new(server_config).await.expect("Server runtime");
+        let mut offering = server_runtime.offer::<EchoService>(InstanceId::Id(0x0003)).await.expect("Offer service");
+
+        let client_runtime = Runtime::new(client_config).await.expect("Client runtime");
+
+        let server_task = tokio::spawn(async move {
+            if let Some(ServiceEvent::Call { responder, payload, .. }) = offering.next().await {
+                let mut response = b"REUSEPORT:".to_vec();
+                response.extend_from_slice(&payload);
+                responder.reply(&response).await.expect("Reply");
+            }
+        });
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let proxy = client_runtime.find::<EchoService>(InstanceId::Id(0x0003));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        let method_id = MethodId::new(0x0001).unwrap();
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(method_id, b"reuseport"),
+        )
+        .await
+        .expect("Call timeout")
+        .expect("Call success");
+
+        assert_eq!(response.payload.as_ref(), b"REUSEPORT:reuseport");
+        server_task.await.expect("Server task");
+    }
+    let server_port = 41100;
+    let client_port = 41200;
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (subscribed_tx, mut subscribed_rx) = mpsc::channel::<()>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let config = test_config(server_port);
+        let runtime = Runtime::new(config).await.expect("Server runtime");
+
+        let mut offering = runtime
+            .offer::<EchoService>(InstanceId::Id(0x0001))
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        loop {
+            match offering.next().await {
+                Some(ServiceEvent::Subscribe { eventgroup, ack, .. }) => {
+                    ack.accept().await.expect("Ack");
+
+                    let event_id = EventId::new(0x8001).unwrap();
+                    for i in 0..3 {
+                        let event_data = format!("event{}", i);
+                        offering
+                            .notify(eventgroup, event_id, event_data.as_bytes())
+                            .await
+                            .expect("Notify");
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                    }
+                    subscribed_tx.send(()).await.ok();
+                    break;
+                }
+                Some(_) => continue,
+                None => break,
+            }
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let config = test_config(client_port);
+    let runtime = Runtime::new(config).await.expect("Client runtime");
+
+    let proxy = runtime.find::<EchoService>(InstanceId::Id(0x0001));
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        .await
+        .expect("Discovery timeout")
+        .expect("Service available");
+
+    let eventgroup_id = EventgroupId::new(0x0001).unwrap();
+    let mut subscription = proxy.subscribe(eventgroup_id).await.expect("Subscribe");
+
+    subscribed_rx.recv().await;
+
+    let mut received = Vec::new();
+    for _ in 0..3 {
+        if let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_secs(2), subscription.next()).await
+        {
+            received.push(event.payload.to_vec());
+        }
+    }
+
+    assert_eq!(received.len(), 3);
+    assert_eq!(received[0], b"event0");
+    assert_eq!(received[1], b"event1");
+    assert_eq!(received[2], b"event2");
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+}

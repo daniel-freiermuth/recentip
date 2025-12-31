@@ -3,39 +3,20 @@
 //! This module contains tests that verify compliance with the RECENT/IP specification.
 //! Each test function documents which requirement ID(s) it covers.
 //!
-//! Run with: cargo test --test compliance
+//! Run with: cargo test --features turmoil --test compliance
 //!
 //! # Test Organization
 //!
 //! - `api_types`: Type system validation (ServiceId, MethodId, etc.)
-//! - `wire_format`: Wire protocol compliance via SimulatedNetwork
-//! - `service_discovery`: SOME/IP-SD message format, entries, reboot detection
-//! - `transport_protocol`: SOME/IP-TP segmentation and reassembly
-//! - `error_handling`: Return codes and message type handling
-//! - `subscription`: Pub/Sub eventgroup entries and lifecycle
-//! - `session_handling`: Request ID, Client ID, Session ID management
-//! - `message_types`: Message type field values and transitions
-//! - `version_handling`: Protocol and interface version validation
-//!
-//! # Test Summary (as of last update)
-//!
-//! | Module             | Passing | Ignored |
-//! |--------------------|---------|---------|
-//! | api_types          | 16      | 0       |
-//! | wire_format        | 22      | 6       |
-//! | service_discovery  | 18      | 14      |
-//! | transport_protocol | 28      | 10      |
-//! | error_handling     | 24      | 10      |
-//! | subscription       | 28      | 6       |
-//! | session_handling   | 25      | 6       |
-//! | message_types      | 20      | 7       |
-//! | version_handling   | 21      | 4       |
-//! | **Total**          | **202** | **63**  |
+//! - `integration`: Full client-server integration tests via turmoil
+//! - `wire_capture`: Wire protocol compliance via raw socket capture
+//! - `sd_async`: Service Discovery message format, offers, discovery
+//! - `subscription_async`: Pub/Sub eventgroup subscription lifecycle
+//! - `session_async`: Request ID, Session ID management
 //!
 //! # Requirement Traceability
 //!
 //! Each test documents which requirement(s) it covers using the `covers!()` macro.
-//! The compliance matrix in `COMPLIANCE.md` maps tests to requirements.
 
 #[path = "compliance/api_types.rs"]
 mod api_types;
@@ -120,6 +101,10 @@ mod instances;
 #[cfg(feature = "turmoil")]
 #[path = "compliance/multi_party.rs"]
 mod multi_party;
+
+// Real network tests using tokio sockets (no turmoil simulation)
+#[path = "compliance/real_network.rs"]
+mod real_network;
 
 /// Macro to document which requirements a test covers.
 /// This is a no-op at runtime; used for traceability documentation.
