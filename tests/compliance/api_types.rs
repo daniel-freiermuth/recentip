@@ -149,9 +149,10 @@ mod sd {
         }
 
         proptest! {
-            /// Property: Non-zero eventgroup IDs are valid
+            /// Property: Non-zero, non-reserved eventgroup IDs are valid
+            /// Valid range: 0x0001-0xFFFE (0x0000 and 0xFFFF are reserved)
             #[test]
-            fn nonzero_eventgroups_valid(value in 0x0001u16..=0xFFFF) {
+            fn nonzero_eventgroups_valid(value in 0x0001u16..=0xFFFE) {
                 prop_assert!(EventgroupId::new(value).is_some());
             }
         }

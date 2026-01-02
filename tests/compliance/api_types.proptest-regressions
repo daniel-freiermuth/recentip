@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 453e34e0890b5711110a0c2152ca964eea6cf319c38df8a6ee828e0a37d4acac # shrinks to service = 1, method = 0, event = 32768, eventgroup = 65535, port = 1
+cc 180ec2edbb27189eeb36c2b7f00905bc2485ae43eb1e0a1b3cc61e9695344916 # shrinks to value = 65535
