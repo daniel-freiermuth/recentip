@@ -529,55 +529,79 @@ fn client_id_consistent_across_calls() {
 fn out_of_order_response_matching() {
     covers!(feat_req_recentip_711, feat_req_recentip_83);
 
+    use std::sync::Arc;
+    use tokio::sync::Notify;
+
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    sim.host("server", || async {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+    // Use Notify for synchronization between client and server
+    let first_request_received = Arc::new(Notify::new());
+    let second_request_received = Arc::new(Notify::new());
 
-        let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+    let notify1_for_server = first_request_received.clone();
+    let notify2_for_server = second_request_received.clone();
+    let notify1_for_client = first_request_received.clone();
+    let notify2_for_client = second_request_received.clone();
 
-        // Collect two requests, then respond in reverse order
-        let mut pending_calls = Vec::new();
+    sim.host("server", move || {
+        let notify1 = notify1_for_server.clone();
+        let notify2 = notify2_for_server.clone();
+        
+        async move {
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        for _ in 0..2 {
+            let mut offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
+            // Wait for first request and notify client
+            let mut first_call = None;
             if let Some(event) = offering.next().await {
                 match event {
                     ServiceEvent::Call {
                         responder, payload, ..
                     } => {
-                        pending_calls.push((responder, payload));
+                        first_call = Some((responder, payload));
+                        notify1.notify_one();
                     }
                     _ => {}
                 }
             }
+
+            // Wait for second request and notify client
+            let mut second_call = None;
+            if let Some(event) = offering.next().await {
+                match event {
+                    ServiceEvent::Call {
+                        responder, payload, ..
+                    } => {
+                        second_call = Some((responder, payload));
+                        notify2.notify_one();
+                    }
+                    _ => {}
+                }
+            }
+
+            // Respond in reverse order (second request first)
+            if let (Some((resp1, _)), Some((resp2, _))) = (first_call, second_call) {
+                // Send response to second request first
+                resp2.reply(&[2]).await.unwrap();
+                // Small delay to ensure responses arrive out-of-order
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                // Send response to first request second
+                resp1.reply(&[1]).await.unwrap();
+            }
+
+            // Wait for client to complete
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            Ok(())
         }
-
-        // Respond in reverse order
-        if pending_calls.len() == 2 {
-            // Pop in reverse order (last first)
-            let (resp2, _) = pending_calls.pop().unwrap();
-            let (resp1, _) = pending_calls.pop().unwrap();
-
-            // Second request gets response first, with marker byte [2]
-            resp2.reply(&[2]).await.unwrap();
-            // Small delay
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            // First request gets response second, with marker byte [1]
-            resp1.reply(&[1]).await.unwrap();
-        }
-
-        // Wait for client to complete
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        Ok(())
     });
 
-    sim.client("client", async {
+    sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let config = RuntimeConfig::default();
@@ -591,22 +615,39 @@ fn out_of_order_response_matching() {
 
         let method = MethodId::new(0x0001).unwrap();
 
-        // Send two requests concurrently
-        let fut1 = proxy.call(method, &[1]);
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let fut2 = proxy.call(method, &[2]);
+        // Spawn first request in a background task so network I/O can progress
+        let proxy1 = proxy.clone();
+        let task1 = tokio::spawn(async move {
+            proxy1.call(method, &[1]).await
+        });
+        
+        // Wait for server to receive first request
+        notify1_for_client.notified().await;
 
-        // Wait for both responses
+        // Now send second request after we know first was received
+        let proxy2 = proxy.clone();
+        let task2 = tokio::spawn(async move {
+            proxy2.call(method, &[2]).await
+        });
+        
+        // Wait for server to receive second request
+        notify2_for_client.notified().await;
+
+        // Now both requests are at the server in the correct order.
+        // Server will respond in reverse order (2 then 1).
+        // Wait for both responses.
         let (r1, r2) = tokio::join!(
-            tokio::time::timeout(Duration::from_secs(5), fut1),
-            tokio::time::timeout(Duration::from_secs(5), fut2)
+            tokio::time::timeout(Duration::from_secs(5), task1),
+            tokio::time::timeout(Duration::from_secs(5), task2)
         );
 
         let response1 = r1
             .expect("Timeout on first call")
+            .expect("Task join failed")
             .expect("First call failed");
         let response2 = r2
             .expect("Timeout on second call")
+            .expect("Task join failed")
             .expect("Second call failed");
 
         // Despite out-of-order responses, each call should get its correct response
@@ -620,7 +661,6 @@ fn out_of_order_response_matching() {
             response2.payload[0], 2,
             "Second request should get marker [2] response"
         );
-
         Ok(())
     });
 
