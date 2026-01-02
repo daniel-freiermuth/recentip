@@ -18,6 +18,16 @@
 //!
 //! Each test documents which requirement(s) it covers using the `covers!()` macro.
 
+/// Initialize tracing before any test runs.
+/// Uses `ctor` to ensure this runs before main(), so all tests get tracing output.
+#[ctor::ctor]
+fn init_tracing() {
+    // Initialize tracing subscriber with test writer for proper output capture
+    let _ = tracing_subscriber::fmt()
+        .with_test_writer()
+        .try_init();
+}
+
 #[path = "compliance/api_types.rs"]
 mod api_types;
 
