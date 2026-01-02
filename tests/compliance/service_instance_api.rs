@@ -2311,6 +2311,113 @@ fn test_large_tcp_rpc_payload() {
     );
 }
 
+/// Test: Response should be sent even after offering is dropped
+/// 
+/// Scenario: A shutdown RPC triggers a long shutdown procedure. The offering
+/// is dropped early (service de-registered), but the final response should
+/// still be sent to the client. This is a common pattern where cleanup happens
+/// after the service stops accepting new requests.
+#[test]
+fn test_response_after_offering_dropped() {
+    let server_ran = Arc::new(AtomicBool::new(false));
+    let client_ran = Arc::new(AtomicBool::new(false));
+    let server_ran_clone = server_ran.clone();
+    let client_ran_clone = client_ran.clone();
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(60))
+        .build();
+
+    sim.host("server", move || {
+        let flag = server_ran_clone.clone();
+        async move {
+            let config = someip_runtime::runtime::RuntimeConfig {
+                transport: someip_runtime::runtime::Transport::Tcp,
+                ..Default::default()
+            };
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+
+            let mut offering = runtime
+                .offer::<BrakeService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
+
+            // Wait for RPC request (simulating a "shutdown" command)
+            if let Some(ServiceEvent::Call {
+                responder, ..
+            }) = offering.next().await
+            {
+                // Immediately drop the offering (service de-registered)
+                drop(offering);
+                
+                // Simulate long shutdown procedure
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                
+                // Send response AFTER offering is dropped
+                // This should still work!
+                responder.reply(b"shutdown_ack").await.unwrap();
+            }
+
+            // Gracefully shutdown to ensure response is sent
+            runtime.shutdown().await;
+
+            flag.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    });
+
+    sim.host("client", move || {
+        let flag = client_ran_clone.clone();
+        async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+
+            let config = someip_runtime::runtime::RuntimeConfig {
+                transport: someip_runtime::runtime::Transport::Tcp,
+                ..Default::default()
+            };
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+
+            let proxy = runtime.find::<BrakeService>(InstanceId::Id(0x0001));
+            let available = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+                .await
+                .expect("Should discover service")
+                .unwrap();
+
+            let method_id = MethodId::new(0x0001).unwrap();
+            
+            // Send "shutdown" command
+            let response = tokio::time::timeout(
+                Duration::from_secs(5),
+                available.call(method_id, b"shutdown"),
+            )
+            .await
+            .expect("Should receive response even after offering dropped")
+            .unwrap();
+
+            // Verify we got the acknowledgment
+            assert_eq!(&*response.payload, b"shutdown_ack");
+
+            flag.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    });
+
+    sim.client("driver", async {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        Ok(())
+    });
+    
+    sim.run().unwrap();
+    assert!(
+        server_ran.load(Ordering::SeqCst),
+        "Server async block did not run"
+    );
+    assert!(
+        client_ran.load(Ordering::SeqCst),
+        "Client async block did not run"
+    );
+}
+
 // ============================================================================
 // EDGE CASE: ZERO-LENGTH PAYLOAD
 // ============================================================================

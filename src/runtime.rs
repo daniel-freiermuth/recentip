@@ -391,6 +391,7 @@ struct RpcSendMessage {
 }
 
 /// Transport sender for offered services - either UDP or TCP
+#[derive(Debug, Clone)]
 enum RpcTransportSender {
     /// UDP socket sender
     Udp(mpsc::Sender<RpcSendMessage>),
@@ -490,7 +491,7 @@ struct CallKey {
 }
 
 /// Pending server response (server-side) - holds context to send response back
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PendingServerResponse {
     service_id: u16,
     instance_id: u16,
@@ -501,6 +502,9 @@ struct PendingServerResponse {
     client_addr: SocketAddr,
     /// Whether this method uses EXCEPTION (0x81) for errors instead of RESPONSE (0x80)
     uses_exception: bool,
+    /// Transport to use for sending the response - captured when request received
+    /// This allows responses to be sent even after the service offering is dropped
+    rpc_transport: RpcTransportSender,
 }
 
 /// Runtime state managed by the runtime task
@@ -1128,9 +1132,42 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
             cmd = cmd_rx.recv() => {
                 match cmd {
                     Some(Command::Shutdown) | None => {
-                        tracing::info!("Runtime shutting down");
+                        tracing::info!("Runtime shutting down, draining {} pending responses", pending_responses.len());
                         // Send StopOffer for all offered services
                         send_stop_offers(&sd_socket, &config, &mut state).await;
+                        
+                        // Drain all pending responses before exiting
+                        // This ensures responses in flight are sent even after offerings are dropped
+                        while let Some((context, result)) = pending_responses.next().await {
+                            let response_data = match result {
+                                Ok(payload) => build_response(
+                                    context.service_id,
+                                    context.method_id,
+                                    context.client_id,
+                                    context.session_id,
+                                    context.interface_version,
+                                    0x00, // OK
+                                    &payload,
+                                    false,
+                                ),
+                                Err(_) => build_response(
+                                    context.service_id,
+                                    context.method_id,
+                                    context.client_id,
+                                    context.session_id,
+                                    context.interface_version,
+                                    0x01, // NOT_OK
+                                    &[],
+                                    context.uses_exception,
+                                ),
+                            };
+                            
+                            // Send response via the captured RPC transport
+                            if let Err(e) = context.rpc_transport.send(response_data.to_vec(), context.client_addr).await {
+                                tracing::error!("Failed to send response during shutdown: {}", e);
+                            }
+                        }
+                        tracing::info!("Runtime shutdown complete");
                         break;
                     }
                     // Special handling for Offer - needs async socket/listener creation
@@ -1202,18 +1239,10 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                     ),
                 };
 
-                // Send response via the service's RPC socket
-                let service_key = ServiceKey {
-                    service_id: context.service_id,
-                    instance_id: context.instance_id,
-                };
-                if let Some(offered) = state.offered.get(&service_key) {
-                    if let Err(e) = offered.rpc_transport.send(response_data.to_vec(), context.client_addr).await {
-                        tracing::error!("Failed to send response via RPC transport: {}", e);
-                    }
-                } else {
-                    tracing::error!("Cannot send response - service {:04x}:{:04x} no longer offered",
-                        context.service_id, context.instance_id);
+                // Send response via the captured RPC transport
+                // This works even if the service offering has been dropped
+                if let Err(e) = context.rpc_transport.send(response_data.to_vec(), context.client_addr).await {
+                    tracing::error!("Failed to send response via RPC transport: {}", e);
                 }
             }
         }
@@ -1580,6 +1609,7 @@ fn handle_incoming_request(
                 interface_version: header.interface_version,
                 client_addr: from,
                 uses_exception,
+                rpc_transport: offered.rpc_transport.clone(),
             };
             actions.push(Action::TrackServerResponse {
                 context,
