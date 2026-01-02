@@ -507,6 +507,11 @@ struct PendingServerResponse {
 struct RuntimeState {
     /// SD endpoint (port 30490) - only for Service Discovery
     local_endpoint: SocketAddr,
+    /// Client RPC endpoint (ephemeral port) - for sending client RPC requests
+    /// Per feat_req_recentip_676: Port 30490 is only for SD, not for RPC
+    client_rpc_endpoint: SocketAddr,
+    /// Sender for client RPC messages (sends to client_rpc_socket task)
+    client_rpc_tx: mpsc::Sender<RpcSendMessage>,
     /// Services we're offering
     offered: HashMap<ServiceKey, OfferedService>,
     /// Services we're looking for
@@ -536,11 +541,18 @@ struct RuntimeState {
 }
 
 impl RuntimeState {
-    fn new(local_endpoint: SocketAddr, config: RuntimeConfig) -> Self {
+    fn new(
+        local_endpoint: SocketAddr,
+        client_rpc_endpoint: SocketAddr,
+        client_rpc_tx: mpsc::Sender<RpcSendMessage>,
+        config: RuntimeConfig,
+    ) -> Self {
         // Use port as part of client_id to help with uniqueness
         let client_id = (local_endpoint.port() % 0xFFFE) + 1;
         Self {
             local_endpoint,
+            client_rpc_endpoint,
+            client_rpc_tx,
             offered: HashMap::new(),
             find_requests: HashMap::new(),
             discovered: HashMap::new(),
@@ -649,10 +661,56 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         let tcp_pool: TcpConnectionPool<T> =
             TcpConnectionPool::new(tcp_client_tx, config.magic_cookies);
 
+        // Create dedicated client RPC socket (ephemeral port)
+        // Per feat_req_recentip_676: Port 30490 is only for SD, not for RPC
+        // Clients need their own socket for sending RPC requests, separate from SD
+        let client_rpc_socket = U::bind(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            0, // ephemeral port
+        )))
+        .await?;
+        let client_rpc_addr = client_rpc_socket.local_addr()?;
+
+        // Spawn task to handle client RPC socket (receives responses to our requests)
+        let (client_rpc_send_tx, mut client_rpc_send_rx) = mpsc::channel::<RpcSendMessage>(100);
+        let client_rpc_tx_clone = rpc_tx.clone();
+        tokio::spawn(async move {
+            let mut buf = [0u8; 65535];
+            loop {
+                tokio::select! {
+                    // Receive incoming RPC responses
+                    result = client_rpc_socket.recv_from(&mut buf) => {
+                        match result {
+                            Ok((len, from)) => {
+                                let data = buf[..len].to_vec();
+                                // Forward to runtime task for processing
+                                // We don't have a specific service_key since this is client-side
+                                let _ = client_rpc_tx_clone.send(RpcMessage {
+                                    service_key: ServiceKey { service_id: 0, instance_id: 0 },
+                                    data,
+                                    from,
+                                }).await;
+                            }
+                            Err(e) => {
+                                tracing::error!("Error receiving on client RPC socket: {}", e);
+                            }
+                        }
+                    }
+
+                    // Send outgoing RPC requests
+                    Some(send_msg) = client_rpc_send_rx.recv() => {
+                        if let Err(e) = client_rpc_socket.send_to(&send_msg.data, send_msg.to).await {
+                            tracing::error!("Error sending on client RPC socket: {}", e);
+                        }
+                    }
+                }
+            }
+        });
+
         // Spawn the runtime task
         let inner = Arc::new(RuntimeInner { cmd_tx });
 
-        let state = RuntimeState::new(local_addr, config.clone());
+        let state = RuntimeState::new(local_addr, client_rpc_addr, client_rpc_send_tx, config.clone());
 
         tokio::spawn(async move {
             runtime_task::<U, T, L>(
@@ -1197,8 +1255,16 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                     tracing::error!("Failed to send client SOME/IP message via TCP: {}", e);
                 }
             } else {
-                // Client messages use SD socket for UDP
-                if let Err(e) = sd_socket.send_to(&data, target).await {
+                // Client messages use dedicated client RPC socket (NOT SD socket)
+                // Per feat_req_recentip_676: Port 30490 is only for SD, not for RPC
+                if let Err(e) = state
+                    .client_rpc_tx
+                    .send(RpcSendMessage {
+                        data: data.to_vec(),
+                        to: target,
+                    })
+                    .await
+                {
                     tracing::error!("Failed to send client SOME/IP message via UDP: {}", e);
                 }
             }
@@ -2969,7 +3035,9 @@ mod tests {
     #[test]
     fn session_id_wraps_to_0001_not_0000() {
         let addr = "127.0.0.1:30490".parse().unwrap();
-        let mut state = RuntimeState::new(addr, RuntimeConfig::default());
+        let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
+        let (client_rpc_tx, _) = mpsc::channel(1);
+        let mut state = RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, RuntimeConfig::default());
 
         // First session should be 1
         assert_eq!(state.next_session_id(), 1, "Session ID should start at 1");
@@ -2994,7 +3062,9 @@ mod tests {
     #[test]
     fn reboot_flag_clears_after_wraparound() {
         let addr = "127.0.0.1:30490".parse().unwrap();
-        let mut state = RuntimeState::new(addr, RuntimeConfig::default());
+        let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
+        let (client_rpc_tx, _) = mpsc::channel(1);
+        let mut state = RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, RuntimeConfig::default());
 
         // Initially reboot flag should be set
         assert!(state.reboot_flag, "Reboot flag should be true initially");
@@ -3032,7 +3102,9 @@ mod tests {
     #[test]
     fn session_id_never_zero() {
         let addr = "127.0.0.1:30490".parse().unwrap();
-        let mut state = RuntimeState::new(addr, RuntimeConfig::default());
+        let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
+        let (client_rpc_tx, _) = mpsc::channel(1);
+        let mut state = RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, RuntimeConfig::default());
 
         // Iterate through 2 full cycles + some extra
         for _ in 0..(0xFFFF * 2 + 1000) {
