@@ -378,7 +378,7 @@ impl ServiceKey {
 /// Message received from an RPC socket task
 #[derive(Debug)]
 struct RpcMessage {
-    service_key: ServiceKey,
+    service_key: Option<ServiceKey>,
     data: Vec<u8>,
     from: SocketAddr,
 }
@@ -690,9 +690,8 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
                             Ok((len, from)) => {
                                 let data = buf[..len].to_vec();
                                 // Forward to runtime task for processing
-                                // We don't have a specific service_key since this is client-side
                                 let _ = client_rpc_tx_clone.send(RpcMessage {
-                                    service_key: ServiceKey { service_id: 0, instance_id: 0 },
+                                    service_key: None,
                                     data,
                                     from,
                                 }).await;
@@ -1027,7 +1026,7 @@ async fn spawn_rpc_socket_task<U: UdpSocket>(
                     match result {
                         Ok((len, from)) => {
                             let data = buf[..len].to_vec();
-                            let msg = RpcMessage { service_key, data, from };
+                            let msg = RpcMessage { service_key: Some(service_key), data, from };
                             if rpc_tx_to_runtime.send(msg).await.is_err() {
                                 tracing::debug!("RPC socket task for service {}/{} shutting down - runtime closed",
                                     service_id, instance_id);
@@ -1099,7 +1098,7 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
 
             // Handle incoming RPC messages from UDP RPC socket tasks
             Some(rpc_msg) = rpc_rx.recv() => {
-                if let Some(actions) = handle_packet(&rpc_msg.data, rpc_msg.from, &mut state, Some(rpc_msg.service_key)) {
+                if let Some(actions) = handle_packet(&rpc_msg.data, rpc_msg.from, &mut state, rpc_msg.service_key) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -1541,7 +1540,7 @@ fn handle_rpc_message(
         }
         MessageType::Notification => {
             // Event notification - route to subscription
-            handle_incoming_notification(header, payload, state);
+            handle_incoming_notification(header, payload, from, state);
         }
         _ => {
             tracing::trace!(
@@ -1569,12 +1568,11 @@ fn handle_incoming_request(
     service_key: Option<ServiceKey>,
 ) {
     // Find the offering:
-    // - If service_key is provided (from RPC socket), use exact matching
-    // - Otherwise (from SD socket or unknown), fall back to service_id-only matching
+    // - If service_key is provided (from server RPC socket), use exact matching
+    // - Otherwise fall back to service_id-only matching
     let offering = if let Some(key) = service_key {
         state.offered.get_key_value(&key)
     } else {
-        // Fall back to searching by service_id only
         state
             .offered
             .iter()
@@ -1701,7 +1699,12 @@ fn handle_incoming_response(header: &Header, payload: Bytes, state: &mut Runtime
 }
 
 /// Handle an incoming notification (event)
-fn handle_incoming_notification(header: &Header, payload: Bytes, state: &mut RuntimeState) {
+fn handle_incoming_notification(
+    header: &Header,
+    payload: Bytes,
+    from: SocketAddr,
+    state: &mut RuntimeState,
+) {
     // Method ID is the event ID for notifications
     let event_id = match crate::EventId::new(header.method_id) {
         Some(id) => id,
@@ -1713,12 +1716,34 @@ fn handle_incoming_notification(header: &Header, payload: Bytes, state: &mut Run
         payload: payload.clone(),
     };
 
+    // Determine which instance this event is from by looking up the 'from' address
+    // in discovered services
+    let instance_id_filter: Option<u16> = state
+        .discovered
+        .iter()
+        .find(|(key, disc)| {
+            key.service_id == header.service_id
+                && (disc.udp_endpoint == Some(from) || disc.tcp_endpoint == Some(from))
+        })
+        .map(|(key, _)| key.instance_id);
+
     // Find subscriptions for this service/eventgroup (dynamic via SD)
     for (key, subs) in &state.subscriptions {
-        if key.service_id == header.service_id {
-            for sub in subs {
-                let _ = sub.events_tx.try_send(event.clone());
+        // Match service_id from header
+        if key.service_id != header.service_id {
+            continue;
+        }
+
+        // If we determined an instance_id, filter by it to prevent cross-instance delivery
+        // If we couldn't determine it, deliver to all subscriptions (backward compatible)
+        if let Some(inst_id) = instance_id_filter {
+            if key.instance_id != inst_id {
+                continue;
             }
+        }
+
+        for sub in subs {
+            let _ = sub.events_tx.try_send(event.clone());
         }
     }
 
@@ -2667,7 +2692,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
                         SocketAddr::V4(v4) => *v4.ip(),
                         _ => Ipv4Addr::LOCALHOST,
                     },
-                    port: state.local_endpoint.port(),
+                    port: state.client_rpc_endpoint.port(),
                     protocol,
                 });
                 let mut entry = SdEntry::subscribe_eventgroup(

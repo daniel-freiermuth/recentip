@@ -59,6 +59,10 @@ mod error_handling;
 mod subscription;
 
 #[cfg(feature = "turmoil")]
+#[path = "compliance/subscription_multi_instance.rs"]
+mod subscription_multi_instance;
+
+#[cfg(feature = "turmoil")]
 #[path = "compliance/session_handling.rs"]
 mod session_handling;
 

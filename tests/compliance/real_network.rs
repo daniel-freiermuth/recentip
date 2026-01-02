@@ -362,6 +362,9 @@ async fn tcp_multiple_requests_real_network() {
 // ============================================================================
 
 /// Test event subscription on real UDP network
+///
+/// This test verifies unicast event delivery on a real network.
+/// Multicast event delivery is not yet implemented, but this test uses unicast only.
 #[tokio::test]
 #[serial]
 async fn udp_events_real_network() {
