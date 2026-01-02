@@ -9,11 +9,11 @@
 //! - feat_req_recentip_634: Setter is request/response with value as request payload
 //! - feat_req_recentip_635: Notifier sends notification event with updated value
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
-use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -23,7 +23,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct TestService;
@@ -69,10 +70,23 @@ fn field_getter_empty_request_payload() {
 
             // Handle getter request - should have empty payload
             if let Some(event) = offering.next().await {
-                if let ServiceEvent::Call { method, payload, responder, .. } = event {
-                    assert_eq!(method, MethodId::new(0x0001).unwrap(), "Expected getter method");
-                    assert!(payload.is_empty(), "Getter request should have empty payload (feat_req_recentip_633)");
-                    
+                if let ServiceEvent::Call {
+                    method,
+                    payload,
+                    responder,
+                    ..
+                } = event
+                {
+                    assert_eq!(
+                        method,
+                        MethodId::new(0x0001).unwrap(),
+                        "Expected getter method"
+                    );
+                    assert!(
+                        payload.is_empty(),
+                        "Getter request should have empty payload (feat_req_recentip_633)"
+                    );
+
                     // Respond with current field value
                     responder.reply(b"field_value").await.unwrap();
                     *flag.lock().unwrap() = true;
@@ -96,7 +110,8 @@ fn field_getter_empty_request_payload() {
             let proxy = runtime.find::<TestService>(InstanceId::Any);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
                 .await
-                .expect("Discovery timeout").expect("Service available");
+                .expect("Discovery timeout")
+                .expect("Service available");
 
             // Call getter with empty payload
             let getter_method = MethodId::new(0x0001).unwrap();
@@ -118,10 +133,16 @@ fn field_getter_empty_request_payload() {
     });
 
     sim.run().unwrap();
-    
+
     // Verify both server and client actually executed
-    assert!(*server_called.lock().unwrap(), "Server code should have executed");
-    assert!(*client_called.lock().unwrap(), "Client code should have executed");
+    assert!(
+        *server_called.lock().unwrap(),
+        "Server code should have executed"
+    );
+    assert!(
+        *client_called.lock().unwrap(),
+        "Client code should have executed"
+    );
 }
 
 /// feat_req_recentip_633: Getter returns current value in response
@@ -155,7 +176,10 @@ fn field_getter_returns_current_value() {
             if let Some(event) = offering.next().await {
                 if let ServiceEvent::Call { responder, .. } = event {
                     // Return current field value
-                    responder.reply(&current_temperature.to_be_bytes()).await.unwrap();
+                    responder
+                        .reply(&current_temperature.to_be_bytes())
+                        .await
+                        .unwrap();
                     *flag.lock().unwrap() = true;
                 }
             }
@@ -168,27 +192,31 @@ fn field_getter_returns_current_value() {
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
-            .await
-            .expect("Discovery timeout").expect("Service available");
+            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+                .await
+                .expect("Discovery timeout")
+                .expect("Service available");
 
-        let response = proxy.call(MethodId::new(0x0001).unwrap(), b"").await.unwrap();
+            let response = proxy
+                .call(MethodId::new(0x0001).unwrap(), b"")
+                .await
+                .unwrap();
 
-        // Verify we got the temperature value
-        assert_eq!(
-            u16::from_be_bytes([response.payload[0], response.payload[1]]),
-            25,
-            "Should receive current field value"
-        );
-        *flag.lock().unwrap() = true;
+            // Verify we got the temperature value
+            assert_eq!(
+                u16::from_be_bytes([response.payload[0], response.payload[1]]),
+                25,
+                "Should receive current field value"
+            );
+            *flag.lock().unwrap() = true;
 
-        Ok(())
+            Ok(())
         }
     });
 
@@ -199,8 +227,14 @@ fn field_getter_returns_current_value() {
     });
 
     sim.run().unwrap();
-    assert!(*server_called.lock().unwrap(), "Server should have executed");
-    assert!(*client_called.lock().unwrap(), "Client should have executed");
+    assert!(
+        *server_called.lock().unwrap(),
+        "Server should have executed"
+    );
+    assert!(
+        *client_called.lock().unwrap(),
+        "Client should have executed"
+    );
 }
 
 // ============================================================================
@@ -227,57 +261,74 @@ fn field_setter_sends_value_in_request() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let mut offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        if let Some(event) = offering.next().await {
-            if let ServiceEvent::Call { method, payload, responder, .. } = event {
-                assert_eq!(method, MethodId::new(0x0002).unwrap(), "Expected setter method");
-                
-                // Verify payload contains the new value
-                assert_eq!(payload.len(), 2, "Setter should have value payload");
-                let new_value = u16::from_be_bytes([payload[0], payload[1]]);
-                assert_eq!(new_value, 42, "Setter payload should contain new value (feat_req_recentip_634)");
+            if let Some(event) = offering.next().await {
+                if let ServiceEvent::Call {
+                    method,
+                    payload,
+                    responder,
+                    ..
+                } = event
+                {
+                    assert_eq!(
+                        method,
+                        MethodId::new(0x0002).unwrap(),
+                        "Expected setter method"
+                    );
 
-                // Acknowledge setter
-                responder.reply(b"").await.unwrap();
-                // Allow response to be transmitted before task exits
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                *flag.lock().unwrap() = true;
+                    // Verify payload contains the new value
+                    assert_eq!(payload.len(), 2, "Setter should have value payload");
+                    let new_value = u16::from_be_bytes([payload[0], payload[1]]);
+                    assert_eq!(
+                        new_value, 42,
+                        "Setter payload should contain new value (feat_req_recentip_634)"
+                    );
+
+                    // Acknowledge setter
+                    responder.reply(b"").await.unwrap();
+                    // Allow response to be transmitted before task exits
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    *flag.lock().unwrap() = true;
+                }
             }
-        }
 
-        Ok(())
+            Ok(())
         }
     });
 
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
-            .await
-            .expect("Discovery timeout").expect("Service available");
+            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+                .await
+                .expect("Discovery timeout")
+                .expect("Service available");
 
-        // Set field to new value
-        let setter_method = MethodId::new(0x0002).unwrap();
-        let new_value = 42u16.to_be_bytes();
-        let response = proxy.call(setter_method, &new_value).await.unwrap();
+            // Set field to new value
+            let setter_method = MethodId::new(0x0002).unwrap();
+            let new_value = 42u16.to_be_bytes();
+            let response = proxy.call(setter_method, &new_value).await.unwrap();
 
-        assert!(response.payload.is_empty(), "Setter response typically empty");
-        *flag.lock().unwrap() = true;
+            assert!(
+                response.payload.is_empty(),
+                "Setter response typically empty"
+            );
+            *flag.lock().unwrap() = true;
 
-        Ok(())
+            Ok(())
         }
     });
 
@@ -288,8 +339,14 @@ fn field_setter_sends_value_in_request() {
     });
 
     sim.run().unwrap();
-    assert!(*server_called.lock().unwrap(), "Server should have executed");
-    assert!(*client_called.lock().unwrap(), "Client should have executed");
+    assert!(
+        *server_called.lock().unwrap(),
+        "Server should have executed"
+    );
+    assert!(
+        *client_called.lock().unwrap(),
+        "Client should have executed"
+    );
 }
 
 /// feat_req_recentip_634: Setter is request/response (not fire&forget)
@@ -309,51 +366,55 @@ fn field_setter_gets_response() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let mut offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        if let Some(event) = offering.next().await {
-            if let ServiceEvent::Call { responder, .. } = event {
-                // Setter must send response (not fire-and-forget)
-                responder.reply(b"").await.unwrap();
-                // Allow response to be transmitted before task exits
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                *flag.lock().unwrap() = true;
+            if let Some(event) = offering.next().await {
+                if let ServiceEvent::Call { responder, .. } = event {
+                    // Setter must send response (not fire-and-forget)
+                    responder.reply(b"").await.unwrap();
+                    // Allow response to be transmitted before task exits
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    *flag.lock().unwrap() = true;
+                }
             }
-        }
 
-        Ok(())
+            Ok(())
         }
     });
 
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
-            .await
-            .expect("Discovery timeout").expect("Service available");
+            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+                .await
+                .expect("Discovery timeout")
+                .expect("Service available");
 
-        // Call setter
-        let setter_method = MethodId::new(0x0002).unwrap();
-        let result = proxy.call(setter_method, &[1, 2, 3, 4]).await;
+            // Call setter
+            let setter_method = MethodId::new(0x0002).unwrap();
+            let result = proxy.call(setter_method, &[1, 2, 3, 4]).await;
 
-        // Should receive response (proving it's request/response, not fire-and-forget)
-        assert!(result.is_ok(), "Setter should receive response (feat_req_recentip_634)");
-        *flag.lock().unwrap() = true;
+            // Should receive response (proving it's request/response, not fire-and-forget)
+            assert!(
+                result.is_ok(),
+                "Setter should receive response (feat_req_recentip_634)"
+            );
+            *flag.lock().unwrap() = true;
 
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            Ok(())
         }
     });
 
@@ -364,12 +425,18 @@ fn field_setter_gets_response() {
     });
 
     sim.run().unwrap();
-    assert!(*server_called.lock().unwrap(), "Server should have executed");
-    assert!(*client_called.lock().unwrap(), "Client should have executed");
+    assert!(
+        *server_called.lock().unwrap(),
+        "Server should have executed"
+    );
+    assert!(
+        *client_called.lock().unwrap(),
+        "Client should have executed"
+    );
 }
 
 // ============================================================================
-// Field Notifier Tests  
+// Field Notifier Tests
 // ============================================================================
 
 /// feat_req_recentip_635: Notifier sends notification event with updated value
@@ -407,7 +474,10 @@ fn field_notifier_sends_updated_value() {
             let updated_value = 100u32.to_be_bytes();
             let eventgroup_id = EventgroupId::new(0x01).unwrap();
             let notifier_event = EventId::new(0x8001).unwrap();
-            offering.notify(eventgroup_id, notifier_event, &updated_value).await.unwrap();
+            offering
+                .notify(eventgroup_id, notifier_event, &updated_value)
+                .await
+                .unwrap();
             *flag.lock().unwrap() = true;
 
             tokio::time::sleep(Duration::from_millis(300)).await;
@@ -418,39 +488,44 @@ fn field_notifier_sends_updated_value() {
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
-            .await
-            .expect("Discovery timeout").expect("Service available");
+            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+                .await
+                .expect("Discovery timeout")
+                .expect("Service available");
 
-        // Subscribe to field notifications
-        let eventgroup_id = EventgroupId::new(0x01).unwrap();
-        let mut subscription = proxy.subscribe(eventgroup_id).await.unwrap();
+            // Subscribe to field notifications
+            let eventgroup_id = EventgroupId::new(0x01).unwrap();
+            let mut subscription = proxy.subscribe(eventgroup_id).await.unwrap();
 
-        // Wait for notification
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(5),
-            subscription.next()
-        ).await.ok().flatten() {
-            // Verify notification contains updated field value
-            let value = u32::from_be_bytes([
-                event.payload[0],
-                event.payload[1],
-                event.payload[2],
-                event.payload[3],
-            ]);
-            assert_eq!(value, 100, "Notification should contain updated field value (feat_req_recentip_635)");
-            *flag.lock().unwrap() = true;
-        } else {
-            panic!("Should receive field update notification");
-        }
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        Ok(())
+            // Wait for notification
+            if let Some(event) = tokio::time::timeout(Duration::from_secs(5), subscription.next())
+                .await
+                .ok()
+                .flatten()
+            {
+                // Verify notification contains updated field value
+                let value = u32::from_be_bytes([
+                    event.payload[0],
+                    event.payload[1],
+                    event.payload[2],
+                    event.payload[3],
+                ]);
+                assert_eq!(
+                    value, 100,
+                    "Notification should contain updated field value (feat_req_recentip_635)"
+                );
+                *flag.lock().unwrap() = true;
+            } else {
+                panic!("Should receive field update notification");
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            Ok(())
         }
     });
 
@@ -461,8 +536,14 @@ fn field_notifier_sends_updated_value() {
     });
 
     sim.run().unwrap();
-    assert!(*server_called.lock().unwrap(), "Server should have executed");
-    assert!(*client_called.lock().unwrap(), "Client should have executed");
+    assert!(
+        *server_called.lock().unwrap(),
+        "Server should have executed"
+    );
+    assert!(
+        *client_called.lock().unwrap(),
+        "Client should have executed"
+    );
 }
 
 // ============================================================================
@@ -504,11 +585,20 @@ fn field_combines_getter_setter_notifier() {
             // Handle events - may receive Subscribe first
             let mut getter_handled = false;
             let mut setter_handled = false;
-            
+
             for _ in 0..10 {
-                if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next()).await.ok().flatten() {
+                if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next())
+                    .await
+                    .ok()
+                    .flatten()
+                {
                     match event {
-                        ServiceEvent::Call { method, payload, responder, .. } => {
+                        ServiceEvent::Call {
+                            method,
+                            payload,
+                            responder,
+                            ..
+                        } => {
                             if method == MethodId::new(0x0001).unwrap() && !getter_handled {
                                 // Getter - return current value
                                 responder.reply(&field_value.to_be_bytes()).await.unwrap();
@@ -522,7 +612,12 @@ fn field_combines_getter_setter_notifier() {
                                 tokio::time::sleep(Duration::from_millis(10)).await;
                                 let eventgroup_id = EventgroupId::new(0x01).unwrap();
                                 let notifier_event = EventId::new(0x8001).unwrap();
-                                offering.notify(eventgroup_id, notifier_event, &field_value.to_be_bytes())
+                                offering
+                                    .notify(
+                                        eventgroup_id,
+                                        notifier_event,
+                                        &field_value.to_be_bytes(),
+                                    )
                                     .await
                                     .unwrap();
                                 *flag.lock().unwrap() = true;
@@ -534,62 +629,65 @@ fn field_combines_getter_setter_notifier() {
                         }
                         _ => {}
                     }
-                    
+
                     if getter_handled && setter_handled {
                         break;
                     }
                 }
             }
 
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            Ok(())
         }
     });
 
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
-            .await
-            .expect("Discovery timeout").expect("Service available");
+            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+                .await
+                .expect("Discovery timeout")
+                .expect("Service available");
 
-        // Subscribe to get notifier updates
-        let eventgroup_id = EventgroupId::new(0x01).unwrap();
-        let mut subscription = proxy.subscribe(eventgroup_id).await.unwrap();
+            // Subscribe to get notifier updates
+            let eventgroup_id = EventgroupId::new(0x01).unwrap();
+            let mut subscription = proxy.subscribe(eventgroup_id).await.unwrap();
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_millis(50)).await;
 
-        // 1. GET current value (Getter)
-        let getter_method = MethodId::new(0x0001).unwrap();
-        let get_response = proxy.call(getter_method, b"").await.unwrap();
-        let current_value = u16::from_be_bytes([get_response.payload[0], get_response.payload[1]]);
-        assert_eq!(current_value, 20, "Getter should return current value");
+            // 1. GET current value (Getter)
+            let getter_method = MethodId::new(0x0001).unwrap();
+            let get_response = proxy.call(getter_method, b"").await.unwrap();
+            let current_value =
+                u16::from_be_bytes([get_response.payload[0], get_response.payload[1]]);
+            assert_eq!(current_value, 20, "Getter should return current value");
 
-        // 2. SET new value (Setter)
-        let setter_method = MethodId::new(0x0002).unwrap();
-        let new_value = 25u16.to_be_bytes();
-        proxy.call(setter_method, &new_value).await.unwrap();
+            // 2. SET new value (Setter)
+            let setter_method = MethodId::new(0x0002).unwrap();
+            let new_value = 25u16.to_be_bytes();
+            proxy.call(setter_method, &new_value).await.unwrap();
 
-        // 3. Receive notification of changed value (Notifier)
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(5),
-            subscription.next()
-        ).await.ok().flatten() {
-            let notified_value = u16::from_be_bytes([event.payload[0], event.payload[1]]);
-            assert_eq!(notified_value, 25, "Notifier should send updated value");
-            *flag.lock().unwrap() = true;
-        } else {
-            panic!("Should receive notification after setter");
-        }
+            // 3. Receive notification of changed value (Notifier)
+            if let Some(event) = tokio::time::timeout(Duration::from_secs(5), subscription.next())
+                .await
+                .ok()
+                .flatten()
+            {
+                let notified_value = u16::from_be_bytes([event.payload[0], event.payload[1]]);
+                assert_eq!(notified_value, 25, "Notifier should send updated value");
+                *flag.lock().unwrap() = true;
+            } else {
+                panic!("Should receive notification after setter");
+            }
 
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            Ok(())
         }
     });
 
@@ -600,8 +698,14 @@ fn field_combines_getter_setter_notifier() {
     });
 
     sim.run().unwrap();
-    assert!(*server_called.lock().unwrap(), "Server should have executed");
-    assert!(*client_called.lock().unwrap(), "Client should have executed");
+    assert!(
+        *server_called.lock().unwrap(),
+        "Server should have executed"
+    );
+    assert!(
+        *client_called.lock().unwrap(),
+        "Client should have executed"
+    );
 }
 
 // ============================================================================
@@ -634,10 +738,13 @@ fn field_setter_can_reject_invalid_value() {
                 .unwrap();
 
             if let Some(event) = offering.next().await {
-                if let ServiceEvent::Call { payload, responder, .. } = event {
+                if let ServiceEvent::Call {
+                    payload, responder, ..
+                } = event
+                {
                     // Validate value
                     let new_value = u16::from_be_bytes([payload[0], payload[1]]);
-                    
+
                     if new_value > 100 {
                         // Reject invalid value
                         responder.reply_error(ReturnCode::NotOk).await.unwrap();
@@ -656,37 +763,38 @@ fn field_setter_can_reject_invalid_value() {
     sim.host("client", || {
         let flag = Arc::clone(&client_flag);
         async move {
-        tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
-            .await
-            .expect("Discovery timeout").expect("Service available");
+            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+                .await
+                .expect("Discovery timeout")
+                .expect("Service available");
 
-        // Try to set invalid value (> 100)
-        let setter_method = MethodId::new(0x0002).unwrap();
-        let invalid_value = 150u16.to_be_bytes();
-        let result = proxy.call(setter_method, &invalid_value).await;
+            // Try to set invalid value (> 100)
+            let setter_method = MethodId::new(0x0002).unwrap();
+            let invalid_value = 150u16.to_be_bytes();
+            let result = proxy.call(setter_method, &invalid_value).await;
 
-        // Should receive error response (either as Err or Ok with non-Ok return code)
-        match result {
-            Err(_) => {
-                // Error propagated as Err - acceptable
+            // Should receive error response (either as Err or Ok with non-Ok return code)
+            match result {
+                Err(_) => {
+                    // Error propagated as Err - acceptable
+                }
+                Ok(response) => {
+                    assert_ne!(
+                        response.return_code,
+                        ReturnCode::Ok,
+                        "Invalid value should be rejected with error return code"
+                    );
+                }
             }
-            Ok(response) => {
-                assert_ne!(
-                    response.return_code, 
-                    ReturnCode::Ok,
-                    "Invalid value should be rejected with error return code"
-                );
-            }
-        }
-        *flag.lock().unwrap() = true;
+            *flag.lock().unwrap() = true;
 
-        Ok(())
+            Ok(())
         }
     });
 
@@ -697,6 +805,12 @@ fn field_setter_can_reject_invalid_value() {
     });
 
     sim.run().unwrap();
-    assert!(*server_called.lock().unwrap(), "Server should have executed");
-    assert!(*client_called.lock().unwrap(), "Client should have executed");
+    assert!(
+        *server_called.lock().unwrap(),
+        "Server should have executed"
+    );
+    assert!(
+        *client_called.lock().unwrap(),
+        "Client should have executed"
+    );
 }

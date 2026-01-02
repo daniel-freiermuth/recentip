@@ -13,7 +13,7 @@
 use bytes::Bytes;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::wire::{Header, SdMessage, SD_METHOD_ID, SD_SERVICE_ID, MessageType};
+use someip_runtime::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -25,7 +25,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct EventService;
@@ -71,7 +72,7 @@ fn build_sd_offer(
     ttl: u32,
 ) -> Vec<u8> {
     let mut packet = Vec::with_capacity(60);
-    
+
     // SOME/IP Header
     packet.extend_from_slice(&0xFFFFu16.to_be_bytes()); // Service ID (SD)
     packet.extend_from_slice(&0x8100u16.to_be_bytes()); // Method ID (SD)
@@ -83,14 +84,14 @@ fn build_sd_offer(
     packet.push(0x01); // Interface version
     packet.push(0x02); // Message type: NOTIFICATION
     packet.push(0x00); // Return code
-    
+
     // SD Payload
     packet.push(0xC0); // Flags: Unicast + Reboot
     packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
-    
+
     // Entries array length (16 bytes for one entry)
     packet.extend_from_slice(&16u32.to_be_bytes());
-    
+
     // OfferService Entry (16 bytes)
     packet.push(0x01); // Type: OfferService
     packet.push(0x00); // Index 1st options
@@ -103,10 +104,10 @@ fn build_sd_offer(
     packet.push((ttl >> 8) as u8);
     packet.push(ttl as u8);
     packet.extend_from_slice(&minor_version.to_be_bytes());
-    
+
     // Options array length (12 bytes for IPv4 endpoint)
     packet.extend_from_slice(&12u32.to_be_bytes());
-    
+
     // IPv4 Endpoint Option
     packet.extend_from_slice(&9u16.to_be_bytes()); // Length
     packet.push(0x04); // Type: IPv4 Endpoint
@@ -115,11 +116,11 @@ fn build_sd_offer(
     packet.push(0x00); // Reserved
     packet.push(0x11); // Protocol: UDP
     packet.extend_from_slice(&endpoint_port.to_be_bytes());
-    
+
     // Fix length field
     let payload_len = (packet.len() - 12) as u32;
     packet[length_offset..length_offset + 4].copy_from_slice(&payload_len.to_be_bytes());
-    
+
     packet
 }
 
@@ -155,7 +156,10 @@ fn event_transports_value_data() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
         let sensor_data = b"temperature=42.5,humidity=65";
-        offering.notify(eventgroup, event_id, sensor_data).await.unwrap();
+        offering
+            .notify(eventgroup, event_id, sensor_data)
+            .await
+            .unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -169,16 +173,15 @@ fn event_transports_value_data() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Receive event and verify it contains the value data
         let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -187,7 +190,7 @@ fn event_transports_value_data() {
 
         assert!(event.is_some());
         let event = event.unwrap();
-        
+
         // Event payload should contain the actual sensor data (value transport)
         assert_eq!(
             event.payload.as_ref(),
@@ -232,7 +235,7 @@ fn events_not_sent_to_non_subscribers() {
         // Send multiple events
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        
+
         for i in 0..5 {
             offering.notify(eventgroup, event_id, &[i]).await.unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -247,30 +250,31 @@ fn events_not_sent_to_non_subscribers() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         // Create an RPC socket to potentially receive events
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:40000").await?;
-        
+
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
 
         // Discover the server via SD
         for _ in 0..20 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
 
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                    addr,
+                                    port,
+                                    ..
+                                } = opt
+                                {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -296,10 +300,9 @@ fn events_not_sent_to_non_subscribers() {
         // Try to receive any NOTIFICATION messages on RPC socket
         let mut received_notifications = Vec::new();
         for _ in 0..10 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(100),
-                rpc_socket.recv_from(&mut buf),
-            ).await;
+            let result =
+                tokio::time::timeout(Duration::from_millis(100), rpc_socket.recv_from(&mut buf))
+                    .await;
 
             if let Ok(Ok((len, _from))) = result {
                 if let Some(header) = parse_header(&buf[..len]) {
@@ -353,13 +356,19 @@ fn unsubscribe_stops_event_delivery() {
         // First event (client is subscribed)
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.notify(eventgroup, event_id, b"event_while_subscribed").await.unwrap();
+        offering
+            .notify(eventgroup, event_id, b"event_while_subscribed")
+            .await
+            .unwrap();
 
         // Wait for client to unsubscribe
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Second event (client has unsubscribed)
-        offering.notify(eventgroup, event_id, b"event_after_unsub").await.unwrap();
+        offering
+            .notify(eventgroup, event_id, b"event_after_unsub")
+            .await
+            .unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -373,16 +382,15 @@ fn unsubscribe_stops_event_delivery() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Receive first event while subscribed
         let event1 = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -399,7 +407,7 @@ fn unsubscribe_stops_event_delivery() {
 
         // Test passes if we reach here without receiving the second event
         // (the subscription handle is gone, so we can't even check)
-        
+
         Ok(())
     });
 
@@ -407,7 +415,7 @@ fn unsubscribe_stops_event_delivery() {
 }
 
 // ============================================================================
-// EVENT MESSAGE FORMAT TESTS  
+// EVENT MESSAGE FORMAT TESTS
 // ============================================================================
 
 /// [feat_req_recentip_352] Event uses NOTIFICATION message type (0x02)
@@ -435,7 +443,10 @@ fn event_uses_notification_message_type_on_wire() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.notify(eventgroup, event_id, b"test").await.unwrap();
+        offering
+            .notify(eventgroup, event_id, b"test")
+            .await
+            .unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -450,16 +461,15 @@ fn event_uses_notification_message_type_on_wire() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Receive event
         let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -468,14 +478,14 @@ fn event_uses_notification_message_type_on_wire() {
 
         assert!(event.is_some());
         let event = event.unwrap();
-        
+
         // Event ID should have high bit set (0x8xxx)
         assert!(
             (event.event_id.value() & 0x8000) != 0,
             "Event ID should have high bit set (got 0x{:04X})",
             event.event_id.value()
         );
-        
+
         // Message type verification is implicit - we received it as an event,
         // not an RPC response, so it was NOTIFICATION
 

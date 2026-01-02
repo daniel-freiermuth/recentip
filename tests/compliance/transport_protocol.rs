@@ -21,12 +21,13 @@
 
 use std::time::Duration;
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
 
 #[cfg(feature = "turmoil")]
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -224,10 +225,26 @@ mod tp_header_tests {
     #[test]
     fn tp_header_roundtrip() {
         let headers = [
-            TpHeader { offset: 0, reserved: 0, more_segments: true },
-            TpHeader { offset: 1392, reserved: 0, more_segments: true },
-            TpHeader { offset: 2784, reserved: 0, more_segments: false },
-            TpHeader { offset: 0x10000, reserved: 0, more_segments: true },
+            TpHeader {
+                offset: 0,
+                reserved: 0,
+                more_segments: true,
+            },
+            TpHeader {
+                offset: 1392,
+                reserved: 0,
+                more_segments: true,
+            },
+            TpHeader {
+                offset: 2784,
+                reserved: 0,
+                more_segments: false,
+            },
+            TpHeader {
+                offset: 0x10000,
+                reserved: 0,
+                more_segments: true,
+            },
         ];
 
         for header in headers {
@@ -268,7 +285,9 @@ fn large_udp_messages_use_tp() {
         // Echo back
         if let Some(event) = offering.next().await {
             match event {
-                ServiceEvent::Call { payload, responder, .. } => {
+                ServiceEvent::Call {
+                    payload, responder, ..
+                } => {
                     responder.reply(payload.as_ref()).await.unwrap();
                 }
                 _ => {}
@@ -287,18 +306,17 @@ fn large_udp_messages_use_tp() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Send a large message (2000 bytes payload - larger than 1400 byte limit)
         let large_payload = vec![0xABu8; 2000];
         let method = MethodId::new(0x0001).unwrap();
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, &large_payload),
-        )
-        .await
-        .expect("RPC timeout")
-        .expect("RPC should succeed");
+        let response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method, &large_payload))
+                .await
+                .expect("RPC timeout")
+                .expect("RPC should succeed");
 
         // Response should echo our payload
         assert_eq!(response.payload.len(), 2000);

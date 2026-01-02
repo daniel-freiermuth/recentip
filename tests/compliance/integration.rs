@@ -6,9 +6,9 @@
 //! For wire-level byte verification, see wire_capture.rs which uses
 //! raw sockets to inspect actual packet contents.
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -19,7 +19,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct TestService;
@@ -60,7 +61,9 @@ fn request_response_roundtrip() {
 
         if let Some(event) = offering.next().await {
             match event {
-                ServiceEvent::Call { payload, responder, .. } => {
+                ServiceEvent::Call {
+                    payload, responder, ..
+                } => {
                     assert_eq!(payload.as_ref(), b"hello");
                     responder.reply(b"world").await.unwrap();
                 }
@@ -81,7 +84,8 @@ fn request_response_roundtrip() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service").expect("Service available");
+            .expect("Timeout waiting for service")
+            .expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
@@ -143,7 +147,8 @@ fn multiple_calls_succeed() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service").expect("Service available");
+            .expect("Timeout waiting for service")
+            .expect("Service available");
 
         for i in 0..3u8 {
             let response = tokio::time::timeout(
@@ -236,7 +241,10 @@ fn notification_delivery() {
         // Send notification
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.notify(eventgroup, event_id, b"event_data").await.unwrap();
+        offering
+            .notify(eventgroup, event_id, b"event_data")
+            .await
+            .unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -251,16 +259,15 @@ fn notification_delivery() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service").expect("Service available");
+            .expect("Timeout waiting for service")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Timeout subscribing")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Timeout subscribing")
+                .expect("Subscribe should succeed");
 
         let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
             .await
@@ -396,7 +403,8 @@ fn network_partition_handling() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service").expect("Service available");
+            .expect("Timeout waiting for service")
+            .expect("Service available");
 
         // Call should succeed before partition
         let response = tokio::time::timeout(
@@ -417,7 +425,7 @@ fn network_partition_handling() {
             proxy.call(MethodId::new(0x0001).unwrap(), b"ping"),
         )
         .await;
-        
+
         // Either timeout or error is acceptable during partition
         assert!(
             result.is_err() || result.unwrap().is_err(),
@@ -481,7 +489,7 @@ fn service_restart_recovery() {
         async move {
             // Track that server closure was invoked
             let start_count = server_starts.fetch_add(1, Ordering::SeqCst) + 1;
-            
+
             let config = RuntimeConfig::default();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -519,7 +527,8 @@ fn service_restart_recovery() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service").expect("Service available");
+            .expect("Timeout waiting for service")
+            .expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(2),
@@ -528,10 +537,10 @@ fn service_restart_recovery() {
         .await
         .expect("Timeout")
         .expect("First call should succeed");
-        
+
         // First server instance should return 1
         assert_eq!(
-            u32::from_be_bytes(response.payload.as_ref().try_into().unwrap()), 
+            u32::from_be_bytes(response.payload.as_ref().try_into().unwrap()),
             1,
             "First call should be handled by server instance 1"
         );
@@ -562,10 +571,10 @@ fn service_restart_recovery() {
         .await
         .expect("Timeout after restart")
         .expect("Call should succeed after restart");
-        
+
         // After bounce, server closure runs again - start_count should be 2
         assert_eq!(
-            u32::from_be_bytes(response.payload.as_ref().try_into().unwrap()), 
+            u32::from_be_bytes(response.payload.as_ref().try_into().unwrap()),
             2,
             "After bounce, server closure should re-run (instance 2)"
         );
@@ -600,8 +609,8 @@ fn service_restart_recovery() {
 
     // Verify server was started twice (initial + after bounce)
     assert_eq!(
-        server_starts.load(Ordering::SeqCst), 
-        2, 
+        server_starts.load(Ordering::SeqCst),
+        2,
         "Server closure should have been invoked twice"
     );
 }
@@ -631,7 +640,9 @@ fn many_concurrent_requests() {
         while handled < NUM_REQUESTS {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         // Echo back the payload
                         responder.reply(payload.as_ref()).await.unwrap();
                         handled += 1;
@@ -654,7 +665,8 @@ fn many_concurrent_requests() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Timeout waiting for service").expect("Service available");
+            .expect("Timeout waiting for service")
+            .expect("Service available");
 
         // Spawn 100 truly concurrent requests
         // ProxyHandle is Clone, and call() accepts owned data (Vec<u8>)
@@ -670,7 +682,7 @@ fn many_concurrent_requests() {
                 .await
                 .expect("Timeout")
                 .expect("Call should succeed");
-                
+
                 // Verify echo
                 assert_eq!(response.payload.as_ref(), &payload[..]);
                 i
@@ -686,11 +698,14 @@ fn many_concurrent_requests() {
         }
 
         // Verify all 100 completed
-        assert_eq!(completed.len(), NUM_REQUESTS, "All requests should complete");
+        assert_eq!(
+            completed.len(),
+            NUM_REQUESTS,
+            "All requests should complete"
+        );
 
         Ok(())
     });
 
     sim.run().unwrap();
 }
-

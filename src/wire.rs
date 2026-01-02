@@ -47,30 +47,30 @@ pub const MAGIC_COOKIE_SERVER_METHOD_ID: u16 = 0x8000;
 /// - Return Code: 0x00
 pub fn magic_cookie_client() -> [u8; 16] {
     [
-        0xFF, 0xFF,             // Service ID: 0xFFFF
-        0x00, 0x00,             // Method ID: 0x0000 (client)
+        0xFF, 0xFF, // Service ID: 0xFFFF
+        0x00, 0x00, // Method ID: 0x0000 (client)
         0x00, 0x00, 0x00, 0x08, // Length: 8
-        0xDE, 0xAD,             // Client ID: 0xDEAD
-        0xBE, 0xEF,             // Session ID: 0xBEEF
-        0x01,                   // Protocol Version
-        0x01,                   // Interface Version
-        0x01,                   // Message Type: Request
-        0x00,                   // Return Code
+        0xDE, 0xAD, // Client ID: 0xDEAD
+        0xBE, 0xEF, // Session ID: 0xBEEF
+        0x01, // Protocol Version
+        0x01, // Interface Version
+        0x01, // Message Type: Request
+        0x00, // Return Code
     ]
 }
 
 /// Generate a server-side Magic Cookie message (16 bytes).
 pub fn magic_cookie_server() -> [u8; 16] {
     [
-        0xFF, 0xFF,             // Service ID: 0xFFFF
-        0x80, 0x00,             // Method ID: 0x8000 (server)
+        0xFF, 0xFF, // Service ID: 0xFFFF
+        0x80, 0x00, // Method ID: 0x8000 (server)
         0x00, 0x00, 0x00, 0x08, // Length: 8
-        0xDE, 0xAD,             // Client ID: 0xDEAD
-        0xBE, 0xEF,             // Session ID: 0xBEEF
-        0x01,                   // Protocol Version
-        0x01,                   // Interface Version
-        0x01,                   // Message Type: Request
-        0x00,                   // Return Code
+        0xDE, 0xAD, // Client ID: 0xDEAD
+        0xBE, 0xEF, // Session ID: 0xBEEF
+        0x01, // Protocol Version
+        0x01, // Interface Version
+        0x01, // Message Type: Request
+        0x00, // Return Code
     ]
 }
 
@@ -95,7 +95,7 @@ pub fn is_magic_cookie(data: &[u8]) -> bool {
 // ============================================================================
 
 /// Represents a semantic version for interface compatibility.
-/// 
+///
 /// In SOME/IP, only the major version is transmitted in the header.
 /// The minor version is communicated via Service Discovery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,19 +111,19 @@ impl InterfaceVersion {
     pub fn new(major: u8, minor: u32) -> Self {
         InterfaceVersion { major, minor }
     }
-    
+
     /// Check if this version is compatible with another version.
-    /// 
+    ///
     /// Compatible means same major version, and our minor >= required minor.
     pub fn is_compatible_with(&self, required: &InterfaceVersion) -> bool {
         self.major == required.major && self.minor >= required.minor
     }
-    
+
     /// Check if exact match (used for strict mode)
     pub fn matches_exactly(&self, other: &InterfaceVersion) -> bool {
         self.major == other.major && self.minor == other.minor
     }
-    
+
     /// Get the major version byte for wire format
     pub fn wire_major(&self) -> u8 {
         self.major
@@ -142,7 +142,7 @@ pub enum VersionError {
 }
 
 /// Validate protocol version byte from header.
-/// 
+///
 /// Returns Ok if the version matches PROTOCOL_VERSION (0x01).
 pub fn validate_protocol_version(version_byte: u8) -> Result<(), VersionError> {
     if version_byte == PROTOCOL_VERSION {
@@ -156,7 +156,7 @@ pub fn validate_protocol_version(version_byte: u8) -> Result<(), VersionError> {
 }
 
 /// Validate interface version from header against expected.
-/// 
+///
 /// Only checks major version match (minor is SD-only).
 pub fn validate_interface_version(
     header_major: u8,
@@ -217,19 +217,28 @@ impl MessageType {
 
     /// Check if this is a fire-and-forget request
     pub fn is_fire_and_forget(&self) -> bool {
-        matches!(self, MessageType::RequestNoReturn | MessageType::TpRequestNoReturn)
+        matches!(
+            self,
+            MessageType::RequestNoReturn | MessageType::TpRequestNoReturn
+        )
     }
 
     /// Check if this is a notification
     pub fn is_notification(&self) -> bool {
-        matches!(self, MessageType::Notification | MessageType::TpNotification)
+        matches!(
+            self,
+            MessageType::Notification | MessageType::TpNotification
+        )
     }
 
     /// Check if this is a response type
     pub fn is_response(&self) -> bool {
         matches!(
             self,
-            MessageType::Response | MessageType::TpResponse | MessageType::Error | MessageType::TpError
+            MessageType::Response
+                | MessageType::TpResponse
+                | MessageType::Error
+                | MessageType::TpError
         )
     }
 
@@ -270,7 +279,9 @@ impl MessageType {
     pub fn is_valid_response_to(&self, request_type: MessageType) -> bool {
         match request_type {
             MessageType::Request => matches!(self, MessageType::Response | MessageType::Error),
-            MessageType::TpRequest => matches!(self, MessageType::TpResponse | MessageType::TpError),
+            MessageType::TpRequest => {
+                matches!(self, MessageType::TpResponse | MessageType::TpError)
+            }
             _ => false, // Other types don't expect responses
         }
     }
@@ -362,19 +373,19 @@ impl Header {
 
 /// A complete SOME/IP message (header + payload)
 #[derive(Debug, Clone)]
-#[allow(dead_code)]  // Used for future TCP framing
+#[allow(dead_code)] // Used for future TCP framing
 pub struct Message {
     pub header: Header,
     pub payload: Bytes,
 }
 
-#[allow(dead_code)]  // Used for future TCP framing
+#[allow(dead_code)] // Used for future TCP framing
 impl Message {
     /// Parse a message from bytes
     pub fn parse(buf: &mut impl Buf) -> Option<Self> {
         let header = Header::parse(buf)?;
         let payload_len = header.payload_length();
-        
+
         if buf.remaining() < payload_len {
             return None;
         }
@@ -449,10 +460,10 @@ pub struct SdEntry {
     pub service_id: u16,
     pub instance_id: u16,
     pub major_version: u8,
-    pub ttl: u32, // 24-bit, 0 = stop/nack
+    pub ttl: u32,           // 24-bit, 0 = stop/nack
     pub minor_version: u32, // For Type 1 (service entries)
     pub eventgroup_id: u16, // For Type 2 (eventgroup entries)
-    pub counter: u8, // For eventgroup entries
+    pub counter: u8,        // For eventgroup entries
     /// Index of first option in run 1
     pub index_1st_option: u8,
     /// Index of first option in run 2
@@ -546,7 +557,13 @@ impl SdEntry {
     }
 
     /// Create a FindService entry
-    pub fn find_service(service_id: u16, instance_id: u16, major_version: u8, minor_version: u32, ttl: u32) -> Self {
+    pub fn find_service(
+        service_id: u16,
+        instance_id: u16,
+        major_version: u8,
+        minor_version: u32,
+        ttl: u32,
+    ) -> Self {
         Self {
             entry_type: SdEntryType::FindService,
             service_id,
@@ -590,8 +607,21 @@ impl SdEntry {
     }
 
     /// Create a StopOfferService entry (OfferService with TTL=0)
-    pub fn stop_offer_service(service_id: u16, instance_id: u16, major_version: u8, minor_version: u32) -> Self {
-        Self::offer_service(service_id, instance_id, major_version, minor_version, 0, 0, 0)
+    pub fn stop_offer_service(
+        service_id: u16,
+        instance_id: u16,
+        major_version: u8,
+        minor_version: u32,
+    ) -> Self {
+        Self::offer_service(
+            service_id,
+            instance_id,
+            major_version,
+            minor_version,
+            0,
+            0,
+            0,
+        )
     }
 
     /// Create a SubscribeEventgroup entry
@@ -725,7 +755,11 @@ impl SdOption {
 
     pub fn serialize(&self, buf: &mut impl BufMut) {
         match self {
-            SdOption::Ipv4Endpoint { addr, port, protocol } => {
+            SdOption::Ipv4Endpoint {
+                addr,
+                port,
+                protocol,
+            } => {
                 buf.put_u16(9); // length
                 buf.put_u8(0x04); // type
                 buf.put_u8(0); // reserved
@@ -835,7 +869,11 @@ impl SdMessage {
             }
         }
 
-        Some(Self { flags, entries, options })
+        Some(Self {
+            flags,
+            entries,
+            options,
+        })
     }
 
     /// Serialize to bytes (just the SD payload, without SOME/IP header)
@@ -870,7 +908,7 @@ impl SdMessage {
     /// Serialize as a complete SOME/IP message
     pub fn serialize(&self, session_id: u16) -> Bytes {
         let payload = self.serialize_payload();
-        
+
         let header = Header {
             service_id: SD_SERVICE_ID,
             method_id: SD_METHOD_ID,
@@ -907,9 +945,14 @@ impl SdMessage {
     pub fn get_udp_endpoint(&self, entry: &SdEntry) -> Option<SocketAddr> {
         let start = entry.index_1st_option as usize;
         let count = entry.num_options_1 as usize;
-        
+
         for i in start..(start + count) {
-            if let Some(SdOption::Ipv4Endpoint { addr, port, protocol: L4Protocol::Udp }) = self.options.get(i) {
+            if let Some(SdOption::Ipv4Endpoint {
+                addr,
+                port,
+                protocol: L4Protocol::Udp,
+            }) = self.options.get(i)
+            {
                 return Some(SocketAddr::V4(SocketAddrV4::new(*addr, *port)));
             }
         }
@@ -917,13 +960,18 @@ impl SdMessage {
     }
 
     /// Get the TCP endpoint from options for an entry
-    #[allow(dead_code)]  // Will be used for TCP transport
+    #[allow(dead_code)] // Will be used for TCP transport
     pub fn get_tcp_endpoint(&self, entry: &SdEntry) -> Option<SocketAddr> {
         let start = entry.index_1st_option as usize;
         let count = entry.num_options_1 as usize;
-        
+
         for i in start..(start + count) {
-            if let Some(SdOption::Ipv4Endpoint { addr, port, protocol: L4Protocol::Tcp }) = self.options.get(i) {
+            if let Some(SdOption::Ipv4Endpoint {
+                addr,
+                port,
+                protocol: L4Protocol::Tcp,
+            }) = self.options.get(i)
+            {
                 return Some(SocketAddr::V4(SocketAddrV4::new(*addr, *port)));
             }
         }
@@ -961,13 +1009,13 @@ mod tests {
     #[test]
     fn test_sd_entry_roundtrip() {
         let entry = SdEntry::offer_service(0x1234, 0x0001, 1, 0, 3600, 0, 1);
-        
+
         let mut buf = BytesMut::new();
         entry.serialize(&mut buf);
-        
+
         let mut cursor = buf.freeze();
         let parsed = SdEntry::parse(&mut cursor).unwrap();
-        
+
         assert_eq!(entry.entry_type, parsed.entry_type);
         assert_eq!(entry.service_id, parsed.service_id);
         assert_eq!(entry.instance_id, parsed.instance_id);
@@ -983,13 +1031,13 @@ mod tests {
             port: 30490,
             protocol: L4Protocol::Udp,
         };
-        
+
         let mut buf = BytesMut::new();
         option.serialize(&mut buf);
-        
+
         let mut cursor = buf.freeze();
         let parsed = SdOption::parse(&mut cursor).unwrap();
-        
+
         assert_eq!(option, parsed);
     }
 
@@ -1001,14 +1049,16 @@ mod tests {
             port: 30501,
             protocol: L4Protocol::Udp,
         });
-        msg.add_entry(SdEntry::offer_service(0x1234, 0x0001, 1, 0, 3600, opt_idx, 1));
-        
+        msg.add_entry(SdEntry::offer_service(
+            0x1234, 0x0001, 1, 0, 3600, opt_idx, 1,
+        ));
+
         let bytes = msg.serialize(1);
-        
+
         // Skip SOME/IP header
         let mut cursor = bytes.slice(Header::SIZE..);
         let parsed = SdMessage::parse(&mut cursor).unwrap();
-        
+
         assert_eq!(msg.flags, parsed.flags);
         assert_eq!(msg.entries.len(), parsed.entries.len());
         assert_eq!(msg.options.len(), parsed.options.len());
@@ -1017,15 +1067,21 @@ mod tests {
     #[test]
     fn test_header_rejects_short_input() {
         use bytes::Bytes;
-        
+
         // Empty buffer
         let mut empty = Bytes::new();
-        assert!(Header::parse(&mut empty).is_none(), "Empty buffer should return None");
-        
+        assert!(
+            Header::parse(&mut empty).is_none(),
+            "Empty buffer should return None"
+        );
+
         // 1 byte - way too short
         let mut one_byte = Bytes::from_static(&[0x12]);
-        assert!(Header::parse(&mut one_byte).is_none(), "1 byte should return None");
-        
+        assert!(
+            Header::parse(&mut one_byte).is_none(),
+            "1 byte should return None"
+        );
+
         // 15 bytes - just one byte short
         let mut almost = Bytes::from_static(&[
             0x12, 0x34, // service_id
@@ -1033,12 +1089,15 @@ mod tests {
             0x00, 0x00, 0x00, 0x08, // length
             0x00, 0x01, // client_id
             0x00, 0x01, // session_id
-            0x01,       // protocol_version
-            0x01,       // interface_version
-            0x00,       // message_type - only 15 bytes, missing return_code
+            0x01, // protocol_version
+            0x01, // interface_version
+            0x00, // message_type - only 15 bytes, missing return_code
         ]);
-        assert!(Header::parse(&mut almost).is_none(), "15 bytes should return None");
-        
+        assert!(
+            Header::parse(&mut almost).is_none(),
+            "15 bytes should return None"
+        );
+
         // 16 bytes - exactly right
         let mut exact = Bytes::from_static(&[
             0x12, 0x34, // service_id
@@ -1046,18 +1105,21 @@ mod tests {
             0x00, 0x00, 0x00, 0x08, // length
             0x00, 0x01, // client_id
             0x00, 0x01, // session_id
-            0x01,       // protocol_version
-            0x01,       // interface_version
-            0x00,       // message_type (Request)
-            0x00,       // return_code
+            0x01, // protocol_version
+            0x01, // interface_version
+            0x00, // message_type (Request)
+            0x00, // return_code
         ]);
-        assert!(Header::parse(&mut exact).is_some(), "16 bytes should parse successfully");
+        assert!(
+            Header::parse(&mut exact).is_some(),
+            "16 bytes should parse successfully"
+        );
     }
 
     #[test]
     fn test_header_rejects_invalid_length() {
         use bytes::Bytes;
-        
+
         // feat_req_recentip_798: Messages with Length < 8 shall be ignored
         // Test with Length = 0
         let mut zero_length = Bytes::from_static(&[
@@ -1066,13 +1128,16 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, // length = 0 (INVALID)
             0x00, 0x01, // client_id
             0x00, 0x01, // session_id
-            0x01,       // protocol_version
-            0x01,       // interface_version
-            0x00,       // message_type (Request)
-            0x00,       // return_code
+            0x01, // protocol_version
+            0x01, // interface_version
+            0x00, // message_type (Request)
+            0x00, // return_code
         ]);
-        assert!(Header::parse(&mut zero_length).is_none(), "Length=0 should be rejected");
-        
+        assert!(
+            Header::parse(&mut zero_length).is_none(),
+            "Length=0 should be rejected"
+        );
+
         // Test with Length = 4
         let mut length_four = Bytes::from_static(&[
             0x12, 0x34, // service_id
@@ -1080,13 +1145,16 @@ mod tests {
             0x00, 0x00, 0x00, 0x04, // length = 4 (INVALID, must be >= 8)
             0x00, 0x01, // client_id
             0x00, 0x01, // session_id
-            0x01,       // protocol_version
-            0x01,       // interface_version
-            0x00,       // message_type (Request)
-            0x00,       // return_code
+            0x01, // protocol_version
+            0x01, // interface_version
+            0x00, // message_type (Request)
+            0x00, // return_code
         ]);
-        assert!(Header::parse(&mut length_four).is_none(), "Length=4 should be rejected");
-        
+        assert!(
+            Header::parse(&mut length_four).is_none(),
+            "Length=4 should be rejected"
+        );
+
         // Test with Length = 7 (boundary)
         let mut length_seven = Bytes::from_static(&[
             0x12, 0x34, // service_id
@@ -1094,13 +1162,16 @@ mod tests {
             0x00, 0x00, 0x00, 0x07, // length = 7 (INVALID, must be >= 8)
             0x00, 0x01, // client_id
             0x00, 0x01, // session_id
-            0x01,       // protocol_version
-            0x01,       // interface_version
-            0x00,       // message_type (Request)
-            0x00,       // return_code
+            0x01, // protocol_version
+            0x01, // interface_version
+            0x00, // message_type (Request)
+            0x00, // return_code
         ]);
-        assert!(Header::parse(&mut length_seven).is_none(), "Length=7 should be rejected");
-        
+        assert!(
+            Header::parse(&mut length_seven).is_none(),
+            "Length=7 should be rejected"
+        );
+
         // Test with Length = 8 (minimum valid)
         let mut length_eight = Bytes::from_static(&[
             0x12, 0x34, // service_id
@@ -1108,12 +1179,15 @@ mod tests {
             0x00, 0x00, 0x00, 0x08, // length = 8 (VALID, minimum)
             0x00, 0x01, // client_id
             0x00, 0x01, // session_id
-            0x01,       // protocol_version
-            0x01,       // interface_version
-            0x00,       // message_type (Request)
-            0x00,       // return_code
+            0x01, // protocol_version
+            0x01, // interface_version
+            0x00, // message_type (Request)
+            0x00, // return_code
         ]);
-        assert!(Header::parse(&mut length_eight).is_some(), "Length=8 should be accepted");
+        assert!(
+            Header::parse(&mut length_eight).is_some(),
+            "Length=8 should be accepted"
+        );
     }
 
     // ========================================================================
@@ -1124,15 +1198,24 @@ mod tests {
     fn message_type_parse_all_valid_values() {
         // Non-TP types
         assert_eq!(MessageType::from_u8(0x00), Some(MessageType::Request));
-        assert_eq!(MessageType::from_u8(0x01), Some(MessageType::RequestNoReturn));
+        assert_eq!(
+            MessageType::from_u8(0x01),
+            Some(MessageType::RequestNoReturn)
+        );
         assert_eq!(MessageType::from_u8(0x02), Some(MessageType::Notification));
         assert_eq!(MessageType::from_u8(0x80), Some(MessageType::Response));
         assert_eq!(MessageType::from_u8(0x81), Some(MessageType::Error));
 
         // TP-flagged types
         assert_eq!(MessageType::from_u8(0x20), Some(MessageType::TpRequest));
-        assert_eq!(MessageType::from_u8(0x21), Some(MessageType::TpRequestNoReturn));
-        assert_eq!(MessageType::from_u8(0x22), Some(MessageType::TpNotification));
+        assert_eq!(
+            MessageType::from_u8(0x21),
+            Some(MessageType::TpRequestNoReturn)
+        );
+        assert_eq!(
+            MessageType::from_u8(0x22),
+            Some(MessageType::TpNotification)
+        );
         assert_eq!(MessageType::from_u8(0xA0), Some(MessageType::TpResponse));
         assert_eq!(MessageType::from_u8(0xA1), Some(MessageType::TpError));
     }
@@ -1187,20 +1270,47 @@ mod tests {
 
     #[test]
     fn message_type_tp_flag_conversion() {
-        assert_eq!(MessageType::Request.with_tp_flag(), Some(MessageType::TpRequest));
-        assert_eq!(MessageType::RequestNoReturn.with_tp_flag(), Some(MessageType::TpRequestNoReturn));
-        assert_eq!(MessageType::Notification.with_tp_flag(), Some(MessageType::TpNotification));
-        assert_eq!(MessageType::Response.with_tp_flag(), Some(MessageType::TpResponse));
-        assert_eq!(MessageType::Error.with_tp_flag(), Some(MessageType::TpError));
+        assert_eq!(
+            MessageType::Request.with_tp_flag(),
+            Some(MessageType::TpRequest)
+        );
+        assert_eq!(
+            MessageType::RequestNoReturn.with_tp_flag(),
+            Some(MessageType::TpRequestNoReturn)
+        );
+        assert_eq!(
+            MessageType::Notification.with_tp_flag(),
+            Some(MessageType::TpNotification)
+        );
+        assert_eq!(
+            MessageType::Response.with_tp_flag(),
+            Some(MessageType::TpResponse)
+        );
+        assert_eq!(
+            MessageType::Error.with_tp_flag(),
+            Some(MessageType::TpError)
+        );
         assert_eq!(MessageType::TpRequest.with_tp_flag(), None);
     }
 
     #[test]
     fn message_type_tp_flag_removal() {
-        assert_eq!(MessageType::TpRequest.without_tp_flag(), MessageType::Request);
-        assert_eq!(MessageType::TpRequestNoReturn.without_tp_flag(), MessageType::RequestNoReturn);
-        assert_eq!(MessageType::TpNotification.without_tp_flag(), MessageType::Notification);
-        assert_eq!(MessageType::TpResponse.without_tp_flag(), MessageType::Response);
+        assert_eq!(
+            MessageType::TpRequest.without_tp_flag(),
+            MessageType::Request
+        );
+        assert_eq!(
+            MessageType::TpRequestNoReturn.without_tp_flag(),
+            MessageType::RequestNoReturn
+        );
+        assert_eq!(
+            MessageType::TpNotification.without_tp_flag(),
+            MessageType::Notification
+        );
+        assert_eq!(
+            MessageType::TpResponse.without_tp_flag(),
+            MessageType::Response
+        );
         assert_eq!(MessageType::TpError.without_tp_flag(), MessageType::Error);
         assert_eq!(MessageType::Request.without_tp_flag(), MessageType::Request);
     }
@@ -1250,8 +1360,14 @@ mod tests {
 
     #[test]
     fn message_type_expected_response() {
-        assert_eq!(MessageType::Request.expected_response_type(), Some(MessageType::Response));
-        assert_eq!(MessageType::TpRequest.expected_response_type(), Some(MessageType::TpResponse));
+        assert_eq!(
+            MessageType::Request.expected_response_type(),
+            Some(MessageType::Response)
+        );
+        assert_eq!(
+            MessageType::TpRequest.expected_response_type(),
+            Some(MessageType::TpResponse)
+        );
         assert_eq!(MessageType::RequestNoReturn.expected_response_type(), None);
         assert_eq!(MessageType::Notification.expected_response_type(), None);
         assert_eq!(MessageType::Response.expected_response_type(), None);
@@ -1300,21 +1416,30 @@ mod tests {
         let result = validate_protocol_version(0x00);
         assert!(matches!(
             result,
-            Err(VersionError::ProtocolMismatch { expected: 0x01, found: 0x00 })
+            Err(VersionError::ProtocolMismatch {
+                expected: 0x01,
+                found: 0x00
+            })
         ));
-        
+
         // Version 0x02 is invalid (future version)
         let result = validate_protocol_version(0x02);
         assert!(matches!(
             result,
-            Err(VersionError::ProtocolMismatch { expected: 0x01, found: 0x02 })
+            Err(VersionError::ProtocolMismatch {
+                expected: 0x01,
+                found: 0x02
+            })
         ));
-        
+
         // Version 0xFF is invalid
         let result = validate_protocol_version(0xFF);
         assert!(matches!(
             result,
-            Err(VersionError::ProtocolMismatch { expected: 0x01, found: 0xFF })
+            Err(VersionError::ProtocolMismatch {
+                expected: 0x01,
+                found: 0xFF
+            })
         ));
     }
 
@@ -1343,7 +1468,7 @@ mod tests {
     fn interface_version_minor_is_32bit() {
         let version = InterfaceVersion::new(1, u32::MAX);
         assert_eq!(version.minor, u32::MAX);
-        
+
         let version = InterfaceVersion::new(1, 0);
         assert_eq!(version.minor, 0);
     }
@@ -1353,7 +1478,7 @@ mod tests {
     fn interface_version_same_major_compatible() {
         let v1 = InterfaceVersion::new(1, 0);
         let v2 = InterfaceVersion::new(1, 5);
-        
+
         // Both should be compatible with v1.0
         assert!(v1.is_compatible_with(&InterfaceVersion::new(1, 0)));
         assert!(v2.is_compatible_with(&InterfaceVersion::new(1, 0)));
@@ -1364,7 +1489,7 @@ mod tests {
     fn interface_version_different_major_incompatible() {
         let v1 = InterfaceVersion::new(1, 0);
         let v2 = InterfaceVersion::new(2, 0);
-        
+
         assert!(!v1.is_compatible_with(&v2));
         assert!(!v2.is_compatible_with(&v1));
     }
@@ -1374,10 +1499,10 @@ mod tests {
     fn interface_version_higher_minor_compatible() {
         let server_v = InterfaceVersion::new(1, 5);
         let required_v = InterfaceVersion::new(1, 3);
-        
+
         // Server with 1.5 is compatible with client needing 1.3
         assert!(server_v.is_compatible_with(&required_v));
-        
+
         // But not the other way around
         let old_server = InterfaceVersion::new(1, 2);
         assert!(!old_server.is_compatible_with(&required_v));
@@ -1390,7 +1515,7 @@ mod tests {
         let v2 = InterfaceVersion::new(1, 5);
         let v3 = InterfaceVersion::new(1, 6);
         let v4 = InterfaceVersion::new(2, 5);
-        
+
         assert!(v1.matches_exactly(&v2));
         assert!(!v1.matches_exactly(&v3)); // Different minor
         assert!(!v1.matches_exactly(&v4)); // Different major
@@ -1400,14 +1525,17 @@ mod tests {
     #[test]
     fn interface_version_header_validation() {
         let expected = InterfaceVersion::new(1, 0);
-        
+
         // Matching major is OK
         assert!(validate_interface_version(1, &expected).is_ok());
-        
+
         // Mismatched major is error
         let result = validate_interface_version(2, &expected);
         match result {
-            Err(VersionError::InterfaceMajorMismatch { expected: 1, found: 2 }) => {}
+            Err(VersionError::InterfaceMajorMismatch {
+                expected: 1,
+                found: 2,
+            }) => {}
             other => panic!("Expected InterfaceMajorMismatch, got {:?}", other),
         }
     }
@@ -1421,17 +1549,17 @@ mod tests {
     fn wire_format_protocol_version_position() {
         // Minimal valid SOME/IP header
         let header = [
-            0x12, 0x34,             // Service ID
-            0x00, 0x01,             // Method ID
+            0x12, 0x34, // Service ID
+            0x00, 0x01, // Method ID
             0x00, 0x00, 0x00, 0x08, // Length
-            0x00, 0x01,             // Client ID
-            0x00, 0x01,             // Session ID
-            0x01,                   // Protocol version (offset 12)
-            0x01,                   // Interface version (offset 13)
-            0x00,                   // Message type
-            0x00,                   // Return code
+            0x00, 0x01, // Client ID
+            0x00, 0x01, // Session ID
+            0x01, // Protocol version (offset 12)
+            0x01, // Interface version (offset 13)
+            0x00, // Message type
+            0x00, // Return code
         ];
-        
+
         assert_eq!(header[PROTOCOL_VERSION_OFFSET], PROTOCOL_VERSION);
     }
 
@@ -1439,19 +1567,26 @@ mod tests {
     #[test]
     fn wire_format_interface_version_position() {
         let interface_v = 0x05u8; // Major version 5
-        
+
         let header = [
-            0x12, 0x34,             // Service ID
-            0x00, 0x01,             // Method ID
-            0x00, 0x00, 0x00, 0x08, // Length
-            0x00, 0x01,             // Client ID
-            0x00, 0x01,             // Session ID
-            0x01,                   // Protocol version
-            interface_v,            // Interface version (offset 13)
-            0x00,                   // Message type
-            0x00,                   // Return code
+            0x12,
+            0x34, // Service ID
+            0x00,
+            0x01, // Method ID
+            0x00,
+            0x00,
+            0x00,
+            0x08, // Length
+            0x00,
+            0x01, // Client ID
+            0x00,
+            0x01,        // Session ID
+            0x01,        // Protocol version
+            interface_v, // Interface version (offset 13)
+            0x00,        // Message type
+            0x00,        // Return code
         ];
-        
+
         assert_eq!(header[INTERFACE_VERSION_OFFSET], interface_v);
     }
 
@@ -1459,13 +1594,13 @@ mod tests {
     #[test]
     fn parse_protocol_version_from_bytes() {
         let header_bytes = [
-            0x12, 0x34, 0x00, 0x01, 0x00, 0x00, 0x00, 0x08,
-            0x00, 0x01, 0x00, 0x01, 0x01, 0x05, 0x00, 0x00,
+            0x12, 0x34, 0x00, 0x01, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01, 0x00, 0x01, 0x01, 0x05,
+            0x00, 0x00,
         ];
-        
+
         let protocol_v = header_bytes[PROTOCOL_VERSION_OFFSET];
         let interface_v = header_bytes[INTERFACE_VERSION_OFFSET];
-        
+
         assert_eq!(protocol_v, 0x01);
         assert_eq!(interface_v, 0x05);
     }

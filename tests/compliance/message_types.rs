@@ -17,12 +17,13 @@
 
 use std::time::Duration;
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
 
 #[cfg(feature = "turmoil")]
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -87,7 +88,8 @@ fn request_receives_response_type() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Call should get response
         let method = MethodId::new(0x0001).unwrap();
@@ -145,7 +147,8 @@ fn request_can_receive_error_type() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Call should get error response
         let method = MethodId::new(0x0001).unwrap();
@@ -155,7 +158,11 @@ fn request_can_receive_error_type() {
             .expect("Call should have succeeded");
 
         // Should be an error (ERROR message type maps to Err result)
-        assert!(result.is_err(), "Error response should return Err. Got {:?}", result);
+        assert!(
+            result.is_err(),
+            "Error response should return Err. Got {:?}",
+            result
+        );
 
         Ok(())
     });
@@ -203,7 +210,8 @@ fn request_no_return_receives_no_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Fire-and-forget returns immediately (no response expected)
         let method = MethodId::new(0x0001).unwrap();
@@ -261,7 +269,8 @@ fn server_sends_notification_type() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(1).unwrap();

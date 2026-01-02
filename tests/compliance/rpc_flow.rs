@@ -11,10 +11,10 @@
 //! - feat_req_recentip_141: Request (0x00) answered by Response (0x80)
 
 use bytes::Bytes;
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
 use someip_runtime::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
-use someip_runtime::handle::ServiceEvent;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -34,7 +34,8 @@ impl Service for TestService {
     const MINOR_VERSION: u32 = 0;
 }
 
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Helper to parse a SOME/IP header from raw bytes
 fn parse_header(data: &[u8]) -> Option<Header> {
@@ -71,7 +72,7 @@ fn build_sd_offer(
     ttl: u32,
 ) -> Vec<u8> {
     let mut packet = Vec::with_capacity(60);
-    
+
     // SOME/IP Header
     packet.extend_from_slice(&0xFFFFu16.to_be_bytes()); // Service ID (SD)
     packet.extend_from_slice(&0x8100u16.to_be_bytes()); // Method ID (SD)
@@ -83,14 +84,14 @@ fn build_sd_offer(
     packet.push(0x01); // Interface version
     packet.push(0x02); // Message type: NOTIFICATION
     packet.push(0x00); // Return code
-    
+
     // SD Payload
     packet.push(0xC0); // Flags: Unicast + Reboot
     packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
-    
+
     // Entries array length (16 bytes for one entry)
     packet.extend_from_slice(&16u32.to_be_bytes());
-    
+
     // OfferService Entry (16 bytes)
     packet.push(0x01); // Type: OfferService
     packet.push(0x00); // Index 1st options
@@ -103,10 +104,10 @@ fn build_sd_offer(
     packet.push((ttl >> 8) as u8);
     packet.push(ttl as u8);
     packet.extend_from_slice(&minor_version.to_be_bytes());
-    
+
     // Options array length (12 bytes for IPv4 endpoint)
     packet.extend_from_slice(&12u32.to_be_bytes());
-    
+
     // IPv4 Endpoint Option
     packet.extend_from_slice(&9u16.to_be_bytes()); // Length
     packet.push(0x04); // Type: IPv4 Endpoint
@@ -115,11 +116,11 @@ fn build_sd_offer(
     packet.push(0x00); // Reserved
     packet.push(0x11); // Protocol: UDP
     packet.extend_from_slice(&endpoint_port.to_be_bytes());
-    
+
     // Fix length field
     let payload_len = (packet.len() - 12) as u32;
     packet[length_offset..length_offset + 4].copy_from_slice(&payload_len.to_be_bytes());
-    
+
     packet
 }
 
@@ -134,7 +135,7 @@ fn build_fire_and_forget(
 ) -> Vec<u8> {
     let length = 8 + payload.len() as u32;
     let mut packet = Vec::with_capacity(16 + payload.len());
-    
+
     packet.extend_from_slice(&service_id.to_be_bytes());
     packet.extend_from_slice(&method_id.to_be_bytes());
     packet.extend_from_slice(&length.to_be_bytes());
@@ -145,7 +146,7 @@ fn build_fire_and_forget(
     packet.push(0x01); // Message type: REQUEST_NO_RETURN
     packet.push(0x00); // Return code
     packet.extend_from_slice(payload);
-    
+
     packet
 }
 
@@ -169,7 +170,7 @@ fn fire_and_forget_no_response_or_error() {
     // Library server receives F&F but sends no response
     sim.host("server", || async {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
-        
+
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
             .await
@@ -177,10 +178,12 @@ fn fire_and_forget_no_response_or_error() {
 
         // Wait for the fire-and-forget request
         let result = tokio::time::timeout(Duration::from_secs(5), offering.next()).await;
-        
+
         if let Ok(Some(event)) = result {
             match event {
-                ServiceEvent::FireForget { method, payload, .. } => {
+                ServiceEvent::FireForget {
+                    method, payload, ..
+                } => {
                     assert_eq!(method, MethodId::new(0x0001).unwrap());
                     assert_eq!(payload.as_ref(), b"ff_data");
                     // Server receives F&F but does NOT respond
@@ -199,29 +202,30 @@ fn fire_and_forget_no_response_or_error() {
     // Raw client sends F&F and monitors for any responses
     sim.client("raw_client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
-        
+
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
-        
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
-        
+
         // Discover server via SD
         for _ in 0..20 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                    addr,
+                                    port,
+                                    ..
+                                } = opt
+                                {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -238,39 +242,40 @@ fn fire_and_forget_no_response_or_error() {
                 break;
             }
         }
-        
+
         let server_addr = server_endpoint.expect("Should find server via SD");
-        
+
         // Send fire-and-forget from RPC socket
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:40000").await?;
         let ff_request = build_fire_and_forget(0x1234, 0x0001, 0xABCD, 0x0001, 0x01, b"ff_data");
         rpc_socket.send_to(&ff_request, server_addr).await?;
-        
+
         // Wait and check for any response (there should be NONE)
         let mut received_messages = Vec::new();
         for _ in 0..5 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(100),
-                rpc_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(100), rpc_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, _from))) = result {
                 if let Some(header) = parse_header(&buf[..len]) {
                     received_messages.push(header.message_type);
                 }
             }
         }
-        
+
         // Verify no RESPONSE or ERROR was received
         assert!(
-            !received_messages.iter().any(|mt| *mt == MessageType::Response),
+            !received_messages
+                .iter()
+                .any(|mt| *mt == MessageType::Response),
             "Fire&Forget should NOT receive RESPONSE"
         );
         assert!(
             !received_messages.iter().any(|mt| *mt == MessageType::Error),
             "Fire&Forget should NOT receive ERROR"
         );
-        
+
         Ok(())
     });
 
@@ -296,7 +301,7 @@ fn concurrent_requests_matched_by_request_id() {
     // Server responds to requests in REVERSE order
     sim.host("server", || async {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
-        
+
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
             .await
@@ -305,11 +310,15 @@ fn concurrent_requests_matched_by_request_id() {
         // Collect 3 requests before responding
         let mut pending_requests = Vec::new();
         for _ in 0..3 {
-            if let Some(event) = tokio::time::timeout(
-                Duration::from_secs(5),
-                offering.next()
-            ).await.ok().flatten() {
-                if let ServiceEvent::Call { payload, responder, .. } = event {
+            if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next())
+                .await
+                .ok()
+                .flatten()
+            {
+                if let ServiceEvent::Call {
+                    payload, responder, ..
+                } = event
+                {
                     pending_requests.push((payload, responder));
                 }
             }
@@ -378,18 +387,21 @@ fn request_triggers_response() {
 
     sim.host("server", || async {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
-        
+
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
             .await
             .unwrap();
 
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(5),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             match event {
-                ServiceEvent::Call { payload, responder, .. } => {
+                ServiceEvent::Call {
+                    payload, responder, ..
+                } => {
                     assert_eq!(payload.as_ref(), b"request_data");
                     responder.reply(b"response_data").await.unwrap();
                 }
@@ -442,16 +454,17 @@ fn request_can_receive_error_response() {
 
     sim.host("server", || async {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
-        
+
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
             .await
             .unwrap();
 
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(5),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             match event {
                 ServiceEvent::Call { responder, .. } => {
                     // Server replies with error

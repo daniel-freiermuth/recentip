@@ -12,12 +12,13 @@
 
 use std::time::Duration;
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
 
 #[cfg(feature = "turmoil")]
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -206,16 +207,14 @@ fn request_answered_by_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"request"),
-        )
-        .await
-        .expect("RPC timeout")
-        .expect("RPC should succeed");
+        let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"request"))
+            .await
+            .expect("RPC timeout")
+            .expect("RPC should succeed");
 
         // Response should have E_OK return code
         assert_eq!(response.return_code, ReturnCode::Ok);
@@ -271,15 +270,13 @@ fn error_response_has_nonzero_return_code() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
-        let result = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"request"),
-        )
-        .await
-        .expect("RPC timeout");
+        let result = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"request"))
+            .await
+            .expect("RPC timeout");
 
         // Either Err or Ok with non-Ok return code is valid
         match result {
@@ -351,18 +348,16 @@ fn notification_message_type() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(1).unwrap();
         let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
 
         // Wait for event
-        if let Ok(Some(event)) = tokio::time::timeout(
-            Duration::from_secs(5),
-            subscription.next(),
-        )
-        .await
+        if let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_secs(5), subscription.next()).await
         {
             // Received a notification
             assert!(!event.payload.is_empty());
@@ -373,7 +368,10 @@ fn notification_message_type() {
     });
 
     sim.run().unwrap();
-    assert!(event_received.load(Ordering::SeqCst), "Should receive notification");
+    assert!(
+        event_received.load(Ordering::SeqCst),
+        "Should receive notification"
+    );
 }
 
 /// Response IDs must match request IDs
@@ -401,7 +399,9 @@ fn response_ids_match_request() {
         for _ in 0..3 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         responder.reply(payload.as_ref()).await.unwrap();
                     }
                     _ => {}
@@ -422,19 +422,17 @@ fn response_ids_match_request() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
         // Send multiple requests - each response should match its request
         for i in 0u8..3 {
-            let response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method, &[i]),
-            )
-            .await
-            .expect("RPC timeout")
-            .expect("RPC should succeed");
+            let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, &[i]))
+                .await
+                .expect("RPC timeout")
+                .expect("RPC should succeed");
 
             // Payload should match (echo)
             assert_eq!(
@@ -500,16 +498,14 @@ fn successful_response_has_e_ok() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"test"),
-        )
-        .await
-        .expect("RPC timeout")
-        .expect("RPC should succeed");
+        let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"test"))
+            .await
+            .expect("RPC timeout")
+            .expect("RPC should succeed");
 
         assert_eq!(
             response.return_code,

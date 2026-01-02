@@ -11,9 +11,9 @@
 //! - feat_req_recentip_445: Different services can share same port
 //! - feat_req_recentip_446: Instance identified by Service ID + Instance ID + IP + Port
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -25,7 +25,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definitions
 struct ServiceA;
@@ -65,25 +66,26 @@ fn multiple_instances_have_different_ids() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let _offering1 = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
-        let _offering2 = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0002))
-            .await
-            .unwrap();
-        let _offering3 = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0003))
-            .await
-            .unwrap();
+            let _offering1 = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
+            let _offering2 = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0002))
+                .await
+                .unwrap();
+            let _offering3 = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0003))
+                .await
+                .unwrap();
 
-        // Keep offerings alive
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            // Keep offerings alive
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -97,13 +99,15 @@ fn multiple_instances_have_different_ids() {
         let proxy1 = runtime.find::<ServiceA>(InstanceId::Id(0x0001));
         tokio::time::timeout(Duration::from_secs(5), proxy1.available())
             .await
-            .expect("Should discover instance 1").expect("Service available");
+            .expect("Should discover instance 1")
+            .expect("Service available");
 
         // Discover instance 2
         let proxy2 = runtime.find::<ServiceA>(InstanceId::Id(0x0002));
         tokio::time::timeout(Duration::from_secs(5), proxy2.available())
             .await
-            .expect("Should discover instance 2").expect("Service available");
+            .expect("Should discover instance 2")
+            .expect("Service available");
 
         // Discover instance 3
         let proxy3 = runtime.find::<ServiceA>(InstanceId::Id(0x0003));
@@ -127,7 +131,7 @@ fn multiple_instances_have_different_ids() {
 ///
 /// If a server runs different instances of the same service, messages
 /// belonging to the different instances shall be dispatched correctly.
-/// 
+///
 /// NOTE: Per SOME/IP spec feat_req_recentipsd_782, multiple instances must use
 /// different endpoints (ports). This test uses separate hosts for each instance.
 #[test]
@@ -145,24 +149,28 @@ fn messages_dispatched_to_correct_instance() {
     sim.host("server1", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let mut offering1 = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let mut offering1 = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Handle request for instance 1
-        if let Some(event) = offering1.next().await {
-            if let ServiceEvent::Call { payload, responder, .. } = event {
-                assert_eq!(payload.as_ref(), b"for_instance_1");
-                responder.reply(b"from_instance_1").await.unwrap();
+            // Handle request for instance 1
+            if let Some(event) = offering1.next().await {
+                if let ServiceEvent::Call {
+                    payload, responder, ..
+                } = event
+                {
+                    assert_eq!(payload.as_ref(), b"for_instance_1");
+                    responder.reply(b"from_instance_1").await.unwrap();
+                }
             }
-        }
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -177,7 +185,10 @@ fn messages_dispatched_to_correct_instance() {
 
         // Handle request for instance 2
         if let Some(event) = offering2.next().await {
-            if let ServiceEvent::Call { payload, responder, .. } = event {
+            if let ServiceEvent::Call {
+                payload, responder, ..
+            } = event
+            {
                 assert_eq!(payload.as_ref(), b"for_instance_2");
                 responder.reply(b"from_instance_2").await.unwrap();
             }
@@ -197,7 +208,8 @@ fn messages_dispatched_to_correct_instance() {
         let proxy1 = runtime.find::<ServiceA>(InstanceId::Id(0x0001));
         let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1.available())
             .await
-            .expect("Should discover instance 1").expect("Service available");
+            .expect("Should discover instance 1")
+            .expect("Service available");
 
         let response1 = tokio::time::timeout(
             Duration::from_secs(15),
@@ -213,7 +225,8 @@ fn messages_dispatched_to_correct_instance() {
         let proxy2 = runtime.find::<ServiceA>(InstanceId::Id(0x0002));
         let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available())
             .await
-            .expect("Should discover instance 2").expect("Service available");
+            .expect("Should discover instance 2")
+            .expect("Service available");
 
         let response2 = tokio::time::timeout(
             Duration::from_secs(15),
@@ -258,7 +271,8 @@ fn two_instances_same_host() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
             // Offer instance 1
             let mut offering1 = runtime
@@ -320,7 +334,8 @@ fn two_instances_same_host() {
         let proxy1 = runtime.find::<ServiceA>(InstanceId::Id(0x0001));
         let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1.available())
             .await
-            .expect("Should discover instance 1").expect("Service available");
+            .expect("Should discover instance 1")
+            .expect("Service available");
 
         let response1 = tokio::time::timeout(
             Duration::from_secs(15),
@@ -336,7 +351,8 @@ fn two_instances_same_host() {
         let proxy2 = runtime.find::<ServiceA>(InstanceId::Id(0x0002));
         let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available())
             .await
-            .expect("Should discover instance 2").expect("Service available");
+            .expect("Should discover instance 2")
+            .expect("Service available");
 
         let response2 = tokio::time::timeout(
             Duration::from_secs(15),
@@ -380,20 +396,21 @@ fn different_services_have_different_service_ids() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let _offering_a = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
-        let _offering_b = runtime
-            .offer::<ServiceB>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let _offering_a = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
+            let _offering_b = runtime
+                .offer::<ServiceB>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -443,40 +460,43 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let mut offering_a = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
-        let mut offering_b = runtime
-            .offer::<ServiceB>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let mut offering_a = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
+            let mut offering_b = runtime
+                .offer::<ServiceB>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Handle call for ServiceA
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering_a.next()
-        ).await.ok().flatten() {
-            if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply(b"resp_a").await.unwrap();
+            // Handle call for ServiceA
+            if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering_a.next())
+                .await
+                .ok()
+                .flatten()
+            {
+                if let ServiceEvent::Call { responder, .. } = event {
+                    responder.reply(b"resp_a").await.unwrap();
+                }
             }
-        }
 
-        // Handle call for ServiceB
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering_b.next()
-        ).await.ok().flatten() {
-            if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply(b"resp_b").await.unwrap();
+            // Handle call for ServiceB
+            if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering_b.next())
+                .await
+                .ok()
+                .flatten()
+            {
+                if let ServiceEvent::Call { responder, .. } = event {
+                    responder.reply(b"resp_b").await.unwrap();
+                }
             }
-        }
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -490,7 +510,8 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
         let proxy_a = runtime.find::<ServiceA>(InstanceId::Id(0x0001));
         let proxy_a = tokio::time::timeout(Duration::from_secs(5), proxy_a.available())
             .await
-            .expect("Should discover ServiceA").expect("Service available");
+            .expect("Should discover ServiceA")
+            .expect("Service available");
 
         let response_a = tokio::time::timeout(
             Duration::from_secs(5),
@@ -506,7 +527,8 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
         let proxy_b = runtime.find::<ServiceB>(InstanceId::Id(0x0001));
         let proxy_b = tokio::time::timeout(Duration::from_secs(5), proxy_b.available())
             .await
-            .expect("Should discover ServiceB").expect("Service available");
+            .expect("Should discover ServiceB")
+            .expect("Service available");
 
         let response_b = tokio::time::timeout(
             Duration::from_secs(5),
@@ -550,16 +572,17 @@ fn client_can_request_any_instance() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let _offering = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x002A))  // 42 in hex
-            .await
-            .unwrap();
+            let _offering = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x002A)) // 42 in hex
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -602,20 +625,21 @@ fn client_can_request_specific_instance() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let _offering1 = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
-        let _offering2 = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0002))
-            .await
-            .unwrap();
+            let _offering1 = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
+            let _offering2 = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0002))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -658,16 +682,17 @@ fn nonexistent_instance_not_found() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let _offering = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let _offering = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -677,7 +702,7 @@ fn nonexistent_instance_not_found() {
 
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let proxy = runtime.find::<ServiceA>(InstanceId::Id(0x0063));  // 99 in hex
+        let proxy = runtime.find::<ServiceA>(InstanceId::Id(0x0063)); // 99 in hex
         let result = tokio::time::timeout(Duration::from_secs(2), proxy.available()).await;
 
         assert!(result.is_err(), "Non-existent instance should not be found");

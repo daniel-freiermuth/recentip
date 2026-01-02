@@ -10,9 +10,9 @@
 //! - feat_req_recentip_798: Messages with length < 8 shall be ignored (wire format test)
 //! - feat_req_recentip_703: Use known protocol version (wire format test)
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -23,7 +23,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct TestService;
@@ -65,7 +66,10 @@ fn no_error_response_for_events() {
         // Send event notification - this is one-way, no response expected
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.notify(eventgroup, event_id, b"event_data").await.unwrap();
+        offering
+            .notify(eventgroup, event_id, b"event_data")
+            .await
+            .unwrap();
 
         tokio::time::sleep(Duration::from_millis(200)).await;
         Ok(())
@@ -80,16 +84,15 @@ fn no_error_response_for_events() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Receive event - even if there were processing errors,
         // no error response would be sent (events are one-way)
@@ -127,10 +130,11 @@ fn no_error_response_for_fire_and_forget() {
             .unwrap();
 
         // Receive fire&forget - no response should be sent
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             if let ServiceEvent::FireForget { payload, .. } = event {
                 assert_eq!(payload.as_ref(), b"ff_payload");
                 // No response mechanism - this is fire&forget
@@ -150,10 +154,14 @@ fn no_error_response_for_fire_and_forget() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Send fire&forget - no response expected
-        proxy.fire_and_forget(MethodId::new(0x0010).unwrap(), b"ff_payload").await.unwrap();
+        proxy
+            .fire_and_forget(MethodId::new(0x0010).unwrap(), b"ff_payload")
+            .await
+            .unwrap();
 
         tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())
@@ -191,7 +199,11 @@ fn all_return_codes_are_valid() {
     for code in codes {
         // Each code should have a distinct value
         let value = code as u8;
-        assert!(value <= 0x0A, "Return code {:?} should be in valid range", code);
+        assert!(
+            value <= 0x0A,
+            "Return code {:?} should be in valid range",
+            code
+        );
     }
 
     // Verify E_OK is 0x00
@@ -220,30 +232,36 @@ fn server_returns_various_error_codes() {
             .unwrap();
 
         // Handle first request - return NotReady
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             if let ServiceEvent::Call { responder, .. } = event {
                 responder.reply_error(ReturnCode::NotReady).await.unwrap();
             }
         }
 
         // Handle second request - return UnknownMethod
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply_error(ReturnCode::UnknownMethod).await.unwrap();
+                responder
+                    .reply_error(ReturnCode::UnknownMethod)
+                    .await
+                    .unwrap();
             }
         }
 
         // Handle third request - return NotOk
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             if let ServiceEvent::Call { responder, .. } = event {
                 responder.reply_error(ReturnCode::NotOk).await.unwrap();
             }
@@ -262,7 +280,8 @@ fn server_returns_various_error_codes() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // First call - expect NotReady
         let result1 = tokio::time::timeout(
@@ -277,7 +296,11 @@ fn server_returns_various_error_codes() {
                 // Error propagated - acceptable
             }
             Ok(response) => {
-                assert_eq!(response.return_code, ReturnCode::NotReady, "Should receive NotReady");
+                assert_eq!(
+                    response.return_code,
+                    ReturnCode::NotReady,
+                    "Should receive NotReady"
+                );
             }
         }
 
@@ -294,7 +317,11 @@ fn server_returns_various_error_codes() {
                 // Error propagated - acceptable
             }
             Ok(response) => {
-                assert_eq!(response.return_code, ReturnCode::UnknownMethod, "Should receive UnknownMethod");
+                assert_eq!(
+                    response.return_code,
+                    ReturnCode::UnknownMethod,
+                    "Should receive UnknownMethod"
+                );
             }
         }
 
@@ -311,9 +338,16 @@ fn server_returns_various_error_codes() {
                 // Error propagated - acceptable
             }
             Ok(response) => {
-                assert_eq!(response.return_code, ReturnCode::NotOk, "Should receive NotOk");
+                assert_eq!(
+                    response.return_code,
+                    ReturnCode::NotOk,
+                    "Should receive NotOk"
+                );
                 // Verify return code is != 0x00 (feat_req_recentip_727)
-                assert_ne!(response.return_code as u8, 0x00, "Error code must be != 0x00");
+                assert_ne!(
+                    response.return_code as u8, 0x00,
+                    "Error code must be != 0x00"
+                );
             }
         }
 
@@ -324,14 +358,14 @@ fn server_returns_various_error_codes() {
 }
 
 // ============================================================================
-// Wire Format Tests  
+// Wire Format Tests
 // ============================================================================
 
 /// Helper to parse a SOME/IP header from raw bytes
 fn parse_header_wire(data: &[u8]) -> Option<someip_runtime::wire::Header> {
     use bytes::Bytes;
     use someip_runtime::wire::Header;
-    
+
     if data.len() < Header::SIZE {
         return None;
     }
@@ -339,13 +373,18 @@ fn parse_header_wire(data: &[u8]) -> Option<someip_runtime::wire::Header> {
 }
 
 /// Helper to parse an SD message from raw bytes
-fn parse_sd_message(data: &[u8]) -> Option<(someip_runtime::wire::Header, someip_runtime::wire::SdMessage)> {
+fn parse_sd_message(
+    data: &[u8],
+) -> Option<(
+    someip_runtime::wire::Header,
+    someip_runtime::wire::SdMessage,
+)> {
     use bytes::Bytes;
     use someip_runtime::wire::{Header, SdMessage};
-    
+
     const SD_SERVICE_ID: u16 = 0xFFFF;
     const SD_METHOD_ID: u16 = 0x8100;
-    
+
     if data.len() < Header::SIZE {
         return None;
     }
@@ -359,28 +398,27 @@ fn parse_sd_message(data: &[u8]) -> Option<(someip_runtime::wire::Header, someip
     }
 }
 
-
 /// feat_req_recentip_655: Error response copies request header fields
 ///
 /// For request/response methods the error message shall copy over the
 /// fields of the header from the request.
 #[test]
 fn error_response_copies_request_header() {
-    use bytes::{BytesMut, BufMut};
+    use bytes::{BufMut, BytesMut};
+    use someip_runtime::handle::ServiceEvent;
     use someip_runtime::prelude::*;
     use someip_runtime::runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::MessageType;
-    use someip_runtime::handle::ServiceEvent;
-    use std::time::Duration;
     use std::net::SocketAddr;
-    
+    use std::time::Duration;
+
     struct TestService;
     impl Service for TestService {
         const SERVICE_ID: u16 = 0x1234;
         const MAJOR_VERSION: u8 = 1;
         const MINOR_VERSION: u32 = 0;
     }
-    
+
     covers!(feat_req_recentip_655);
 
     let mut sim = turmoil::Builder::new()
@@ -399,12 +437,16 @@ fn error_response_copies_request_header() {
             .unwrap();
 
         // Receive call and send error
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply_error(ReturnCode::UnknownMethod).await.unwrap();
+                responder
+                    .reply_error(ReturnCode::UnknownMethod)
+                    .await
+                    .unwrap();
             }
         }
 
@@ -536,28 +578,27 @@ fn error_response_copies_request_header() {
     sim.run().unwrap();
 }
 
-
 /// feat_req_recentip_106: EXCEPTION (0x81) is used when configured per-method
 ///
 /// When a method is configured to use EXCEPTION for errors via MethodConfig,
 /// the error response must use message type 0x81 instead of 0x80.
 #[test]
 fn exception_message_type_when_configured() {
-    use bytes::{BytesMut, BufMut};
+    use bytes::{BufMut, BytesMut};
+    use someip_runtime::handle::ServiceEvent;
     use someip_runtime::prelude::*;
     use someip_runtime::runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::MessageType;
-    use someip_runtime::handle::ServiceEvent;
-    use std::time::Duration;
     use std::net::SocketAddr;
-    
+    use std::time::Duration;
+
     struct TestService;
     impl Service for TestService {
         const SERVICE_ID: u16 = 0x1234;
         const MAJOR_VERSION: u8 = 1;
         const MINOR_VERSION: u32 = 0;
     }
-    
+
     covers!(feat_req_recentip_106);
 
     let mut sim = turmoil::Builder::new()
@@ -571,8 +612,7 @@ fn exception_message_type_when_configured() {
             Runtime::with_socket_type(config).await.unwrap();
 
         // Configure method 0x0001 to use EXCEPTION for errors
-        let method_config = MethodConfig::new()
-            .use_exception_for(0x0001);
+        let method_config = MethodConfig::new().use_exception_for(0x0001);
 
         let mut offering = runtime
             .offer_with_config::<TestService>(InstanceId::Id(0x0001), method_config)
@@ -580,12 +620,16 @@ fn exception_message_type_when_configured() {
             .unwrap();
 
         // Receive call and send error
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply_error(ReturnCode::UnknownMethod).await.unwrap();
+                responder
+                    .reply_error(ReturnCode::UnknownMethod)
+                    .await
+                    .unwrap();
             }
         }
 
@@ -686,28 +730,27 @@ fn exception_message_type_when_configured() {
     sim.run().unwrap();
 }
 
-
 /// feat_req_recentip_106, feat_req_recentip_726: Mixed config - some methods EXCEPTION, some RESPONSE
 ///
 /// When some methods are configured for EXCEPTION and others are not,
 /// each method should use the appropriate message type.
 #[test]
 fn mixed_exception_config_per_method() {
-    use bytes::{BytesMut, BufMut};
+    use bytes::{BufMut, BytesMut};
+    use someip_runtime::handle::ServiceEvent;
     use someip_runtime::prelude::*;
     use someip_runtime::runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::MessageType;
-    use someip_runtime::handle::ServiceEvent;
-    use std::time::Duration;
     use std::net::SocketAddr;
-    
+    use std::time::Duration;
+
     struct TestService;
     impl Service for TestService {
         const SERVICE_ID: u16 = 0x1234;
         const MAJOR_VERSION: u8 = 1;
         const MINOR_VERSION: u32 = 0;
     }
-    
+
     covers!(feat_req_recentip_106, feat_req_recentip_726);
 
     let mut sim = turmoil::Builder::new()
@@ -721,8 +764,7 @@ fn mixed_exception_config_per_method() {
             Runtime::with_socket_type(config).await.unwrap();
 
         // Only method 0x0001 configured for EXCEPTION
-        let method_config = MethodConfig::new()
-            .use_exception_for(0x0001);
+        let method_config = MethodConfig::new().use_exception_for(0x0001);
 
         let mut offering = runtime
             .offer_with_config::<TestService>(InstanceId::Id(0x0001), method_config)
@@ -731,10 +773,11 @@ fn mixed_exception_config_per_method() {
 
         // Handle two calls - respond with errors for both
         for _ in 0..2 {
-            if let Some(event) = tokio::time::timeout(
-                Duration::from_secs(10),
-                offering.next()
-            ).await.ok().flatten() {
+            if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+                .await
+                .ok()
+                .flatten()
+            {
                 if let ServiceEvent::Call { responder, .. } = event {
                     responder.reply_error(ReturnCode::NotOk).await.unwrap();
                 }
@@ -747,29 +790,30 @@ fn mixed_exception_config_per_method() {
 
     sim.client("raw_observer", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         // Discover server via SD
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap()
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
-        
+
         for _ in 0..20 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                    addr,
+                                    port,
+                                    ..
+                                } = opt
+                                {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -789,7 +833,7 @@ fn mixed_exception_config_per_method() {
 
         let server_addr = server_endpoint.expect("Should find server via SD");
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
-        
+
         // Test 1: Method 0x0001 (configured for EXCEPTION) should get 0x81
         let mut request1 = BytesMut::with_capacity(24);
         request1.put_u16(0x1234);
@@ -805,10 +849,8 @@ fn mixed_exception_config_per_method() {
 
         rpc_socket.send_to(&request1, server_addr).await?;
 
-        let result1 = tokio::time::timeout(
-            Duration::from_secs(5),
-            rpc_socket.recv_from(&mut buf)
-        ).await;
+        let result1 =
+            tokio::time::timeout(Duration::from_secs(5), rpc_socket.recv_from(&mut buf)).await;
 
         if let Ok(Ok((len, _))) = result1 {
             if let Some(header) = parse_header_wire(&buf[..len]) {
@@ -839,10 +881,8 @@ fn mixed_exception_config_per_method() {
 
         rpc_socket.send_to(&request2, server_addr).await?;
 
-        let result2 = tokio::time::timeout(
-            Duration::from_secs(5),
-            rpc_socket.recv_from(&mut buf)
-        ).await;
+        let result2 =
+            tokio::time::timeout(Duration::from_secs(5), rpc_socket.recv_from(&mut buf)).await;
 
         if let Ok(Ok((len, _))) = result2 {
             if let Some(header) = parse_header_wire(&buf[..len]) {
@@ -851,7 +891,10 @@ fn mixed_exception_config_per_method() {
                     MessageType::Response,
                     "Method 0x0002 should use RESPONSE (0x80) - not configured for EXCEPTION"
                 );
-                assert_ne!(header.return_code, 0x00, "Should still have error return code");
+                assert_ne!(
+                    header.return_code, 0x00,
+                    "Should still have error return code"
+                );
             } else {
                 panic!("Failed to parse response 2");
             }
@@ -865,27 +908,26 @@ fn mixed_exception_config_per_method() {
     sim.run().unwrap();
 }
 
-
 /// Test that internal errors (UNKNOWN_SERVICE) use RESPONSE (0x80)
 ///
 /// When the runtime itself generates an error (not the application),
 /// it uses RESPONSE with error code since there's no method config available.
 #[test]
 fn internal_unknown_service_error_uses_response() {
-    use bytes::{BytesMut, BufMut};
+    use bytes::{BufMut, BytesMut};
     use someip_runtime::prelude::*;
     use someip_runtime::runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::MessageType;
-    use std::time::Duration;
     use std::net::SocketAddr;
-    
+    use std::time::Duration;
+
     struct TestService;
     impl Service for TestService {
         const SERVICE_ID: u16 = 0x1234;
         const MAJOR_VERSION: u8 = 1;
         const MINOR_VERSION: u32 = 0;
     }
-    
+
     covers!(feat_req_recentip_726);
 
     let mut sim = turmoil::Builder::new()
@@ -910,29 +952,30 @@ fn internal_unknown_service_error_uses_response() {
 
     sim.client("raw_observer", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         // Discover server via SD
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap()
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
-        
+
         for _ in 0..20 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                    addr,
+                                    port,
+                                    ..
+                                } = opt
+                                {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -952,7 +995,7 @@ fn internal_unknown_service_error_uses_response() {
 
         let server_addr = server_endpoint.expect("Should find server via SD");
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
-        
+
         // Send request for WRONG service ID (0x9999 instead of 0x1234)
         let mut request = BytesMut::with_capacity(24);
         request.put_u16(0x9999); // WRONG Service ID - runtime will return UNKNOWN_SERVICE
@@ -968,10 +1011,8 @@ fn internal_unknown_service_error_uses_response() {
 
         rpc_socket.send_to(&request, server_addr).await?;
 
-        let result = tokio::time::timeout(
-            Duration::from_secs(2),
-            rpc_socket.recv_from(&mut buf)
-        ).await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(2), rpc_socket.recv_from(&mut buf)).await;
 
         if let Ok(Ok((len, _))) = result {
             if let Some(header) = parse_header_wire(&buf[..len]) {
@@ -998,26 +1039,25 @@ fn internal_unknown_service_error_uses_response() {
     sim.run().unwrap();
 }
 
-
 /// feat_req_recentip_798: Messages with length < 8 shall be ignored
 ///
 /// SOME/IP messages with a length value < 8 bytes shall be ignored.
 /// Length field indicates payload + 8 (for the header tail), so minimum is 8.
 #[test]
 fn messages_with_short_length_ignored() {
-    use bytes::{BytesMut, BufMut};
+    use bytes::{BufMut, BytesMut};
     use someip_runtime::prelude::*;
     use someip_runtime::runtime::{Runtime, RuntimeConfig};
-    use std::time::Duration;
     use std::net::SocketAddr;
-    
+    use std::time::Duration;
+
     struct TestService;
     impl Service for TestService {
         const SERVICE_ID: u16 = 0x1234;
         const MAJOR_VERSION: u8 = 1;
         const MINOR_VERSION: u32 = 0;
     }
-    
+
     covers!(feat_req_recentip_798);
 
     let mut sim = turmoil::Builder::new()
@@ -1036,10 +1076,7 @@ fn messages_with_short_length_ignored() {
             .unwrap();
 
         // Wait for any events - malformed message should be ignored
-        let result = tokio::time::timeout(
-            Duration::from_secs(2),
-            offering.next()
-        ).await;
+        let result = tokio::time::timeout(Duration::from_secs(2), offering.next()).await;
 
         // Should timeout - no valid event should be received
         // The message with Length < 8 should be rejected at parse time (feat_req_recentip_798)
@@ -1057,26 +1094,27 @@ fn messages_with_short_length_ignored() {
 
         // Discover server via SD
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap()
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
-        
+
         for _ in 0..20 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                    addr,
+                                    port,
+                                    ..
+                                } = opt
+                                {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -1119,7 +1157,6 @@ fn messages_with_short_length_ignored() {
     sim.run().unwrap();
 }
 
-
 /// feat_req_recentip_703: Implementation shall use known protocol version
 ///
 /// All messages sent by the library must use protocol version 0x01.
@@ -1128,16 +1165,16 @@ fn uses_known_protocol_version() {
     use someip_runtime::prelude::*;
     use someip_runtime::runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::Header;
-    use std::time::Duration;
     use std::net::SocketAddr;
-    
+    use std::time::Duration;
+
     struct TestService;
     impl Service for TestService {
         const SERVICE_ID: u16 = 0x1234;
         const MAJOR_VERSION: u8 = 1;
         const MINOR_VERSION: u32 = 0;
     }
-    
+
     covers!(feat_req_recentip_703);
 
     let mut sim = turmoil::Builder::new()
@@ -1154,13 +1191,14 @@ fn uses_known_protocol_version() {
             .offer::<TestService>(InstanceId::Id(0x0001))
             .await
             .unwrap();
-        
+
         // Respond to a few calls
         for _ in 0..3 {
-            if let Some(event) = tokio::time::timeout(
-                Duration::from_secs(5),
-                offering.next()
-            ).await.ok().flatten() {
+            if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next())
+                .await
+                .ok()
+                .flatten()
+            {
                 if let someip_runtime::handle::ServiceEvent::Call { responder, .. } = event {
                     let _ = responder.reply(b"response").await;
                 }
@@ -1177,23 +1215,19 @@ fn uses_known_protocol_version() {
 
         // Discover server via SD
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap()
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
-        
+
         // Also capture SD messages for protocol version check
         let mut captured_messages = Vec::new();
-        
+
         for _ in 0..20 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 // Check protocol version of SD messages
                 if len >= Header::SIZE {
@@ -1201,12 +1235,17 @@ fn uses_known_protocol_version() {
                         captured_messages.push(header);
                     }
                 }
-                
+
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                    addr,
+                                    port,
+                                    ..
+                                } = opt
+                                {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -1225,13 +1264,13 @@ fn uses_known_protocol_version() {
         }
 
         let server_addr = server_endpoint.expect("Should find server via SD");
-        
+
         // Send some RPC requests and capture responses
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
-        
+
         for i in 0..3 {
-            use bytes::{BytesMut, BufMut};
-            
+            use bytes::{BufMut, BytesMut};
+
             let mut request = BytesMut::with_capacity(24);
             request.put_u16(0x1234); // Service ID
             request.put_u16(0x0001); // Method ID
@@ -1247,10 +1286,10 @@ fn uses_known_protocol_version() {
             rpc_socket.send_to(&request, server_addr).await?;
 
             // Capture response
-            if let Ok(Ok((len, _))) = tokio::time::timeout(
-                Duration::from_millis(500),
-                rpc_socket.recv_from(&mut buf)
-            ).await {
+            if let Ok(Ok((len, _))) =
+                tokio::time::timeout(Duration::from_millis(500), rpc_socket.recv_from(&mut buf))
+                    .await
+            {
                 if len >= Header::SIZE {
                     if let Some(header) = parse_header_wire(&buf[..len]) {
                         captured_messages.push(header);
@@ -1278,28 +1317,27 @@ fn uses_known_protocol_version() {
     sim.run().unwrap();
 }
 
-
-/// feat_req_recentip_703, feat_req_recentip_818: 
+/// feat_req_recentip_703, feat_req_recentip_818:
 /// Wrong protocol version returns E_WRONG_PROTOCOL_VERSION or is ignored
 ///
 /// When receiving a message with wrong protocol version, the implementation
 /// may either ignore it or respond with E_WRONG_PROTOCOL_VERSION.
 #[test]
 fn wrong_protocol_version_returns_error() {
-    use bytes::{BytesMut, BufMut};
+    use bytes::{BufMut, BytesMut};
     use someip_runtime::prelude::*;
     use someip_runtime::runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::MessageType;
-    use std::time::Duration;
     use std::net::SocketAddr;
-    
+    use std::time::Duration;
+
     struct TestService;
     impl Service for TestService {
         const SERVICE_ID: u16 = 0x1234;
         const MAJOR_VERSION: u8 = 1;
         const MINOR_VERSION: u32 = 0;
     }
-    
+
     covers!(feat_req_recentip_703, feat_req_recentip_818);
 
     let mut sim = turmoil::Builder::new()
@@ -1318,10 +1356,7 @@ fn wrong_protocol_version_returns_error() {
             .unwrap();
 
         // Wait for any valid events - should not receive the malformed request
-        let result = tokio::time::timeout(
-            Duration::from_secs(2),
-            offering.next()
-        ).await;
+        let result = tokio::time::timeout(Duration::from_secs(2), offering.next()).await;
 
         // Malformed request should be ignored (no event delivered)
         assert!(
@@ -1338,26 +1373,27 @@ fn wrong_protocol_version_returns_error() {
 
         // Discover server via SD
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap()
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
-        
+
         for _ in 0..20 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                    addr,
+                                    port,
+                                    ..
+                                } = opt
+                                {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -1395,10 +1431,7 @@ fn wrong_protocol_version_returns_error() {
         socket.send_to(&bad_request, server_addr).await?;
 
         // Check if server responds with error (optional per spec)
-        let result = tokio::time::timeout(
-            Duration::from_secs(1),
-            socket.recv_from(&mut buf)
-        ).await;
+        let result = tokio::time::timeout(Duration::from_secs(1), socket.recv_from(&mut buf)).await;
 
         if let Ok(Ok((len, _))) = result {
             // Server responded - should be error with WrongProtocolVersion

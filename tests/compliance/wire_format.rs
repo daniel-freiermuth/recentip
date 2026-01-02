@@ -2,16 +2,16 @@
 //!
 //! Tests that use raw sockets on one side to capture actual network traffic
 //! and verify the raw bytes match SOME/IP specification requirements.
-//! 
+//!
 //! Unlike unit tests that construct headers manually, these tests run real
 //! protocol exchanges where one side uses the library and the other side
 //! uses a raw UDP socket to directly inspect wire bytes.
 
 use bytes::Bytes;
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::{Runtime, RuntimeConfig};
 use someip_runtime::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
-use someip_runtime::handle::ServiceEvent;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -97,21 +97,16 @@ fn sd_offer_wire_format() {
         // Bind to SD multicast port
         let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
         // Join multicast group for SD
-        socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
         let mut captured_sd = Vec::new();
 
         // Capture a few SD messages
         for _ in 0..3 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), socket.recv_from(&mut buf)).await;
+
             if let Ok(Ok((len, _from))) = result {
                 if let Some((header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     captured_sd.push((header, sd_msg));
@@ -181,25 +176,21 @@ fn sd_uses_port_30490() {
     // Raw socket listens on port 30490 to verify SD uses this port
     sim.client("raw_observer", async move {
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
         let mut received_sd = false;
 
         for _ in 0..20 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
 
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, _sd_msg)) = parse_sd_message(&buf[..len]) {
                     received_sd = true;
                     eprintln!("Received SD message on port 30490 from {}", from);
-                    
+
                     // Verify we received on port 30490
                     let local = sd_socket.local_addr()?;
                     assert_eq!(local.port(), 30490, "SD must use port 30490");
@@ -242,20 +233,15 @@ fn sd_offer_entry_type_wire_format() {
     // Raw socket captures and verifies OfferService entry
     sim.client("raw_observer", async move {
         let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
         let mut found_offer = false;
 
         for _ in 0..5 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), socket.recv_from(&mut buf)).await;
+
             if let Ok(Ok((len, _from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
@@ -272,7 +258,10 @@ fn sd_offer_entry_type_wire_format() {
             }
         }
 
-        assert!(found_offer, "Server should send OfferService entries (type 0x01)");
+        assert!(
+            found_offer,
+            "Server should send OfferService entries (type 0x01)"
+        );
         Ok(())
     });
 
@@ -288,7 +277,11 @@ fn sd_offer_entry_type_wire_format() {
 /// feat_req_recentip_45: Header is exactly 16 bytes
 #[test]
 fn rpc_request_wire_format() {
-    covers!(feat_req_recentip_103, feat_req_recentip_60, feat_req_recentip_45);
+    covers!(
+        feat_req_recentip_103,
+        feat_req_recentip_60,
+        feat_req_recentip_45
+    );
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -296,10 +289,7 @@ fn rpc_request_wire_format() {
 
     // Raw socket acts as server - sends SD offer, then receives request bytes
     sim.host("raw_server", || async {
-        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server")
-            .to_string()
-            .parse()
-            .unwrap();
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server").to_string().parse().unwrap();
 
         // RPC socket to receive requests
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
@@ -307,33 +297,32 @@ fn rpc_request_wire_format() {
 
         // SD socket to send offers
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
-        
+
         // Send SD offer to multicast so the library can discover us
         let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
         let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
-        
+
         // Send offers periodically until we receive a request
         let mut buf = [0u8; 1500];
         let mut request_received = false;
-        
+
         for _ in 0..20 {
             // Send an offer
             sd_socket.send_to(&offer, sd_multicast).await?;
             eprintln!("Raw server sent SD offer");
-            
+
             // Check for RPC request (non-blocking with short timeout)
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                rpc_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), rpc_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 eprintln!("Raw server received {} bytes from {}", len, from);
                 request_received = true;
 
                 // Verify raw bytes directly
                 let data = &buf[..len];
-                
+
                 // Header must be at least 16 bytes (feat_req_recentip_45)
                 assert!(
                     len >= 16,
@@ -345,16 +334,10 @@ fn rpc_request_wire_format() {
                 let header = parse_header(data).expect("Should parse as SOME/IP header");
 
                 // Verify Service ID (feat_req_recentip_60)
-                assert_eq!(
-                    header.service_id, 0x1234,
-                    "Service ID should be 0x1234"
-                );
+                assert_eq!(header.service_id, 0x1234, "Service ID should be 0x1234");
 
                 // Verify Method ID (feat_req_recentip_60)
-                assert_eq!(
-                    header.method_id, 0x0001,
-                    "Method ID should be 0x0001"
-                );
+                assert_eq!(header.method_id, 0x0001, "Method ID should be 0x0001");
 
                 // Verify REQUEST message type (feat_req_recentip_103)
                 assert_eq!(
@@ -395,18 +378,19 @@ fn rpc_request_wire_format() {
 
         // Use public API: find service and wait for availability via SD
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        
-        let proxy = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.available(),
-        ).await.expect("Should discover service via SD").expect("Service available");
+
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Should discover service via SD")
+            .expect("Service available");
 
         // Make an RPC call using public API
         let result = tokio::time::timeout(
             Duration::from_secs(3),
             proxy.call(MethodId::new(0x0001).unwrap(), b"hello"),
-        ).await;
-        
+        )
+        .await;
+
         assert!(result.is_ok(), "RPC call should complete");
         Ok(())
     });
@@ -452,21 +436,17 @@ fn rpc_response_wire_format() {
 
         // First, listen for SD to find the server
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         // Find server endpoint from SD offer
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
-        
+
         for _ in 0..10 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
@@ -474,7 +454,12 @@ fn rpc_response_wire_format() {
                             // Found our service offer
                             // Use the source address with the offered port
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                    addr,
+                                    port,
+                                    ..
+                                } = opt
+                                {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -497,15 +482,13 @@ fn rpc_response_wire_format() {
 
         // Now send a raw request
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
-        
+
         let request = build_request(0x1234, 0x0001, 0xABCD, 0x1234, b"test_payload");
         rpc_socket.send_to(&request, server_addr).await?;
 
         // Receive response
-        let (len, _from) = tokio::time::timeout(
-            Duration::from_secs(3),
-            rpc_socket.recv_from(&mut buf),
-        ).await??;
+        let (len, _from) =
+            tokio::time::timeout(Duration::from_secs(3), rpc_socket.recv_from(&mut buf)).await??;
 
         let response_data = &buf[..len];
         let response_header = parse_header(response_data).expect("Should parse response");
@@ -551,10 +534,7 @@ fn fire_and_forget_wire_format() {
 
     // Raw socket acts as server - receives fire-and-forget and checks wire bytes
     sim.host("raw_server", || async {
-        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server")
-            .to_string()
-            .parse()
-            .unwrap();
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server").to_string().parse().unwrap();
 
         // RPC socket to receive requests
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
@@ -562,33 +542,32 @@ fn fire_and_forget_wire_format() {
 
         // SD socket to send offers
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
-        
+
         // Send SD offer to multicast so the library can discover us
         let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
         let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
-        
+
         // Send offers periodically until we receive a request
         let mut buf = [0u8; 1500];
         let mut request_received = false;
-        
+
         for _ in 0..20 {
             // Send an offer
             sd_socket.send_to(&offer, sd_multicast).await?;
             eprintln!("Raw server sent SD offer");
-            
+
             // Check for RPC request (non-blocking with short timeout)
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                rpc_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), rpc_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 eprintln!("Raw server received {} bytes from {}", len, from);
                 request_received = true;
 
                 // Verify raw bytes directly
                 let data = &buf[..len];
-                
+
                 // Header must be at least 16 bytes
                 assert!(
                     len >= 16,
@@ -600,16 +579,10 @@ fn fire_and_forget_wire_format() {
                 let header = parse_header(data).expect("Should parse as SOME/IP header");
 
                 // Verify Service ID
-                assert_eq!(
-                    header.service_id, 0x1234,
-                    "Service ID should be 0x1234"
-                );
+                assert_eq!(header.service_id, 0x1234, "Service ID should be 0x1234");
 
                 // Verify Method ID
-                assert_eq!(
-                    header.method_id, 0x0001,
-                    "Method ID should be 0x0001"
-                );
+                assert_eq!(header.method_id, 0x0001, "Method ID should be 0x0001");
 
                 // Verify REQUEST_NO_RETURN message type (feat_req_recentip_103)
                 assert_eq!(
@@ -617,7 +590,7 @@ fn fire_and_forget_wire_format() {
                     "REQUEST_NO_RETURN message type must be 0x01, got 0x{:02X}",
                     header.message_type as u8
                 );
-                
+
                 // Also verify at raw byte level (byte 12 is message type)
                 assert_eq!(
                     data[12], 0x01,
@@ -633,8 +606,11 @@ fn fire_and_forget_wire_format() {
             }
         }
 
-        assert!(request_received, "Should have received a fire-and-forget request");
-        
+        assert!(
+            request_received,
+            "Should have received a fire-and-forget request"
+        );
+
         // Keep alive briefly
         tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())
@@ -650,11 +626,11 @@ fn fire_and_forget_wire_format() {
 
         // Use public API: find service and wait for availability via SD
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        
-        let proxy = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.available(),
-        ).await.expect("Should discover service via SD").expect("Service available");
+
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Should discover service via SD")
+            .expect("Service available");
 
         // Send fire-and-forget using public API
         proxy
@@ -664,7 +640,7 @@ fn fire_and_forget_wire_format() {
 
         // Give time for the message to be sent
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         Ok(())
     });
 
@@ -695,7 +671,9 @@ fn fire_and_forget_received_wire_format() {
         // Handle one fire-and-forget
         if let Some(event) = offering.next().await {
             match event {
-                ServiceEvent::FireForget { payload, method, .. } => {
+                ServiceEvent::FireForget {
+                    payload, method, ..
+                } => {
                     assert_eq!(method.value(), 0x0001);
                     assert_eq!(payload.as_ref(), b"raw_fire_forget");
                 }
@@ -713,28 +691,29 @@ fn fire_and_forget_received_wire_format() {
 
         // First, listen for SD to find the server
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         // Find server endpoint from SD offer
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
-        
+
         for _ in 0..10 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             // Found our service offer
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                    addr,
+                                    port,
+                                    ..
+                                } = opt
+                                {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -757,8 +736,9 @@ fn fire_and_forget_received_wire_format() {
 
         // Now send a raw fire-and-forget request
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
-        
-        let request = build_fire_and_forget_request(0x1234, 0x0001, 0xABCD, 0x1234, b"raw_fire_forget");
+
+        let request =
+            build_fire_and_forget_request(0x1234, 0x0001, 0xABCD, 0x1234, b"raw_fire_forget");
         rpc_socket.send_to(&request, server_addr).await?;
 
         // No response expected - just wait a bit
@@ -798,17 +778,12 @@ fn header_size_and_endianness_on_wire() {
     // Raw socket verifies byte-level structure
     sim.client("raw_observer", async move {
         let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
-        
-        let (len, _from) = tokio::time::timeout(
-            Duration::from_millis(500),
-            socket.recv_from(&mut buf),
-        ).await??;
+
+        let (len, _from) =
+            tokio::time::timeout(Duration::from_millis(500), socket.recv_from(&mut buf)).await??;
 
         let data = &buf[..len];
 
@@ -843,7 +818,10 @@ fn header_size_and_endianness_on_wire() {
         assert_eq!(data[13], 0x01, "Interface Version must be 0x01 for SD");
 
         // Message Type in byte [14] - NOTIFICATION = 0x02
-        assert_eq!(data[14], 0x02, "SD Message Type must be NOTIFICATION (0x02)");
+        assert_eq!(
+            data[14], 0x02,
+            "SD Message Type must be NOTIFICATION (0x02)"
+        );
 
         // Return Code in byte [15] - E_OK = 0x00
         assert_eq!(data[15], 0x00, "Return Code must be E_OK (0x00)");
@@ -866,20 +844,17 @@ fn session_id_increment_on_wire() {
 
     // Raw socket acts as server - sends SD offer, receives multiple requests
     sim.host("raw_server", || async {
-        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server")
-            .to_string()
-            .parse()
-            .unwrap();
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server").to_string().parse().unwrap();
 
         // RPC socket to receive requests
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
-        
+
         // SD socket to send offers
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
         let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
-        
+
         let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
-        
+
         let mut buf = [0u8; 1500];
         let mut session_ids = Vec::new();
 
@@ -887,22 +862,25 @@ fn session_id_increment_on_wire() {
         for _ in 0..30 {
             // Send an offer periodically
             sd_socket.send_to(&offer, sd_multicast).await?;
-            
+
             // Check for RPC request
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                rpc_socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), rpc_socket.recv_from(&mut buf))
+                    .await;
+
             if let Ok(Ok((len, from))) = result {
                 let header = parse_header(&buf[..len]).expect("Should parse header");
                 session_ids.push(header.session_id);
-                eprintln!("Request {}: session_id = {}", session_ids.len(), header.session_id);
-                
+                eprintln!(
+                    "Request {}: session_id = {}",
+                    session_ids.len(),
+                    header.session_id
+                );
+
                 // Send response
                 let response = build_response(&header, b"ok");
                 rpc_socket.send_to(&response, from).await?;
-                
+
                 // Stop after 3 requests
                 if session_ids.len() >= 3 {
                     break;
@@ -947,18 +925,21 @@ fn session_id_increment_on_wire() {
 
         // Use public API: find service and wait for availability via SD
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        
-        let proxy = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.available(),
-        ).await.expect("Should discover service via SD").expect("Service available");
+
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Should discover service via SD")
+            .expect("Service available");
 
         // Make 3 calls using public API
         for _ in 0..3 {
             let _ = tokio::time::timeout(
                 Duration::from_secs(3),
                 proxy.call(MethodId::new(0x0001).unwrap(), b"test"),
-            ).await.expect("Timeout").expect("Call should succeed");
+            )
+            .await
+            .expect("Timeout")
+            .expect("Call should succeed");
         }
 
         Ok(())
@@ -1010,7 +991,7 @@ struct EventgroupEntry {
 }
 
 /// feat_req_recentipsd_576: SubscribeEventgroup entry type is 0x06
-/// 
+///
 /// When a client subscribes to an eventgroup, the SD message must contain
 /// an entry with type 0x06 (SubscribeEventgroup).
 #[test]
@@ -1099,14 +1080,16 @@ fn subscribe_eventgroup_entry_type() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Should discover service via SD").expect("Service available");
+            .expect("Should discover service via SD")
+            .expect("Service available");
 
         // Subscribe to eventgroup using public API
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        ).await.expect("Subscribe timeout").expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -1116,7 +1099,7 @@ fn subscribe_eventgroup_entry_type() {
 }
 
 /// feat_req_recentipsd_576: SubscribeEventgroupAck entry type is 0x07
-/// 
+///
 /// When a server acknowledges a subscription, the SD message must contain
 /// an entry with type 0x07 (SubscribeEventgroupAck).
 #[test]
@@ -1139,10 +1122,11 @@ fn subscribe_ack_entry_type() {
             .unwrap();
 
         // Wait for subscription and accept it
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next(),
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             if let ServiceEvent::Subscribe { ack, .. } = event {
                 ack.accept().await.unwrap();
             }
@@ -1158,20 +1142,16 @@ fn subscribe_ack_entry_type() {
 
         // Listen for SD offers to find server
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
         let mut server_endpoint: Option<SocketAddr> = None;
 
         // Find server endpoint from SD offer
         for _ in 0..20 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                sd_socket.recv_from(&mut buf),
-            ).await;
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
 
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
@@ -1179,7 +1159,12 @@ fn subscribe_ack_entry_type() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             // Found offer, get endpoint from options
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                    addr,
+                                    port,
+                                    ..
+                                } = opt
+                                {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -1203,7 +1188,7 @@ fn subscribe_ack_entry_type() {
 
         // Send Subscribe message
         let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, 3600);
-        
+
         // Need to send from a port the server can respond to
         let client_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
         client_socket.send_to(&subscribe, server_addr).await?;
@@ -1214,7 +1199,8 @@ fn subscribe_ack_entry_type() {
             let result = tokio::time::timeout(
                 Duration::from_millis(200),
                 client_socket.recv_from(&mut buf),
-            ).await;
+            )
+            .await;
 
             if let Ok(Ok((len, _from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
@@ -1222,8 +1208,10 @@ fn subscribe_ack_entry_type() {
                         // SubscribeEventgroupAck = 0x07
                         if entry.entry_type as u8 == 0x07 {
                             found_ack = true;
-                            eprintln!("Received SubscribeEventgroupAck: entry_type=0x{:02X}, TTL={}",
-                                entry.entry_type as u8, entry.ttl);
+                            eprintln!(
+                                "Received SubscribeEventgroupAck: entry_type=0x{:02X}, TTL={}",
+                                entry.entry_type as u8, entry.ttl
+                            );
 
                             assert_eq!(
                                 entry.entry_type as u8, 0x07,
@@ -1248,7 +1236,7 @@ fn subscribe_ack_entry_type() {
 }
 
 /// feat_req_recentipsd_178: StopSubscribeEventgroup has TTL=0
-/// 
+///
 /// When a client unsubscribes (drops subscription), it sends a SubscribeEventgroup
 /// entry with TTL=0, which means StopSubscribeEventgroup.
 #[test]
@@ -1261,10 +1249,7 @@ fn stop_subscribe_has_ttl_zero() {
 
     // Raw socket acts as server - sends SD offers, receives subscribe and stop-subscribe
     sim.host("raw_server", || async {
-        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server")
-            .to_string()
-            .parse()
-            .unwrap();
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server").to_string().parse().unwrap();
 
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
@@ -1280,10 +1265,9 @@ fn stop_subscribe_has_ttl_zero() {
         for _ in 0..50 {
             sd_socket.send_to(&offer, sd_multicast).await?;
 
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                rpc_socket.recv_from(&mut buf),
-            ).await;
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), rpc_socket.recv_from(&mut buf))
+                    .await;
 
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
@@ -1320,7 +1304,10 @@ fn stop_subscribe_has_ttl_zero() {
         }
 
         assert!(found_subscribe, "Should receive SubscribeEventgroup first");
-        assert!(found_stop_subscribe, "Should receive StopSubscribeEventgroup (TTL=0)");
+        assert!(
+            found_stop_subscribe,
+            "Should receive StopSubscribeEventgroup (TTL=0)"
+        );
         Ok(())
     });
 
@@ -1335,15 +1322,17 @@ fn stop_subscribe_has_ttl_zero() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Should discover service via SD").expect("Service available");
+            .expect("Should discover service via SD")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
 
         // Subscribe
-        let subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        ).await.expect("Subscribe timeout").expect("Subscribe should succeed");
+        let subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -1371,33 +1360,33 @@ fn build_request(
 ) -> Vec<u8> {
     let length = 8 + payload.len() as u32; // 8 bytes of header after length + payload
     let mut packet = Vec::with_capacity(16 + payload.len());
-    
+
     // Message ID (Service ID + Method ID)
     packet.extend_from_slice(&service_id.to_be_bytes());
     packet.extend_from_slice(&method_id.to_be_bytes());
-    
+
     // Length
     packet.extend_from_slice(&length.to_be_bytes());
-    
+
     // Request ID (Client ID + Session ID)
     packet.extend_from_slice(&client_id.to_be_bytes());
     packet.extend_from_slice(&session_id.to_be_bytes());
-    
+
     // Protocol Version
     packet.push(0x01);
-    
+
     // Interface Version
     packet.push(0x01);
-    
+
     // Message Type (REQUEST = 0x00)
     packet.push(0x00);
-    
+
     // Return Code (E_OK = 0x00)
     packet.push(0x00);
-    
+
     // Payload
     packet.extend_from_slice(payload);
-    
+
     packet
 }
 
@@ -1411,33 +1400,33 @@ fn build_fire_and_forget_request(
 ) -> Vec<u8> {
     let length = 8 + payload.len() as u32; // 8 bytes of header after length + payload
     let mut packet = Vec::with_capacity(16 + payload.len());
-    
+
     // Message ID (Service ID + Method ID)
     packet.extend_from_slice(&service_id.to_be_bytes());
     packet.extend_from_slice(&method_id.to_be_bytes());
-    
+
     // Length
     packet.extend_from_slice(&length.to_be_bytes());
-    
+
     // Request ID (Client ID + Session ID)
     packet.extend_from_slice(&client_id.to_be_bytes());
     packet.extend_from_slice(&session_id.to_be_bytes());
-    
+
     // Protocol Version
     packet.push(0x01);
-    
+
     // Interface Version
     packet.push(0x01);
-    
+
     // Message Type (REQUEST_NO_RETURN = 0x01)
     packet.push(0x01);
-    
+
     // Return Code (E_OK = 0x00)
     packet.push(0x00);
-    
+
     // Payload
     packet.extend_from_slice(payload);
-    
+
     packet
 }
 
@@ -1445,33 +1434,33 @@ fn build_fire_and_forget_request(
 fn build_response(request: &Header, payload: &[u8]) -> Vec<u8> {
     let length = 8 + payload.len() as u32;
     let mut packet = Vec::with_capacity(16 + payload.len());
-    
+
     // Message ID (preserve from request)
     packet.extend_from_slice(&request.service_id.to_be_bytes());
     packet.extend_from_slice(&request.method_id.to_be_bytes());
-    
+
     // Length
     packet.extend_from_slice(&length.to_be_bytes());
-    
+
     // Request ID (preserve from request)
     packet.extend_from_slice(&request.client_id.to_be_bytes());
     packet.extend_from_slice(&request.session_id.to_be_bytes());
-    
+
     // Protocol Version
     packet.push(0x01);
-    
+
     // Interface Version
     packet.push(request.interface_version);
-    
+
     // Message Type (RESPONSE = 0x80)
     packet.push(0x80);
-    
+
     // Return Code (E_OK = 0x00)
     packet.push(0x00);
-    
+
     // Payload
     packet.extend_from_slice(payload);
-    
+
     packet
 }
 
@@ -1490,9 +1479,9 @@ fn build_sd_offer(
     // - SD header (12 bytes): flags(1) + reserved(3) + entries_length(4) + entries + options_length(4) + options
     // - Entry (16 bytes): OfferService entry
     // - Option (12 bytes): IPv4 Endpoint option
-    
+
     let mut packet = Vec::with_capacity(56);
-    
+
     // === SOME/IP Header (16 bytes) ===
     // Service ID = 0xFFFF (SD)
     packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
@@ -1502,7 +1491,7 @@ fn build_sd_offer(
     // We'll fill this in at the end
     let length_offset = packet.len();
     packet.extend_from_slice(&0u32.to_be_bytes()); // placeholder
-    // Client ID
+                                                   // Client ID
     packet.extend_from_slice(&0x0000u16.to_be_bytes());
     // Session ID
     packet.extend_from_slice(&0x0001u16.to_be_bytes());
@@ -1514,16 +1503,16 @@ fn build_sd_offer(
     packet.push(0x02);
     // Return Code = E_OK
     packet.push(0x00);
-    
+
     // === SD Payload ===
     // Flags (1 byte): Unicast flag = 0x40, Reboot = 0x80
     packet.push(0xC0);
     // Reserved (3 bytes)
     packet.extend_from_slice(&[0x00, 0x00, 0x00]);
-    
+
     // Entries array length (4 bytes) - 16 bytes for one entry
     packet.extend_from_slice(&16u32.to_be_bytes());
-    
+
     // === OfferService Entry (16 bytes) ===
     // Type = OfferService (0x01)
     packet.push(0x01);
@@ -1542,12 +1531,12 @@ fn build_sd_offer(
     // TTL (24-bit, big-endian)
     let ttl_bytes = ttl.to_be_bytes();
     packet.extend_from_slice(&ttl_bytes[1..4]); // 3 bytes
-    // Minor Version (32-bit)
+                                                // Minor Version (32-bit)
     packet.extend_from_slice(&minor_version.to_be_bytes());
-    
+
     // Options array length (4 bytes) - 12 bytes for IPv4 endpoint
     packet.extend_from_slice(&12u32.to_be_bytes());
-    
+
     // === IPv4 Endpoint Option (12 bytes) ===
     // Length = 9 (option content length, excluding length+type)
     packet.extend_from_slice(&9u16.to_be_bytes());
@@ -1563,11 +1552,11 @@ fn build_sd_offer(
     packet.push(0x11);
     // Port
     packet.extend_from_slice(&endpoint_port.to_be_bytes());
-    
+
     // Fix up length field: total - 8 (first 8 bytes of header)
     let length = (packet.len() - 8) as u32;
     packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-    
+
     packet
 }
 
@@ -1580,7 +1569,7 @@ fn build_sd_subscribe(
     ttl: u32,
 ) -> Vec<u8> {
     let mut packet = Vec::with_capacity(64);
-    
+
     // === SOME/IP Header (16 bytes) ===
     // Service ID = 0xFFFF (SD)
     packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
@@ -1601,16 +1590,16 @@ fn build_sd_subscribe(
     packet.push(0x02);
     // Return Code = E_OK
     packet.push(0x00);
-    
+
     // === SD Payload ===
     // Flags
     packet.push(0xC0);
     // Reserved (3 bytes)
     packet.extend_from_slice(&[0x00, 0x00, 0x00]);
-    
+
     // Entries array length - 16 bytes for eventgroup entry
     packet.extend_from_slice(&16u32.to_be_bytes());
-    
+
     // === SubscribeEventgroup Entry (16 bytes) ===
     // Type = SubscribeEventgroup (0x06)
     packet.push(0x06);
@@ -1635,14 +1624,14 @@ fn build_sd_subscribe(
     packet.push(0x00);
     // Eventgroup ID
     packet.extend_from_slice(&eventgroup_id.to_be_bytes());
-    
+
     // Options array length (0 options)
     packet.extend_from_slice(&0u32.to_be_bytes());
-    
+
     // Fix up length field
     let length = (packet.len() - 8) as u32;
     packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-    
+
     packet
 }
 
@@ -1655,7 +1644,7 @@ fn build_sd_subscribe_ack(
     ttl: u32,
 ) -> Vec<u8> {
     let mut packet = Vec::with_capacity(64);
-    
+
     // === SOME/IP Header (16 bytes) ===
     packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
     packet.extend_from_slice(&0x8100u16.to_be_bytes());
@@ -1667,14 +1656,14 @@ fn build_sd_subscribe_ack(
     packet.push(0x01);
     packet.push(0x02);
     packet.push(0x00);
-    
+
     // === SD Payload ===
     packet.push(0xC0);
     packet.extend_from_slice(&[0x00, 0x00, 0x00]);
-    
+
     // Entries array length
     packet.extend_from_slice(&16u32.to_be_bytes());
-    
+
     // === SubscribeEventgroupAck Entry (16 bytes) ===
     // Type = SubscribeEventgroupAck (0x07)
     packet.push(0x07);
@@ -1689,14 +1678,14 @@ fn build_sd_subscribe_ack(
     packet.push(0x00);
     packet.push(0x00);
     packet.extend_from_slice(&eventgroup_id.to_be_bytes());
-    
+
     // Options array length
     packet.extend_from_slice(&0u32.to_be_bytes());
-    
+
     // Fix up length field
     let length = (packet.len() - 8) as u32;
     packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-    
+
     packet
 }
 
@@ -1704,7 +1693,7 @@ fn build_sd_subscribe_ack(
 // REBOOT FLAG TESTS
 // ============================================================================
 // feat_req_recentipsd_41: Reboot flag behavior
-// feat_req_recentipsd_764: Reboot detection algorithm  
+// feat_req_recentipsd_764: Reboot detection algorithm
 // feat_req_recentipsd_765: Per-peer session tracking
 //
 // Reboot flag lifecycle:
@@ -1714,7 +1703,7 @@ fn build_sd_subscribe_ack(
 //
 // Reboot detection algorithm (receiver perspective):
 //   old.reboot=0, new.reboot=1           → Reboot detected
-//   old.reboot=1, new.reboot=1, old>=new → Reboot detected  
+//   old.reboot=1, new.reboot=1, old>=new → Reboot detected
 //   old.reboot=1, new.reboot=0           → Normal wraparound (NOT reboot)
 //   old.reboot=0, new.reboot=0           → Normal operation
 // ============================================================================
@@ -1763,20 +1752,15 @@ fn sd_reboot_flag_set_after_startup() {
     // Raw socket side - captures SD multicast and verifies reboot flag
     sim.client("raw_observer", async move {
         let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
         let mut found_reboot_flag = false;
 
         for _ in 0..5 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), socket.recv_from(&mut buf)).await;
+
             if let Ok(Ok((len, _from))) = result {
                 if let Some((header, _sd_msg)) = parse_sd_message(&buf[..len]) {
                     // Check header is SD
@@ -1822,7 +1806,7 @@ fn sd_session_starts_at_one() {
     covers!(feat_req_recentipsd_41, feat_req_recentip_649);
 
     use std::sync::atomic::{AtomicBool, Ordering};
-    
+
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
         .build();
@@ -1838,7 +1822,7 @@ fn sd_session_starts_at_one() {
         }
         // Extra delay to ensure observer's multicast join has propagated
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         let config = RuntimeConfig::default();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -1854,10 +1838,7 @@ fn sd_session_starts_at_one() {
 
     sim.client("raw_observer", async move {
         let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
         // Give multicast join time to propagate
         tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -1868,23 +1849,24 @@ fn sd_session_starts_at_one() {
         let mut captured_session_ids: Vec<u16> = Vec::new();
 
         for _ in 0..10 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(500),
-                socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(500), socket.recv_from(&mut buf)).await;
+
             if let Ok(Ok((len, _from))) = result {
                 if let Some((header, _sd_msg)) = parse_sd_message(&buf[..len]) {
                     captured_session_ids.push(header.session_id);
                     if captured_session_ids.len() >= 3 {
-                        break;  // Got enough samples
+                        break; // Got enough samples
                     }
                 }
             }
         }
 
-        assert!(!captured_session_ids.is_empty(), "Should have captured at least one SD message");
-        
+        assert!(
+            !captured_session_ids.is_empty(),
+            "Should have captured at least one SD message"
+        );
+
         // Verify session_id=1 is present, proving the runtime started at 1
         let min_session_id = *captured_session_ids.iter().min().unwrap();
         assert_eq!(
@@ -1928,27 +1910,22 @@ fn sd_reboot_flag_clears_after_wraparound() {
         // For now, we verify the initial state and document the expected behavior.
         // The runtime implementation must track `has_wrapped: bool` and clear
         // the reboot flag after the first complete cycle of session IDs.
-        
+
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
     });
 
     sim.client("raw_observer", async move {
         let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
 
         // Capture first few messages - reboot flag should be set
         for _ in 0..3 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), socket.recv_from(&mut buf)).await;
+
             if let Ok(Ok((len, _from))) = result {
                 if let Some((header, _sd_msg)) = parse_sd_message(&buf[..len]) {
                     if let Some((reboot_flag, _)) = parse_sd_flags(&buf[..len]) {
@@ -2004,7 +1981,7 @@ fn sd_separate_multicast_unicast_sessions() {
 
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
-        
+
         let config = RuntimeConfig::default();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -2019,20 +1996,15 @@ fn sd_separate_multicast_unicast_sessions() {
 
     sim.client("raw_observer", async move {
         let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
         let mut multicast_sessions: Vec<u16> = Vec::new();
 
         for _ in 0..10 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(100),
-                socket.recv_from(&mut buf),
-            ).await;
-            
+            let result =
+                tokio::time::timeout(Duration::from_millis(100), socket.recv_from(&mut buf)).await;
+
             if let Ok(Ok((len, from))) = result {
                 if let Some((header, _sd_msg)) = parse_sd_message(&buf[..len]) {
                     // Check if this is multicast (from multicast address)
@@ -2048,9 +2020,10 @@ fn sd_separate_multicast_unicast_sessions() {
         if multicast_sessions.len() >= 2 {
             for window in multicast_sessions.windows(2) {
                 assert!(
-                    window[1] > window[0] || window[1] == 1,  // wraparound case
+                    window[1] > window[0] || window[1] == 1, // wraparound case
                     "Multicast session IDs should increment: {} -> {}",
-                    window[0], window[1]
+                    window[0],
+                    window[1]
                 );
             }
         }

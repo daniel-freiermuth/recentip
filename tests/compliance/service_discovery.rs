@@ -5,11 +5,11 @@
 //!
 //! Reference: someip-sd.rst
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
-use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -19,7 +19,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct TestService;
@@ -71,19 +72,19 @@ fn sd_offer_discovery_works() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let _offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Keep server alive
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
-    }
+            // Keep server alive
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -128,19 +129,19 @@ fn sd_offer_with_specific_instance() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        // Offer with specific instance ID
-        let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0042))
-            .await
-            .unwrap();
+            // Offer with specific instance ID
+            let _offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0042))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
-    }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -187,19 +188,19 @@ fn sd_offer_with_version_info() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        // Offer versioned service
-        let _offering = runtime
-            .offer::<VersionedService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            // Offer versioned service
+            let _offering = runtime
+                .offer::<VersionedService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
-    }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -251,24 +252,24 @@ fn sd_stop_offer_on_drop() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        // Offer then drop
-        {
-            let _offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
-                .await
-                .unwrap();
-            
-            // Let client discover
+            // Offer then drop
+            {
+                let _offering = runtime
+                    .offer::<TestService>(InstanceId::Id(0x0001))
+                    .await
+                    .unwrap();
+
+                // Let client discover
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            } // offering dropped here, should send StopOffer
+
             tokio::time::sleep(Duration::from_millis(300)).await;
-        } // offering dropped here, should send StopOffer
-
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
-    }
+            *flag.lock().unwrap() = true;
+            Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -286,7 +287,7 @@ fn sd_stop_offer_on_drop() {
 
         // After server drops offering, service should become unavailable
         // (This behavior depends on SD TTL tracking)
-        
+
         Ok(())
     });
 
@@ -318,22 +319,22 @@ fn sd_multiple_service_offers() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let _offering1 = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
-        let _offering2 = runtime
-            .offer::<VersionedService>(InstanceId::Id(0x0002))
-            .await
-            .unwrap();
+            let _offering1 = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
+            let _offering2 = runtime
+                .offer::<VersionedService>(InstanceId::Id(0x0002))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
-    }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -382,25 +383,25 @@ fn sd_multiple_instances_same_service() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let _offering1 = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let _offering1 = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        let _offering2 = runtime
-            .offer::<TestService>(InstanceId::Id(0x0002))
-            .await
-            .unwrap();
+            let _offering2 = runtime
+                .offer::<TestService>(InstanceId::Id(0x0002))
+                .await
+                .unwrap();
 
-        *flag.lock().unwrap() = true;
-        
-        // Keep the runtime alive so services remain available
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        Ok(())
-    }
+            *flag.lock().unwrap() = true;
+
+            // Keep the runtime alive so services remain available
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -421,7 +422,8 @@ fn sd_multiple_instances_same_service() {
         let instance = available.instance_id();
         assert!(
             instance == InstanceId::Id(0x0001) || instance == InstanceId::Id(0x0002),
-            "Should find one of the offered instances, but found {:?}", instance
+            "Should find one of the offered instances, but found {:?}",
+            instance
         );
         Ok(())
     });
@@ -475,21 +477,21 @@ fn sd_find_service_discovery() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        // Delay server start
-        tokio::time::sleep(Duration::from_millis(200)).await;
+            // Delay server start
+            tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let _offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
-    }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
+        }
     });
 
     sim.client("driver", async move {
@@ -523,26 +525,26 @@ fn sd_session_id_increments() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        // Multiple offers to trigger multiple SD messages
-        let _offering1 = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            // Multiple offers to trigger multiple SD messages
+            let _offering1 = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let _offering2 = runtime
-            .offer::<VersionedService>(InstanceId::Id(0x0002))
-            .await
-            .unwrap();
+            let _offering2 = runtime
+                .offer::<VersionedService>(InstanceId::Id(0x0002))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
-    }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -592,18 +594,18 @@ fn sd_unicast_flag_handling() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let _offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
-    }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -650,29 +652,31 @@ fn sd_discovery_then_rpc() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let mut offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Handle method call
-        if let Some(event) = offering.next().await {
-            match event {
-                ServiceEvent::Call { payload, responder, .. } => {
-                    let mut response = Vec::from("echo:");
-                    response.extend_from_slice(&payload);
-                    responder.reply(&response).await.unwrap();
+            // Handle method call
+            if let Some(event) = offering.next().await {
+                match event {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
+                        let mut response = Vec::from("echo:");
+                        response.extend_from_slice(&payload);
+                        responder.reply(&response).await.unwrap();
+                    }
+                    _ => panic!("Expected Call"),
                 }
-                _ => panic!("Expected Call"),
             }
-        }
 
-        *flag.lock().unwrap() = true;
-        Ok(())
-    }
+            *flag.lock().unwrap() = true;
+            Ok(())
+        }
     });
 
     sim.host("client", || async {
@@ -690,13 +694,10 @@ fn sd_discovery_then_rpc() {
 
         // Make RPC call
         let method = MethodId::new(0x0001).unwrap();
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"test"),
-        )
-        .await
-        .expect("RPC timeout")
-        .expect("RPC should succeed");
+        let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"test"))
+            .await
+            .expect("RPC timeout")
+            .expect("RPC should succeed");
 
         assert_eq!(&response.payload[..], b"echo:test");
         Ok(())

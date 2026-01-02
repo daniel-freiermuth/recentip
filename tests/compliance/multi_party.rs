@@ -8,11 +8,11 @@
 //! - feat_req_recentip_804: Event delivery to multiple subscribers
 //! - feat_req_recentipsd_109: SD multicast reaches all participants
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
-use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -22,7 +22,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct TestService;
@@ -71,32 +72,37 @@ fn multiple_clients_call_same_server() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let mut offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Handle 3 requests from different clients
-        let mut handled = 0;
-        while handled < 3 {
-            if let Some(event) = tokio::time::timeout(
-                Duration::from_secs(10),
-                offering.next()
-            ).await.ok().flatten() {
-                if let ServiceEvent::Call { payload, responder, .. } = event {
-                    // Echo back with prefix
-                    let response = format!("response_to_{}", String::from_utf8_lossy(&payload));
-                    responder.reply(response.as_bytes()).await.unwrap();
-                    handled += 1;
+            // Handle 3 requests from different clients
+            let mut handled = 0;
+            while handled < 3 {
+                if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+                    .await
+                    .ok()
+                    .flatten()
+                {
+                    if let ServiceEvent::Call {
+                        payload, responder, ..
+                    } = event
+                    {
+                        // Echo back with prefix
+                        let response = format!("response_to_{}", String::from_utf8_lossy(&payload));
+                        responder.reply(response.as_bytes()).await.unwrap();
+                        handled += 1;
+                    }
                 }
             }
-        }
-        *flag.lock().unwrap() = true;
+            *flag.lock().unwrap() = true;
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            Ok(())
         }
     });
 
@@ -109,7 +115,8 @@ fn multiple_clients_call_same_server() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
@@ -132,7 +139,8 @@ fn multiple_clients_call_same_server() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
@@ -155,7 +163,8 @@ fn multiple_clients_call_same_server() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let response = tokio::time::timeout(
             Duration::from_secs(5),
@@ -201,24 +210,28 @@ fn multiple_clients_subscribe_to_events() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Wait for all 3 clients to subscribe
-        tokio::time::sleep(Duration::from_millis(800)).await;
+            // Wait for all 3 clients to subscribe
+            tokio::time::sleep(Duration::from_millis(800)).await;
 
-        // Send event
-        let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let event_id = EventId::new(0x8001).unwrap();
-        offering.notify(eventgroup, event_id, b"broadcast_event").await.unwrap();
+            // Send event
+            let eventgroup = EventgroupId::new(0x0001).unwrap();
+            let event_id = EventId::new(0x8001).unwrap();
+            offering
+                .notify(eventgroup, event_id, b"broadcast_event")
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -231,16 +244,15 @@ fn multiple_clients_subscribe_to_events() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Wait for event
         let event = tokio::time::timeout(Duration::from_secs(10), subscription.next())
@@ -261,16 +273,15 @@ fn multiple_clients_subscribe_to_events() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         let event = tokio::time::timeout(Duration::from_secs(10), subscription.next())
             .await
@@ -290,16 +301,15 @@ fn multiple_clients_subscribe_to_events() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         let event = tokio::time::timeout(Duration::from_secs(10), subscription.next())
             .await
@@ -342,17 +352,18 @@ fn sd_reaches_all_participants() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let _offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Keep offering alive
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            // Keep offering alive
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -440,45 +451,47 @@ fn nodes_with_mixed_client_server_roles() {
     sim.host("nodeA", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        // Offer ServiceA
-        let mut offering = runtime
-            .offer::<ServiceA>(InstanceId::Id(0x0001))
+            // Offer ServiceA
+            let mut offering = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
+
+            // Also require ServiceB
+            let proxy_b = runtime.find::<ServiceB>(InstanceId::Any);
+            let proxy_b = tokio::time::timeout(Duration::from_secs(5), proxy_b.available())
+                .await
+                .expect("Should discover ServiceB")
+                .expect("Service available");
+
+            // Call ServiceB
+            let response = tokio::time::timeout(
+                Duration::from_secs(5),
+                proxy_b.call(MethodId::new(0x0001).unwrap(), b"from_nodeA"),
+            )
             .await
-            .unwrap();
+            .expect("Timeout")
+            .expect("Call should succeed");
 
-        // Also require ServiceB
-        let proxy_b = runtime.find::<ServiceB>(InstanceId::Any);
-        let proxy_b = tokio::time::timeout(Duration::from_secs(5), proxy_b.available())
-            .await
-            .expect("Should discover ServiceB")
-            .expect("Service available");
+            assert_eq!(response.payload.as_ref(), b"response_from_nodeB");
 
-        // Call ServiceB
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy_b.call(MethodId::new(0x0001).unwrap(), b"from_nodeA"),
-        )
-        .await
-        .expect("Timeout")
-        .expect("Call should succeed");
-
-        assert_eq!(response.payload.as_ref(), b"response_from_nodeB");
-
-        // Handle incoming call from nodeB
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(5),
-            offering.next()
-        ).await.ok().flatten() {
-            if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply(b"response_from_nodeA").await.unwrap();
+            // Handle incoming call from nodeB
+            if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next())
+                .await
+                .ok()
+                .flatten()
+            {
+                if let ServiceEvent::Call { responder, .. } = event {
+                    responder.reply(b"response_from_nodeA").await.unwrap();
+                }
             }
-        }
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -493,10 +506,11 @@ fn nodes_with_mixed_client_server_roles() {
             .unwrap();
 
         // Handle incoming call from nodeA first
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(5),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             if let ServiceEvent::Call { responder, .. } = event {
                 responder.reply(b"response_from_nodeB").await.unwrap();
             }
@@ -555,26 +569,28 @@ fn multiple_servers_different_instances() {
     sim.host("server1", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
 
-        let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let mut offering = runtime
+                .offer::<TestService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Handle one request
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next()
-        ).await.ok().flatten() {
-            if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply(b"from_instance_1").await.unwrap();
+            // Handle one request
+            if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+                .await
+                .ok()
+                .flatten()
+            {
+                if let ServiceEvent::Call { responder, .. } = event {
+                    responder.reply(b"from_instance_1").await.unwrap();
+                }
             }
-        }
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -588,10 +604,11 @@ fn multiple_servers_different_instances() {
             .unwrap();
 
         // Handle one request
-        if let Some(event) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
             if let ServiceEvent::Call { responder, .. } = event {
                 responder.reply(b"from_instance_2").await.unwrap();
             }
@@ -611,7 +628,8 @@ fn multiple_servers_different_instances() {
         let proxy1 = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1.available())
             .await
-            .expect("Should discover instance 1").expect("Service available");
+            .expect("Should discover instance 1")
+            .expect("Service available");
 
         let response1 = tokio::time::timeout(
             Duration::from_secs(5),
@@ -627,7 +645,8 @@ fn multiple_servers_different_instances() {
         let proxy2 = runtime.find::<TestService>(InstanceId::Id(0x0002));
         let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available())
             .await
-            .expect("Should discover instance 2").expect("Service available");
+            .expect("Should discover instance 2")
+            .expect("Service available");
 
         let response2 = tokio::time::timeout(
             Duration::from_secs(5),

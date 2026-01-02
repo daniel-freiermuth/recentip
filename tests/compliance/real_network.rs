@@ -15,7 +15,7 @@
 
 use serial_test::serial;
 use someip_runtime::{
-    EventgroupId, EventId, InstanceId, MethodId, Runtime, RuntimeConfig, Service, ServiceEvent,
+    EventId, EventgroupId, InstanceId, MethodId, Runtime, RuntimeConfig, Service, ServiceEvent,
     Transport,
 };
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
@@ -116,7 +116,10 @@ async fn udp_request_response_real_network() {
 
     // Spawn server handler task
     let server_task = tokio::spawn(async move {
-        if let Some(ServiceEvent::Call { responder, payload, .. }) = offering.next().await {
+        if let Some(ServiceEvent::Call {
+            responder, payload, ..
+        }) = offering.next().await
+        {
             let mut response = b"ECHO:".to_vec();
             response.extend_from_slice(&payload);
             responder.reply(&response).await.expect("Reply");
@@ -134,13 +137,10 @@ async fn udp_request_response_real_network() {
         .expect("Service available");
 
     let method_id = MethodId::new(0x0001).unwrap();
-    let response = tokio::time::timeout(
-        Duration::from_secs(5),
-        proxy.call(method_id, b"hello"),
-    )
-    .await
-    .expect("Call timeout")
-    .expect("Call success");
+    let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"hello"))
+        .await
+        .expect("Call timeout")
+        .expect("Call success");
 
     assert_eq!(response.payload.as_ref(), b"ECHO:hello");
 
@@ -211,7 +211,10 @@ async fn tcp_request_response_real_network() {
 
         ready_tx.send(()).await.ok();
 
-        if let Some(ServiceEvent::Call { responder, payload, .. }) = offering.next().await {
+        if let Some(ServiceEvent::Call {
+            responder, payload, ..
+        }) = offering.next().await
+        {
             let mut response = b"TCP:".to_vec();
             response.extend_from_slice(&payload);
             responder.reply(&response).await.expect("Reply");
@@ -265,7 +268,10 @@ async fn tcp_magic_cookies_real_network() {
 
         ready_tx.send(()).await.ok();
 
-        if let Some(ServiceEvent::Call { responder, payload, .. }) = offering.next().await {
+        if let Some(ServiceEvent::Call {
+            responder, payload, ..
+        }) = offering.next().await
+        {
             let mut response = b"MAGIC:".to_vec();
             response.extend_from_slice(&payload);
             responder.reply(&response).await.expect("Reply");
@@ -320,7 +326,10 @@ async fn tcp_multiple_requests_real_network() {
         ready_tx.send(()).await.ok();
 
         for _ in 0..5 {
-            if let Some(ServiceEvent::Call { responder, payload, .. }) = offering.next().await {
+            if let Some(ServiceEvent::Call {
+                responder, payload, ..
+            }) = offering.next().await
+            {
                 let mut response = b"MULTI:".to_vec();
                 response.extend_from_slice(&payload);
                 responder.reply(&response).await.expect("Reply");
@@ -380,21 +389,39 @@ async fn udp_events_real_network() {
 
         // Both runtimes bind to the same SD multicast port
         let server_config = RuntimeConfig::builder()
-            .local_addr(SocketAddr::V4(SocketAddrV4::new(get_local_ip(), server_port)))
-            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(239,255,255,250), sd_port)))
+            .local_addr(SocketAddr::V4(SocketAddrV4::new(
+                get_local_ip(),
+                server_port,
+            )))
+            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(239, 255, 255, 250),
+                sd_port,
+            )))
             .build();
         let client_config = RuntimeConfig::builder()
-            .local_addr(SocketAddr::V4(SocketAddrV4::new(get_local_ip(), client_port)))
-            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(239,255,255,250), sd_port)))
+            .local_addr(SocketAddr::V4(SocketAddrV4::new(
+                get_local_ip(),
+                client_port,
+            )))
+            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(239, 255, 255, 250),
+                sd_port,
+            )))
             .build();
 
         let server_runtime = Runtime::new(server_config).await.expect("Server runtime");
-        let mut offering = server_runtime.offer::<EchoService>(InstanceId::Id(0x0003)).await.expect("Offer service");
+        let mut offering = server_runtime
+            .offer::<EchoService>(InstanceId::Id(0x0003))
+            .await
+            .expect("Offer service");
 
         let client_runtime = Runtime::new(client_config).await.expect("Client runtime");
 
         let server_task = tokio::spawn(async move {
-            if let Some(ServiceEvent::Call { responder, payload, .. }) = offering.next().await {
+            if let Some(ServiceEvent::Call {
+                responder, payload, ..
+            }) = offering.next().await
+            {
                 let mut response = b"REUSEPORT:".to_vec();
                 response.extend_from_slice(&payload);
                 responder.reply(&response).await.expect("Reply");
@@ -410,13 +437,11 @@ async fn udp_events_real_network() {
             .expect("Service available");
 
         let method_id = MethodId::new(0x0001).unwrap();
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method_id, b"reuseport"),
-        )
-        .await
-        .expect("Call timeout")
-        .expect("Call success");
+        let response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"reuseport"))
+                .await
+                .expect("Call timeout")
+                .expect("Call success");
 
         assert_eq!(response.payload.as_ref(), b"REUSEPORT:reuseport");
         server_task.await.expect("Server task");
@@ -441,7 +466,9 @@ async fn udp_events_real_network() {
 
         loop {
             match offering.next().await {
-                Some(ServiceEvent::Subscribe { eventgroup, ack, .. }) => {
+                Some(ServiceEvent::Subscribe {
+                    eventgroup, ack, ..
+                }) => {
                     ack.accept().await.expect("Ack");
 
                     let event_id = EventId::new(0x8001).unwrap();

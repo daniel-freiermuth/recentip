@@ -10,9 +10,9 @@
 //! - feat_req_recentip_677: Session ID wraps from 0xFFFF to 0x0001
 //! - feat_req_recentip_711: Server copies Request ID from request to response
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -23,7 +23,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct TestService;
@@ -76,7 +77,10 @@ fn multiple_calls_incrementing_session() {
                 match event {
                     ServiceEvent::Call { responder, .. } => {
                         TEST_SERVER_COUNT.fetch_add(1, Ordering::SeqCst);
-                        responder.reply(&[TEST_SERVER_COUNT.load(Ordering::SeqCst) as u8 - 1]).await.unwrap();
+                        responder
+                            .reply(&[TEST_SERVER_COUNT.load(Ordering::SeqCst) as u8 - 1])
+                            .await
+                            .unwrap();
                     }
                     _ => panic!("Expected Call"),
                 }
@@ -97,19 +101,17 @@ fn multiple_calls_incrementing_session() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
         // Make 3 calls - session IDs should increment
         for i in 0..3 {
-            let response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method, &[i]),
-            )
-            .await
-            .expect("RPC timeout")
-            .expect("RPC should succeed");
+            let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, &[i]))
+                .await
+                .expect("RPC timeout")
+                .expect("RPC should succeed");
 
             TEST_CLIENT_COUNT.fetch_add(1, Ordering::SeqCst);
             // Response payload should match call number
@@ -124,7 +126,11 @@ fn multiple_calls_incrementing_session() {
     // Verify iterations actually happened
     let server = TEST_SERVER_COUNT.load(Ordering::SeqCst);
     let client = TEST_CLIENT_COUNT.load(Ordering::SeqCst);
-    assert_eq!(server, 3, "Server should have handled 3 calls, got {}", server);
+    assert_eq!(
+        server, 3,
+        "Server should have handled 3 calls, got {}",
+        server
+    );
     assert_eq!(client, 3, "Client should have made 3 calls, got {}", client);
 }
 
@@ -169,18 +175,16 @@ fn first_call_session_id() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
         // First call should succeed (implying session ID is valid)
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"first"),
-        )
-        .await
-        .expect("RPC timeout")
-        .expect("RPC should succeed");
+        let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"first"))
+            .await
+            .expect("RPC timeout")
+            .expect("RPC should succeed");
 
         assert_eq!(response.payload.as_ref(), b"ok");
         Ok(())
@@ -217,7 +221,9 @@ fn concurrent_calls_unique_sessions() {
         for _ in 0..3 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         // Echo payload back
                         responder.reply(&payload).await.unwrap();
                     }
@@ -240,20 +246,30 @@ fn concurrent_calls_unique_sessions() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
-        // Launch concurrent calls (though due to turmoil's execution model, 
+        // Launch concurrent calls (though due to turmoil's execution model,
         // they may be serialized)
         let f1 = proxy.call(method, b"A");
         let f2 = proxy.call(method, b"B");
         let f3 = proxy.call(method, b"C");
 
         // All should complete successfully with correct responses
-        let r1 = tokio::time::timeout(Duration::from_secs(5), f1).await.unwrap().unwrap();
-        let r2 = tokio::time::timeout(Duration::from_secs(5), f2).await.unwrap().unwrap();
-        let r3 = tokio::time::timeout(Duration::from_secs(5), f3).await.unwrap().unwrap();
+        let r1 = tokio::time::timeout(Duration::from_secs(5), f1)
+            .await
+            .unwrap()
+            .unwrap();
+        let r2 = tokio::time::timeout(Duration::from_secs(5), f2)
+            .await
+            .unwrap()
+            .unwrap();
+        let r3 = tokio::time::timeout(Duration::from_secs(5), f3)
+            .await
+            .unwrap()
+            .unwrap();
 
         // Each response should echo back its payload
         assert_eq!(r1.payload.as_ref(), b"A");
@@ -292,10 +308,7 @@ fn error_response_preserves_request_id() {
             match event {
                 ServiceEvent::Call { responder, .. } => {
                     // Send error response using reply_error
-                    responder
-                        .reply_error(ReturnCode::NotOk)
-                        .await
-                        .unwrap();
+                    responder.reply_error(ReturnCode::NotOk).await.unwrap();
                 }
                 _ => panic!("Expected Call"),
             }
@@ -315,17 +328,15 @@ fn error_response_preserves_request_id() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
         // Error response should result in Err from call (or Ok with non-Ok return_code)
-        let result = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"test"),
-        )
-        .await
-        .expect("RPC timeout");
+        let result = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"test"))
+            .await
+            .expect("RPC timeout");
 
         // Error response either results in Err, or Ok with return_code != Ok
         match result {
@@ -374,9 +385,14 @@ fn session_increments_across_methods() {
         for _ in 0..3 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { method, responder, .. } => {
+                    ServiceEvent::Call {
+                        method, responder, ..
+                    } => {
                         // Return method ID in response
-                        responder.reply(&method.value().to_be_bytes()).await.unwrap();
+                        responder
+                            .reply(&method.value().to_be_bytes())
+                            .await
+                            .unwrap();
                     }
                     _ => panic!("Expected Call"),
                 }
@@ -397,7 +413,8 @@ fn session_increments_across_methods() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Call different methods
         let method1 = MethodId::new(0x0001).unwrap();
@@ -478,18 +495,16 @@ fn client_id_consistent_across_calls() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
         // Make 5 calls - all should succeed (client ID consistency is internal)
         for i in 0..5 {
-            let response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method, &[i]),
-            )
-            .await
-            .unwrap();
+            let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, &[i]))
+                .await
+                .unwrap();
 
             assert!(response.is_ok(), "Call {} should succeed", i);
         }
@@ -529,11 +544,13 @@ fn out_of_order_response_matching() {
 
         // Collect two requests, then respond in reverse order
         let mut pending_calls = Vec::new();
-        
+
         for _ in 0..2 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { responder, payload, .. } => {
+                    ServiceEvent::Call {
+                        responder, payload, ..
+                    } => {
                         pending_calls.push((responder, payload));
                     }
                     _ => {}
@@ -546,7 +563,7 @@ fn out_of_order_response_matching() {
             // Pop in reverse order (last first)
             let (resp2, _) = pending_calls.pop().unwrap();
             let (resp1, _) = pending_calls.pop().unwrap();
-            
+
             // Second request gets response first, with marker byte [2]
             resp2.reply(&[2]).await.unwrap();
             // Small delay
@@ -569,7 +586,8 @@ fn out_of_order_response_matching() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
@@ -584,8 +602,12 @@ fn out_of_order_response_matching() {
             tokio::time::timeout(Duration::from_secs(5), fut2)
         );
 
-        let response1 = r1.expect("Timeout on first call").expect("First call failed");
-        let response2 = r2.expect("Timeout on second call").expect("Second call failed");
+        let response1 = r1
+            .expect("Timeout on first call")
+            .expect("First call failed");
+        let response2 = r2
+            .expect("Timeout on second call")
+            .expect("Second call failed");
 
         // Despite out-of-order responses, each call should get its correct response
         // First call (sent [1]) should get response [1]
@@ -655,26 +677,22 @@ fn events_use_session_handling() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Receive events
         let mut received = Vec::new();
         for _ in 0..3 {
-            let result = tokio::time::timeout(
-                Duration::from_secs(2),
-                subscription.next(),
-            ).await;
-            
+            let result = tokio::time::timeout(Duration::from_secs(2), subscription.next()).await;
+
             if let Ok(Some(event)) = result {
                 received.push(event);
             }
@@ -721,7 +739,9 @@ fn parallel_requests_have_unique_request_ids() {
         for _ in 0..5 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         responder.reply(&payload).await.unwrap();
                     }
                     _ => {}
@@ -743,7 +763,8 @@ fn parallel_requests_have_unique_request_ids() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
@@ -804,7 +825,9 @@ fn request_id_reusable_after_response() {
         for _ in 0..1000 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         // Echo + 1
                         let val = u16::from_be_bytes([payload[0], payload[1]]);
                         responder.reply(&(val + 1).to_be_bytes()).await.unwrap();
@@ -828,19 +851,18 @@ fn request_id_reusable_after_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
         // Make 1000 sequential requests
         for i in 0u16..1000 {
-            let response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method, &i.to_be_bytes()),
-            )
-            .await
-            .expect("RPC timeout")
-            .expect("RPC should succeed");
+            let response =
+                tokio::time::timeout(Duration::from_secs(5), proxy.call(method, &i.to_be_bytes()))
+                    .await
+                    .expect("RPC timeout")
+                    .expect("RPC should succeed");
 
             let val = u16::from_be_bytes([response.payload[0], response.payload[1]]);
             assert_eq!(val, i + 1, "Response should echo value + 1");
@@ -907,7 +929,9 @@ fn session_id_wraps_to_0001_not_0000() {
         for _ in 0..=0xFFFFu32 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         // Echo the iteration number back to prove we processed it
                         SERVER_COUNT.fetch_add(1, Ordering::SeqCst);
                         responder.reply(&payload).await.unwrap();
@@ -931,7 +955,8 @@ fn session_id_wraps_to_0001_not_0000() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
@@ -1047,19 +1072,17 @@ fn request_response_uses_session_handling() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
         // Make 3 calls - session handling means each gets unique session ID
         for i in 0..3 {
-            let response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method, &[i]),
-            )
-            .await
-            .expect("RPC timeout")
-            .expect("RPC should succeed");
+            let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, &[i]))
+                .await
+                .expect("RPC timeout")
+                .expect("RPC should succeed");
 
             assert!(response.payload.is_empty());
         }
@@ -1100,7 +1123,9 @@ fn fire_and_forget_uses_session_handling() {
         for _ in 0..3 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::FireForget { payload, method, .. } => {
+                    ServiceEvent::FireForget {
+                        payload, method, ..
+                    } => {
                         assert_eq!(method.value(), 0x0010);
                         received.push(payload.to_vec());
                     }
@@ -1111,7 +1136,10 @@ fn fire_and_forget_uses_session_handling() {
         // Verify we received all 3 messages (order may vary)
         assert_eq!(received.len(), 3);
         received.sort();
-        assert_eq!(received, vec![b"ff1".to_vec(), b"ff2".to_vec(), b"ff3".to_vec()]);
+        assert_eq!(
+            received,
+            vec![b"ff1".to_vec(), b"ff2".to_vec(), b"ff3".to_vec()]
+        );
 
         // Wait for client to send all messages
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -1127,7 +1155,8 @@ fn fire_and_forget_uses_session_handling() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0010).unwrap();
 
@@ -1191,18 +1220,16 @@ fn server_copies_request_id_to_response() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
         // Send request and verify response matches
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"request"),
-        )
-        .await
-        .expect("RPC timeout")
-        .expect("RPC should succeed");
+        let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"request"))
+            .await
+            .expect("RPC timeout")
+            .expect("RPC should succeed");
 
         // If response was received correctly, Request ID was copied
         // (otherwise the runtime couldn't match it to our pending call)
@@ -1238,7 +1265,9 @@ fn request_id_differentiates_parallel_calls() {
         for _ in 0..10 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         // Return payload doubled
                         let val = payload[0];
                         responder.reply(&[val * 2]).await.unwrap();
@@ -1262,15 +1291,14 @@ fn request_id_differentiates_parallel_calls() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let method = MethodId::new(0x0001).unwrap();
 
         // Send 10 parallel requests
         let payloads: Vec<[u8; 1]> = (1u8..=10).map(|i| [i]).collect();
-        let futures: Vec<_> = payloads.iter()
-            .map(|p| proxy.call(method, p))
-            .collect();
+        let futures: Vec<_> = payloads.iter().map(|p| proxy.call(method, p)).collect();
 
         // Await all
         let mut results = Vec::new();
@@ -1328,13 +1356,11 @@ fn late_server_discovery_rpc() {
 
         // Service is now available, make RPC call
         let method = MethodId::new(0x0001).unwrap();
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"late-client"),
-        )
-        .await
-        .expect("RPC timeout")
-        .expect("RPC should succeed");
+        let response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"late-client"))
+                .await
+                .expect("RPC timeout")
+                .expect("RPC should succeed");
 
         assert_eq!(response.payload.as_ref(), b"hello-late-client");
         RPC_COMPLETED.store(true, Ordering::SeqCst);
@@ -1358,7 +1384,9 @@ fn late_server_discovery_rpc() {
         // Handle the RPC call from the waiting client
         if let Some(event) = offering.next().await {
             match event {
-                ServiceEvent::Call { payload, responder, .. } => {
+                ServiceEvent::Call {
+                    payload, responder, ..
+                } => {
                     // Respond with greeting + payload
                     let mut response = b"hello-".to_vec();
                     response.extend_from_slice(&payload);
@@ -1373,7 +1401,10 @@ fn late_server_discovery_rpc() {
     });
 
     sim.run().unwrap();
-    assert!(RPC_COMPLETED.load(Ordering::SeqCst), "RPC should have completed");
+    assert!(
+        RPC_COMPLETED.load(Ordering::SeqCst),
+        "RPC should have completed"
+    );
 }
 
 /// Test that a client can wait for a service that isn't available yet,
@@ -1410,7 +1441,10 @@ fn late_server_discovery_subscribe_event() {
         // Send event
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.notify(eventgroup, event_id, b"late-event").await.unwrap();
+        offering
+            .notify(eventgroup, event_id, b"late-event")
+            .await
+            .unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -1429,21 +1463,16 @@ fn late_server_discovery_subscribe_event() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
-        let event = tokio::time::timeout(
-            Duration::from_secs(5),
-            subscription.next(),
-        )
-        .await
-        .expect("Event timeout")
-        .expect("Should receive event");
+        let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
+            .await
+            .expect("Event timeout")
+            .expect("Should receive event");
 
         assert_eq!(event.payload.as_ref(), b"late-event");
         EVENT_RECEIVED.store(true, Ordering::SeqCst);
@@ -1452,5 +1481,8 @@ fn late_server_discovery_subscribe_event() {
     });
 
     sim.run().unwrap();
-    assert!(EVENT_RECEIVED.load(Ordering::SeqCst), "Event should have been received");
+    assert!(
+        EVENT_RECEIVED.load(Ordering::SeqCst),
+        "Event should have been received"
+    );
 }

@@ -20,10 +20,10 @@
 //! - feat_req_recentipsd_872: Reboot detection triggers TCP reset
 
 use bytes::Bytes;
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::{Runtime, RuntimeConfig, Transport};
 use someip_runtime::wire::Header;
-use someip_runtime::handle::ServiceEvent;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -34,7 +34,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime (needs both UdpSocket and TcpStream)
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct TestService;
@@ -99,9 +100,7 @@ fn is_magic_cookie(data: &[u8]) -> bool {
 /// Create a RuntimeConfig for TCP transport
 #[allow(dead_code)]
 fn tcp_config() -> RuntimeConfig {
-    RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .build()
+    RuntimeConfig::builder().transport(Transport::Tcp).build()
 }
 
 #[allow(dead_code)]
@@ -208,7 +207,9 @@ fn single_tcp_connection_reused() {
         for _ in 0..5 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         responder.reply(&payload).await.unwrap();
                     }
                     _ => {}
@@ -236,13 +237,11 @@ fn single_tcp_connection_reused() {
 
         // Send multiple requests
         for i in 0u8..5 {
-            let response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method_id, &[i]),
-            )
-            .await
-            .expect("Timeout")
-            .expect("Call should succeed");
+            let response =
+                tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, &[i]))
+                    .await
+                    .expect("Timeout")
+                    .expect("Call should succeed");
 
             assert_eq!(response.payload.as_ref(), &[i]);
         }
@@ -308,13 +307,11 @@ fn client_reestablishes_connection() {
         let method_id = MethodId::new(0x0001).unwrap();
 
         // First request establishes connection
-        let _response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method_id, b"first"),
-        )
-        .await
-        .expect("Timeout")
-        .expect("Call should succeed");
+        let _response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"first"))
+                .await
+                .expect("Timeout")
+                .expect("Call should succeed");
 
         // TODO: Simulate connection loss using turmoil::partition("server", "client")
         // turmoil::partition("server", "client");
@@ -322,13 +319,11 @@ fn client_reestablishes_connection() {
         // turmoil::repair("server", "client");
 
         // Second request after "reconnection" should succeed
-        let _response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method_id, b"second"),
-        )
-        .await
-        .expect("Timeout")
-        .expect("Reconnection should succeed");
+        let _response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"second"))
+                .await
+                .expect("Timeout")
+                .expect("Reconnection should succeed");
 
         Ok(())
     });
@@ -366,7 +361,9 @@ fn each_message_has_own_header() {
         for expected in [b"short".as_slice(), b"medium length", b"a"] {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         assert_eq!(payload.as_ref(), expected);
                         responder.reply(expected).await.unwrap();
                     }
@@ -395,13 +392,11 @@ fn each_message_has_own_header() {
 
         // Send multiple requests with different payloads
         for payload in [b"short".as_slice(), b"medium length", b"a"] {
-            let response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method_id, payload),
-            )
-            .await
-            .expect("Timeout")
-            .expect("Call should succeed");
+            let response =
+                tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, payload))
+                    .await
+                    .expect("Timeout")
+                    .expect("Call should succeed");
 
             assert_eq!(response.payload.as_ref(), payload);
         }
@@ -436,10 +431,12 @@ fn multiple_messages_per_segment_parsed() {
 
         // Server should receive all 3 requests even if sent in single segment
         for _ in 0..3 {
-            if let Some(ServiceEvent::Call { responder, .. }) = tokio::time::timeout(
-                Duration::from_secs(10),
-                offering.next()
-            ).await.ok().flatten() {
+            if let Some(ServiceEvent::Call { responder, .. }) =
+                tokio::time::timeout(Duration::from_secs(10), offering.next())
+                    .await
+                    .ok()
+                    .flatten()
+            {
                 responder.reply(&[]).await.unwrap();
             }
         }
@@ -465,13 +462,11 @@ fn multiple_messages_per_segment_parsed() {
 
         // Send requests quickly (may be coalesced in TCP)
         for i in 0u8..3 {
-            let _response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method_id, &[i]),
-            )
-            .await
-            .expect("Timeout")
-            .expect("Call should succeed");
+            let _response =
+                tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, &[i]))
+                    .await
+                    .expect("Timeout")
+                    .expect("Call should succeed");
         }
 
         Ok(())
@@ -604,13 +599,11 @@ fn magic_cookie_recognized() {
         let method_id = MethodId::new(0x0001).unwrap();
 
         // With magic cookies enabled, communication should still work
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method_id, b"request"),
-        )
-        .await
-        .expect("Timeout")
-        .expect("Call should succeed with magic cookies");
+        let response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"request"))
+                .await
+                .expect("Timeout")
+                .expect("Call should succeed with magic cookies");
 
         assert_eq!(response.payload.as_ref(), b"response");
 
@@ -696,7 +689,7 @@ fn tcp_segment_starts_with_magic_cookie() {
 fn only_one_magic_cookie_per_segment() {
     covers!(feat_req_recentip_592);
 
-    // This test verifies that even with multiple messages, the 
+    // This test verifies that even with multiple messages, the
     // implementation only prepends one Magic Cookie per write operation.
     // Each write is treated as a TCP segment.
 
@@ -808,13 +801,11 @@ fn tcp_header_format_matches_udp() {
 
         let method_id = MethodId::new(0x0001).unwrap();
 
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method_id, b"request"),
-        )
-        .await
-        .expect("Timeout")
-        .expect("Call should succeed");
+        let response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"request"))
+                .await
+                .expect("Timeout")
+                .expect("Call should succeed");
 
         // Response received proves the header format worked
         // (same 16-byte header as UDP)
@@ -886,13 +877,11 @@ fn tcp_loss_does_not_reset_session_id() {
         let method_id = MethodId::new(0x0001).unwrap();
 
         // First request
-        let _response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method_id, b"first"),
-        )
-        .await
-        .expect("Timeout")
-        .expect("Call should succeed");
+        let _response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"first"))
+                .await
+                .expect("Timeout")
+                .expect("Call should succeed");
 
         // TODO: Capture session_id from first request
 
@@ -902,13 +891,11 @@ fn tcp_loss_does_not_reset_session_id() {
         // turmoil::repair("server", "client");
 
         // Second request after reconnection
-        let _response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method_id, b"second"),
-        )
-        .await
-        .expect("Timeout")
-        .expect("Reconnection should succeed");
+        let _response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"second"))
+                .await
+                .expect("Timeout")
+                .expect("Reconnection should succeed");
 
         // TODO: Verify session_id continued incrementing (not reset to 1)
         // Session ID should be session_before + 1 (or wrapped), not 1
@@ -945,18 +932,22 @@ fn reboot_detection_resets_tcp_connections() {
             .unwrap();
 
         // Handle first request
-        if let Some(ServiceEvent::Call { responder, .. }) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(ServiceEvent::Call { responder, .. }) =
+            tokio::time::timeout(Duration::from_secs(10), offering.next())
+                .await
+                .ok()
+                .flatten()
+        {
             responder.reply(b"response1").await.unwrap();
         }
 
         // Handle second request (after "reboot")
-        if let Some(ServiceEvent::Call { responder, .. }) = tokio::time::timeout(
-            Duration::from_secs(10),
-            offering.next()
-        ).await.ok().flatten() {
+        if let Some(ServiceEvent::Call { responder, .. }) =
+            tokio::time::timeout(Duration::from_secs(10), offering.next())
+                .await
+                .ok()
+                .flatten()
+        {
             responder.reply(b"response2").await.unwrap();
         }
 
@@ -980,23 +971,19 @@ fn reboot_detection_resets_tcp_connections() {
         let method_id = MethodId::new(0x0001).unwrap();
 
         // First request - establishes TCP connection
-        let _response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method_id, b"request1"),
-        )
-        .await
-        .expect("Timeout")
-        .expect("First call should succeed");
+        let _response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"request1"))
+                .await
+                .expect("Timeout")
+                .expect("First call should succeed");
 
         // Second request - uses same connection (or reconnects if reboot detected)
         // The reboot detection happens at SD layer, which would trigger TCP reset
-        let _response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method_id, b"request2"),
-        )
-        .await
-        .expect("Timeout")
-        .expect("Second call should succeed after potential reconnect");
+        let _response =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"request2"))
+                .await
+                .expect("Timeout")
+                .expect("Second call should succeed after potential reconnect");
 
         // Test passes if both requests complete successfully
         // The actual reboot detection is tested by the runtime logic
@@ -1037,4 +1024,3 @@ fn tcp_nodelay_enabled() {
 
     sim.run().unwrap();
 }
-

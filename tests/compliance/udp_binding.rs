@@ -12,10 +12,10 @@
 //! - feat_req_recentip_814: Clients receive via unicast and/or multicast
 
 use bytes::Bytes;
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::{Runtime, RuntimeConfig};
 use someip_runtime::wire::{Header, SD_SERVICE_ID};
-use someip_runtime::handle::ServiceEvent;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -27,7 +27,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime (UDP for networking, TCP for connection pool)
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct TestService;
@@ -186,7 +187,9 @@ fn udp_each_message_has_own_header() {
         for expected in expected_payloads {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         assert_eq!(payload.as_ref(), expected);
                         responder.reply(expected).await.unwrap();
                     }
@@ -216,13 +219,11 @@ fn udp_each_message_has_own_header() {
         // Send three requests with different payloads
         let payloads: [&[u8]; 3] = [b"one", b"two", b"three"];
         for payload in payloads {
-            let response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method_id, payload),
-            )
-            .await
-            .expect("Timeout")
-            .expect("Call should succeed");
+            let response =
+                tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, payload))
+                    .await
+                    .expect("Timeout")
+                    .expect("Call should succeed");
 
             assert_eq!(response.payload.as_ref(), payload);
         }
@@ -263,7 +264,9 @@ fn udp_multiple_messages_format_supported() {
         for _ in 0..5 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         responder.reply(&payload).await.unwrap();
                     }
                     _ => {}
@@ -328,13 +331,11 @@ fn udp_multiple_messages_format_supported() {
 
         // Send multiple requests
         for i in 0u8..5 {
-            let _response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method_id, &[i]),
-            )
-            .await
-            .expect("Timeout")
-            .expect("Call should succeed");
+            let _response =
+                tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, &[i]))
+                    .await
+                    .expect("Timeout")
+                    .expect("Call should succeed");
         }
 
         Ok(())
@@ -488,12 +489,18 @@ fn udp_multicast_eventgroup_with_initial_events() {
 
         // Send initial event (unicast to subscriber)
         let event_id = EventId::new(0x8001).unwrap();
-        offering.notify(eventgroup, event_id, b"initial value").await.unwrap();
+        offering
+            .notify(eventgroup, event_id, b"initial value")
+            .await
+            .unwrap();
 
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         // Send subsequent event (could be multicast in full implementation)
-        offering.notify(eventgroup, event_id, b"update").await.unwrap();
+        offering
+            .notify(eventgroup, event_id, b"update")
+            .await
+            .unwrap();
 
         tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())
@@ -564,7 +571,9 @@ fn udp_handles_various_payload_sizes() {
         for _ in 0..3 {
             if let Some(event) = offering.next().await {
                 match event {
-                    ServiceEvent::Call { payload, responder, .. } => {
+                    ServiceEvent::Call {
+                        payload, responder, ..
+                    } => {
                         responder.reply(&payload).await.unwrap();
                     }
                     _ => {}
@@ -592,19 +601,17 @@ fn udp_handles_various_payload_sizes() {
 
         // Test various payload sizes
         let payloads = [
-            b"x".to_vec(),                    // Tiny
+            b"x".to_vec(),                     // Tiny
             b"medium length payload".to_vec(), // Medium
-            vec![0xAB; 1000],                 // Large (within UDP MTU)
+            vec![0xAB; 1000],                  // Large (within UDP MTU)
         ];
 
         for payload in &payloads {
-            let response = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.call(method_id, payload),
-            )
-            .await
-            .expect("Timeout")
-            .expect("Call should succeed");
+            let response =
+                tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, payload))
+                    .await
+                    .expect("Timeout")
+                    .expect("Call should succeed");
 
             assert_eq!(response.payload.as_ref(), payload.as_slice());
         }

@@ -62,8 +62,8 @@ use std::net::SocketAddr;
 pub mod net;
 
 pub mod error;
-pub mod runtime;
 pub mod handle;
+pub mod runtime;
 pub mod tcp;
 
 /// Wire format parsing for SOME/IP headers and messages.
@@ -71,8 +71,8 @@ pub mod tcp;
 pub mod wire;
 
 pub use error::*;
-pub use runtime::{MethodConfig, Runtime, RuntimeConfig, Transport};
 pub use handle::*;
+pub use runtime::{MethodConfig, Runtime, RuntimeConfig, Transport};
 
 // ============================================================================
 // PROTOCOL IDENTIFIERS
@@ -109,7 +109,7 @@ pub enum InstanceId {
 impl InstanceId {
     /// Match any instance (0xFFFF wildcard) - alias for `Any`
     pub const ANY: Self = Self::Any;
-    
+
     /// Create a specific instance ID. Returns None for reserved values.
     pub fn new(id: u16) -> Option<Self> {
         match id {
@@ -141,7 +141,7 @@ impl MethodId {
     /// Create a new MethodId. Valid range: 0x0000-0x7FFF (high bit reserved for events)
     pub fn new(id: u16) -> Option<Self> {
         if id >= 0x8000 {
-            None  // High bit set = event, not method
+            None // High bit set = event, not method
         } else {
             Some(Self(id))
         }
@@ -297,8 +297,7 @@ pub struct ClientInfo {
 
 pub mod prelude {
     pub use crate::{
-        Error, Event, EventId, EventgroupId, 
-        InstanceId, MajorVersion, MethodConfig, MethodId, MinorVersion, Response, Result, 
-        ReturnCode, Runtime, RuntimeConfig, Service, ServiceId,
+        Error, Event, EventId, EventgroupId, InstanceId, MajorVersion, MethodConfig, MethodId,
+        MinorVersion, Response, Result, ReturnCode, Runtime, RuntimeConfig, Service, ServiceId,
     };
 }

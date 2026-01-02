@@ -4,9 +4,9 @@
 //!
 //! Reference: someip-sd.rst (Eventgroup entries and subscription handling)
 
+use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::handle::ServiceEvent;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -18,7 +18,8 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime = Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
+type TurmoilRuntime =
+    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 /// Test service definition
 struct EventService;
@@ -51,28 +52,34 @@ fn subscribe_and_receive_events() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let offering = runtime
-            .offer::<EventService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let offering = runtime
+                .offer::<EventService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Wait for subscription
-        tokio::time::sleep(Duration::from_millis(500)).await;
+            // Wait for subscription
+            tokio::time::sleep(Duration::from_millis(500)).await;
 
-        // Send events
-        let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let event_id = EventId::new(0x8001).unwrap();
+            // Send events
+            let eventgroup = EventgroupId::new(0x0001).unwrap();
+            let event_id = EventId::new(0x8001).unwrap();
 
-        offering.notify(eventgroup, event_id, b"event1").await.unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        offering.notify(eventgroup, event_id, b"event2").await.unwrap();
+            offering
+                .notify(eventgroup, event_id, b"event1")
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            offering
+                .notify(eventgroup, event_id, b"event2")
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -85,17 +92,16 @@ fn subscribe_and_receive_events() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Receive first event
         let event1 = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -140,17 +146,17 @@ fn subscribe_receives_ack() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let _offering = runtime
-            .offer::<EventService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let _offering = runtime
+                .offer::<EventService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(1000)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -163,17 +169,15 @@ fn subscribe_receives_ack() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        
+
         // Subscribe should succeed (implying SubscribeAck was received)
-        let result = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout");
+        let result = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+            .await
+            .expect("Subscribe timeout");
 
         assert!(result.is_ok(), "Subscription should be acknowledged");
 
@@ -206,33 +210,36 @@ fn unsubscribe_on_drop() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let offering = runtime
-            .offer::<EventService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let offering = runtime
+                .offer::<EventService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Wait for subscribe
-        tokio::time::sleep(Duration::from_millis(500)).await;
+            // Wait for subscribe
+            tokio::time::sleep(Duration::from_millis(500)).await;
 
-        let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let event_id = EventId::new(0x8001).unwrap();
-        
-        // Send an event - should be delivered
-        offering.notify(eventgroup, event_id, b"before_unsub").await.unwrap();
+            let eventgroup = EventgroupId::new(0x0001).unwrap();
+            let event_id = EventId::new(0x8001).unwrap();
 
-        // Wait for unsubscribe
-        tokio::time::sleep(Duration::from_millis(500)).await;
+            // Send an event - should be delivered
+            offering
+                .notify(eventgroup, event_id, b"before_unsub")
+                .await
+                .unwrap();
 
-        // Send another event - should NOT be delivered (client unsubscribed)
-        // (We can't directly test this without packet inspection, but the flow is verified)
-        let _ = offering.notify(eventgroup, event_id, b"after_unsub").await;
+            // Wait for unsubscribe
+            tokio::time::sleep(Duration::from_millis(500)).await;
 
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            // Send another event - should NOT be delivered (client unsubscribed)
+            // (We can't directly test this without packet inspection, but the flow is verified)
+            let _ = offering.notify(eventgroup, event_id, b"after_unsub").await;
+
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -245,18 +252,17 @@ fn unsubscribe_on_drop() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        
+
         {
-            let mut subscription = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy.subscribe(eventgroup),
-            )
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+            let mut subscription =
+                tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                    .await
+                    .expect("Subscribe timeout")
+                    .expect("Subscribe should succeed");
 
             // Receive the first event
             let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -302,28 +308,34 @@ fn subscribe_multiple_eventgroups() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let offering = runtime
-            .offer::<EventService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let offering = runtime
+                .offer::<EventService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
 
-        // Send to different eventgroups with different event IDs
-        let eg1 = EventgroupId::new(0x0001).unwrap();
-        let eg2 = EventgroupId::new(0x0002).unwrap();
-        let event_id1 = EventId::new(0x8001).unwrap();
-        let event_id2 = EventId::new(0x8002).unwrap();
+            // Send to different eventgroups with different event IDs
+            let eg1 = EventgroupId::new(0x0001).unwrap();
+            let eg2 = EventgroupId::new(0x0002).unwrap();
+            let event_id1 = EventId::new(0x8001).unwrap();
+            let event_id2 = EventId::new(0x8002).unwrap();
 
-        offering.notify(eg1, event_id1, b"group1_event").await.unwrap();
-        offering.notify(eg2, event_id2, b"group2_event").await.unwrap();
+            offering
+                .notify(eg1, event_id1, b"group1_event")
+                .await
+                .unwrap();
+            offering
+                .notify(eg2, event_id2, b"group2_event")
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -336,7 +348,8 @@ fn subscribe_multiple_eventgroups() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Subscribe to both eventgroups
         let eg1 = EventgroupId::new(0x0001).unwrap();
@@ -377,7 +390,7 @@ fn subscribe_multiple_eventgroups() {
         assert!(event2.is_some());
         assert!(event3.is_some());
         assert!(event4.is_some());
-        
+
         // Collect all received payloads
         let mut payloads: Vec<_> = vec![
             event1.unwrap().payload.to_vec(),
@@ -386,10 +399,22 @@ fn subscribe_multiple_eventgroups() {
             event4.unwrap().payload.to_vec(),
         ];
         payloads.sort();
-        
+
         // Should have received both events twice (once per subscription)
-        assert_eq!(payloads.iter().filter(|p| p.as_slice() == b"group1_event").count(), 2);
-        assert_eq!(payloads.iter().filter(|p| p.as_slice() == b"group2_event").count(), 2);
+        assert_eq!(
+            payloads
+                .iter()
+                .filter(|p| p.as_slice() == b"group1_event")
+                .count(),
+            2
+        );
+        assert_eq!(
+            payloads
+                .iter()
+                .filter(|p| p.as_slice() == b"group2_event")
+                .count(),
+            2
+        );
 
         Ok(())
     });
@@ -422,25 +447,28 @@ fn event_id_has_high_bit() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let offering = runtime
-            .offer::<EventService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let offering = runtime
+                .offer::<EventService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
 
-        let eventgroup = EventgroupId::new(0x0001).unwrap();
-        // Event ID with high bit set
-        let event_id = EventId::new(0x8100).unwrap();
+            let eventgroup = EventgroupId::new(0x0001).unwrap();
+            // Event ID with high bit set
+            let event_id = EventId::new(0x8100).unwrap();
 
-        offering.notify(eventgroup, event_id, b"data").await.unwrap();
+            offering
+                .notify(eventgroup, event_id, b"data")
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -453,16 +481,15 @@ fn event_id_has_high_bit() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
             .await
@@ -505,44 +532,51 @@ fn mixed_rpc_and_events() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            let config = RuntimeConfig::default();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let mut offering = runtime
-            .offer::<EventService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
+            let mut offering = runtime
+                .offer::<EventService>(InstanceId::Id(0x0001))
+                .await
+                .unwrap();
 
-        // Wait for subscription
-        tokio::time::sleep(Duration::from_millis(500)).await;
+            // Wait for subscription
+            tokio::time::sleep(Duration::from_millis(500)).await;
 
-        // Handle events - may receive Subscribe first, then Call
-        let mut call_handled = false;
-        for _ in 0..5 {
-            if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next()).await.ok().flatten() {
-                match event {
-                    ServiceEvent::Call { responder, .. } => {
-                        responder.reply(b"response").await.unwrap();
-                        call_handled = true;
-                        break;
+            // Handle events - may receive Subscribe first, then Call
+            let mut call_handled = false;
+            for _ in 0..5 {
+                if let Some(event) = tokio::time::timeout(Duration::from_secs(5), offering.next())
+                    .await
+                    .ok()
+                    .flatten()
+                {
+                    match event {
+                        ServiceEvent::Call { responder, .. } => {
+                            responder.reply(b"response").await.unwrap();
+                            call_handled = true;
+                            break;
+                        }
+                        ServiceEvent::Subscribe { .. } => {
+                            // Expected - subscription arrived, continue to wait for call
+                        }
+                        _ => {}
                     }
-                    ServiceEvent::Subscribe { .. } => {
-                        // Expected - subscription arrived, continue to wait for call
-                    }
-                    _ => {}
                 }
             }
-        }
-        assert!(call_handled, "Should have handled an RPC call");
+            assert!(call_handled, "Should have handled an RPC call");
 
-        // Emit event after RPC
-        let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let event_id = EventId::new(0x8001).unwrap();
-        offering.notify(eventgroup, event_id, b"post_rpc_event").await.unwrap();
+            // Emit event after RPC
+            let eventgroup = EventgroupId::new(0x0001).unwrap();
+            let event_id = EventId::new(0x8001).unwrap();
+            offering
+                .notify(eventgroup, event_id, b"post_rpc_event")
+                .await
+                .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        *flag.lock().unwrap() = true;
-        Ok(())
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
         }
     });
 
@@ -555,27 +589,23 @@ fn mixed_rpc_and_events() {
         let proxy = runtime.find::<EventService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
-            .expect("Discovery timeout").expect("Service available");
+            .expect("Discovery timeout")
+            .expect("Service available");
 
         // Subscribe to events
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Make RPC call
         let method = MethodId::new(0x0001).unwrap();
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"request"),
-        )
-        .await
-        .expect("RPC timeout")
-        .expect("RPC should succeed");
+        let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"request"))
+            .await
+            .expect("RPC timeout")
+            .expect("RPC should succeed");
 
         assert_eq!(response.payload.as_ref(), b"response");
 
