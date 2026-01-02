@@ -619,6 +619,8 @@ pub struct Runtime<
     L: TcpListener<Stream = T> = tokio::net::TcpListener,
 > {
     inner: Arc<RuntimeInner>,
+    /// Handle to the runtime task, used for graceful shutdown
+    runtime_task: Option<tokio::task::JoinHandle<()>>,
     _phantom: std::marker::PhantomData<(U, T, L)>,
 }
 
@@ -712,7 +714,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 
         let state = RuntimeState::new(local_addr, client_rpc_addr, client_rpc_send_tx, config.clone());
 
-        tokio::spawn(async move {
+        let runtime_task = tokio::spawn(async move {
             runtime_task::<U, T, L>(
                 sd_socket,
                 config,
@@ -730,6 +732,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 
         Ok(Self {
             inner,
+            runtime_task: Some(runtime_task),
             _phantom: std::marker::PhantomData,
         })
     }
@@ -949,12 +952,40 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
             events: events_rx,
         })
     }
+
+    /// Gracefully shutdown the runtime.
+    ///
+    /// This sends a shutdown command to the runtime task and waits for it to
+    /// complete all pending operations (including sending any pending RPC responses).
+    ///
+    /// Use this when you need to ensure all in-flight responses are sent before
+    /// the runtime exits. If you just drop the runtime, pending responses may
+    /// not be sent.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Process requests...
+    /// responder.reply(payload).await?;
+    /// 
+    /// // Ensure the response is actually sent before exiting
+    /// runtime.shutdown().await;
+    /// ```
+    pub async fn shutdown(mut self) {
+        // Send shutdown command to the runtime task
+        let _ = self.inner.cmd_tx.send(Command::Shutdown).await;
+        
+        // Wait for the runtime task to complete
+        if let Some(handle) = self.runtime_task.take() {
+            let _ = handle.await;
+        }
+    }
 }
 
 impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Clone for Runtime<U, T, L> {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
+            runtime_task: None, // Clones don't own the runtime task
             _phantom: std::marker::PhantomData,
         }
     }

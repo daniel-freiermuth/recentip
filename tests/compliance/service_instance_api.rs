@@ -2249,6 +2249,10 @@ fn test_large_tcp_rpc_payload() {
                 responder.reply(payload.as_ref()).await.unwrap();
             }
 
+            // Gracefully shutdown to ensure response is sent
+            drop(offering);
+            runtime.shutdown().await;
+
             flag.store(true, Ordering::SeqCst);
             Ok(())
         }
