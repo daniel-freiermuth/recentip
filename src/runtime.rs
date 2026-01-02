@@ -2730,15 +2730,33 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             }
 
             if let Some(discovered) = state.discovered.get(&key) {
+                // Determine protocol for subscription endpoint
+                let protocol = match state.config.transport {
+                    Transport::Tcp => L4Protocol::Tcp,
+                    Transport::Udp => L4Protocol::Udp,
+                };
+
                 let mut msg = SdMessage::new(state.sd_flags(true));
-                msg.add_entry(SdEntry::subscribe_eventgroup(
+                // Include the same endpoint option as in Subscribe so server knows which subscriber to remove
+                let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
+                    addr: match state.local_endpoint {
+                        SocketAddr::V4(v4) => *v4.ip(),
+                        _ => Ipv4Addr::LOCALHOST,
+                    },
+                    port: state.client_rpc_endpoint.port(),
+                    protocol,
+                });
+                let mut entry = SdEntry::subscribe_eventgroup(
                     service_id.value(),
                     instance_id.value(),
                     0xFF,
                     eventgroup_id,
+                    0, // TTL=0 indicates unsubscribe
                     0,
-                    0,
-                ));
+                );
+                entry.index_1st_option = opt_idx;
+                entry.num_options_1 = 1;
+                msg.add_entry(entry);
 
                 actions.push(Action::SendSd {
                     message: msg,
