@@ -181,6 +181,31 @@ let config = ServerConfig::builder()
 - User keeps the `Available` proxy and can call methods at any time
 - Cleaner separation: subscription = events, proxy = methods
 
+### 10. Separate Binding from Announcing
+
+**Decision**: Server-side uses `ServiceInstance<State>` with distinct `Bound` and `Announced` states.
+
+**Rationale**:
+- The SOME/IP-SD spec clearly separates **network binding** (listening on endpoint) from **availability state** (up/down announced via SD)
+- Per `feat_req_recentipsd_184`: "service instance locations are commonly known; therefore, the state of the service instance is of primary concern"
+- Per `feat_req_recentipsd_444`: "implicit registration of a client to receive notifications from a server shall be supported" (pre-configured/static mode)
+- Enables initialization before announcing availability
+- Enables graceful shutdown (stop announcing before closing sockets)
+- Enables static/pre-configured deployments without SD
+- Enables testing without SD machinery
+
+```rust
+// Bind first, announce later
+let mut service = runtime.bind::<MyService>(instance).build().await?;
+do_initialization().await?;  // Service not yet discoverable
+let mut service = service.announce().await?;  // Now sends OfferService
+
+// Graceful shutdown
+let service = service.stop_announcing().await?;  // Sends StopOfferService
+tokio::time::sleep(Duration::from_secs(1)).await;  // Drain in-flight
+drop(service);  // Close sockets
+```
+
 ---
 
 ## Architecture: Layered Crates
@@ -649,22 +674,41 @@ Note: subscribe(&self, ...) takes a reference, so the Available proxy
 ### Server-Side Type Flow
 
 ```
-Server
+Runtime
    │
-   └── configure() ──► ServiceConfig
-                           │
-                           └── offer() ──► ServiceOffering
-                                               │
-                                          next() ──► ServiceEvent
-                                               │
-                        ┌──────────────────────┼──────────────────────┐
-                        │                      │                      │
-                  MethodCall             Subscribe              (other)
-                        │                      │
-                  .responder                 .ack
-                        │                      │
-                  send_ok()/send_error()   accept()/reject()
-                  (must consume)           (must consume)
+   └── bind() ──► ServiceBuilder
+                       │
+                       └── build() ──► ServiceInstance<Bound>
+                                           │
+                    ┌──────────────────────┼───────────────────────┐
+                    │                      │                       │
+              next()                 announce()               (drop = close)
+              notify_static()              │
+              (serve static clients)       ▼
+                    │            ServiceInstance<Announced>
+                    │                      │
+                    │         ┌────────────┼──────────────┐
+                    │         │            │              │
+                    │       next()   notify()    stop_announcing()
+                    │       has_subscribers()         │
+                    │         │                       ▼
+                    │         ▼              ServiceInstance<Bound>
+                    │   ServiceEvent                  │
+                    │         │                       │
+                    │   ┌─────┼─────────┐             │
+                    │   │     │         │             │
+                    │ MethodCall  Subscribe  (other)  │
+                    │   │           │                 │
+                    │ .responder  .ack                │
+                    │   │           │                 │
+                    │ send_ok()  accept()/reject()    │
+                    │ send_error() (must consume)     │
+                    │ (must consume)                  │
+                    └─────────────────────────────────┘
+
+// Drop behavior:
+// - ServiceInstance<Announced>: sends StopOfferService, then closes socket
+// - ServiceInstance<Bound>: just closes socket
 ```
 
 ### Compile-Time Enforcement
@@ -679,6 +723,71 @@ Server
 | Use reserved Instance ID 0x0000 | `ConcreteInstanceId::new()` returns `None` |
 | App traffic on SD port 30490 | `AppPort::new(30490)` returns `None` |
 | TCP multicast | Type doesn't exist |
+| Notify dynamic subscribers before announce | `notify()` only on `ServiceInstance<Announced>` |
+| Announce twice | `announce()` consumes `ServiceInstance<Bound>` |
+
+### ServiceInstance<State> API
+
+The server-side API uses typestate to separate **network binding** from **SD announcement**:
+
+```rust
+pub struct ServiceInstance<State> { /* ... */ }
+
+pub struct Bound;      // Listening on endpoint, not announced
+pub struct Announced;  // Listening + announced via SD
+
+// ─────────────────────────────────────────────────────────────
+// Common to both states
+// ─────────────────────────────────────────────────────────────
+impl<S> ServiceInstance<S> {
+    /// Receive next service event (RPC, subscription requests, etc.)
+    pub async fn next(&mut self) -> Option<ServiceEvent>;
+    
+    /// Get local endpoint info
+    pub fn local_endpoint(&self) -> Endpoint;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bound: listening but not announced
+// ─────────────────────────────────────────────────────────────
+impl ServiceInstance<Bound> {
+    /// Announce via SD (sends OfferService) → transitions to Announced
+    pub async fn announce(self) -> Result<ServiceInstance<Announced>, Error>;
+    
+    /// Send events to pre-configured (static) subscribers
+    /// For deployments without SD (per feat_req_recentipsd_444)
+    pub async fn notify_static(
+        &self, 
+        eventgroup: EventgroupId, 
+        event: EventId, 
+        data: &[u8]
+    ) -> Result<(), Error>;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Announced: listening + announced via SD
+// ─────────────────────────────────────────────────────────────
+impl ServiceInstance<Announced> {
+    /// Send events to dynamically subscribed clients
+    pub async fn notify(
+        &self, 
+        eventgroup: EventgroupId, 
+        event: EventId, 
+        data: &[u8]
+    ) -> Result<(), Error>;
+    
+    /// Check if anyone is subscribed to an eventgroup
+    pub fn has_subscribers(&self, eventgroup: EventgroupId) -> bool;
+    
+    /// Stop announcing (sends StopOfferService) → transitions back to Bound
+    /// Enables graceful shutdown: stop accepting new clients, drain existing
+    pub async fn stop_announcing(self) -> Result<ServiceInstance<Bound>, Error>;
+}
+
+// Drop behavior:
+// - ServiceInstance<Announced>: sends StopOfferService, then closes socket
+// - ServiceInstance<Bound>: just closes socket (no SD message)
+```
 
 ### Validated Newtypes
 
@@ -886,16 +995,23 @@ loop {
 let fd = proxy.as_raw_fd();
 // ... use in poll()
 
-// Server side: Offering a service
-let mut offering = runtime.offer(service_config)?;
-// SD automatically sends OfferService
+// Server side: Bind then announce
+let service = runtime.bind::<MyService>(instance).build()?;
+// Service listening but not discoverable
 
-// offering drops -> StopOfferService sent automatically
+let mut service = service.announce()?;  // Sends OfferService
+// Now discoverable via SD
+
+// Graceful shutdown:
+let service = service.stop_announcing()?;  // Sends StopOfferService
+drop(service);  // Closes sockets
 ```
 
 **Type Safety**: 
 - `ServiceProxy<Unavailable>` → must wait → `ServiceProxy<Available>`
+- `ServiceInstance<Bound>` → must announce → `ServiceInstance<Announced>`
 - Can't call methods or subscribe without `Available` (type enforced)
+- Can't send to dynamic subscribers without `Announced` (type enforced)
 
 ---
 
@@ -907,7 +1023,8 @@ let mut offering = runtime.offer(service_config)?;
 | **Fire & Forget** | `fire_and_forget()` | `FireAndForget` (no responder) | No accidental response |
 | **Publish/Subscribe** | `subscribe()` → `Subscription` | `Subscribe` + `SubscribeAck`, `notify()` | Must subscribe first |
 | **Fields** | `get_field()`, `set_field()`, `subscribe()` | `GetField`, `SetField` + `Responder` | Must handle response |
-| **Discovery** | `require()` → `wait_available()` | `offer()` | Must wait for available |
+| **Discovery** | `require()` → `wait_available()` | `bind()` → `announce()` | Must wait/announce |
+| **Static Mode** | Pre-configured endpoints | `bind()` + `notify_static()` | No SD required |
 
 ---
 
@@ -920,25 +1037,30 @@ let mut offering = runtime.offer(service_config)?;
 **Requirements**: No async, minimal overhead, explicit control.
 
 ```rust
-use someip_runtime::{Server, ServiceConfig, ServiceEvent};
+use someip_runtime::{Runtime, ServiceInstance, ServiceEvent, Bound, Announced};
 
 fn main() -> Result<()> {
-    let config = ServiceConfig::builder()
-        .service(ServiceId::new(0x1234).unwrap())
-        .instance(ConcreteInstanceId::new(0x0001).unwrap())
+    let mut runtime = Runtime::new(QnxSockets::new()?, RuntimeConfig::default())?;
+    
+    // Phase 1: Bind to endpoint (not yet announced)
+    let mut service: ServiceInstance<Bound> = runtime
+        .bind::<TemperatureService>(ConcreteInstanceId::new(0x0001).unwrap())
         .endpoint("192.168.1.10", |e| e.udp(AppPort::new(30501).unwrap()))
         .eventgroup(EventgroupId(0x01))
         .build()?;
-
-    let mut runtime = Runtime::new(QnxSockets::new()?, RuntimeConfig::default())?;
-    let mut offering = runtime.offer(config)?;
+    
+    // Phase 2: Initialize hardware before going live
+    let sensor = initialize_temperature_sensor()?;
+    
+    // Phase 3: Announce availability (sends OfferService)
+    let mut service: ServiceInstance<Announced> = service.announce()?;
 
     loop {
-        match offering.next()? {
+        match service.next()? {
             ServiceEvent::MethodCall { request } => {
                 match request.method.0 {
                     0x0001 => {
-                        let temp = read_sensor();
+                        let temp = sensor.read();
                         request.responder.send_ok(&temp.to_bytes())?;
                     }
                     _ => request.responder.send_error(ReturnCode::UnknownMethod)?,
@@ -948,13 +1070,16 @@ fn main() -> Result<()> {
                 ack.accept()?;
             }
             ServiceEvent::Tick => {
-                if temperature_changed() {
-                    offering.notify(EventgroupId(0x01), EventId(0x8001), &new_temp)?;
+                if sensor.value_changed() {
+                    service.notify(EventgroupId(0x01), EventId(0x8001), &sensor.value())?;
                 }
             }
             _ => {}
         }
     }
+    
+    // Graceful shutdown (if we exit the loop)
+    // service.stop_announcing()?;  // sends StopOfferService
 }
 ```
 
@@ -997,13 +1122,16 @@ async fn main() -> Result<()> {
 **Scenario**: ECU that both provides services and consumes others.
 
 ```rust
-use someip_runtime::{Runtime, RuntimeEvent};
+use someip_runtime::{Runtime, RuntimeEvent, ServiceInstance, Announced};
 
 fn main() -> Result<()> {
     let mut runtime = Runtime::new(sockets, config)?;
     
-    // Offer our service
-    let mut my_service = runtime.offer(my_service_config)?;
+    // Bind and announce our service
+    let my_service = runtime
+        .bind::<GatewayService>(ConcreteInstanceId::new(0x0001).unwrap())
+        .build()?;
+    let mut my_service: ServiceInstance<Announced> = my_service.announce()?;
     
     // Require remote service
     let remote_proxy = runtime.require(remote_service_id, InstanceId::ANY);
@@ -1177,8 +1305,9 @@ The top-level API has been defined with:
 - `PendingResponse<Io>` - awaiting method response
 
 **Server API**:
-- `Server<Io>` - server runtime
-- `ServiceOffering<Io>` - active service offer, handles events
+- `ServiceInstance<Io, State>` - typestate service (Bound → Announced)
+  - `Bound`: listening on endpoint, not announced via SD
+  - `Announced`: listening + announced via SD (sends OfferService)
 - `ServiceEvent` - method calls, subscriptions, etc.
 - `Responder` - must-use response sender (panics if dropped)
 - `SubscribeAck` - must-use subscription handler
