@@ -12,10 +12,13 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::{interval, Instant};
 
 use crate::error::{Error, Result};
-use crate::handle::{OfferingHandle, ProxyHandle, Unavailable};
+use crate::handle::{Available, OfferingHandle, ProxyHandle, Unavailable};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::tcp::{TcpConnectionPool, TcpMessage, TcpSendMessage, TcpServer};
-use crate::wire::{Header, L4Protocol, MessageType, SdEntry, SdEntryType, SdMessage, SdOption, PROTOCOL_VERSION, SD_METHOD_ID, SD_SERVICE_ID, validate_protocol_version};
+use crate::wire::{
+    validate_protocol_version, Header, L4Protocol, MessageType, SdEntry, SdEntryType, SdMessage,
+    SdOption, PROTOCOL_VERSION, SD_METHOD_ID, SD_SERVICE_ID,
+};
 use crate::{InstanceId, Response, ReturnCode, Service, ServiceId};
 
 /// Default SD multicast address
@@ -57,7 +60,7 @@ pub struct RuntimeConfig {
     /// Transport protocol for RPC communication (default: UDP)
     pub transport: Transport,
     /// Enable Magic Cookies for TCP resynchronization (default: false)
-    /// 
+    ///
     /// When enabled (feat_req_recentip_586, feat_req_recentip_591, feat_req_recentip_592):
     /// - Each TCP segment starts with a Magic Cookie message
     /// - Only one Magic Cookie per segment
@@ -217,6 +220,8 @@ pub(crate) enum Command {
         method_id: u16,
         payload: bytes::Bytes,
         response: oneshot::Sender<Result<crate::Response>>,
+        /// For static deployments: pre-configured endpoint
+        target_endpoint: Option<SocketAddr>,
     },
     /// Fire-and-forget call (no response expected)
     FireAndForget {
@@ -224,6 +229,8 @@ pub(crate) enum Command {
         instance_id: InstanceId,
         method_id: u16,
         payload: bytes::Bytes,
+        /// For static deployments: pre-configured endpoint
+        target_endpoint: Option<SocketAddr>,
     },
     /// Subscribe to an eventgroup
     Subscribe {
@@ -247,6 +254,61 @@ pub(crate) enum Command {
         event_id: u16,
         payload: bytes::Bytes,
     },
+    /// Send a notification to static subscribers only (no SD)
+    NotifyStatic {
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        eventgroup_id: u16,
+        event_id: u16,
+        payload: bytes::Bytes,
+        targets: Vec<SocketAddr>,
+    },
+    /// Bind a service (listen on socket, no SD announcement)
+    Bind {
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        major_version: u8,
+        minor_version: u32,
+        method_config: MethodConfig,
+        response: oneshot::Sender<Result<mpsc::Receiver<ServiceRequest>>>,
+    },
+    /// Start announcing a bound service via SD
+    StartAnnouncing {
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Stop announcing a service (keeps socket open)
+    StopAnnouncing {
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Create a static proxy (pre-configured address, no SD)
+    FindStatic {
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        endpoint: SocketAddr,
+        notify: mpsc::Sender<ServiceAvailability>,
+    },
+    /// Query if there are subscribers for an eventgroup
+    HasSubscribers {
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        eventgroup_id: u16,
+        response: oneshot::Sender<bool>,
+    },
+    /// Listen for static events (pre-configured, no SD)
+    ListenStatic {
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        eventgroup_id: u16,
+        /// Port to bind for receiving events
+        port: u16,
+        /// Channel to send received events
+        events: mpsc::Sender<crate::Event>,
+        response: oneshot::Sender<Result<()>>,
+    },
     /// Shutdown the runtime
     #[allow(dead_code)]
     Shutdown,
@@ -255,7 +317,7 @@ pub(crate) enum Command {
 /// Service availability notification
 #[derive(Debug, Clone)]
 pub(crate) enum ServiceAvailability {
-    Available { 
+    Available {
         endpoint: SocketAddr,
         instance_id: u16,
     },
@@ -307,7 +369,9 @@ impl ServiceKey {
 
     fn matches(&self, service_id: u16, instance_id: u16) -> bool {
         self.service_id == service_id
-            && (self.instance_id == 0xFFFF || self.instance_id == instance_id || instance_id == 0xFFFF)
+            && (self.instance_id == 0xFFFF
+                || self.instance_id == instance_id
+                || instance_id == 0xFFFF)
     }
 }
 
@@ -338,14 +402,14 @@ impl RpcTransportSender {
     /// Send a message to the specified target
     async fn send(&self, data: Vec<u8>, to: SocketAddr) -> Result<()> {
         match self {
-            RpcTransportSender::Udp(tx) => {
-                tx.send(RpcSendMessage { data, to }).await
-                    .map_err(|_| Error::RuntimeShutdown)
-            }
-            RpcTransportSender::Tcp(tx) => {
-                tx.send(TcpSendMessage { data, to }).await
-                    .map_err(|_| Error::RuntimeShutdown)
-            }
+            RpcTransportSender::Udp(tx) => tx
+                .send(RpcSendMessage { data, to })
+                .await
+                .map_err(|_| Error::RuntimeShutdown),
+            RpcTransportSender::Tcp(tx) => tx
+                .send(TcpSendMessage { data, to })
+                .await
+                .map_err(|_| Error::RuntimeShutdown),
         }
     }
 }
@@ -362,6 +426,8 @@ struct OfferedService {
     rpc_transport: RpcTransportSender,
     /// Configuration for which methods use EXCEPTION message type
     method_config: MethodConfig,
+    /// Whether currently announcing via SD (false = bound but not announced)
+    is_announcing: bool,
 }
 
 /// Tracked find request
@@ -373,7 +439,7 @@ struct FindRequest {
 
 /// Discovered remote service
 #[derive(Debug, Clone)]
-#[allow(dead_code)]  // Fields used for version matching in future
+#[allow(dead_code)] // Fields used for version matching in future
 struct DiscoveredService {
     /// UDP endpoint for sending SOME/IP RPC messages (if using UDP transport)
     udp_endpoint: Option<SocketAddr>,
@@ -451,6 +517,8 @@ struct RuntimeState {
     subscriptions: HashMap<ServiceKey, Vec<ClientSubscription>>,
     /// Server-side subscribers (clients subscribed to our offered services)
     server_subscribers: HashMap<SubscriberKey, Vec<SocketAddr>>,
+    /// Static event listeners (client-side, no SD)
+    static_listeners: HashMap<SubscriberKey, mpsc::Sender<crate::Event>>,
     /// Pending RPC calls waiting for responses
     pending_calls: HashMap<CallKey, PendingCall>,
     /// Client ID for outgoing requests
@@ -478,6 +546,7 @@ impl RuntimeState {
             discovered: HashMap::new(),
             subscriptions: HashMap::new(),
             server_subscribers: HashMap::new(),
+            static_listeners: HashMap::new(),
             pending_calls: HashMap::new(),
             client_id,
             session_id: 1,
@@ -533,7 +602,7 @@ pub(crate) struct RuntimeInner {
 /// The runtime is generic over the UDP socket type for testing purposes.
 /// TCP support is enabled via the `transport` configuration option.
 pub struct Runtime<
-    U: UdpSocket = tokio::net::UdpSocket, 
+    U: UdpSocket = tokio::net::UdpSocket,
     T: TcpStream = tokio::net::TcpStream,
     L: TcpListener<Stream = T> = tokio::net::TcpListener,
 > {
@@ -566,18 +635,19 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 
         // Create command channel
         let (cmd_tx, cmd_rx) = mpsc::channel(64);
-        
+
         // Create RPC message channel (for messages from UDP RPC socket tasks to runtime)
         let (rpc_tx, rpc_rx) = mpsc::channel::<RpcMessage>(100);
-        
+
         // Create TCP RPC message channel (for messages from TCP server connections to runtime)
         let (tcp_rpc_tx, tcp_rpc_rx) = mpsc::channel::<TcpMessage>(100);
-        
+
         // Create TCP client message channel (for responses received on client TCP connections)
         let (tcp_client_tx, tcp_client_rx) = mpsc::channel::<TcpMessage>(100);
 
         // Create TCP connection pool for client-side TCP connections
-        let tcp_pool: TcpConnectionPool<T> = TcpConnectionPool::new(tcp_client_tx, config.magic_cookies);
+        let tcp_pool: TcpConnectionPool<T> =
+            TcpConnectionPool::new(tcp_client_tx, config.magic_cookies);
 
         // Spawn the runtime task
         let inner = Arc::new(RuntimeInner { cmd_tx });
@@ -585,7 +655,19 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         let state = RuntimeState::new(local_addr, config.clone());
 
         tokio::spawn(async move {
-            runtime_task::<U, T, L>(sd_socket, config, cmd_rx, rpc_rx, rpc_tx, tcp_rpc_rx, tcp_rpc_tx, tcp_client_rx, state, tcp_pool).await;
+            runtime_task::<U, T, L>(
+                sd_socket,
+                config,
+                cmd_rx,
+                rpc_rx,
+                rpc_tx,
+                tcp_rpc_rx,
+                tcp_rpc_tx,
+                tcp_client_rx,
+                state,
+                tcp_pool,
+            )
+            .await;
         });
 
         Ok(Self {
@@ -608,7 +690,8 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// By default, all methods use RESPONSE (0x80) for errors.
     /// Use `offer_with_config` to configure specific methods to use EXCEPTION (0x81).
     pub async fn offer<S: Service>(&self, instance: InstanceId) -> Result<OfferingHandle<S>> {
-        self.offer_with_config::<S>(instance, MethodConfig::default()).await
+        self.offer_with_config::<S>(instance, MethodConfig::default())
+            .await
     }
 
     /// Offer a service with custom method configuration.
@@ -662,6 +745,152 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
             requests_rx,
         ))
     }
+
+    /// Bind a service instance to a local endpoint without announcing via SD.
+    ///
+    /// Returns a `ServiceInstance<S, Bound>` that can:
+    /// - Accept RPC requests from clients with pre-configured addresses
+    /// - Add static subscribers for notifications without SD
+    /// - Later transition to `Announced` state via `announce()`
+    ///
+    /// This implements the bind/announce separation pattern per RECENT/IP spec:
+    /// - `feat_req_recentipsd_184`: SD is about service state, not location
+    /// - `feat_req_recentipsd_444`: Implicit subscriptions are supported
+    ///
+    /// # Example
+    /// ```ignore
+    /// let service = runtime.bind::<MyService>(InstanceId::Id(1)).await?;
+    /// // Service is listening, but not announced via SD
+    /// // Can handle static deployments where clients know the address
+    ///
+    /// let announced = service.announce().await?;
+    /// // Now announced via SD, clients can discover
+    /// ```
+    pub async fn bind<S: Service>(
+        &self,
+        instance: InstanceId,
+    ) -> Result<crate::handle::ServiceInstance<S, crate::handle::Bound>> {
+        self.bind_with_config::<S>(instance, MethodConfig::default())
+            .await
+    }
+
+    /// Bind a service instance with custom method configuration.
+    ///
+    /// See `bind()` for details. This variant allows configuring which methods
+    /// use EXCEPTION (0x81) message type for errors.
+    pub async fn bind_with_config<S: Service>(
+        &self,
+        instance: InstanceId,
+        method_config: MethodConfig,
+    ) -> Result<crate::handle::ServiceInstance<S, crate::handle::Bound>> {
+        let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
+
+        let (response_tx, response_rx) = oneshot::channel();
+
+        self.inner
+            .cmd_tx
+            .send(Command::Bind {
+                service_id,
+                instance_id: instance,
+                major_version: S::MAJOR_VERSION,
+                minor_version: S::MINOR_VERSION,
+                method_config,
+                response: response_tx,
+            })
+            .await
+            .map_err(|_| Error::RuntimeShutdown)?;
+
+        let requests_rx = response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
+
+        Ok(crate::handle::ServiceInstance::new(
+            Arc::clone(&self.inner),
+            service_id,
+            instance,
+            requests_rx,
+        ))
+    }
+
+    /// Find a service by pre-configured address (no Service Discovery).
+    ///
+    /// Returns a `ProxyHandle<S, Available>` that is immediately usable
+    /// without waiting for SD discovery. Use this for static deployments
+    /// where service locations are pre-configured.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let proxy = runtime.find_static::<MyService>(
+    ///     InstanceId::Id(1),
+    ///     "192.168.1.10:30509".parse().unwrap(),
+    /// );
+    /// // Can immediately make RPC calls
+    /// let response = proxy.call(method, payload).await?;
+    /// ```
+    pub fn find_static<S: Service>(
+        &self,
+        instance: InstanceId,
+        endpoint: SocketAddr,
+    ) -> ProxyHandle<S, Available> {
+        let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
+        ProxyHandle::new_available(Arc::clone(&self.inner), service_id, instance, endpoint)
+    }
+
+    /// Listen for events from a static (pre-configured) service endpoint.
+    ///
+    /// Returns a `StaticEventListener` that receives events without SD.
+    /// Use this for static deployments where the service address is
+    /// pre-configured and events are sent directly to this client.
+    ///
+    /// The `port` parameter specifies which UDP port to listen on for events.
+    /// The server should be configured to send events to this client's
+    /// IP address and this port.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Client listens on port 30502
+    /// let listener = runtime.listen_static(
+    ///     ServiceId::new(0x1234).unwrap(),
+    ///     InstanceId::Id(1),
+    ///     EventgroupId::new(0x0001).unwrap(),
+    ///     30502,
+    /// ).await?;
+    /// 
+    /// // Server adds this client as static subscriber
+    /// // service.add_static_subscriber("client:30502", &[eventgroup]);
+    /// 
+    /// while let Some(event) = listener.next().await {
+    ///     println!("Received event: {:?}", event);
+    /// }
+    /// ```
+    pub async fn listen_static(
+        &self,
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        eventgroup: crate::EventgroupId,
+        port: u16,
+    ) -> Result<crate::handle::StaticEventListener> {
+        let (events_tx, events_rx) = mpsc::channel(64);
+        let (response_tx, response_rx) = oneshot::channel();
+
+        self.inner
+            .cmd_tx
+            .send(Command::ListenStatic {
+                service_id,
+                instance_id,
+                eventgroup_id: eventgroup.value(),
+                port,
+                events: events_tx,
+                response: response_tx,
+            })
+            .await
+            .map_err(|_| Error::RuntimeShutdown)?;
+
+        response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
+
+        Ok(crate::handle::StaticEventListener {
+            eventgroup,
+            events: events_rx,
+        })
+    }
 }
 
 impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Clone for Runtime<U, T, L> {
@@ -685,14 +914,19 @@ async fn spawn_rpc_socket_task<U: UdpSocket>(
     instance_id: u16,
     rpc_tx_to_runtime: mpsc::Sender<RpcMessage>,
 ) -> (SocketAddr, mpsc::Sender<RpcSendMessage>) {
-    let local_endpoint = rpc_socket.local_addr().expect("Failed to get local address");
+    let local_endpoint = rpc_socket
+        .local_addr()
+        .expect("Failed to get local address");
     let (send_tx, mut send_rx) = mpsc::channel::<RpcSendMessage>(100);
-    
-    let service_key = ServiceKey { service_id, instance_id };
-    
+
+    let service_key = ServiceKey {
+        service_id,
+        instance_id,
+    };
+
     tokio::spawn(async move {
         let mut buf = [0u8; 65535];
-        
+
         loop {
             tokio::select! {
                 // Receive incoming RPC messages and forward to runtime task
@@ -702,29 +936,29 @@ async fn spawn_rpc_socket_task<U: UdpSocket>(
                             let data = buf[..len].to_vec();
                             let msg = RpcMessage { service_key, data, from };
                             if rpc_tx_to_runtime.send(msg).await.is_err() {
-                                tracing::debug!("RPC socket task for service {}/{} shutting down - runtime closed", 
+                                tracing::debug!("RPC socket task for service {}/{} shutting down - runtime closed",
                                     service_id, instance_id);
                                 break;
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Error receiving on RPC socket for service {}/{}: {}", 
+                            tracing::error!("Error receiving on RPC socket for service {}/{}: {}",
                                 service_id, instance_id, e);
                         }
                     }
                 }
-                
-                // Send outgoing RPC messages  
+
+                // Send outgoing RPC messages
                 Some(send_msg) = send_rx.recv() => {
                     if let Err(e) = rpc_socket.send_to(&send_msg.data, send_msg.to).await {
-                        tracing::error!("Error sending on RPC socket for service {}/{}: {}", 
+                        tracing::error!("Error sending on RPC socket for service {}/{}: {}",
                             service_id, instance_id, e);
                     }
                 }
             }
         }
     });
-    
+
     (local_endpoint, send_tx)
 }
 
@@ -743,9 +977,13 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
 ) {
     let mut buf = [0u8; 65535];
     let mut ticker = interval(Duration::from_millis(config.cyclic_offer_delay));
-    
+
     // Track pending server responses
-    let mut pending_responses: FuturesUnordered<std::pin::Pin<Box<dyn std::future::Future<Output = (PendingServerResponse, Result<Bytes>)> + Send>>> = FuturesUnordered::new();
+    let mut pending_responses: FuturesUnordered<
+        std::pin::Pin<
+            Box<dyn std::future::Future<Output = (PendingServerResponse, Result<Bytes>)> + Send>,
+        >,
+    > = FuturesUnordered::new();
 
     loop {
         tokio::select! {
@@ -817,6 +1055,20 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                             }
                         }
                     }
+                    // Special handling for Bind - needs async socket/listener creation (no SD announcement)
+                    Some(Command::Bind { service_id, instance_id, major_version, minor_version, method_config, response }) => {
+                        handle_bind_command::<U, T, L>(
+                            service_id, instance_id, major_version, minor_version, method_config, response,
+                            &config, &mut state, &rpc_tx, &tcp_rpc_tx
+                        ).await;
+                    }
+                    // Special handling for ListenStatic - needs async socket creation
+                    Some(Command::ListenStatic { service_id, instance_id, eventgroup_id, port, events, response }) => {
+                        handle_listen_static_command::<U>(
+                            service_id, instance_id, eventgroup_id, port, events, response,
+                            &mut state
+                        ).await;
+                    }
                     Some(cmd) => {
                         if let Some(actions) = handle_command(cmd, &mut state) {
                             for action in actions {
@@ -835,7 +1087,7 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                     }
                 }
             }
-            
+
             // Handle completed server responses
             Some((context, result)) = pending_responses.next() => {
                 let response_data = match result {
@@ -860,7 +1112,7 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                         context.uses_exception,
                     ),
                 };
-                
+
                 // Send response via the service's RPC socket
                 let service_key = ServiceKey {
                     service_id: context.service_id,
@@ -882,13 +1134,23 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
 /// Action to execute after handling an event
 enum Action {
     /// Send an SD message to a specific target
-    SendSd { message: SdMessage, target: SocketAddr },
+    SendSd {
+        message: SdMessage,
+        target: SocketAddr,
+    },
     /// Notify find requests about a discovered service
-    NotifyFound { key: ServiceKey, availability: ServiceAvailability },
+    NotifyFound {
+        key: ServiceKey,
+        availability: ServiceAvailability,
+    },
     /// Send a SOME/IP RPC message as a client (uses SD socket)
     SendClientMessage { data: Bytes, target: SocketAddr },
     /// Send a SOME/IP RPC message as a server (uses service's RPC socket)
-    SendServerMessage { service_key: ServiceKey, data: Bytes, target: SocketAddr },
+    SendServerMessage {
+        service_key: ServiceKey,
+        data: Bytes,
+        target: SocketAddr,
+    },
     /// Track a pending server response
     TrackServerResponse {
         context: PendingServerResponse,
@@ -904,7 +1166,11 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
     config: &RuntimeConfig,
     state: &mut RuntimeState,
     action: Action,
-    pending_responses: &mut FuturesUnordered<std::pin::Pin<Box<dyn std::future::Future<Output = (PendingServerResponse, Result<Bytes>)> + Send>>>,
+    pending_responses: &mut FuturesUnordered<
+        std::pin::Pin<
+            Box<dyn std::future::Future<Output = (PendingServerResponse, Result<Bytes>)> + Send>,
+        >,
+    >,
     tcp_pool: &TcpConnectionPool<T>,
 ) {
     match action {
@@ -937,20 +1203,28 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                 }
             }
         }
-        Action::SendServerMessage { service_key, data, target } => {
+        Action::SendServerMessage {
+            service_key,
+            data,
+            target,
+        } => {
             // Server messages use the service's RPC transport (UDP or TCP)
             if let Some(offered) = state.offered.get(&service_key) {
                 if let Err(e) = offered.rpc_transport.send(data.to_vec(), target).await {
                     tracing::error!("Failed to send server message via RPC transport: {}", e);
                 }
             } else {
-                tracing::error!("Attempted to send server message for unknown service {:04x}:{:04x}",
-                    service_key.service_id, service_key.instance_id);
+                tracing::error!(
+                    "Attempted to send server message for unknown service {:04x}:{:04x}",
+                    service_key.service_id,
+                    service_key.instance_id
+                );
             }
         }
         Action::TrackServerResponse { context, receiver } => {
             let fut = Box::pin(async move {
-                let result = receiver.await
+                let result = receiver
+                    .await
                     .unwrap_or_else(|_| Err(Error::RuntimeShutdown));
                 (context, result)
             });
@@ -959,15 +1233,20 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
         Action::ResetPeerTcpConnections { peer } => {
             // Close all TCP connections to the peer that rebooted
             // This handles both client-side (via pool) and triggers reconnection on next request
-            tracing::info!("Detected reboot of peer {}, resetting TCP connections", peer);
-            
+            tracing::info!(
+                "Detected reboot of peer {}, resetting TCP connections",
+                peer
+            );
+
             // Find all socket addresses for this peer and close them
             // Client-side connections are managed by the TCP pool
-            let addresses_to_close: Vec<SocketAddr> = state.discovered.values()
+            let addresses_to_close: Vec<SocketAddr> = state
+                .discovered
+                .values()
                 .filter_map(|svc| svc.tcp_endpoint)
                 .filter(|addr| addr.ip() == peer)
                 .collect();
-            
+
             for addr in addresses_to_close {
                 tcp_pool.close(&addr).await;
             }
@@ -976,7 +1255,12 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
 }
 
 /// Handle an incoming packet (SD or RPC)
-fn handle_packet(data: &[u8], from: SocketAddr, state: &mut RuntimeState, service_key: Option<ServiceKey>) -> Option<Vec<Action>> {
+fn handle_packet(
+    data: &[u8],
+    from: SocketAddr,
+    state: &mut RuntimeState,
+    service_key: Option<ServiceKey>,
+) -> Option<Vec<Action>> {
     let mut cursor = data;
 
     // Parse SOME/IP header
@@ -992,21 +1276,23 @@ fn handle_packet(data: &[u8], from: SocketAddr, state: &mut RuntimeState, servic
 }
 
 /// Handle an RPC message received via TCP server
-/// 
+///
 /// TCP messages from clients don't have an explicit service_key since they come from
 /// a shared channel. We need to determine the service_key from the SOME/IP header's
 /// service_id and find the matching offered service.
 fn handle_tcp_rpc_message(tcp_msg: &TcpMessage, state: &mut RuntimeState) -> Option<Vec<Action>> {
     let mut cursor = &tcp_msg.data[..];
-    
+
     // Parse SOME/IP header to get service_id
     let header = Header::parse(&mut cursor)?;
-    
+
     // Find which offered service this belongs to based on service_id
-    let service_key = state.offered.iter()
+    let service_key = state
+        .offered
+        .iter()
         .find(|(key, _)| key.service_id == header.service_id)
         .map(|(key, _)| *key);
-    
+
     // Process as RPC message
     handle_rpc_message(&header, &mut cursor, tcp_msg.from, state, service_key)
 }
@@ -1021,7 +1307,11 @@ fn handle_sd_message(
     // Parse SD payload
     let sd_message = SdMessage::parse(cursor)?;
 
-    tracing::trace!("Received SD message from {} with {} entries", from, sd_message.entries.len());
+    tracing::trace!(
+        "Received SD message from {} with {} entries",
+        from,
+        sd_message.entries.len()
+    );
 
     let mut actions = Vec::new();
 
@@ -1029,11 +1319,14 @@ fn handle_sd_message(
     // If we've seen this peer before with reboot_flag=false, and now it's true, they rebooted
     let peer_reboot_flag = (sd_message.flags & SdMessage::FLAG_REBOOT) != 0;
     let peer_ip = from.ip();
-    
+
     if let Some(&last_reboot_flag) = state.peer_reboot_flags.get(&peer_ip) {
         if !last_reboot_flag && peer_reboot_flag {
             // Peer rebooted: they went from reboot_flag=false to reboot_flag=true
-            tracing::debug!("Detected reboot of peer {} (reboot flag transitioned false → true)", peer_ip);
+            tracing::debug!(
+                "Detected reboot of peer {} (reboot flag transitioned false → true)",
+                peer_ip
+            );
             actions.push(Action::ResetPeerTcpConnections { peer: peer_ip });
         }
     }
@@ -1125,7 +1418,11 @@ fn handle_rpc_message(
             handle_incoming_notification(header, payload, state);
         }
         _ => {
-            tracing::trace!("Ignoring message type {:?} from {}", header.message_type, from);
+            tracing::trace!(
+                "Ignoring message type {:?} from {}",
+                header.message_type,
+                from
+            );
         }
     }
 
@@ -1152,23 +1449,30 @@ fn handle_incoming_request(
         state.offered.get_key_value(&key)
     } else {
         // Fall back to searching by service_id only
-        state.offered.iter().find(|(k, _)| k.service_id == header.service_id)
+        state
+            .offered
+            .iter()
+            .find(|(k, _)| k.service_id == header.service_id)
     };
 
     if let Some((service_key, offered)) = offering {
         // Create a response channel
         let (response_tx, response_rx) = oneshot::channel();
-        
+
         // Check if this method uses EXCEPTION for errors
         let uses_exception = offered.method_config.uses_exception(header.method_id);
-        
+
         // Send request to the offering handle
-        if offered.requests_tx.try_send(ServiceRequest::MethodCall {
-            method_id: header.method_id,
-            payload,
-            client: from,
-            response: response_tx,
-        }).is_ok() {
+        if offered
+            .requests_tx
+            .try_send(ServiceRequest::MethodCall {
+                method_id: header.method_id,
+                payload,
+                client: from,
+                response: response_tx,
+            })
+            .is_ok()
+        {
             // Track this pending response - will be polled in the main loop
             let context = PendingServerResponse {
                 service_id: header.service_id,
@@ -1180,7 +1484,10 @@ fn handle_incoming_request(
                 client_addr: from,
                 uses_exception,
             };
-            actions.push(Action::TrackServerResponse { context, receiver: response_rx });
+            actions.push(Action::TrackServerResponse {
+                context,
+                receiver: response_rx,
+            });
         }
     } else {
         // Unknown service - send error response via SD socket
@@ -1211,9 +1518,10 @@ fn handle_incoming_fire_forget(
 ) {
     // Find matching offering
     // NOTE: Same limitation as handle_incoming_request - see comment there
-    let offering = state.offered.iter().find(|(k, _)| {
-        k.service_id == header.service_id
-    });
+    let offering = state
+        .offered
+        .iter()
+        .find(|(k, _)| k.service_id == header.service_id);
 
     if let Some((_, offered)) = offering {
         // Send fire-and-forget request to the offering handle (no response channel)
@@ -1228,11 +1536,7 @@ fn handle_incoming_fire_forget(
 }
 
 /// Handle an incoming response (client-side)
-fn handle_incoming_response(
-    header: &Header,
-    payload: Bytes,
-    state: &mut RuntimeState,
-) {
+fn handle_incoming_response(header: &Header, payload: Bytes, state: &mut RuntimeState) {
     let call_key = CallKey {
         client_id: header.client_id,
         session_id: header.session_id,
@@ -1270,27 +1574,33 @@ fn handle_incoming_response(
 }
 
 /// Handle an incoming notification (event)
-fn handle_incoming_notification(
-    header: &Header,
-    payload: Bytes,
-    state: &mut RuntimeState,
-) {
-    // Find subscriptions for this service/eventgroup
+fn handle_incoming_notification(header: &Header, payload: Bytes, state: &mut RuntimeState) {
+    // Method ID is the event ID for notifications
+    let event_id = match crate::EventId::new(header.method_id) {
+        Some(id) => id,
+        None => return, // Invalid event ID
+    };
+
+    let event = crate::Event {
+        event_id,
+        payload: payload.clone(),
+    };
+
+    // Find subscriptions for this service/eventgroup (dynamic via SD)
     for (key, subs) in &state.subscriptions {
         if key.service_id == header.service_id {
-            // Method ID is the event ID for notifications
-            let event_id = crate::EventId::new(header.method_id);
-            
-            if let Some(event_id) = event_id {
-                let event = crate::Event {
-                    event_id,
-                    payload: payload.clone(),
-                };
-
-                for sub in subs {
-                    let _ = sub.events_tx.try_send(event.clone());
-                }
+            for sub in subs {
+                let _ = sub.events_tx.try_send(event.clone());
             }
+        }
+    }
+
+    // Also check static listeners - iterate through all eventgroups
+    // The event doesn't contain eventgroup info in the header, so we route to
+    // all listeners for this service/instance combination
+    for (key, events_tx) in &state.static_listeners {
+        if key.service_id == header.service_id {
+            let _ = events_tx.try_send(event.clone());
         }
     }
 }
@@ -1312,9 +1622,9 @@ fn build_response(
     uses_exception: bool,
 ) -> Bytes {
     let length = 8 + payload.len() as u32;
-    
+
     let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
-    
+
     // feat_req_recentip_655: Error message must copy request header fields
     // feat_req_recentip_727: Error messages have return code != 0x00
     // Only use EXCEPTION (0x81) if configured for this method AND it's an error
@@ -1323,7 +1633,7 @@ fn build_response(
     } else {
         MessageType::Response
     };
-    
+
     let header = Header {
         service_id,
         method_id,
@@ -1335,7 +1645,7 @@ fn build_response(
         message_type,
         return_code,
     };
-    
+
     header.serialize(&mut buf);
     buf.extend_from_slice(payload);
     buf.freeze()
@@ -1351,9 +1661,9 @@ fn build_request(
     payload: &[u8],
 ) -> Bytes {
     let length = 8 + payload.len() as u32;
-    
+
     let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
-    
+
     let header = Header {
         service_id,
         method_id,
@@ -1365,7 +1675,7 @@ fn build_request(
         message_type: MessageType::Request,
         return_code: 0x00,
     };
-    
+
     header.serialize(&mut buf);
     buf.extend_from_slice(payload);
     buf.freeze()
@@ -1381,9 +1691,9 @@ fn build_fire_and_forget(
     payload: &[u8],
 ) -> Bytes {
     let length = 8 + payload.len() as u32;
-    
+
     let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
-    
+
     let header = Header {
         service_id,
         method_id,
@@ -1395,7 +1705,7 @@ fn build_fire_and_forget(
         message_type: MessageType::RequestNoReturn,
         return_code: 0x00,
     };
-    
+
     header.serialize(&mut buf);
     buf.extend_from_slice(payload);
     buf.freeze()
@@ -1411,9 +1721,9 @@ fn build_notification(
     payload: &[u8],
 ) -> Bytes {
     let length = 8 + payload.len() as u32;
-    
+
     let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
-    
+
     let header = Header {
         service_id,
         method_id: event_id, // Event ID goes in method_id field
@@ -1425,7 +1735,7 @@ fn build_notification(
         message_type: MessageType::Notification,
         return_code: 0x00,
     };
-    
+
     header.serialize(&mut buf);
     buf.extend_from_slice(payload);
     buf.freeze()
@@ -1479,7 +1789,7 @@ fn handle_offer(
         DiscoveredService {
             udp_endpoint,
             tcp_endpoint,
-            sd_endpoint: from,  // Store the SD source for Subscribe messages
+            sd_endpoint: from, // Store the SD source for Subscribe messages
             major_version: entry.major_version,
             minor_version: entry.minor_version,
             ttl_expires: Instant::now() + ttl_duration,
@@ -1489,7 +1799,7 @@ fn handle_offer(
     if is_new {
         actions.push(Action::NotifyFound {
             key,
-            availability: ServiceAvailability::Available { 
+            availability: ServiceAvailability::Available {
                 endpoint: effective_endpoint,
                 instance_id: entry.instance_id,
             },
@@ -1532,6 +1842,11 @@ fn handle_find_request(
     };
 
     for (key, offered) in &state.offered {
+        // Only respond if the service is actively announcing
+        if !offered.is_announcing {
+            continue;
+        }
+
         if entry.service_id == key.service_id
             && (entry.instance_id == 0xFFFF || entry.instance_id == key.instance_id)
         {
@@ -1541,7 +1856,7 @@ fn handle_find_request(
                     SocketAddr::V4(v4) => *v4.ip(),
                     _ => Ipv4Addr::LOCALHOST,
                 },
-                port: offered.rpc_endpoint.port(),  // Use RPC endpoint port, not SD port!
+                port: offered.rpc_endpoint.port(), // Use RPC endpoint port, not SD port!
                 protocol,
             });
             response.add_entry(SdEntry::offer_service(
@@ -1597,7 +1912,8 @@ fn handle_subscribe_request(
             instance_id: entry.instance_id,
             eventgroup_id: entry.eventgroup_id,
         };
-        state.server_subscribers
+        state
+            .server_subscribers
             .entry(sub_key)
             .or_insert_with(Vec::new)
             .push(client_endpoint);
@@ -1621,7 +1937,12 @@ fn handle_subscribe_request(
 }
 
 /// Handle a StopSubscribeEventgroup request
-fn handle_unsubscribe_request(entry: &SdEntry, sd_message: &SdMessage, from: SocketAddr, state: &mut RuntimeState) {
+fn handle_unsubscribe_request(
+    entry: &SdEntry,
+    sd_message: &SdMessage,
+    from: SocketAddr,
+    state: &mut RuntimeState,
+) {
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
@@ -1720,7 +2041,8 @@ async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stream 
                         service_id.value(),
                         instance_id.value(),
                         rpc_tx.clone(),
-                    ).await;
+                    )
+                    .await;
                     Ok((rpc_endpoint, RpcTransportSender::Udp(rpc_send_tx)))
                 }
                 Err(e) => Err(e),
@@ -1736,10 +2058,13 @@ async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stream 
                         instance_id.value(),
                         tcp_rpc_tx.clone(),
                         config.magic_cookies,
-                    ).await {
-                        Ok(tcp_server) => {
-                            Ok((tcp_server.local_addr, RpcTransportSender::Tcp(tcp_server.send_tx)))
-                        }
+                    )
+                    .await
+                    {
+                        Ok(tcp_server) => Ok((
+                            tcp_server.local_addr,
+                            RpcTransportSender::Tcp(tcp_server.send_tx),
+                        )),
                         Err(e) => Err(e),
                     }
                 }
@@ -1761,6 +2086,7 @@ async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stream 
                     rpc_endpoint,
                     rpc_transport,
                     method_config,
+                    is_announcing: true, // Offer immediately announces
                 },
             );
 
@@ -1792,12 +2118,191 @@ async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stream 
             let _ = response.send(Ok(requests_rx));
         }
         Err(e) => {
-            tracing::error!("Failed to bind RPC {:?} on {}: {}", config.transport, rpc_addr, e);
+            tracing::error!(
+                "Failed to bind RPC {:?} on {}: {}",
+                config.transport,
+                rpc_addr,
+                e
+            );
             let _ = response.send(Err(Error::Io(e)));
         }
     }
 
     Some(actions)
+}
+
+/// Handle Command::Bind which creates socket but does NOT announce via SD
+async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
+    service_id: ServiceId,
+    instance_id: InstanceId,
+    major_version: u8,
+    minor_version: u32,
+    method_config: MethodConfig,
+    response: oneshot::Sender<Result<mpsc::Receiver<ServiceRequest>>>,
+    config: &RuntimeConfig,
+    state: &mut RuntimeState,
+    rpc_tx: &mpsc::Sender<RpcMessage>,
+    tcp_rpc_tx: &mpsc::Sender<TcpMessage>,
+) {
+    let key = ServiceKey::new(service_id, instance_id);
+
+    // Check if already bound
+    if state.offered.contains_key(&key) {
+        let _ = response.send(Err(Error::AlreadyOffered));
+        return;
+    }
+
+    // Create channel for service requests
+    let (requests_tx, requests_rx) = mpsc::channel(64);
+
+    // Determine RPC port - use next available port starting from local_addr + 1
+    let rpc_port = state.local_endpoint.port() + 1 + state.offered.len() as u16;
+    let rpc_addr = SocketAddr::new(state.local_endpoint.ip(), rpc_port);
+
+    // Create the appropriate transport listener/socket
+    let result: std::io::Result<(SocketAddr, RpcTransportSender)> = match config.transport {
+        Transport::Udp => {
+            // Create and bind UDP RPC socket
+            match U::bind(rpc_addr).await {
+                Ok(rpc_socket) => {
+                    let (rpc_endpoint, rpc_send_tx) = spawn_rpc_socket_task(
+                        rpc_socket,
+                        service_id.value(),
+                        instance_id.value(),
+                        rpc_tx.clone(),
+                    )
+                    .await;
+                    Ok((rpc_endpoint, RpcTransportSender::Udp(rpc_send_tx)))
+                }
+                Err(e) => Err(e),
+            }
+        }
+        Transport::Tcp => {
+            // Create and bind TCP listener
+            match L::bind(rpc_addr).await {
+                Ok(listener) => {
+                    match TcpServer::<T>::spawn(
+                        listener,
+                        service_id.value(),
+                        instance_id.value(),
+                        tcp_rpc_tx.clone(),
+                        config.magic_cookies,
+                    )
+                    .await
+                    {
+                        Ok(tcp_server) => Ok((
+                            tcp_server.local_addr,
+                            RpcTransportSender::Tcp(tcp_server.send_tx),
+                        )),
+                        Err(e) => Err(e),
+                    }
+                }
+                Err(e) => Err(e),
+            }
+        }
+    };
+
+    match result {
+        Ok((rpc_endpoint, rpc_transport)) => {
+            // Store the offered service with its RPC endpoint (NOT announcing yet)
+            state.offered.insert(
+                key,
+                OfferedService {
+                    major_version,
+                    minor_version,
+                    requests_tx,
+                    last_offer: Instant::now(),
+                    rpc_endpoint,
+                    rpc_transport,
+                    method_config,
+                    is_announcing: false, // Bind does NOT announce
+                },
+            );
+
+            let _ = response.send(Ok(requests_rx));
+        }
+        Err(e) => {
+            tracing::error!(
+                "Failed to bind RPC {:?} on {}: {}",
+                config.transport,
+                rpc_addr,
+                e
+            );
+            let _ = response.send(Err(Error::Io(e)));
+        }
+    }
+}
+
+/// Handle Command::ListenStatic which creates a socket to receive static events
+async fn handle_listen_static_command<U: UdpSocket>(
+    service_id: ServiceId,
+    instance_id: InstanceId,
+    eventgroup_id: u16,
+    port: u16,
+    events: mpsc::Sender<crate::Event>,
+    response: oneshot::Sender<Result<()>>,
+    state: &mut RuntimeState,
+) {
+    let key = SubscriberKey {
+        service_id: service_id.value(),
+        instance_id: instance_id.value(),
+        eventgroup_id,
+    };
+
+    // Bind a UDP socket to receive static notifications
+    let bind_addr = SocketAddr::new(state.local_endpoint.ip(), port);
+    
+    match U::bind(bind_addr).await {
+        Ok(socket) => {
+            // Store the event channel for this listener
+            state.static_listeners.insert(key, events.clone());
+
+            // Spawn a task to receive events on this socket
+            tokio::spawn(async move {
+                let mut buf = [0u8; 65535];
+                loop {
+                    match socket.recv_from(&mut buf).await {
+                        Ok((len, _from)) => {
+                            // Parse the SOME/IP header
+                            if len >= Header::SIZE {
+                                let mut data = &buf[..len];
+                                if let Some(header) = Header::parse(&mut data) {
+                                    // Check if this is a notification
+                                    if header.message_type == MessageType::Notification {
+                                        if let Some(event_id) = crate::EventId::new(header.method_id) {
+                                            let payload_start = Header::SIZE;
+                                            let payload_end = (header.length as usize + 8).min(len);
+                                            let payload = Bytes::copy_from_slice(&buf[payload_start..payload_end]);
+                                            
+                                            let event = crate::Event {
+                                                event_id,
+                                                payload,
+                                            };
+                                            
+                                            if events.send(event).await.is_err() {
+                                                // Receiver dropped, exit the task
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Error receiving on static listener socket: {}", e);
+                            break;
+                        }
+                    }
+                }
+            });
+
+            let _ = response.send(Ok(()));
+        }
+        Err(e) => {
+            tracing::error!("Failed to bind static listener socket on port {}: {}", port, e);
+            let _ = response.send(Err(Error::Io(e)));
+        }
+    }
 }
 
 /// Handle a command from a handle
@@ -1806,19 +2311,27 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
     let prefer_tcp = state.config.transport == Transport::Tcp;
 
     match cmd {
-        Command::Find { service_id, instance_id, notify } => {
+        Command::Find {
+            service_id,
+            instance_id,
+            notify,
+        } => {
             let key = ServiceKey::new(service_id, instance_id);
 
             // Check if we already have a matching discovered service
             // Use wildcard-aware matching: if instance_id is Any (0xFFFF), match any instance
             let found = if instance_id == InstanceId::Any {
                 // Find any service with matching service_id
-                state.discovered.iter()
+                state
+                    .discovered
+                    .iter()
                     .find(|(k, _)| k.service_id == service_id.value())
                     .and_then(|(k, v)| v.rpc_endpoint(prefer_tcp).map(|ep| (k.instance_id, ep)))
             } else {
                 // Exact match
-                state.discovered.get(&key)
+                state
+                    .discovered
+                    .get(&key)
                     .and_then(|v| v.rpc_endpoint(prefer_tcp).map(|ep| (key.instance_id, ep)))
             };
 
@@ -1853,14 +2366,19 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             }
         }
 
-        Command::StopFind { service_id, instance_id } => {
+        Command::StopFind {
+            service_id,
+            instance_id,
+        } => {
             let key = ServiceKey::new(service_id, instance_id);
             state.find_requests.remove(&key);
         }
 
         // Command::Offer is handled separately in runtime_task for async socket creation
-
-        Command::StopOffer { service_id, instance_id } => {
+        Command::StopOffer {
+            service_id,
+            instance_id,
+        } => {
             let key = ServiceKey::new(service_id, instance_id);
 
             if let Some(offered) = state.offered.remove(&key) {
@@ -1879,27 +2397,40 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             }
         }
 
-        Command::Call { service_id, instance_id, method_id, payload, response } => {
+        Command::Call {
+            service_id,
+            instance_id,
+            method_id,
+            payload,
+            response,
+            target_endpoint,
+        } => {
             let key = ServiceKey::new(service_id, instance_id);
 
-            // Find the discovered service (try exact match first, then any instance)
-            let endpoint = state.discovered.get(&key)
-                .and_then(|d| d.rpc_endpoint(prefer_tcp))
-                .or_else(|| {
-                    // If searching for Any, find any instance of this service
-                    if instance_id.is_any() {
-                        state.discovered.iter()
-                            .find(|(k, _)| k.service_id == service_id.value())
-                            .and_then(|(_, v)| v.rpc_endpoint(prefer_tcp))
-                    } else {
-                        None
-                    }
-                });
+            // Use static endpoint if provided, otherwise look up from discovered services
+            let endpoint = target_endpoint.or_else(|| {
+                state
+                    .discovered
+                    .get(&key)
+                    .and_then(|d| d.rpc_endpoint(prefer_tcp))
+                    .or_else(|| {
+                        // If searching for Any, find any instance of this service
+                        if instance_id.is_any() {
+                            state
+                                .discovered
+                                .iter()
+                                .find(|(k, _)| k.service_id == service_id.value())
+                                .and_then(|(_, v)| v.rpc_endpoint(prefer_tcp))
+                        } else {
+                            None
+                        }
+                    })
+            });
 
             if let Some(endpoint) = endpoint {
                 let session_id = state.next_session_id();
                 let client_id = state.client_id;
-                
+
                 // Build request message
                 let request_data = build_request(
                     service_id.value(),
@@ -1911,8 +2442,13 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
                 );
 
                 // Register pending call
-                let call_key = CallKey { client_id, session_id };
-                state.pending_calls.insert(call_key, PendingCall { response });
+                let call_key = CallKey {
+                    client_id,
+                    session_id,
+                };
+                state
+                    .pending_calls
+                    .insert(call_key, PendingCall { response });
 
                 actions.push(Action::SendClientMessage {
                     data: request_data,
@@ -1923,26 +2459,38 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             }
         }
 
-        Command::FireAndForget { service_id, instance_id, method_id, payload } => {
+        Command::FireAndForget {
+            service_id,
+            instance_id,
+            method_id,
+            payload,
+            target_endpoint,
+        } => {
             let key = ServiceKey::new(service_id, instance_id);
 
-            // Find the discovered service (try exact match first, then any instance)
-            let endpoint = state.discovered.get(&key)
-                .and_then(|d| d.rpc_endpoint(prefer_tcp))
-                .or_else(|| {
-                    if instance_id.is_any() {
-                        state.discovered.iter()
-                            .find(|(k, _)| k.service_id == service_id.value())
-                            .and_then(|(_, v)| v.rpc_endpoint(prefer_tcp))
-                    } else {
-                        None
-                    }
-                });
+            // Use static endpoint if provided, otherwise look up from discovered services
+            let endpoint = target_endpoint.or_else(|| {
+                state
+                    .discovered
+                    .get(&key)
+                    .and_then(|d| d.rpc_endpoint(prefer_tcp))
+                    .or_else(|| {
+                        if instance_id.is_any() {
+                            state
+                                .discovered
+                                .iter()
+                                .find(|(k, _)| k.service_id == service_id.value())
+                                .and_then(|(_, v)| v.rpc_endpoint(prefer_tcp))
+                        } else {
+                            None
+                        }
+                    })
+            });
 
             if let Some(endpoint) = endpoint {
                 let session_id = state.next_session_id();
                 let client_id = state.client_id;
-                
+
                 // Build fire-and-forget message (no response tracking needed)
                 let request_data = build_fire_and_forget(
                     service_id.value(),
@@ -1961,7 +2509,13 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             // Note: No error response for fire-and-forget - it's best effort
         }
 
-        Command::Subscribe { service_id, instance_id, eventgroup_id, events, response } => {
+        Command::Subscribe {
+            service_id,
+            instance_id,
+            eventgroup_id,
+            events,
+            response,
+        } => {
             let key = ServiceKey::new(service_id, instance_id);
 
             if let Some(discovered) = state.discovered.get(&key) {
@@ -2003,7 +2557,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
 
                 actions.push(Action::SendSd {
                     message: msg,
-                    target: discovered.sd_endpoint,  // Send to SD socket, not RPC socket
+                    target: discovered.sd_endpoint, // Send to SD socket, not RPC socket
                 });
 
                 let _ = response.send(Ok(()));
@@ -2012,7 +2566,11 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             }
         }
 
-        Command::Unsubscribe { service_id, instance_id, eventgroup_id } => {
+        Command::Unsubscribe {
+            service_id,
+            instance_id,
+            eventgroup_id,
+        } => {
             let key = ServiceKey::new(service_id, instance_id);
 
             if let Some(subs) = state.subscriptions.get_mut(&key) {
@@ -2032,14 +2590,20 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
 
                 actions.push(Action::SendSd {
                     message: msg,
-                    target: discovered.sd_endpoint,  // Send to SD socket, not RPC socket
+                    target: discovered.sd_endpoint, // Send to SD socket, not RPC socket
                 });
             }
         }
 
-        Command::Notify { service_id, instance_id, eventgroup_id, event_id, payload } => {
+        Command::Notify {
+            service_id,
+            instance_id,
+            eventgroup_id,
+            event_id,
+            payload,
+        } => {
             let service_key = ServiceKey::new(service_id, instance_id);
-            
+
             // Find all subscribers for this eventgroup
             let sub_key = SubscriberKey {
                 service_id: service_id.value(),
@@ -2048,7 +2612,8 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             };
 
             // Clone subscribers to avoid borrow conflict with next_session_id
-            let subscribers: Vec<SocketAddr> = state.server_subscribers
+            let subscribers: Vec<SocketAddr> = state
+                .server_subscribers
                 .get(&sub_key)
                 .map(|s| s.clone())
                 .unwrap_or_default();
@@ -2075,10 +2640,179 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         }
 
         Command::Shutdown => {}
-        
+
         // Command::Offer is handled separately in runtime_task for async socket creation
         // TODO. Is this fine?
         Command::Offer { .. } => {}
+
+        // Command::Bind is handled separately in runtime_task for async socket creation
+        Command::Bind { .. } => {}
+
+        // Command::ListenStatic is handled separately in runtime_task
+        Command::ListenStatic { .. } => {}
+
+        // NotifyStatic: Send notification to specific static subscribers
+        Command::NotifyStatic {
+            service_id,
+            instance_id,
+            eventgroup_id: _,
+            event_id,
+            payload,
+            targets,
+        } => {
+            let service_key = ServiceKey::new(service_id, instance_id);
+
+            if state.offered.contains_key(&service_key) {
+                let notification_data = build_notification(
+                    service_id.value(),
+                    event_id,
+                    state.client_id,
+                    state.next_session_id(),
+                    1, // interface version
+                    &payload,
+                );
+
+                for target in targets {
+                    actions.push(Action::SendServerMessage {
+                        service_key,
+                        data: notification_data.clone(),
+                        target,
+                    });
+                }
+            }
+        }
+
+        // StartAnnouncing: Begin SD announcements for an already-bound service
+        Command::StartAnnouncing {
+            service_id,
+            instance_id,
+            response,
+        } => {
+            let key = ServiceKey::new(service_id, instance_id);
+
+            // First, read-only access to extract what we need
+            let sd_flags = state.sd_flags(true);
+            let protocol = match state.config.transport {
+                Transport::Tcp => L4Protocol::Tcp,
+                Transport::Udp => L4Protocol::Udp,
+            };
+            let ttl = state.config.ttl;
+            let sd_multicast = state.config.sd_multicast;
+
+            if let Some(offered) = state.offered.get_mut(&key) {
+                // Mark as announcing
+                offered.is_announcing = true;
+                offered.last_offer = Instant::now() - Duration::from_secs(10); // Force immediate offer
+
+                // Extract what we need from offered before creating msg
+                let rpc_endpoint = offered.rpc_endpoint;
+                let major_version = offered.major_version;
+                let minor_version = offered.minor_version;
+
+                let _ = response.send(Ok(()));
+
+                // Send initial offer
+                let mut msg = SdMessage::new(sd_flags);
+                let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
+                    addr: match rpc_endpoint {
+                        SocketAddr::V4(v4) => *v4.ip(),
+                        _ => Ipv4Addr::LOCALHOST,
+                    },
+                    port: rpc_endpoint.port(),
+                    protocol,
+                });
+                msg.add_entry(SdEntry::offer_service(
+                    key.service_id,
+                    key.instance_id,
+                    major_version,
+                    minor_version,
+                    ttl,
+                    opt_idx,
+                    1,
+                ));
+
+                actions.push(Action::SendSd {
+                    message: msg,
+                    target: sd_multicast,
+                });
+            } else {
+                let _ = response.send(Err(Error::ServiceUnavailable));
+            }
+        }
+
+        // StopAnnouncing: Stop SD announcements but keep socket open
+        Command::StopAnnouncing {
+            service_id,
+            instance_id,
+            response,
+        } => {
+            let key = ServiceKey::new(service_id, instance_id);
+
+            // First, read-only access to extract what we need
+            let sd_flags = state.sd_flags(false);
+            let sd_multicast = state.config.sd_multicast;
+
+            if let Some(offered) = state.offered.get_mut(&key) {
+                // Mark as not announcing
+                offered.is_announcing = false;
+
+                // Extract what we need
+                let major_version = offered.major_version;
+                let minor_version = offered.minor_version;
+
+                // Send StopOfferService
+                let mut msg = SdMessage::new(sd_flags);
+                msg.add_entry(SdEntry::stop_offer_service(
+                    service_id.value(),
+                    instance_id.value(),
+                    major_version,
+                    minor_version,
+                ));
+
+                actions.push(Action::SendSd {
+                    message: msg,
+                    target: sd_multicast,
+                });
+
+                let _ = response.send(Ok(()));
+            } else {
+                let _ = response.send(Err(Error::ServiceUnavailable));
+            }
+        }
+
+        // FindStatic: Immediately mark service as available at given endpoint
+        Command::FindStatic {
+            service_id: _,
+            instance_id,
+            endpoint,
+            notify,
+        } => {
+            // Immediately notify that service is available at the given endpoint
+            let _ = notify.try_send(ServiceAvailability::Available {
+                endpoint,
+                instance_id: instance_id.value(),
+            });
+        }
+
+        // HasSubscribers: Query if there are subscribers for an eventgroup
+        Command::HasSubscribers {
+            service_id,
+            instance_id,
+            eventgroup_id,
+            response,
+        } => {
+            let sub_key = SubscriberKey {
+                service_id: service_id.value(),
+                instance_id: instance_id.value(),
+                eventgroup_id,
+            };
+            let has_subscribers = state
+                .server_subscribers
+                .get(&sub_key)
+                .map(|v| !v.is_empty())
+                .unwrap_or(false);
+            let _ = response.send(has_subscribers);
+        }
     }
 
     if actions.is_empty() {
@@ -2103,8 +2837,13 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         Transport::Udp => L4Protocol::Udp,
     };
 
-    // Cyclic offers
+    // Cyclic offers (only for services that are announcing)
     for (key, offered) in &mut state.offered {
+        // Skip services that are bound but not announcing
+        if !offered.is_announcing {
+            continue;
+        }
+
         if now.duration_since(offered.last_offer) >= offer_interval {
             offered.last_offer = now;
 
@@ -2114,7 +2853,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
                     SocketAddr::V4(v4) => *v4.ip(),
                     _ => Ipv4Addr::LOCALHOST,
                 },
-                port: offered.rpc_endpoint.port(),  // Use RPC endpoint port, not SD port!
+                port: offered.rpc_endpoint.port(), // Use RPC endpoint port, not SD port!
                 protocol,
             });
             msg.add_entry(SdEntry::offer_service(
@@ -2139,7 +2878,8 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
     let mut expired_finds = Vec::new();
 
     for (key, find_req) in &mut state.find_requests {
-        if find_req.repetitions_left > 0 && now.duration_since(find_req.last_find) >= find_interval {
+        if find_req.repetitions_left > 0 && now.duration_since(find_req.last_find) >= find_interval
+        {
             find_req.last_find = now;
             find_req.repetitions_left -= 1;
 
@@ -2258,7 +2998,10 @@ mod tests {
 
         // Initially reboot flag should be set
         assert!(state.reboot_flag, "Reboot flag should be true initially");
-        assert!(!state.has_wrapped_once, "has_wrapped_once should be false initially");
+        assert!(
+            !state.has_wrapped_once,
+            "has_wrapped_once should be false initially"
+        );
 
         // Iterate through all session IDs until wraparound
         for _ in 1..=0xFFFFu16 {
@@ -2266,14 +3009,23 @@ mod tests {
         }
 
         // After wraparound, reboot flag should be cleared
-        assert!(!state.reboot_flag, "Reboot flag should be false after wraparound");
-        assert!(state.has_wrapped_once, "has_wrapped_once should be true after wraparound");
+        assert!(
+            !state.reboot_flag,
+            "Reboot flag should be false after wraparound"
+        );
+        assert!(
+            state.has_wrapped_once,
+            "has_wrapped_once should be true after wraparound"
+        );
 
         // Second wraparound should not change anything
         for _ in 1..=0xFFFFu16 {
             state.next_session_id();
         }
-        assert!(!state.reboot_flag, "Reboot flag should stay false after second wraparound");
+        assert!(
+            !state.reboot_flag,
+            "Reboot flag should stay false after second wraparound"
+        );
     }
 
     /// Session ID never returns 0

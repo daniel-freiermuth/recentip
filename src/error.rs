@@ -23,6 +23,8 @@ pub enum Error {
     RuntimeShutdown,
     /// Channel full, event was dropped
     ChannelFull,
+    /// Service/instance is already offered or bound
+    AlreadyOffered,
 }
 
 impl fmt::Display for Error {
@@ -35,6 +37,7 @@ impl fmt::Display for Error {
             Error::NotSubscribed => write!(f, "Not subscribed to eventgroup"),
             Error::RuntimeShutdown => write!(f, "Runtime has shut down"),
             Error::ChannelFull => write!(f, "Channel full, event dropped"),
+            Error::AlreadyOffered => write!(f, "Service/instance is already offered or bound"),
         }
     }
 }

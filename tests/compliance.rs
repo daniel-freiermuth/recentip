@@ -102,6 +102,11 @@ mod instances;
 #[path = "compliance/multi_party.rs"]
 mod multi_party;
 
+// service_instance_api contains turmoil integration tests for ServiceInstance typestate API
+#[cfg(feature = "turmoil")]
+#[path = "compliance/service_instance_api.rs"]
+mod service_instance_api;
+
 // Real network tests using tokio sockets (no turmoil simulation)
 #[path = "compliance/real_network.rs"]
 mod real_network;
