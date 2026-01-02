@@ -420,18 +420,26 @@ fn test_service_disappears_after_stop_announcing() {
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
 
-            // First: service should be available
-            let available = tokio::time::timeout(Duration::from_millis(200), proxy.available())
-                .await
-                .expect("Should discover service")
-                .unwrap();
+            // Verify it's still discoverable before server stops announcing
+            let proxy_before_stop = runtime.find::<BrakeService>(InstanceId::Any);
+            let result_before = tokio::time::timeout(Duration::from_millis(150), proxy_before_stop.available()).await;
+            assert!(
+                result_before.is_ok(),
+                "Service should still be available before stop_announcing()"
+            );
 
             // Wait for server to stop announcing
             tokio::time::sleep(Duration::from_millis(400)).await;
 
-            // Service should now be unavailable
-            // (The proxy should have received unavailability notification)
-            // TODO: How to check this? May need is_available() method or similar
+            // Service should now be unavailable - verify by trying to discover again
+            // A fresh proxy should not find the service since StopOfferService was sent
+            let proxy_after_stop = runtime.find::<BrakeService>(InstanceId::Any);
+            let result_after = tokio::time::timeout(Duration::from_millis(200), proxy_after_stop.available()).await;
+            
+            assert!(
+                result_after.is_err(),
+                "Service should be unavailable after stop_announcing()"
+            );
 
             flag.store(true, Ordering::SeqCst);
             Ok(())
@@ -978,7 +986,14 @@ fn test_drop_announced_sends_stop_offer() {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
             // Service should now be gone (StopOfferService received)
-            // TODO: Check unavailability notification
+            // Verify by creating a fresh proxy and expecting discovery to fail
+            let proxy2 = runtime.find::<BrakeService>(InstanceId::Any);
+            let result = tokio::time::timeout(Duration::from_millis(200), proxy2.available()).await;
+            
+            assert!(
+                result.is_err(),
+                "Service should be unavailable after Announced instance is dropped"
+            );
 
             flag.store(true, Ordering::SeqCst);
             Ok(())
@@ -1687,7 +1702,7 @@ fn test_re_announce_after_stop() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder().ttl(5).build(); // Short TTL for testing
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -1701,7 +1716,7 @@ fn test_re_announce_after_stop() {
 
             // Stop
             let bound = announced.stop_announcing().await.unwrap();
-            tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Re-announce
             let _announced_again = bound.announce().await.unwrap();
@@ -1727,16 +1742,25 @@ fn test_re_announce_after_stop() {
                 .expect("First discovery")
                 .unwrap();
 
-            // Wait for service to disappear
+            // Wait for service to stop announcing (server stops at t=300ms)
+            // Plus additional time for StopOfferService message to propagate
             tokio::time::sleep(Duration::from_millis(400)).await;
 
-            // TODO: How to verify service went away and came back?
-            // Need proper availability tracking API
+            // Verify service actually went away (need fresh proxy since available() consumes)
+            let proxy_check_gone = runtime.find::<BrakeService>(InstanceId::Any);
+            let gone_result = tokio::time::timeout(Duration::from_millis(200), proxy_check_gone.available()).await;
+            assert!(
+                gone_result.is_err(),
+                "Service should be unavailable after stop_announcing()"
+            );
+
+            // Wait for service to re-announce (server re-announces at t=800ms from server start)
+            tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Re-discover after re-announcement (need fresh proxy since available() consumes)
             let proxy2 = runtime.find::<BrakeService>(InstanceId::Any);
             let _available_again =
-                tokio::time::timeout(Duration::from_millis(400), proxy2.available())
+                tokio::time::timeout(Duration::from_millis(500), proxy2.available())
                     .await
                     .expect("Should rediscover after re-announce")
                     .unwrap();
