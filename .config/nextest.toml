@@ -1,0 +1,3 @@
+[[profile.default.overrides]]
+filter = 'test(real_network::)'
+threads-required = 'num-cpus'

@@ -131,6 +131,11 @@ async fn udp_request_response_real_network() {
     assert_eq!(response.payload.as_ref(), b"ECHO:hello");
 
     server_task.await.expect("Server task");
+    
+    // Shutdown runtimes and wait for cleanup
+    client_runtime.shutdown().await;
+    server_runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
 }
 
 /// Test UDP service discovery on real network
@@ -231,6 +236,10 @@ async fn tcp_request_response_real_network() {
 
     done_tx.send(()).await.ok();
     server_handle.await.expect("Server task");
+    
+    // Shutdown runtime and wait for cleanup
+    runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
 }
 
 /// Test TCP with Magic Cookies on real network
