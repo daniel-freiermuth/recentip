@@ -39,24 +39,12 @@ impl Service for EchoService {
 // Helper Functions
 // ============================================================================
 
-/// Get the local network IP address (not localhost)
-fn get_local_ip() -> Ipv4Addr {
-    // Try to get a local IP by connecting to a public address
-    // This doesn't actually send packets, just determines the outgoing interface
-    use std::net::UdpSocket;
-    let socket = UdpSocket::bind("0.0.0.0:0").expect("bind");
-    socket.connect("8.8.8.8:80").expect("connect");
-    match socket.local_addr().expect("local_addr") {
-        SocketAddr::V4(addr) => *addr.ip(),
-        _ => Ipv4Addr::LOCALHOST,
-    }
-}
-
 /// Create config bound to the local network IP for proper multicast
-fn test_config(port: u16) -> RuntimeConfig {
-    let local_ip = get_local_ip();
+/// Note: We bind to INADDR_ANY on the SD multicast port (30490) so that multicast discovery works.
+/// Different runtimes on the same machine can share this port via SO_REUSEPORT.
+fn test_config(_port: u16) -> RuntimeConfig {
     RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(local_ip, port)))
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30490)))
         .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::new(239, 255, 255, 250),
             30490,
@@ -64,10 +52,9 @@ fn test_config(port: u16) -> RuntimeConfig {
         .build()
 }
 
-fn tcp_test_config(port: u16) -> RuntimeConfig {
-    let local_ip = get_local_ip();
+fn tcp_test_config(_port: u16) -> RuntimeConfig {
     RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(local_ip, port)))
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30490)))
         .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::new(239, 255, 255, 250),
             30490,
@@ -76,10 +63,9 @@ fn tcp_test_config(port: u16) -> RuntimeConfig {
         .build()
 }
 
-fn tcp_test_config_with_magic_cookies(port: u16) -> RuntimeConfig {
-    let local_ip = get_local_ip();
+fn tcp_test_config_with_magic_cookies(_port: u16) -> RuntimeConfig {
     RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(local_ip, port)))
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30490)))
         .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::new(239, 255, 255, 250),
             30490,
@@ -379,73 +365,6 @@ async fn tcp_multiple_requests_real_network() {
 #[tokio::test]
 #[serial]
 async fn udp_events_real_network() {
-    /// Test two runtimes binding to the same SD port (SO_REUSEPORT)
-    #[tokio::test]
-    #[serial]
-    async fn udp_two_runtimes_same_sd_port() {
-        let sd_port = 30490;
-        let server_port = 41300;
-        let client_port = 41400;
-
-        // Both runtimes bind to the same SD multicast port
-        let server_config = RuntimeConfig::builder()
-            .local_addr(SocketAddr::V4(SocketAddrV4::new(
-                get_local_ip(),
-                server_port,
-            )))
-            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(239, 255, 255, 250),
-                sd_port,
-            )))
-            .build();
-        let client_config = RuntimeConfig::builder()
-            .local_addr(SocketAddr::V4(SocketAddrV4::new(
-                get_local_ip(),
-                client_port,
-            )))
-            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(239, 255, 255, 250),
-                sd_port,
-            )))
-            .build();
-
-        let server_runtime = Runtime::new(server_config).await.expect("Server runtime");
-        let mut offering = server_runtime
-            .offer::<EchoService>(InstanceId::Id(0x0003))
-            .await
-            .expect("Offer service");
-
-        let client_runtime = Runtime::new(client_config).await.expect("Client runtime");
-
-        let server_task = tokio::spawn(async move {
-            if let Some(ServiceEvent::Call {
-                responder, payload, ..
-            }) = offering.next().await
-            {
-                let mut response = b"REUSEPORT:".to_vec();
-                response.extend_from_slice(&payload);
-                responder.reply(&response).await.expect("Reply");
-            }
-        });
-
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        let proxy = client_runtime.find::<EchoService>(InstanceId::Id(0x0003));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
-            .await
-            .expect("Discovery timeout")
-            .expect("Service available");
-
-        let method_id = MethodId::new(0x0001).unwrap();
-        let response =
-            tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"reuseport"))
-                .await
-                .expect("Call timeout")
-                .expect("Call success");
-
-        assert_eq!(response.payload.as_ref(), b"REUSEPORT:reuseport");
-        server_task.await.expect("Server task");
-    }
     let server_port = 41100;
     let client_port = 41200;
 
@@ -524,4 +443,75 @@ async fn udp_events_real_network() {
 
     done_tx.send(()).await.ok();
     server_handle.await.expect("Server task");
+}
+
+// ============================================================================
+// SO_REUSEPORT Tests
+// ============================================================================
+
+/// Test two runtimes binding to the same SD port (SO_REUSEPORT)
+#[tokio::test]
+#[serial]
+async fn udp_two_runtimes_same_sd_port() {
+    let sd_port = 30490;
+
+    // Both runtimes bind to INADDR_ANY on the SD multicast port
+    // This tests SO_REUSEPORT functionality
+    let server_config = RuntimeConfig::builder()
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            sd_port,
+        )))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            sd_port,
+        )))
+        .build();
+    let client_config = RuntimeConfig::builder()
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            sd_port,
+        )))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            sd_port,
+        )))
+        .build();
+
+    let server_runtime = Runtime::new(server_config).await.expect("Server runtime");
+    let mut offering = server_runtime
+        .offer::<EchoService>(InstanceId::Id(0x0003))
+        .await
+        .expect("Offer service");
+
+    let client_runtime = Runtime::new(client_config).await.expect("Client runtime");
+
+    let server_task = tokio::spawn(async move {
+        if let Some(ServiceEvent::Call {
+            responder, payload, ..
+        }) = offering.next().await
+        {
+            let mut response = b"REUSEPORT:".to_vec();
+            response.extend_from_slice(&payload);
+            responder.reply(&response).await.expect("Reply");
+        }
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let proxy = client_runtime.find::<EchoService>(InstanceId::Id(0x0003));
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        .await
+        .expect("Discovery timeout")
+        .expect("Service available");
+
+    let method_id = MethodId::new(0x0001).unwrap();
+    let response =
+        tokio::time::timeout(Duration::from_secs(5), proxy.call(method_id, b"reuseport"))
+            .await
+            .expect("Call timeout")
+            .expect("Call success");
+
+    assert_eq!(response.payload.as_ref(), b"REUSEPORT:reuseport");
+    server_task.await.expect("Server task");
 }

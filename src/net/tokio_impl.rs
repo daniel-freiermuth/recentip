@@ -7,7 +7,35 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 impl UdpSocket for tokio::net::UdpSocket {
     async fn bind(addr: SocketAddr) -> io::Result<Self> {
-        tokio::net::UdpSocket::bind(addr).await
+        // Use socket2 to set SO_REUSEPORT before binding.
+        // This allows multiple processes/runtimes to share the same port,
+        // which is required for SOME/IP SD multicast to work properly.
+        use socket2::{Domain, Protocol, Socket, Type};
+        
+        let domain = match addr {
+            SocketAddr::V4(_) => Domain::IPV4,
+            SocketAddr::V6(_) => Domain::IPV6,
+        };
+        
+        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+        
+        // Set SO_REUSEADDR (allows reuse of local addresses)
+        socket.set_reuse_address(true)?;
+        
+        // Set SO_REUSEPORT (allows multiple sockets to bind to same port)
+        // This is available on Linux and recent macOS
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "freebsd"))]
+        socket.set_reuse_port(true)?;
+        
+        // Set non-blocking before converting to tokio socket
+        socket.set_nonblocking(true)?;
+        
+        // Bind to the address
+        socket.bind(&addr.into())?;
+        
+        // Convert to tokio socket
+        let std_socket: std::net::UdpSocket = socket.into();
+        tokio::net::UdpSocket::from_std(std_socket)
     }
 
     async fn send_to(&self, buf: &[u8], target: SocketAddr) -> io::Result<usize> {
@@ -19,6 +47,10 @@ impl UdpSocket for tokio::net::UdpSocket {
     }
 
     fn join_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()> {
+        // Enable multicast loopback so packets sent from this host are delivered back
+        // to other sockets on the same host. This is required for testing on a single machine.
+        tokio::net::UdpSocket::set_multicast_loop_v4(self, true)?;
+        
         tokio::net::UdpSocket::join_multicast_v4(self, multiaddr, interface)
     }
 
