@@ -61,6 +61,15 @@ use std::net::SocketAddr;
 
 pub mod net;
 
+// Internal modules for runtime implementation
+mod client;
+mod command;
+mod sd;
+mod server;
+mod state;
+
+// Public modules
+pub mod config;
 pub mod error;
 pub mod handle;
 pub mod runtime;
@@ -72,7 +81,8 @@ pub mod wire;
 
 pub use error::*;
 pub use handle::*;
-pub use runtime::{MethodConfig, Runtime, RuntimeConfig, Transport};
+pub use config::{MethodConfig, RuntimeConfig, RuntimeConfigBuilder, Transport};
+pub use runtime::Runtime;
 
 // ============================================================================
 // PROTOCOL IDENTIFIERS
