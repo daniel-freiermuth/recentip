@@ -1,6 +1,44 @@
-//! Runtime state and internal types.
+//! # Runtime State (Internal)
 //!
-//! Contains `RuntimeState`, `ServiceKey`, `OfferedService`, `DiscoveredService`, and related types.
+//! This module contains the central state structure and supporting types
+//! used by the runtime's event loop. It is `pub(crate)` — internal to the
+//! library.
+//!
+//! ## Design Philosophy
+//!
+//! All mutable state lives in [`RuntimeState`]. The event loop owns this
+//! structure exclusively, avoiding the need for locks or atomic operations.
+//! Handler functions in other modules (client, server, sd) take `&mut RuntimeState`
+//! and return [`Action`](crate::sd::Action) values for the event loop to execute.
+//!
+//! ## Key Data Structures
+//!
+//! | Type | Purpose |
+//! |------|---------|
+//! | [`RuntimeState`] | Top-level state container |
+//! | [`ServiceKey`] | Identifies a service+instance pair |
+//! | [`OfferedService`] | State for a service we're offering |
+//! | [`DiscoveredService`] | State for a service we've discovered |
+//! | [`PendingCall`] | Tracks an outstanding RPC call |
+//! | [`ClientSubscription`] | Client-side subscription to an eventgroup |
+//! | [`ServerSubscriber`] | Server's view of a subscribed client |
+//!
+//! ## Session ID Management
+//!
+//! Per SOME/IP spec:
+//! - Session IDs are 16-bit, wrapping from 0xFFFF → 0x0001 (never 0x0000)
+//! - Separate counters for multicast SD and unicast SD
+//! - "Reboot flag" set on first message after startup
+//!
+//! The `next_session_id()` and `next_unicast_session_id()` methods handle this.
+//!
+//! ## Contributor Notes
+//!
+//! When adding new features:
+//! 1. Add state fields to [`RuntimeState`]
+//! 2. Add key types if needed (like [`ServiceKey`], [`CallKey`])
+//! 3. Update `new()` to initialize new fields
+//! 4. Add accessor methods if handlers in other modules need them
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

@@ -1,6 +1,55 @@
-//! Client-side handlers for SOME/IP runtime.
+//! # Client-Side Handlers (Internal)
 //!
-//! Handles service discovery (find), RPC calls, subscriptions, and incoming responses/events.
+//! This module contains handlers for client-side SOME/IP operations.
+//! It is `pub(crate)` — internal to the library.
+//!
+//! ## Responsibilities
+//!
+//! | Handler | Command | Purpose |
+//! |---------|---------|----------|
+//! | `handle_find` | `Find` | Register service discovery request |
+//! | `handle_call` | `Call` | Send RPC request, track pending response |
+//! | `handle_fire_and_forget` | `FireAndForget` | Send one-way request |
+//! | `handle_subscribe` | `Subscribe` | Request eventgroup subscription |
+//! | `handle_unsubscribe` | `Unsubscribe` | Cancel subscription |
+//! | `handle_incoming_response` | — | Process RPC response from server |
+//! | `handle_incoming_notification` | — | Process event from server |
+//!
+//! ## Data Flow
+//!
+//! ```text
+//! User calls proxy.call()
+//!        │
+//!        ▼
+//! ProxyHandle sends Command::Call
+//!        │
+//!        ▼
+//! Runtime receives command
+//!        │
+//!        ▼
+//! handle_call() adds to pending_calls, returns Action::SendClientMessage
+//!        │
+//!        ▼
+//! Runtime sends message via client RPC socket
+//!        │
+//!        ▼
+//! Server processes and responds
+//!        │
+//!        ▼
+//! Runtime receives on client RPC socket
+//!        │
+//!        ▼
+//! handle_incoming_response() matches pending_call, sends result via oneshot
+//!        │
+//!        ▼
+//! User's .await completes with Response
+//! ```
+//!
+//! ## Contributor Notes
+//!
+//! - All handlers take `&mut RuntimeState` and return `Vec<Action>`
+//! - No I/O is performed directly; actions are returned to the runtime
+//! - Session IDs are allocated from `state.next_client_session_id()`
 
 use std::net::SocketAddr;
 use std::time::Duration;

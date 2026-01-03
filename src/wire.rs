@@ -1,7 +1,92 @@
-//! SOME/IP wire format serialization and parsing.
+//! # SOME/IP Wire Format
 //!
-//! This module handles encoding and decoding of SOME/IP messages
-//! according to the specification.
+//! This module handles encoding and decoding of SOME/IP messages according
+//! to the specification. It provides low-level access to the wire format
+//! for testing, debugging, and interoperability verification.
+//!
+//! ## SOME/IP Header Format (16 bytes)
+//!
+//! ```text
+//! Offset  Size  Field
+//! ──────────────────────────────────────────────────────
+//!   0      2    Service ID
+//!   2      2    Method ID (or Event ID if bit 15 set)
+//!   4      4    Length (header from byte 8 + payload)
+//!   8      2    Client ID
+//!  10      2    Session ID
+//!  12      1    Protocol Version (always 0x01)
+//!  13      1    Interface Version
+//!  14      1    Message Type
+//!  15      1    Return Code
+//! ──────────────────────────────────────────────────────
+//! ```
+//!
+//! ## Message Types
+//!
+//! | Value | Name | Description |
+//! |-------|------|-------------|
+//! | 0x00 | REQUEST | RPC request expecting response |
+//! | 0x01 | REQUEST_NO_RETURN | Fire-and-forget request |
+//! | 0x02 | NOTIFICATION | Event/notification message |
+//! | 0x80 | RESPONSE | RPC response (success or error) |
+//! | 0x81 | ERROR | RPC error response (explicit error type) |
+//! | 0x20 | TP_REQUEST | Segmented request (TP flag set) |
+//! | 0x21 | TP_REQUEST_NO_RETURN | Segmented fire-and-forget |
+//! | 0x22 | TP_NOTIFICATION | Segmented notification |
+//! | 0xA0 | TP_RESPONSE | Segmented response |
+//! | 0xA1 | TP_ERROR | Segmented error |
+//!
+//! ## Service Discovery (SD) Messages
+//!
+//! SD uses a special header format with:
+//! - Service ID: 0xFFFF
+//! - Method ID: 0x8100
+//! - Interface Version: 0x01
+//!
+//! SD messages contain entries (Offer, Find, Subscribe, etc.) and options
+//! (IPv4/IPv6 endpoints, configuration).
+//!
+//! ## Usage
+//!
+//! This module is primarily for internal use and testing. User code typically
+//! doesn't need to interact with wire formats directly.
+//!
+//! ```
+//! use someip_runtime::wire::{Header, MessageType};
+//! use bytes::{Buf, BytesMut, BufMut};
+//!
+//! // Build a header
+//! let header = Header {
+//!     service_id: 0x1234,
+//!     method_id: 0x0001,
+//!     length: 8, // header (8 bytes from offset 8) + payload
+//!     client_id: 0x0001,
+//!     session_id: 0x0001,
+//!     protocol_version: 0x01,
+//!     interface_version: 0x01,
+//!     message_type: MessageType::Request,
+//!     return_code: 0x00,
+//! };
+//!
+//! // Serialize to bytes
+//! let mut buf = BytesMut::with_capacity(16);
+//! header.serialize(&mut buf);
+//! assert_eq!(buf.len(), 16);
+//!
+//! // Parse a header from bytes
+//! let parsed = Header::parse(&mut buf.freeze()).expect("valid header");
+//! assert_eq!(parsed.message_type, MessageType::Request);
+//! ```
+//!
+//! ## Specification Compliance
+//!
+//! This module implements wire formats per the SOME/IP specification.
+//! Key compliance points:
+//!
+//! - Protocol version is always 0x01
+//! - Session IDs wrap from 0xFFFF to 0x0001 (never 0x0000)
+//! - Method IDs use bit 15 to distinguish methods (0) from events (1)
+//! - SD always uses UDP port 30490
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};

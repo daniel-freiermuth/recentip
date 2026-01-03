@@ -1,6 +1,58 @@
-//! Service Discovery message handling.
+//! # Service Discovery Message Handling (Internal)
 //!
-//! Contains SD message parsing, building, and action generation.
+//! This module handles SOME/IP Service Discovery (SD) protocol messages.
+//! It is `pub(crate)` — internal to the library.
+//!
+//! ## Service Discovery Overview
+//!
+//! SD runs over UDP multicast (default: 239.255.0.1:30490) and provides:
+//!
+//! - **Service announcement**: Servers advertise available services
+//! - **Service discovery**: Clients find services dynamically
+//! - **Subscription management**: Event subscription negotiation
+//!
+//! ## SD Entry Types
+//!
+//! | Entry Type | Direction | Purpose |
+//! |------------|-----------|---------|
+//! | OfferService | Server → Network | "I'm offering this service" |
+//! | StopOfferService | Server → Network | "I'm no longer offering this" |
+//! | FindService | Client → Network | "Is anyone offering this service?" |
+//! | SubscribeEventgroup | Client → Server | "I want to receive these events" |
+//! | SubscribeEventgroupAck | Server → Client | "Subscription accepted" |
+//! | SubscribeEventgroupNack | Server → Client | "Subscription rejected" |
+//! | StopSubscribeEventgroup | Client → Server | "I no longer want these events" |
+//!
+//! ## Module Structure
+//!
+//! - **Handlers**: `handle_offer()`, `handle_find_request()`, `handle_subscribe_request()`, etc.
+//! - **Builders**: `build_offer_message()`, `build_find_message()`, `build_subscribe_ack()`, etc.
+//! - **Actions**: [`Action`] enum represents side effects for the runtime to execute
+//!
+//! ## Action Pattern
+//!
+//! Handlers don't perform I/O directly. They modify state and return [`Action`]
+//! values. The runtime's event loop collects these actions and executes them:
+//!
+//! ```rust,ignore
+//! // (Internal API - not accessible from user code)
+//! let actions = handle_offer(&entry, &sd_message, from, &mut state);
+//! for action in actions {
+//!     match action {
+//!         Action::SendSd { message, target } => { /* send via SD socket */ }
+//!         Action::NotifyFound { key, availability } => { /* notify handles */ }
+//!         // ...
+//!     }
+//! }
+//! ```
+//!
+//! ## Contributor Notes
+//!
+//! When adding new SD features:
+//! 1. Add handler function for the entry type
+//! 2. Add builder function for outgoing messages
+//! 3. Add [`Action`] variant if new side effect needed
+//! 4. Wire up in `runtime.rs` event loop
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;

@@ -1,13 +1,76 @@
-//! SOME/IP runtime - manages network I/O and service discovery.
+//! # SOME/IP Runtime
 //!
-//! This module contains the main `Runtime` struct and the runtime task event loop.
-//! The implementation is split across several modules:
-//! - `config`: Configuration types (`RuntimeConfig`, `MethodConfig`, `Transport`)
-//! - `command`: Commands sent from handles to runtime (`Command`, `ServiceRequest`)
-//! - `state`: Runtime state and internal types (`RuntimeState`, `ServiceKey`, etc.)
-//! - `sd`: Service Discovery message handling
-//! - `client`: Client-side handlers (find, call, subscribe)
-//! - `server`: Server-side handlers (offer, notify, incoming requests)
+//! The runtime is the **central coordinator** for all SOME/IP communication.
+//! It manages network I/O, service discovery, and dispatches commands from handles.
+//!
+//! ## Role in the Architecture
+//!
+//! The runtime implements an **event loop pattern** where:
+//!
+//! 1. All state lives in a single [`RuntimeState`](crate::state::RuntimeState) struct
+//! 2. Handles send [`Command`](crate::command::Command) messages via channels
+//! 3. The event loop processes commands and I/O events in a `tokio::select!` loop
+//! 4. Responses flow back through oneshot channels or notification channels
+//!
+//! This design ensures **thread-safety without locks** (single-threaded event loop)
+//! and enables **efficient socket multiplexing** (one SD socket shared by all services).
+//!
+//! ## Event Loop Sources
+//!
+//! The runtime's `select!` loop handles:
+//!
+//! | Source | Description |
+//! |--------|-------------|
+//! | Command channel | Commands from handles (find, offer, call, etc.) |
+//! | SD socket (UDP) | Service Discovery multicast messages |
+//! | Client RPC socket | Responses to outgoing RPC calls |
+//! | TCP client responses | Responses on TCP client connections |
+//! | TCP server requests | Incoming requests on TCP server sockets |
+//! | Periodic timer | Cyclic offers, TTL expiry, find repetitions |
+//!
+//! ## Module Organization
+//!
+//! The runtime implementation is split across several internal modules:
+//!
+//! - [`config`](crate::config): Configuration types ([`RuntimeConfig`], [`Transport`])
+//! - [`command`](crate::command): Command enum for handle→runtime communication
+//! - [`state`](crate::state): RuntimeState and internal data structures
+//! - [`sd`](crate::sd): Service Discovery message handlers and builders
+//! - [`client`](crate::client): Client-side handlers (find, call, subscribe)
+//! - [`server`](crate::server): Server-side handlers (offer, notify, respond)
+//!
+//! Each module contains pure functions that operate on `RuntimeState` and return
+//! [`Action`](crate::sd::Action) values. The runtime executes these actions after
+//! each event is processed.
+//!
+//! ## Lifetime and Shutdown
+//!
+//! The runtime task runs until:
+//! - All handles are dropped (command channel closes)
+//! - An unrecoverable I/O error occurs
+//!
+//! When the [`Runtime`] struct is dropped, it signals shutdown and waits for
+//! the background task to complete gracefully.
+//!
+//! ## Example: Custom Socket Types (Testing)
+//!
+//! The runtime is generic over socket types for testing with network simulators:
+//!
+//! ```no_run
+//! use someip_runtime::prelude::*;
+//!
+//! // Production runtime (default socket types)
+//! #[tokio::main]
+//! async fn main() -> Result<()> {
+//!     let config = RuntimeConfig::default();
+//!     let runtime = Runtime::new(config).await?;
+//!     // Use runtime...
+//!     Ok(())
+//! }
+//!
+//! // For turmoil testing, see tests/compliance/ for examples
+//! // using Runtime::<turmoil types>::with_socket_type()
+//! ```
 
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
@@ -52,19 +115,60 @@ pub(crate) use crate::command::{Command, ServiceAvailability, ServiceRequest};
 // RUNTIME
 // ============================================================================
 
-/// Shared runtime state
+/// Shared state between the Runtime handle and the runtime task.
+///
+/// This is an implementation detail. Users interact with [`Runtime`] directly.
 pub(crate) struct RuntimeInner {
-    /// Channel to send commands to the runtime task
+    /// Channel to send commands to the runtime task.
+    ///
+    /// All handle operations (find, offer, call, etc.) send commands through
+    /// this channel. The runtime's event loop receives and processes them.
     pub(crate) cmd_tx: mpsc::Sender<Command>,
 }
 
-/// SOME/IP runtime
+/// SOME/IP Runtime — the central coordinator for all SOME/IP communication.
 ///
-/// The runtime manages all SOME/IP communication. Create one per application.
-/// When all handles (proxies, offerings) are dropped, the runtime shuts down.
+/// Create one `Runtime` per application. It manages:
 ///
-/// The runtime is generic over the UDP socket type for testing purposes.
-/// TCP support is enabled via the `transport` configuration option.
+/// - **Service Discovery**: Multicast offers, finds, and subscription exchanges
+/// - **RPC Communication**: Request/response and fire-and-forget calls
+/// - **Event Delivery**: Pub/sub notifications via eventgroups
+/// - **Connection Management**: UDP sockets and TCP connection pooling
+///
+/// # Lifecycle
+///
+/// The runtime spawns a background task that runs until:
+/// 1. All handles ([`ProxyHandle`](crate::handle::ProxyHandle),
+///    [`OfferingHandle`](crate::handle::OfferingHandle)) are dropped
+/// 2. An unrecoverable error occurs
+///
+/// When the `Runtime` is dropped, it signals shutdown and waits for cleanup.
+///
+/// # Socket Types
+///
+/// The runtime is generic over socket types to support testing with network
+/// simulators like [turmoil](https://docs.rs/turmoil). For production use,
+/// the default tokio types are used:
+///
+/// ```no_run
+/// use someip_runtime::prelude::*;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<()> {
+///     // Production (default)
+///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+///
+///     // For turmoil testing, the runtime is parameterized:
+///     // type TestRuntime = Runtime<turmoil::net::UdpSocket, ...>;
+///     // See tests/compliance/ for examples.
+///     Ok(())
+/// }
+/// ```
+///
+/// # Thread Safety
+///
+/// The `Runtime` can be shared across tasks via its handles. Internally,
+/// all state is managed by a single-threaded event loop, avoiding locks.
 pub struct Runtime<
     U: UdpSocket = tokio::net::UdpSocket,
     T: TcpStream = tokio::net::TcpStream,
@@ -217,15 +321,30 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// - EXCEPTION (0x81) is optional and must be explicitly configured per-method
     ///
     /// # Example
-    /// ```ignore
-    /// let config = MethodConfig::new()
-    ///     .use_exception_for(0x0001)  // Method 0x0001 uses EXCEPTION for errors
-    ///     .use_exception_for(0x0002); // Method 0x0002 also uses EXCEPTION
+    /// ```no_run
+    /// use someip_runtime::prelude::*;
     ///
-    /// let offering = runtime.offer_with_config::<MyService>(
-    ///     InstanceId::Id(1),
-    ///     config,
-    /// ).await?;
+    /// struct MyService;
+    /// impl Service for MyService {
+    ///     const SERVICE_ID: u16 = 0x1234;
+    ///     const MAJOR_VERSION: u8 = 1;
+    ///     const MINOR_VERSION: u32 = 0;
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+    ///
+    ///     let config = MethodConfig::new()
+    ///         .use_exception_for(0x0001)  // Method 0x0001 uses EXCEPTION for errors
+    ///         .use_exception_for(0x0002); // Method 0x0002 also uses EXCEPTION
+    ///
+    ///     let offering = runtime.offer_with_config::<MyService>(
+    ///         InstanceId::Id(1),
+    ///         config,
+    ///     ).await?;
+    ///     Ok(())
+    /// }
     /// ```
     pub async fn offer_with_config<S: Service>(
         &self,
@@ -271,13 +390,28 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// - `feat_req_recentipsd_444`: Implicit subscriptions are supported
     ///
     /// # Example
-    /// ```ignore
-    /// let service = runtime.bind::<MyService>(InstanceId::Id(1)).await?;
-    /// // Service is listening, but not announced via SD
-    /// // Can handle static deployments where clients know the address
+    /// ```no_run
+    /// use someip_runtime::prelude::*;
     ///
-    /// let announced = service.announce().await?;
-    /// // Now announced via SD, clients can discover
+    /// struct MyService;
+    /// impl Service for MyService {
+    ///     const SERVICE_ID: u16 = 0x1234;
+    ///     const MAJOR_VERSION: u8 = 1;
+    ///     const MINOR_VERSION: u32 = 0;
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+    ///
+    ///     let service = runtime.bind::<MyService>(InstanceId::Id(1)).await?;
+    ///     // Service is listening, but not announced via SD
+    ///     // Can handle static deployments where clients know the address
+    ///
+    ///     let announced = service.announce().await?;
+    ///     // Now announced via SD, clients can discover
+    ///     Ok(())
+    /// }
     /// ```
     pub async fn bind<S: Service>(
         &self,
@@ -330,13 +464,29 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// where service locations are pre-configured.
     ///
     /// # Example
-    /// ```ignore
-    /// let proxy = runtime.find_static::<MyService>(
-    ///     InstanceId::Id(1),
-    ///     "192.168.1.10:30509".parse().unwrap(),
-    /// );
-    /// // Can immediately make RPC calls
-    /// let response = proxy.call(method, payload).await?;
+    /// ```no_run
+    /// use someip_runtime::prelude::*;
+    ///
+    /// struct MyService;
+    /// impl Service for MyService {
+    ///     const SERVICE_ID: u16 = 0x1234;
+    ///     const MAJOR_VERSION: u8 = 1;
+    ///     const MINOR_VERSION: u32 = 0;
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+    ///
+    ///     let proxy = runtime.find_static::<MyService>(
+    ///         InstanceId::Id(1),
+    ///         "192.168.1.10:30509".parse().unwrap(),
+    ///     );
+    ///     // Can immediately make RPC calls
+    ///     let method = MethodId::new(0x0001).unwrap();
+    ///     let response = proxy.call(method, b"payload").await?;
+    ///     Ok(())
+    /// }
     /// ```
     pub fn find_static<S: Service>(
         &self,
@@ -358,20 +508,28 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// IP address and this port.
     ///
     /// # Example
-    /// ```ignore
-    /// // Client listens on port 30502
-    /// let listener = runtime.listen_static(
-    ///     ServiceId::new(0x1234).unwrap(),
-    ///     InstanceId::Id(1),
-    ///     EventgroupId::new(0x0001).unwrap(),
-    ///     30502,
-    /// ).await?;
+    /// ```no_run
+    /// use someip_runtime::prelude::*;
     ///
-    /// // Server adds this client as static subscriber
-    /// // service.add_static_subscriber("client:30502", &[eventgroup]);
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
     ///
-    /// while let Some(event) = listener.next().await {
-    ///     println!("Received event: {:?}", event);
+    ///     // Client listens on port 30502
+    ///     let mut listener = runtime.listen_static(
+    ///         ServiceId::new(0x1234).unwrap(),
+    ///         InstanceId::Id(1),
+    ///         EventgroupId::new(0x0001).unwrap(),
+    ///         30502,
+    ///     ).await?;
+    ///
+    ///     // Server adds this client as static subscriber
+    ///     // service.add_static_subscriber("client:30502", &[eventgroup]);
+    ///
+    ///     while let Some(event) = listener.next().await {
+    ///         println!("Received event: {:?}", event);
+    ///     }
+    ///     Ok(())
     /// }
     /// ```
     pub async fn listen_static(
@@ -415,12 +573,31 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// not be sent.
     ///
     /// # Example
-    /// ```ignore
-    /// // Process requests...
-    /// responder.reply(payload).await?;
+    /// ```no_run
+    /// use someip_runtime::prelude::*;
+    /// use someip_runtime::handle::ServiceEvent;
     ///
-    /// // Ensure the response is actually sent before exiting
-    /// runtime.shutdown().await;
+    /// struct MyService;
+    /// impl Service for MyService {
+    ///     const SERVICE_ID: u16 = 0x1234;
+    ///     const MAJOR_VERSION: u8 = 1;
+    ///     const MINOR_VERSION: u32 = 0;
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+    ///     let mut offering = runtime.offer::<MyService>(InstanceId::Id(1)).await?;
+    ///
+    ///     // Process one request then shutdown
+    ///     if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
+    ///         responder.reply(b"response").await?;
+    ///     }
+    ///
+    ///     // Ensure the response is actually sent before exiting
+    ///     runtime.shutdown().await;
+    ///     Ok(())
+    /// }
     /// ```
     pub async fn shutdown(mut self) {
         // Send shutdown command to the runtime task

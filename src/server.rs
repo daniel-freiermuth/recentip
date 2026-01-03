@@ -1,6 +1,55 @@
-//! Server-side handlers for SOME/IP runtime.
+//! # Server-Side Handlers (Internal)
 //!
-//! Handles service offering, notifications, incoming requests, and subscription management.
+//! This module contains handlers for server-side SOME/IP operations.
+//! It is `pub(crate)` — internal to the library.
+//!
+//! ## Responsibilities
+//!
+//! | Handler | Command | Purpose |
+//! |---------|---------|----------|
+//! | `handle_offer_command` | `Offer` | Create sockets, start offering service |
+//! | `handle_bind_command` | `Bind` | Create sockets without SD announcement |
+//! | `handle_notify` | `Notify` | Send event to all subscribers |
+//! | `handle_start_announcing` | `StartAnnouncing` | Begin SD offers for bound service |
+//! | `handle_stop_announcing` | `StopAnnouncing` | Stop SD offers, keep socket |
+//! | `handle_incoming_request` | — | Process RPC request from client |
+//!
+//! ## Socket Management
+//!
+//! When a service is offered/bound:
+//! 1. A dedicated RPC socket is created (UDP or TCP listener)
+//! 2. The socket's sender is stored in `OfferedService`
+//! 3. Incoming messages are forwarded to the runtime via channels
+//!
+//! ## Request/Response Flow
+//!
+//! ```text
+//! Client sends RPC request
+//!        │
+//!        ▼
+//! Server's RPC socket receives
+//!        │
+//!        ▼
+//! Runtime forwards to handle_incoming_request()
+//!        │
+//!        ▼
+//! Creates ServiceRequest, sends to OfferingHandle's channel
+//!        │
+//!        ▼
+//! User processes, calls responder.reply()
+//!        │
+//!        ▼
+//! Responder sends result via oneshot to runtime
+//!        │
+//!        ▼
+//! Runtime sends response via OfferedService's RPC socket
+//! ```
+//!
+//! ## Contributor Notes
+//!
+//! - `handle_offer_command` and `handle_bind_command` are async (create sockets)
+//! - Other handlers are sync and return `Vec<Action>`
+//! - Server responses must use the same transport as the request
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;

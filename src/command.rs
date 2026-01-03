@@ -1,6 +1,61 @@
-//! Commands sent from handles to the runtime task.
+//! # Commands (Internal)
 //!
-//! Contains the `Command` enum, `ServiceAvailability`, and `ServiceRequest`.
+//! This module defines the [`Command`] enum used for communication between
+//! user-facing handles and the runtime's event loop. It is `pub(crate)` —
+//! internal to the library.
+//!
+//! ## Design Pattern
+//!
+//! Handles don't perform I/O directly. Instead, they send [`Command`] messages
+//! through an MPSC channel to the runtime, which processes them atomically:
+//!
+//! ```text
+//! ┌─────────────────┐      Command channel      ┌─────────────────┐
+//! │   ProxyHandle   │ ──────────────────────▶ │     Runtime      │
+//! │ OfferingHandle  │  cmd_tx.send(Command)  │    Event Loop   │
+//! └─────────────────┘                        └─────────────────┘
+//! ```
+//!
+//! ## Command Categories
+//!
+//! | Category | Commands | Description |
+//! |----------|----------|-------------|
+//! | Discovery | `Find`, `StopFind` | Client service discovery |
+//! | Offering | `Offer`, `Bind`, `StartAnnouncing`, `StopAnnouncing` | Server lifecycle |
+//! | RPC | `Call`, `FireAndForget` | Client method invocation |
+//! | Pub/Sub | `Subscribe`, `Unsubscribe`, `Notify` | Event subscription |
+//! | Query | `HasSubscribers` | Check subscription state |
+//!
+//! ## Response Pattern
+//!
+//! Commands that need a response include a `oneshot::Sender<Result<T>>`:
+//!
+//! ```rust,ignore
+//! // (Internal API - not accessible from user code)
+//! Command::Call {
+//!     service_id,
+//!     instance_id,
+//!     method_id,
+//!     payload,
+//!     response: oneshot::Sender<Result<Response>>,
+//!     target_endpoint,
+//! }
+//! ```
+//!
+//! The runtime sends the result through this channel when done.
+//!
+//! ## Notification Pattern
+//!
+//! Long-running operations use `mpsc::Sender` for ongoing notifications:
+//!
+//! ```rust,ignore
+//! // (Internal API - not accessible from user code)
+//! Command::Find {
+//!     service_id,
+//!     instance_id,
+//!     notify: mpsc::Sender<ServiceAvailability>,
+//! }
+//! ```
 
 use std::net::SocketAddr;
 

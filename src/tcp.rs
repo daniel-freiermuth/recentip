@@ -1,9 +1,54 @@
-//! TCP connection management for SOME/IP runtime.
+//! # TCP Connection Management
 //!
-//! Handles TCP connections per SOME/IP specification:
-//! - feat_req_recentip_644: Single TCP connection per client-server pair
-//! - feat_req_recentip_646: Client opens TCP connection on first request
-//! - feat_req_recentip_647: Client reestablishes connection after failure
+//! This module handles TCP connections for SOME/IP RPC communication.
+//! It provides connection pooling, message framing, and Magic Cookie support.
+//!
+//! ## SOME/IP TCP Requirements
+//!
+//! Per specification:
+//! - **feat_req_recentip_644**: Single TCP connection per client-server pair
+//! - **feat_req_recentip_646**: Client opens connection on first request
+//! - **feat_req_recentip_647**: Client reestablishes after failure
+//! - **feat_req_recentip_586**: Optional Magic Cookies for resynchronization
+//!
+//! ## Connection Pool
+//!
+//! The [`TcpConnectionPool`] maintains one connection per remote peer:
+//!
+//! ```text
+//! TcpConnectionPool
+//!     │
+//!     ├─── 192.168.1.10:30500 ───▶ [TCP Connection + Reader Task]
+//!     ├─── 192.168.1.20:30500 ───▶ [TCP Connection + Reader Task]
+//!     └─── 192.168.1.30:30500 ───▶ [TCP Connection + Reader Task]
+//! ```
+//!
+//! ## Message Framing
+//!
+//! TCP doesn't have message boundaries. SOME/IP uses the length field in the
+//! header to delimit messages:
+//!
+//! ```text
+//! ┌────────────────────────────────────────────────┐
+//! │ [Magic Cookie?] [Msg1] [Msg2] [Msg3] ...    │
+//! │ ────────────── ───── ───── ─────           │
+//! │      16 bytes   Header + Payload per msg    │
+//! └────────────────────────────────────────────────┘
+//! ```
+//!
+//! ## Magic Cookies
+//!
+//! When enabled, each TCP segment starts with a 16-byte Magic Cookie for
+//! stream resynchronization (useful in testing/debugging):
+//!
+//! - Service ID: 0xFFFF
+//! - Method ID: 0x0000 (client) or 0x8000 (server)
+//! - Recognizable pattern allows recovery from stream corruption
+//!
+//! ## Server-Side TCP
+//!
+//! The [`TcpServer`] handles incoming connections for an offered service.
+//! It spawns reader tasks for each accepted connection.
 
 use std::collections::HashMap;
 use std::io;

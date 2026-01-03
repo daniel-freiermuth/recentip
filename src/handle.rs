@@ -1,7 +1,147 @@
-//! Handle types for interacting with the runtime.
+//! # Handle Types for SOME/IP Communication
 //!
-//! Handles are the user-facing API for finding services (client) and
-//! offering services (server).
+//! This module provides the **user-facing API** for interacting with the runtime.
+//! All SOME/IP operations go through handles, which internally send commands to
+//! the runtime's event loop.
+//!
+//! ## Handle Types Overview
+//!
+//! | Handle | Role | State Pattern |
+//! |--------|------|---------------|
+//! | [`ProxyHandle`] | Client: call methods, subscribe to events | `Unavailable` → `Available` |
+//! | [`OfferingHandle`] | Server: receive requests, send responses | — |
+//! | [`ServiceInstance`] | Server (advanced): typestate for bind/announce | `Bound` → `Announced` |
+//! | [`Subscription`] | Client: receive events from a subscribed eventgroup | — |
+//! | [`SubscriptionAck`] | Server: accept/reject incoming subscriptions | — |
+//! | [`Responder`] | Server: reply to a specific RPC request | Consumed on reply |
+//!
+//! ## Client-Side Pattern
+//!
+//! ```no_run
+//! use someip_runtime::prelude::*;
+//! use someip_runtime::handle::Available;
+//!
+//! struct MyService;
+//! impl Service for MyService {
+//!     const SERVICE_ID: u16 = 0x1234;
+//!     const MAJOR_VERSION: u8 = 1;
+//!     const MINOR_VERSION: u32 = 0;
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<()> {
+//!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+//!
+//!     // 1. Create a proxy (starts Unavailable)
+//!     let proxy = runtime.find::<MyService>(InstanceId::Any);
+//!
+//!     // 2. Wait for discovery (transitions to Available)
+//!     let proxy: someip_runtime::handle::ProxyHandle<MyService, Available> = proxy.available().await?;
+//!
+//!     // 3. Call methods (only possible when Available)
+//!     let method_id = MethodId::new(0x0001).unwrap();
+//!     let response = proxy.call(method_id, b"payload").await?;
+//!
+//!     // 4. Subscribe to events
+//!     let eventgroup = EventgroupId::new(0x0001).unwrap();
+//!     let mut subscription = proxy.subscribe(eventgroup).await?;
+//!     while let Some(event) = subscription.next().await {
+//!         // Process event
+//!     }
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Server-Side Pattern (Simple)
+//!
+//! ```no_run
+//! use someip_runtime::prelude::*;
+//! use someip_runtime::handle::ServiceEvent;
+//!
+//! struct MyService;
+//! impl Service for MyService {
+//!     const SERVICE_ID: u16 = 0x1234;
+//!     const MAJOR_VERSION: u8 = 1;
+//!     const MINOR_VERSION: u32 = 0;
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<()> {
+//!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+//!
+//!     // 1. Offer a service
+//!     let mut offering = runtime.offer::<MyService>(InstanceId::Id(1)).await?;
+//!
+//!     // 2. Handle incoming events
+//!     while let Some(event) = offering.next().await {
+//!         match event {
+//!             ServiceEvent::Call { method, payload, responder, .. } => {
+//!                 responder.reply(b"response").await?;
+//!             }
+//!             ServiceEvent::Subscribe { ack, .. } => {
+//!                 ack.accept().await?;
+//!             }
+//!             _ => {}
+//!         }
+//!     }
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Server-Side Pattern (Advanced Typestate)
+//!
+//! For finer control over the bind/announce lifecycle:
+//!
+//! ```no_run
+//! use someip_runtime::prelude::*;
+//! use someip_runtime::handle::{ServiceInstance, Bound, Announced};
+//!
+//! struct MyService;
+//! impl Service for MyService {
+//!     const SERVICE_ID: u16 = 0x1234;
+//!     const MAJOR_VERSION: u8 = 1;
+//!     const MINOR_VERSION: u32 = 0;
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<()> {
+//!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+//!
+//!     // 1. Bind (opens socket, but no SD announcement)
+//!     let instance: ServiceInstance<_, Bound> = runtime.bind::<MyService>(
+//!         InstanceId::Id(1),
+//!     ).await?;
+//!
+//!     // 2. Start announcing (transitions to Announced)
+//!     let instance: ServiceInstance<_, Announced> = instance.announce().await?;
+//!
+//!     // 3. Now handle requests...
+//!
+//!     // 4. Stop announcing (transitions back to Bound)
+//!     let instance: ServiceInstance<_, Bound> = instance.stop_announcing().await?;
+//!
+//!     // Socket stays open, can re-announce later
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Type-State Pattern
+//!
+//! This module uses **type-state patterns** to enforce correct API usage at compile time:
+//!
+//! - [`ProxyHandle<S, Unavailable>`] can only call `.available()` or `.is_available()`
+//! - [`ProxyHandle<S, Available>`] can call `.call()`, `.subscribe()`, etc.
+//! - [`ServiceInstance<S, Bound>`] can only call `.announce()` or handle static requests
+//! - [`ServiceInstance<S, Announced>`] can call `.stop_announcing()` or handle SD requests
+//!
+//! This prevents common bugs like:
+//! - Calling a method before the service is discovered
+//! - Announcing a service that hasn't bound to a socket
+//!
+//! ## Thread Safety
+//!
+//! All handles are `Clone` and can be shared across tokio tasks. They internally
+//! hold an `Arc<RuntimeInner>` and communicate via channels.
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -21,11 +161,23 @@ use crate::{
 // TYPESTATE MARKERS
 // ============================================================================
 
-/// Marker: service instance is bound (listening) but not announced via SD
+/// Type-state marker: service instance is **bound** (listening on socket)
+/// but **not announced** via Service Discovery.
+///
+/// In this state, the service can:
+/// - Handle requests from statically-configured clients
+/// - Transition to [`Announced`] via `.announce()`
+///
+/// The service cannot be discovered dynamically until announced.
 #[derive(Debug, Clone)]
 pub struct Bound;
 
-/// Marker: service instance is announced via Service Discovery
+/// Type-state marker: service instance is **announced** via Service Discovery.
+///
+/// In this state, the service can:
+/// - Be discovered by clients via SD
+/// - Handle requests from any client
+/// - Transition back to [`Bound`] via `.stop_announcing()`
 #[derive(Debug, Clone)]
 pub struct Announced;
 
@@ -33,24 +185,145 @@ pub struct Announced;
 // PROXY HANDLE (CLIENT-SIDE)
 // ============================================================================
 
-/// Marker: service not yet available
+/// Type-state marker: service **not yet discovered**.
+///
+/// The proxy must transition to [`Available`] via `.available()` before
+/// methods can be called.
 #[derive(Clone)]
 pub struct Unavailable;
 
-/// Marker: service is available
+/// Type-state marker: service **discovered and ready**.
+///
+/// Contains the service's endpoint address for RPC communication.
 #[derive(Clone)]
 pub struct Available {
     endpoint: std::net::SocketAddr,
 }
 
-/// Proxy handle to a remote service.
+/// Client-side proxy to a remote SOME/IP service.
 ///
-/// Use `runtime.find::<MyService>(instance)` to create a proxy.
-/// The proxy starts in `Unavailable` state and transitions to `Available`
-/// when the service is discovered via Service Discovery.
+/// # Creating a Proxy
 ///
-/// `ProxyHandle` is `Clone`, allowing it to be shared across tasks for
-/// concurrent requests.
+/// Use [`Runtime::find`](crate::Runtime::find) to create a proxy:
+///
+/// ```no_run
+/// use someip_runtime::prelude::*;
+///
+/// struct MyService;
+/// impl Service for MyService {
+///     const SERVICE_ID: u16 = 0x1234;
+///     const MAJOR_VERSION: u8 = 1;
+///     const MINOR_VERSION: u32 = 0;
+/// }
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<()> {
+/// let runtime = Runtime::new(RuntimeConfig::default()).await?;
+/// let proxy = runtime.find::<MyService>(InstanceId::Any);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Discovery (Unavailable → Available)
+///
+/// The proxy starts in [`Unavailable`] state. Call `.available()` to wait
+/// for Service Discovery:
+///
+/// ```no_run
+/// use someip_runtime::prelude::*;
+/// use someip_runtime::handle::{ProxyHandle, Unavailable};
+///
+/// struct MyService;
+/// impl Service for MyService {
+///     const SERVICE_ID: u16 = 0x1234;
+///     const MAJOR_VERSION: u8 = 1;
+///     const MINOR_VERSION: u32 = 0;
+/// }
+///
+/// async fn discover(proxy: ProxyHandle<MyService, Unavailable>) -> Result<()> {
+///     let proxy = proxy.available().await?;
+///     // Now `proxy` is `ProxyHandle<MyService, Available>`
+///     Ok(())
+/// }
+/// # fn main() {}
+/// ```
+///
+/// # Calling Methods
+///
+/// Once available, call methods with `.call()`:
+///
+/// ```no_run
+/// use someip_runtime::prelude::*;
+/// use someip_runtime::handle::{ProxyHandle, Available};
+///
+/// struct MyService;
+/// impl Service for MyService {
+///     const SERVICE_ID: u16 = 0x1234;
+///     const MAJOR_VERSION: u8 = 1;
+///     const MINOR_VERSION: u32 = 0;
+/// }
+///
+/// async fn call_method(proxy: &ProxyHandle<MyService, Available>) -> Result<()> {
+///     let method_id = MethodId::new(0x0001).unwrap();
+///     let response = proxy.call(method_id, b"request payload").await?;
+///     if response.return_code == ReturnCode::Ok {
+///         // Success
+///     }
+///     Ok(())
+/// }
+/// # fn main() {}
+/// ```
+///
+/// # Subscribing to Events
+///
+/// Subscribe to eventgroups to receive events:
+///
+/// ```no_run
+/// use someip_runtime::prelude::*;
+/// use someip_runtime::handle::{ProxyHandle, Available};
+///
+/// struct MyService;
+/// impl Service for MyService {
+///     const SERVICE_ID: u16 = 0x1234;
+///     const MAJOR_VERSION: u8 = 1;
+///     const MINOR_VERSION: u32 = 0;
+/// }
+///
+/// async fn subscribe_events(proxy: &ProxyHandle<MyService, Available>) -> Result<()> {
+///     let eventgroup = EventgroupId::new(0x0001).unwrap();
+///     let mut sub = proxy.subscribe(eventgroup).await?;
+///     while let Some(event) = sub.next().await {
+///         println!("Event: {:?}", event);
+///     }
+///     Ok(())
+/// }
+/// # fn main() {}
+/// ```
+///
+/// # Cloning
+///
+/// `ProxyHandle` is `Clone`. Clone it to share across tasks:
+///
+/// ```no_run
+/// use someip_runtime::prelude::*;
+/// use someip_runtime::handle::{ProxyHandle, Available};
+///
+/// struct MyService;
+/// impl Service for MyService {
+///     const SERVICE_ID: u16 = 0x1234;
+///     const MAJOR_VERSION: u8 = 1;
+///     const MINOR_VERSION: u32 = 0;
+/// }
+///
+/// async fn clone_example(proxy: ProxyHandle<MyService, Available>) {
+///     let method = MethodId::new(0x0001).unwrap();
+///     let proxy2 = proxy.clone();
+///     tokio::spawn(async move {
+///         let _ = proxy2.call(method, b"hello").await;
+///     });
+/// }
+/// # fn main() {}
+/// ```
 pub struct ProxyHandle<S: Service, State> {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
@@ -188,11 +461,25 @@ impl<S: Service> ProxyHandle<S, Available> {
     /// consider using `call_owned` with a `Bytes` value directly.
     ///
     /// For concurrent requests, clone the proxy handle:
-    /// ```ignore
-    /// let proxy = proxy.clone();
-    /// tokio::spawn(async move {
-    ///     proxy.call(method, b"hello").await
-    /// });
+    /// ```no_run
+    /// use someip_runtime::prelude::*;
+    /// use someip_runtime::handle::{ProxyHandle, Available};
+    ///
+    /// struct MyService;
+    /// impl Service for MyService {
+    ///     const SERVICE_ID: u16 = 0x1234;
+    ///     const MAJOR_VERSION: u8 = 1;
+    ///     const MINOR_VERSION: u32 = 0;
+    /// }
+    ///
+    /// async fn concurrent_calls(proxy: ProxyHandle<MyService, Available>) {
+    ///     let method = MethodId::new(0x0001).unwrap();
+    ///     let proxy2 = proxy.clone();
+    ///     tokio::spawn(async move {
+    ///         let _ = proxy2.call(method, b"hello").await;
+    ///     });
+    /// }
+    /// # fn main() {}
     /// ```
     pub async fn call(&self, method: MethodId, payload: impl AsRef<[u8]>) -> Result<Response> {
         let payload_bytes = bytes::Bytes::copy_from_slice(payload.as_ref());

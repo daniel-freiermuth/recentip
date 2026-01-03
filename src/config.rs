@@ -1,32 +1,109 @@
-//! Runtime configuration for SOME/IP runtime.
+//! # Runtime Configuration
 //!
-//! Contains `RuntimeConfig`, `RuntimeConfigBuilder`, `Transport`, and `MethodConfig`.
+//! This module provides configuration types for the SOME/IP runtime.
+//!
+//! ## Quick Start
+//!
+//! For most applications, the defaults work out of the box:
+//!
+//! ```no_run
+//! use someip_runtime::{Runtime, RuntimeConfig};
+//!
+//! # async fn example() -> someip_runtime::Result<()> {
+//! let config = RuntimeConfig::default();
+//! let runtime = Runtime::new(config).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Builder Pattern
+//!
+//! For custom configurations, use the builder:
+//!
+//! ```
+//! use someip_runtime::{RuntimeConfig, Transport};
+//! use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
+//!
+//! let config = RuntimeConfig::builder()
+//!     .local_addr(SocketAddr::V4(SocketAddrV4::new(
+//!         Ipv4Addr::new(192, 168, 1, 100),
+//!         30490
+//!     )))
+//!     .transport(Transport::Tcp)
+//!     .ttl(1800)  // 30 minutes
+//!     .cyclic_offer_delay(2000)  // 2 seconds
+//!     .magic_cookies(true)  // Enable for debugging
+//!     .build();
+//! ```
+//!
+//! ## Configuration Options
+//!
+//! | Option | Default | Description |
+//! |--------|---------|-------------|
+//! | `local_addr` | `0.0.0.0:30490` | Local address to bind SD socket |
+//! | `sd_multicast` | `239.255.0.1:30490` | SD multicast group address |
+//! | `ttl` | 3600 | TTL for SD entries (seconds) |
+//! | `cyclic_offer_delay` | 1000 | Interval between cyclic offers (ms) |
+//! | `transport` | UDP | Transport protocol for RPC (UDP/TCP) |
+//! | `magic_cookies` | false | Enable TCP Magic Cookies for debugging |
+//!
+//! ## Transport Selection
+//!
+//! SOME/IP supports both UDP and TCP for RPC communication:
+//!
+//! - **UDP** (default): Lower latency, no connection overhead. Payload limited
+//!   to ~1400 bytes without SOME/IP-TP segmentation.
+//! - **TCP**: Reliable delivery, supports large payloads, connection reuse.
+//!   Higher latency due to connection setup.
+//!
+//! Service Discovery always uses UDP multicast.
 
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
-/// Default SD multicast address
+/// Default SD multicast address (239.255.0.1) per SOME/IP specification.
 pub const DEFAULT_SD_MULTICAST: Ipv4Addr = Ipv4Addr::new(239, 255, 0, 1);
 
-/// Default SD port
+/// Default SD port (30490) per SOME/IP specification.
+///
+/// Note: This port is **only for Service Discovery**, not RPC traffic.
+/// RPC uses ephemeral ports for clients or configured ports for servers.
 pub const DEFAULT_SD_PORT: u16 = 30490;
 
-/// Default TTL for SD entries (seconds)
+/// Default TTL for SD entries in seconds (1 hour).
+///
+/// Services re-announce before TTL expiry to maintain presence.
+/// Clients remove services from cache when TTL expires without renewal.
 pub const DEFAULT_TTL: u32 = 3600;
 
-/// Default cyclic offer interval (ms)
+/// Default cyclic offer interval in milliseconds (1 second).
+///
+/// Servers send periodic OfferService messages at this interval.
+/// Lower values = faster discovery, higher network overhead.
 pub const DEFAULT_CYCLIC_OFFER_DELAY: u64 = 1000;
 
-/// Default find request repetitions
+/// Default number of FindService repetitions.
+///
+/// Clients repeat FindService messages this many times before giving up
+/// on discovery and waiting for server offers.
 pub const DEFAULT_FIND_REPETITIONS: u32 = 3;
 
-/// Transport protocol for RPC communication
+/// Transport protocol for RPC communication.
+///
+/// Service Discovery always uses UDP multicast regardless of this setting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Transport {
-    /// UDP transport (default)
+    /// UDP transport (default).
+    ///
+    /// Lower latency, connectionless. Best for small, frequent messages.
+    /// Payload size limited to ~1400 bytes without SOME/IP-TP.
     #[default]
     Udp,
-    /// TCP transport
+    
+    /// TCP transport.
+    ///
+    /// Reliable, connection-oriented. Best for large payloads or when
+    /// guaranteed delivery is required. Connections are pooled and reused.
     Tcp,
 }
 

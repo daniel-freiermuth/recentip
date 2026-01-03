@@ -1,61 +1,381 @@
 //! # someip-runtime
 //!
-//! A type-safe async SOME/IP protocol implementation for tokio.
+//! [![Crate](https://img.shields.io/crates/v/someip-runtime.svg)](https://crates.io/crates/someip-runtime)
+//! [![Docs](https://docs.rs/someip-runtime/badge.svg)](https://docs.rs/someip-runtime)
+//! [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+//!
+//! A **type-safe, async SOME/IP protocol implementation** for [tokio](https://tokio.rs).
+//!
+//! SOME/IP (Scalable service-Oriented MiddlewarE over IP) is the standard middleware
+//! protocol for automotive Ethernet communication, enabling service-oriented communication
+//! between ECUs in modern vehicles.
+//!
+//! ## Features
+//!
+//! - **Type-safe API**: Compile-time guarantees via the [`Service`] trait and type-state patterns
+//! - **Async/await**: Native tokio integration with zero-cost futures
+//! - **Service Discovery**: Automatic discovery via multicast SD protocol
+//! - **RPC**: Request/response and fire-and-forget method calls
+//! - **Pub/Sub**: Event subscriptions with eventgroup management
+//! - **Dual transport**: UDP (default) and TCP with Magic Cookie support
+//! - **Spec compliance**: Extensive test coverage against SOME/IP specification
 //!
 //! ## Quick Start
 //!
-//! ### Client Example
+//! Add to your `Cargo.toml`:
 //!
-//! ```rust,ignore
-//! use someip_runtime::{Runtime, RuntimeConfig, ServiceId, InstanceId, EventgroupId};
+//! ```toml
+//! [dependencies]
+//! someip-runtime = "0.1"
+//! tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+//! ```
+//!
+//! ### Minimal Client
+//!
+//! ```no_run
+//! use someip_runtime::prelude::*;
+//!
+//! // Define your service (typically generated from IDL)
+//! struct BrakeService;
+//! impl Service for BrakeService {
+//!     const SERVICE_ID: u16 = 0x1234;
+//!     const MAJOR_VERSION: u8 = 1;
+//!     const MINOR_VERSION: u32 = 0;
+//! }
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! async fn main() -> Result<()> {
+//!     // Create the runtime
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
-//!     // Find a remote service
-//!     let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-//!     let proxy = proxy.available().await;
+//!     // Find a remote service (waits for SD announcement)
+//!     let proxy = runtime.find::<BrakeService>(InstanceId::Any).available().await?;
 //!
-//!     // Call a method
-//!     let response = proxy.call(GetStatus { wheel: 0 }).await?;
-//!
-//!     // Subscribe to events
-//!     let mut events = proxy.subscribe(eventgroup).await?;
-//!     while let Some(event) = events.next().await {
-//!         println!("Received: {:?}", event);
-//!     }
+//!     // Call a method (RPC)
+//!     let method_id = MethodId::new(0x0001).unwrap();
+//!     let response = proxy.call(method_id, b"").await?;
+//!     println!("Response: {:?}", response);
 //!
 //!     Ok(())
 //! }
 //! ```
 //!
-//! ### Server Example
+//! ### Minimal Server
 //!
-//! ```rust,ignore
-//! use someip_runtime::{Runtime, RuntimeConfig, ServiceId, InstanceId};
+//! ```no_run
+//! use someip_runtime::prelude::*;
+//! use someip_runtime::handle::ServiceEvent;
+//!
+//! struct BrakeService;
+//! impl Service for BrakeService {
+//!     const SERVICE_ID: u16 = 0x1234;
+//!     const MAJOR_VERSION: u8 = 1;
+//!     const MINOR_VERSION: u32 = 0;
+//! }
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! async fn main() -> Result<()> {
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
+//!     // Offer a service (announces via SD)
 //!     let mut offering = runtime.offer::<BrakeService>(InstanceId::Id(0x0001)).await?;
 //!
+//!     // Handle incoming requests
 //!     while let Some(event) = offering.next().await {
 //!         match event {
-//!             ServiceEvent::Call { request, responder } => {
-//!                 responder.reply(response).await?;
+//!             ServiceEvent::Call { method, payload, responder, .. } => {
+//!                 // Process request and send response
+//!                 responder.reply(b"OK").await?;
 //!             }
-//!             ServiceEvent::Subscribe { ack, .. } => {
+//!             ServiceEvent::Subscribe { eventgroup, ack, .. } => {
+//!                 // Accept subscription
 //!                 ack.accept().await?;
 //!             }
 //!             _ => {}
 //!         }
 //!     }
-//!
 //!     Ok(())
 //! }
 //! ```
+//!
+//! ---
+//!
+//! # Architecture Overview
+//!
+//! This section explains the library's internal structure for contributors and
+//! advanced users who need to understand how the pieces fit together.
+//!
+//! ## Conceptual Model
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                           User Application                              │
+//! │  ┌──────────────┐    ┌───────────────┐    ┌────────────────────────┐   │
+//! │  │ ProxyHandle  │    │ OfferingHandle│    │ ServiceInstance<State>│   │
+//! │  │  (client)    │    │   (server)    │    │  (typestate server)   │   │
+//! │  └──────┬───────┘    └───────┬───────┘    └───────────┬────────────┘   │
+//! └─────────┼────────────────────┼────────────────────────┼────────────────┘
+//!           │ Commands           │ Commands               │ Commands
+//!           ▼                    ▼                        ▼
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                         Runtime (Event Loop)                            │
+//! │  ┌───────────────────────────────────────────────────────────────────┐  │
+//! │  │                      RuntimeState                                 │  │
+//! │  │  • offered: HashMap<ServiceKey, OfferedService>                   │  │
+//! │  │  • discovered: HashMap<ServiceKey, DiscoveredService>             │  │
+//! │  │  • pending_calls: HashMap<CallKey, PendingCall>                   │  │
+//! │  │  • subscriptions: HashMap<SubscriberKey, Subscriber>              │  │
+//! │  │  • session IDs (multicast + unicast)                              │  │
+//! │  └───────────────────────────────────────────────────────────────────┘  │
+//! │                                                                         │
+//! │  Event Loop (select!):                                                  │
+//! │    • Command channel (from handles)                                     │
+//! │    • SD socket (multicast Service Discovery)                            │
+//! │    • RPC socket (client UDP)                                            │
+//! │    • TCP connections (client/server)                                    │
+//! │    • Periodic timer (cyclic offers, TTL expiry)                         │
+//! └─────────────────────────────────────────────────────────────────────────┘
+//!                     │                           │
+//!                     ▼                           ▼
+//!           ┌─────────────────┐        ┌─────────────────┐
+//!           │   SD Socket     │        │   RPC Socket    │
+//!           │  (UDP 30490)    │        │  (UDP/TCP)      │
+//!           └─────────────────┘        └─────────────────┘
+//! ```
+//!
+//! ## Module Responsibilities
+//!
+//! The implementation is organized into modules with clear responsibilities:
+//!
+//! | Module | Visibility | Responsibility |
+//! |--------|------------|----------------|
+//! | [`runtime`] | Public | Event loop executor, socket management, [`Runtime`] struct |
+//! | [`handle`] | Public | User-facing API: [`ProxyHandle`], [`OfferingHandle`], [`ServiceInstance`] |
+//! | [`config`] | Public | Configuration: [`RuntimeConfig`], [`Transport`], [`MethodConfig`] |
+//! | [`error`] | Public | Error types: [`Error`], [`Result`] |
+//! | [`wire`] | Public | Wire format: [`Header`](wire::Header), [`SdMessage`](wire::SdMessage), parsing |
+//! | [`tcp`] | Public | TCP framing, connection pooling, Magic Cookies |
+//! | `command` | Internal | Command enum for handle→runtime communication |
+//! | `state` | Internal | RuntimeState, ServiceKey, internal data structures |
+//! | `sd` | Internal | Service Discovery message handlers and builders |
+//! | `client` | Internal | Client-side handlers (find, call, subscribe) |
+//! | `server` | Internal | Server-side handlers (offer, notify, respond) |
+//!
+//! ## Key Concepts
+//!
+//! ### The Runtime as State Machine Executor
+//!
+//! The [`Runtime`] is the **central coordinator**. It:
+//!
+//! 1. **Owns all state** in a single [`RuntimeState`](state) struct
+//! 2. **Runs an event loop** via `tokio::select!` over multiple sources
+//! 3. **Dispatches commands** from handles to appropriate handlers
+//! 4. **Manages all I/O** through owned sockets
+//!
+//! Handles (like [`ProxyHandle`] and [`OfferingHandle`]) don't perform I/O themselves.
+//! They send [`Command`](command) messages to the runtime, which processes them
+//! atomically in the event loop. This design:
+//!
+//! - Eliminates data races (all state in one place)
+//! - Enables efficient multiplexing (one socket for multiple services)
+//! - Simplifies testing (deterministic message ordering)
+//!
+//! ### Type-State Pattern for Safety
+//!
+//! The library uses **type-state patterns** to enforce correct usage at compile time:
+//!
+//! - [`ProxyHandle<S, Unavailable>`] → can only call `.available()` to wait for discovery
+//! - [`ProxyHandle<S, Available>`] → can call `.call()`, `.subscribe()`, etc.
+//! - [`ServiceInstance<Bound>`] → socket is open, but not announced via SD
+//! - [`ServiceInstance<Announced>`] → actively announced, accepting requests
+//!
+//! This prevents runtime errors like "calling a method on an undiscovered service".
+//!
+//! ### Service Discovery (SD)
+//!
+//! SD runs over UDP multicast (default: 239.255.0.1:30490). The runtime:
+//!
+//! - **Servers**: Periodically send `OfferService` entries
+//! - **Clients**: Send `FindService` entries and listen for offers
+//! - **Subscriptions**: Exchange `SubscribeEventgroup` / `SubscribeEventgroupAck`
+//!
+//! The [`sd`](sd) module handles parsing and building SD messages.
+//!
+//! ### Session ID Management
+//!
+//! Per SOME/IP spec, session IDs:
+//!
+//! - Are 16-bit, wrapping from 0xFFFF → 0x0001 (never 0x0000)
+//! - Have separate counters for multicast vs unicast SD
+//! - Use a "reboot flag" to signal restart (first message after boot)
+//!
+//! This is tracked in [`RuntimeState`](state).
+//!
+//! ---
+//!
+//! # How-To Guides
+//!
+//! ## Configure Transport (UDP vs TCP)
+//!
+//! ```
+//! use someip_runtime::{RuntimeConfig, Transport};
+//!
+//! // Default: UDP
+//! let config = RuntimeConfig::default();
+//!
+//! // Use TCP for RPC
+//! let config = RuntimeConfig::builder()
+//!     .transport(Transport::Tcp)
+//!     .magic_cookies(true)  // Enable Magic Cookies for debugging
+//!     .build();
+//! ```
+//!
+//! ## Subscribe to Events
+//!
+//! ```no_run
+//! use someip_runtime::prelude::*;
+//! use someip_runtime::handle::{ProxyHandle, Available};
+//!
+//! struct MyService;
+//! impl Service for MyService {
+//!     const SERVICE_ID: u16 = 0x1234;
+//!     const MAJOR_VERSION: u8 = 1;
+//!     const MINOR_VERSION: u32 = 0;
+//! }
+//!
+//! async fn subscribe_example(proxy: &ProxyHandle<MyService, Available>) -> Result<()> {
+//!     let eventgroup = EventgroupId::new(0x0001).unwrap();
+//!     let mut events = proxy.subscribe(eventgroup).await?;
+//!
+//!     while let Some(event) = events.next().await {
+//!         println!("Event {}: {} bytes", event.event_id.value(), event.payload.len());
+//!     }
+//!     Ok(())
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ## Publish Events (Server-Side)
+//!
+//! ```no_run
+//! use someip_runtime::prelude::*;
+//! use someip_runtime::handle::OfferingHandle;
+//!
+//! struct MyService;
+//! impl Service for MyService {
+//!     const SERVICE_ID: u16 = 0x1234;
+//!     const MAJOR_VERSION: u8 = 1;
+//!     const MINOR_VERSION: u32 = 0;
+//! }
+//!
+//! async fn publish_example(offering: &OfferingHandle<MyService>) -> Result<()> {
+//!     let eventgroup = EventgroupId::new(0x0001).unwrap();
+//!     let event_id = EventId::new(0x8001).unwrap();
+//!
+//!     // Send notification to all subscribers
+//!     offering.notify(eventgroup, event_id, b"payload").await?;
+//!     Ok(())
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ## Handle Errors Gracefully
+//!
+//! ```no_run
+//! use someip_runtime::prelude::*;
+//! use someip_runtime::handle::{ProxyHandle, Available};
+//!
+//! struct MyService;
+//! impl Service for MyService {
+//!     const SERVICE_ID: u16 = 0x1234;
+//!     const MAJOR_VERSION: u8 = 1;
+//!     const MINOR_VERSION: u32 = 0;
+//! }
+//!
+//! async fn error_handling_example(proxy: &ProxyHandle<MyService, Available>) -> Result<()> {
+//!     let method_id = MethodId::new(0x0001).unwrap();
+//!     let payload = b"request";
+//!
+//!     match proxy.call(method_id, payload).await {
+//!         Ok(response) if response.return_code == ReturnCode::Ok => {
+//!             // Success
+//!         }
+//!         Ok(response) => {
+//!             // Server returned an error code
+//!             eprintln!("Server error: {:?}", response.return_code);
+//!         }
+//!         Err(Error::ServiceUnavailable) => {
+//!             // Service went offline
+//!         }
+//!         Err(Error::RuntimeShutdown) => {
+//!             // Runtime was dropped
+//!         }
+//!         Err(e) => {
+//!             // Other error (I/O, protocol, etc.)
+//!             eprintln!("Call failed: {}", e);
+//!         }
+//!     }
+//!     Ok(())
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ---
+//!
+//! # Reference
+//!
+//! ## Identifier Types
+//!
+//! | Type | Range | Reserved | Notes |
+//! |------|-------|----------|-------|
+//! | [`ServiceId`] | 0x0001-0xFFFE | 0x0000, 0xFFFF | Unique per service interface |
+//! | [`InstanceId`] | 0x0001-0xFFFE | 0x0000 | 0xFFFF = wildcard ("any") |
+//! | [`MethodId`] | 0x0000-0x7FFF | — | Bit 15 = 0 for methods |
+//! | [`EventId`] | 0x8000-0xFFFE | 0xFFFF | Bit 15 = 1 for events |
+//! | [`EventgroupId`] | 0x0001-0xFFFE | 0x0000, 0xFFFF | Groups related events |
+//!
+//! ## Wire Format
+//!
+//! See [`wire`] module for header structures. Key constants:
+//!
+//! - Protocol version: `0x01` (always, per spec)
+//! - Header size: 16 bytes (fixed)
+//! - SD port: 30490 (UDP only, per spec)
+//!
+//! ## Feature Flags
+//!
+//! | Feature | Default | Description |
+//! |---------|---------|-------------|
+//! | `turmoil` | Yes | Network simulation for deterministic testing |
+//!
+//! ---
+//!
+//! # For Contributors
+//!
+//! ## Code Organization
+//!
+//! - **Public modules** are documented for users
+//! - **Internal modules** (`pub(crate)`) are documented for contributors
+//! - Tests are in `tests/compliance/` organized by specification area
+//!
+//! ## Testing
+//!
+//! ```bash
+//! # Run all tests (includes turmoil simulation tests)
+//! cargo nextest run --features turmoil
+//!
+//! # Run with coverage
+//! cargo tarpaulin --features turmoil
+//! ```
+//!
+//! ## Adding a New Feature
+//!
+//! 1. Add command variant to `command.rs` if handle→runtime communication needed
+//! 2. Add state to `state.rs` if persistent tracking required
+//! 3. Add handler to `client.rs` or `server.rs` depending on role
+//! 4. Update `runtime.rs` event loop to dispatch the new command
+//! 5. Add public API to `handle.rs`
+//! 6. Write compliance tests in `tests/compliance/`
 
 use std::net::SocketAddr;
 

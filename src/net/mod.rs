@@ -1,8 +1,45 @@
-//! Network abstraction traits for async socket operations.
+//! # Network Abstraction Layer
 //!
-//! This module defines traits that abstract over async network I/O,
-//! allowing the runtime to work with both real tokio sockets (production)
-//! and simulated turmoil sockets (testing).
+//! This module provides traits that abstract over async network I/O,
+//! enabling the runtime to work with different socket implementations.
+//!
+//! ## Purpose
+//!
+//! The abstraction allows:
+//! - **Production**: Real tokio sockets for actual network communication
+//! - **Testing**: Simulated [turmoil](https://docs.rs/turmoil) sockets for
+//!   deterministic, fast network simulation
+//!
+//! ## Trait Overview
+//!
+//! | Trait | Purpose | Production Impl | Testing Impl |
+//! |-------|---------|-----------------|--------------|
+//! | [`UdpSocket`] | UDP send/recv, multicast | `tokio::net::UdpSocket` | `turmoil::net::UdpSocket` |
+//! | [`TcpStream`] | TCP connection, read/write | `tokio::net::TcpStream` | `turmoil::net::TcpStream` |
+//! | [`TcpListener`] | Accept TCP connections | `tokio::net::TcpListener` | `turmoil::net::TcpListener` |
+//!
+//! ## Usage
+//!
+//! User code typically doesn't interact with these traits directly.
+//! The [`Runtime`](crate::Runtime) is generic over socket types:
+//!
+//! ```no_run
+//! use someip_runtime::prelude::*;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<()> {
+//!     // Production (default) - uses tokio sockets internally
+//!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+//!
+//!     // For testing with turmoil, see tests/compliance/ for examples
+//!     // using Runtime::<turmoil types>::with_socket_type()
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Feature Flags
+//!
+//! - `turmoil` (default): Enables turmoil implementations for testing
 
 use std::future::Future;
 use std::io;
@@ -15,7 +52,15 @@ mod turmoil_impl;
 
 /// Async UDP socket abstraction.
 ///
-/// Implemented by `tokio::net::UdpSocket` and `turmoil::net::UdpSocket`.
+/// This trait enables the runtime to work with different UDP implementations.
+/// Users don't need to implement this directly.
+///
+/// ## Required Methods
+///
+/// - `bind`: Create a socket bound to an address
+/// - `send_to` / `recv_from`: Send and receive datagrams
+/// - `join_multicast_v4` / `leave_multicast_v4`: Multicast group management
+/// - `local_addr`: Get the bound address
 pub trait UdpSocket: Send + Sync + Sized + 'static {
     /// Bind to the given address.
     fn bind(addr: SocketAddr) -> impl Future<Output = io::Result<Self>> + Send;
