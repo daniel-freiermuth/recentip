@@ -12,6 +12,22 @@ Create a comprehensive test suite that proves RECENT/IP spec compliance, with a 
 - [ ] Docs
 - [ ] TP
 - [ ] Config
+- [ ] **Multi-homed host testing with true network isolation**
+  - Current turmoil-based tests don't support true network partitioning
+  - Need infrastructure for multi-homed testing:
+    - Option 1: Vagrant (multi-VM setup with separate networks)
+    - Option 2: Docker + macvlan (containers with true network isolation)
+    - Option 3: Linux network namespaces (netns for lightweight isolation)
+    - Option 4: Real hardware (physical multi-homed setup)
+  - Test requirements:
+    - Two separate networks with different SD multicast groups
+    - Host B with two network interfaces (one per network)
+    - Services with identical service+instance IDs on both networks
+    - Verify Runtime instances only discover services on their network
+    - Verify no cross-talk between networks despite ID duplicates
+    - This should be used together with loopback traffic
+      => Requires BINDTODEVICE option (linux) or PKTINFO (others)
+      => or only using _one_ multiplexer?
 
 ---
 
