@@ -610,16 +610,6 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     }
 }
 
-impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Clone for Runtime<U, T, L> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: Arc::clone(&self.inner),
-            runtime_task: None, // Clones don't own the runtime task
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
-
 // ============================================================================
 // RUNTIME TASK
 // ============================================================================

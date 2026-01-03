@@ -260,36 +260,6 @@ fn test_specific_instance_id() {
 }
 
 #[test]
-fn test_runtime_clone() {
-    // Test that cloned runtimes share state
-    let mut sim = turmoil::Builder::new().build();
-
-    sim.host("node", || async {
-        let config = RuntimeConfig::default();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-
-        // Clone the runtime
-        let runtime2 = runtime.clone();
-
-        // Offer via one clone
-        let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
-            .await
-            .unwrap();
-
-        // Find via the other clone should see the same state
-        let proxy = runtime2.find::<TestService>(InstanceId::Id(0x0001));
-
-        // The proxy should be created successfully
-        assert_eq!(proxy.service_id(), ServiceId::new(0x1234).unwrap());
-
-        Ok(())
-    });
-
-    sim.run().unwrap();
-}
-
-#[test]
 fn test_offering_handle_drop() {
     // Test that dropping an offering handle sends StopOffer
     let mut sim = turmoil::Builder::new().build();
