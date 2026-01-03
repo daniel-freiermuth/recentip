@@ -9,7 +9,7 @@ keywords = ["someip", "automotive", "rpc", "async", "tokio"]
 categories = ["asynchronous", "network-programming"]
 
 [features]
-default = []
+default = ["turmoil"]
 turmoil = ["dep:turmoil"]
 
 [dependencies]
