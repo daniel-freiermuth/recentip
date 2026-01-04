@@ -99,7 +99,7 @@ pub enum Transport {
     /// Payload size limited to ~1400 bytes without SOME/IP-TP.
     #[default]
     Udp,
-    
+
     /// TCP transport.
     ///
     /// Reliable, connection-oriented. Best for large payloads or when

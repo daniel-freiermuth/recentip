@@ -92,13 +92,11 @@ use crate::sd::{
     handle_subscribe_request, handle_unsubscribe_request, Action,
 };
 use crate::server::{self, build_response};
-use crate::state::{
-    PendingServerResponse, RpcMessage, RpcSendMessage, RuntimeState,
-    ServiceKey,
-};
+use crate::state::{PendingServerResponse, RpcMessage, RpcSendMessage, RuntimeState, ServiceKey};
 use crate::tcp::{TcpConnectionPool, TcpMessage};
 use crate::wire::{
-    validate_protocol_version, Header, MessageType, SdEntry, SdEntryType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID,
+    validate_protocol_version, Header, MessageType, SdEntry, SdEntryType, SdMessage, SD_METHOD_ID,
+    SD_SERVICE_ID,
 };
 use crate::{InstanceId, Service, ServiceId};
 
@@ -280,8 +278,12 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         // Spawn the runtime task
         let inner = Arc::new(RuntimeInner { cmd_tx });
 
-        let state =
-            RuntimeState::new(local_addr, client_rpc_addr, client_rpc_send_tx, config.clone());
+        let state = RuntimeState::new(
+            local_addr,
+            client_rpc_addr,
+            client_rpc_send_tx,
+            config.clone(),
+        );
 
         let runtime_task = tokio::spawn(async move {
             runtime_task::<U, T, L>(
@@ -930,8 +932,6 @@ fn handle_packet(
     state: &mut RuntimeState,
     service_key: Option<ServiceKey>,
 ) -> Option<Vec<Action>> {
-    
-
     let mut cursor = data;
 
     // Parse SOME/IP header
@@ -1076,7 +1076,14 @@ fn handle_rpc_message(
     match header.message_type {
         MessageType::Request => {
             // Incoming request - route to offering using service_key from RPC socket
-            server::handle_incoming_request(header, payload, from, state, &mut actions, service_key);
+            server::handle_incoming_request(
+                header,
+                payload,
+                from,
+                state,
+                &mut actions,
+                service_key,
+            );
         }
         MessageType::RequestNoReturn => {
             // Incoming fire-and-forget - route to offering without response tracking
@@ -1194,13 +1201,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             instance_id,
             eventgroup_id,
         } => {
-            client::handle_unsubscribe(
-                service_id,
-                instance_id,
-                eventgroup_id,
-                state,
-                &mut actions,
-            );
+            client::handle_unsubscribe(service_id, instance_id, eventgroup_id, state, &mut actions);
         }
 
         Command::Notify {
@@ -1312,13 +1313,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         if now.duration_since(offered.last_offer) >= offer_interval {
             offered.last_offer = now;
 
-            let msg = build_offer_message(
-                key,
-                offered,
-                sd_flags,
-                ttl,
-                transport,
-            );
+            let msg = build_offer_message(key, offered, sd_flags, ttl, transport);
 
             actions.push(Action::SendSd {
                 message: msg,
@@ -1337,12 +1332,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
             find_req.last_find = now;
             find_req.repetitions_left -= 1;
 
-            let msg = build_find_message(
-                key.service_id,
-                key.instance_id,
-                sd_flags,
-                ttl,
-            );
+            let msg = build_find_message(key.service_id, key.instance_id, sd_flags, ttl);
 
             actions.push(Action::SendSd {
                 message: msg,

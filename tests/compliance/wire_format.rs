@@ -2065,7 +2065,11 @@ fn sd_separate_multicast_unicast_sessions() {
 /// **Test Result:** PASSES - verifies correct implementation
 #[test]
 fn client_rpc_must_not_use_sd_port() {
-    covers!(feat_req_recentip_676, feat_req_recentipsd_779, feat_req_recentipsd_758);
+    covers!(
+        feat_req_recentip_676,
+        feat_req_recentipsd_779,
+        feat_req_recentipsd_758
+    );
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

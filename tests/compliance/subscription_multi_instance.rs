@@ -163,8 +163,16 @@ fn subscribe_to_multiple_instances() {
             }
         }
 
-        println!("Instance 1 subscription received {} events: {:?}", events1.len(), events1);
-        println!("Instance 2 subscription received {} events: {:?}", events2.len(), events2);
+        println!(
+            "Instance 1 subscription received {} events: {:?}",
+            events1.len(),
+            events1
+        );
+        println!(
+            "Instance 2 subscription received {} events: {:?}",
+            events2.len(),
+            events2
+        );
 
         // EXPECTED BEHAVIOR: Each subscription should receive only events from its instance
         // - events1 should contain only "instance1_event0", "instance1_event1", "instance1_event2"
@@ -191,8 +199,16 @@ fn subscribe_to_multiple_instances() {
         }
 
         // Check we got all expected events
-        assert_eq!(events1.len(), 3, "Should receive exactly 3 events from instance 1");
-        assert_eq!(events2.len(), 3, "Should receive exactly 3 events from instance 2");
+        assert_eq!(
+            events1.len(),
+            3,
+            "Should receive exactly 3 events from instance 1"
+        );
+        assert_eq!(
+            events2.len(),
+            3,
+            "Should receive exactly 3 events from instance 2"
+        );
 
         Ok(())
     });

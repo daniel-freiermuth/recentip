@@ -44,7 +44,10 @@ impl Service for EchoService {
 /// Different runtimes on the same machine can share this port via SO_REUSEPORT.
 fn test_config(_port: u16) -> RuntimeConfig {
     RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30490)))
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            30490,
+        )))
         .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::new(239, 255, 255, 250),
             30490,
@@ -54,7 +57,10 @@ fn test_config(_port: u16) -> RuntimeConfig {
 
 fn tcp_test_config(_port: u16) -> RuntimeConfig {
     RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30490)))
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            30490,
+        )))
         .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::new(239, 255, 255, 250),
             30490,
@@ -65,7 +71,10 @@ fn tcp_test_config(_port: u16) -> RuntimeConfig {
 
 fn tcp_test_config_with_magic_cookies(_port: u16) -> RuntimeConfig {
     RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30490)))
+        .local_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            30490,
+        )))
         .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::new(239, 255, 255, 250),
             30490,
@@ -131,7 +140,7 @@ async fn udp_request_response_real_network() {
     assert_eq!(response.payload.as_ref(), b"ECHO:hello");
 
     server_task.await.expect("Server task");
-    
+
     // Shutdown runtimes and wait for cleanup
     client_runtime.shutdown().await;
     server_runtime.shutdown().await;
@@ -236,7 +245,7 @@ async fn tcp_request_response_real_network() {
 
     done_tx.send(()).await.ok();
     server_handle.await.expect("Server task");
-    
+
     // Shutdown runtime and wait for cleanup
     runtime.shutdown().await;
     tokio::time::sleep(Duration::from_millis(100)).await;

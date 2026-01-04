@@ -399,9 +399,9 @@ pub mod tcp;
 /// Exposed for testing and interoperability verification.
 pub mod wire;
 
+pub use config::{MethodConfig, RuntimeConfig, RuntimeConfigBuilder, Transport};
 pub use error::*;
 pub use handle::*;
-pub use config::{MethodConfig, RuntimeConfig, RuntimeConfigBuilder, Transport};
 pub use runtime::Runtime;
 
 // ============================================================================

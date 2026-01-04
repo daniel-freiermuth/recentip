@@ -422,7 +422,9 @@ fn test_service_disappears_after_stop_announcing() {
 
             // Verify it's still discoverable before server stops announcing
             let proxy_before_stop = runtime.find::<BrakeService>(InstanceId::Any);
-            let result_before = tokio::time::timeout(Duration::from_millis(150), proxy_before_stop.available()).await;
+            let result_before =
+                tokio::time::timeout(Duration::from_millis(150), proxy_before_stop.available())
+                    .await;
             assert!(
                 result_before.is_ok(),
                 "Service should still be available before stop_announcing()"
@@ -434,8 +436,10 @@ fn test_service_disappears_after_stop_announcing() {
             // Service should now be unavailable - verify by trying to discover again
             // A fresh proxy should not find the service since StopOfferService was sent
             let proxy_after_stop = runtime.find::<BrakeService>(InstanceId::Any);
-            let result_after = tokio::time::timeout(Duration::from_millis(200), proxy_after_stop.available()).await;
-            
+            let result_after =
+                tokio::time::timeout(Duration::from_millis(200), proxy_after_stop.available())
+                    .await;
+
             assert!(
                 result_after.is_err(),
                 "Service should be unavailable after stop_announcing()"
@@ -644,13 +648,21 @@ fn test_has_subscribers_in_announced_state() {
             let announced = service.announce().await.unwrap();
 
             // Initially no subscribers
-            assert!(!announced.has_subscribers(EventgroupId::new(0x0001).unwrap()).await);
+            assert!(
+                !announced
+                    .has_subscribers(EventgroupId::new(0x0001).unwrap())
+                    .await
+            );
 
             // Wait for client to subscribe
             tokio::time::sleep(Duration::from_millis(300)).await;
 
             // Now should have subscribers
-            assert!(announced.has_subscribers(EventgroupId::new(0x0001).unwrap()).await);
+            assert!(
+                announced
+                    .has_subscribers(EventgroupId::new(0x0001).unwrap())
+                    .await
+            );
 
             flag.store(true, Ordering::SeqCst);
             Ok(())
@@ -989,7 +1001,7 @@ fn test_drop_announced_sends_stop_offer() {
             // Verify by creating a fresh proxy and expecting discovery to fail
             let proxy2 = runtime.find::<BrakeService>(InstanceId::Any);
             let result = tokio::time::timeout(Duration::from_millis(200), proxy2.available()).await;
-            
+
             assert!(
                 result.is_err(),
                 "Service should be unavailable after Announced instance is dropped"
@@ -1434,7 +1446,11 @@ fn test_notify_no_subscribers_succeeds() {
                 result.is_ok(),
                 "notify() should succeed even with no subscribers"
             );
-            assert!(!announced.has_subscribers(EventgroupId::new(0x0001).unwrap()).await);
+            assert!(
+                !announced
+                    .has_subscribers(EventgroupId::new(0x0001).unwrap())
+                    .await
+            );
 
             flag.store(true, Ordering::SeqCst);
             Ok(())
@@ -1526,18 +1542,20 @@ fn test_static_subscribers_preserved_after_announce() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Listen for static events on port 30502
-            let mut listener = runtime.listen_static(
-                ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
-                InstanceId::Id(0x0001),
-                EventgroupId::new(0x0001).unwrap(),
-                30502,
-            ).await.unwrap();
+            let mut listener = runtime
+                .listen_static(
+                    ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
+                    InstanceId::Id(0x0001),
+                    EventgroupId::new(0x0001).unwrap(),
+                    30502,
+                )
+                .await
+                .unwrap();
 
             // Should receive event even after server announced
-            let event = tokio::time::timeout(
-                Duration::from_secs(3),
-                listener.next()
-            ).await.expect("Should receive static event");
+            let event = tokio::time::timeout(Duration::from_secs(3), listener.next())
+                .await
+                .expect("Should receive static event");
 
             assert!(event.is_some());
             assert_eq!(&event.unwrap().payload[..], b"static_after_announce");
@@ -1562,20 +1580,20 @@ fn test_static_subscribers_preserved_after_announce() {
 
             // Add static subscriber while Bound
             let client_addr: SocketAddr = (turmoil::lookup("static_client"), 30502).into();
-            service.add_static_subscriber(
-                client_addr,
-                &[EventgroupId::new(0x0001).unwrap()],
-            );
+            service.add_static_subscriber(client_addr, &[EventgroupId::new(0x0001).unwrap()]);
 
             // Transition to Announced
             let announced = service.announce().await.unwrap();
 
             // Static subscriber should still work after announcement
-            announced.notify_static(
-                EventgroupId::new(0x0001).unwrap(),
-                EventId::new(0x8001).unwrap(),
-                b"static_after_announce",
-            ).await.unwrap();
+            announced
+                .notify_static(
+                    EventgroupId::new(0x0001).unwrap(),
+                    EventId::new(0x8001).unwrap(),
+                    b"static_after_announce",
+                )
+                .await
+                .unwrap();
 
             tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -1589,8 +1607,14 @@ fn test_static_subscribers_preserved_after_announce() {
         Ok(())
     });
     sim.run().unwrap();
-    assert!(server_ran.load(Ordering::SeqCst), "Server async block did not run");
-    assert!(client_ran.load(Ordering::SeqCst), "Client async block did not run");
+    assert!(
+        server_ran.load(Ordering::SeqCst),
+        "Server async block did not run"
+    );
+    assert!(
+        client_ran.load(Ordering::SeqCst),
+        "Client async block did not run"
+    );
 }
 
 /// Test: static subscribers are preserved when transitioning Announced → Bound
@@ -1612,18 +1636,20 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Listen for static events on port 30502
-            let mut listener = runtime.listen_static(
-                ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
-                InstanceId::Id(0x0001),
-                EventgroupId::new(0x0001).unwrap(),
-                30502,
-            ).await.unwrap();
+            let mut listener = runtime
+                .listen_static(
+                    ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
+                    InstanceId::Id(0x0001),
+                    EventgroupId::new(0x0001).unwrap(),
+                    30502,
+                )
+                .await
+                .unwrap();
 
             // Should receive event after server stopped announcing
-            let event = tokio::time::timeout(
-                Duration::from_secs(4),
-                listener.next()
-            ).await.expect("Should receive static event");
+            let event = tokio::time::timeout(Duration::from_secs(4), listener.next())
+                .await
+                .expect("Should receive static event");
 
             assert!(event.is_some());
             assert_eq!(&event.unwrap().payload[..], b"static_after_stop");
@@ -1648,10 +1674,7 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
 
             // Add static subscriber while Bound
             let client_addr: SocketAddr = (turmoil::lookup("static_client"), 30502).into();
-            service.add_static_subscriber(
-                client_addr,
-                &[EventgroupId::new(0x0001).unwrap()],
-            );
+            service.add_static_subscriber(client_addr, &[EventgroupId::new(0x0001).unwrap()]);
 
             let announced = service.announce().await.unwrap();
 
@@ -1661,11 +1684,14 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
             let bound = announced.stop_announcing().await.unwrap();
 
             // Static subscriber should still work after stopping
-            bound.notify_static(
-                EventgroupId::new(0x0001).unwrap(),
-                EventId::new(0x8001).unwrap(),
-                b"static_after_stop",
-            ).await.unwrap();
+            bound
+                .notify_static(
+                    EventgroupId::new(0x0001).unwrap(),
+                    EventId::new(0x8001).unwrap(),
+                    b"static_after_stop",
+                )
+                .await
+                .unwrap();
 
             tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -1679,8 +1705,14 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
         Ok(())
     });
     sim.run().unwrap();
-    assert!(server_ran.load(Ordering::SeqCst), "Server async block did not run");
-    assert!(client_ran.load(Ordering::SeqCst), "Client async block did not run");
+    assert!(
+        server_ran.load(Ordering::SeqCst),
+        "Server async block did not run"
+    );
+    assert!(
+        client_ran.load(Ordering::SeqCst),
+        "Client async block did not run"
+    );
 }
 
 // ============================================================================
@@ -1748,7 +1780,9 @@ fn test_re_announce_after_stop() {
 
             // Verify service actually went away (need fresh proxy since available() consumes)
             let proxy_check_gone = runtime.find::<BrakeService>(InstanceId::Any);
-            let gone_result = tokio::time::timeout(Duration::from_millis(200), proxy_check_gone.available()).await;
+            let gone_result =
+                tokio::time::timeout(Duration::from_millis(200), proxy_check_gone.available())
+                    .await;
             assert!(
                 gone_result.is_err(),
                 "Service should be unavailable after stop_announcing()"
@@ -1810,29 +1844,31 @@ fn test_static_subscriber_eventgroup_filtering() {
             let config = RuntimeConfig::default();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let mut listener = runtime.listen_static(
-                ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
-                InstanceId::Id(0x0001),
-                EventgroupId::new(0x0001).unwrap(),
-                30501,
-            ).await.unwrap();
+            let mut listener = runtime
+                .listen_static(
+                    ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
+                    InstanceId::Id(0x0001),
+                    EventgroupId::new(0x0001).unwrap(),
+                    30501,
+                )
+                .await
+                .unwrap();
 
             // Should only receive events for eventgroup 0x0001
-            let event = tokio::time::timeout(
-                Duration::from_secs(3),
-                listener.next()
-            ).await.expect("Should receive event for subscribed group");
+            let event = tokio::time::timeout(Duration::from_secs(3), listener.next())
+                .await
+                .expect("Should receive event for subscribed group");
 
             assert!(event.is_some());
             let e = event.unwrap();
             assert_eq!(&e.payload[..], b"eventgroup_1");
 
             // Should not receive event for eventgroup 0x0002
-            let no_event = tokio::time::timeout(
-                Duration::from_millis(500),
-                listener.next()
-            ).await;
-            assert!(no_event.is_err(), "Should not receive event for other eventgroup");
+            let no_event = tokio::time::timeout(Duration::from_millis(500), listener.next()).await;
+            assert!(
+                no_event.is_err(),
+                "Should not receive event for other eventgroup"
+            );
 
             flag.store(true, Ordering::SeqCst);
             Ok(())
@@ -1846,29 +1882,31 @@ fn test_static_subscriber_eventgroup_filtering() {
             let config = RuntimeConfig::default();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let mut listener = runtime.listen_static(
-                ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
-                InstanceId::Id(0x0001),
-                EventgroupId::new(0x0002).unwrap(),
-                30502,
-            ).await.unwrap();
+            let mut listener = runtime
+                .listen_static(
+                    ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
+                    InstanceId::Id(0x0001),
+                    EventgroupId::new(0x0002).unwrap(),
+                    30502,
+                )
+                .await
+                .unwrap();
 
             // Should only receive events for eventgroup 0x0002
-            let event = tokio::time::timeout(
-                Duration::from_secs(3),
-                listener.next()
-            ).await.expect("Should receive event for subscribed group");
+            let event = tokio::time::timeout(Duration::from_secs(3), listener.next())
+                .await
+                .expect("Should receive event for subscribed group");
 
             assert!(event.is_some());
             let e = event.unwrap();
             assert_eq!(&e.payload[..], b"eventgroup_2");
 
             // Should not receive event for eventgroup 0x0001
-            let no_event = tokio::time::timeout(
-                Duration::from_millis(500),
-                listener.next()
-            ).await;
-            assert!(no_event.is_err(), "Should not receive event for other eventgroup");
+            let no_event = tokio::time::timeout(Duration::from_millis(500), listener.next()).await;
+            assert!(
+                no_event.is_err(),
+                "Should not receive event for other eventgroup"
+            );
 
             flag.store(true, Ordering::SeqCst);
             Ok(())
@@ -1890,31 +1928,31 @@ fn test_static_subscriber_eventgroup_filtering() {
 
             // Add client1 to eventgroup 0x0001
             let client1_addr: SocketAddr = (turmoil::lookup("client1"), 30501).into();
-            service.add_static_subscriber(
-                client1_addr,
-                &[EventgroupId::new(0x0001).unwrap()],
-            );
+            service.add_static_subscriber(client1_addr, &[EventgroupId::new(0x0001).unwrap()]);
 
             // Add client2 to eventgroup 0x0002
             let client2_addr: SocketAddr = (turmoil::lookup("client2"), 30502).into();
-            service.add_static_subscriber(
-                client2_addr,
-                &[EventgroupId::new(0x0002).unwrap()],
-            );
+            service.add_static_subscriber(client2_addr, &[EventgroupId::new(0x0002).unwrap()]);
 
             // Send event to eventgroup 0x0001 (only client1 should receive)
-            service.notify_static(
-                EventgroupId::new(0x0001).unwrap(),
-                EventId::new(0x8001).unwrap(),
-                b"eventgroup_1",
-            ).await.unwrap();
+            service
+                .notify_static(
+                    EventgroupId::new(0x0001).unwrap(),
+                    EventId::new(0x8001).unwrap(),
+                    b"eventgroup_1",
+                )
+                .await
+                .unwrap();
 
             // Send event to eventgroup 0x0002 (only client2 should receive)
-            service.notify_static(
-                EventgroupId::new(0x0002).unwrap(),
-                EventId::new(0x8002).unwrap(),
-                b"eventgroup_2",
-            ).await.unwrap();
+            service
+                .notify_static(
+                    EventgroupId::new(0x0002).unwrap(),
+                    EventId::new(0x8002).unwrap(),
+                    b"eventgroup_2",
+                )
+                .await
+                .unwrap();
 
             tokio::time::sleep(Duration::from_secs(2)).await;
 
@@ -1928,9 +1966,18 @@ fn test_static_subscriber_eventgroup_filtering() {
         Ok(())
     });
     sim.run().unwrap();
-    assert!(server_ran.load(Ordering::SeqCst), "Server async block did not run");
-    assert!(client1_ran.load(Ordering::SeqCst), "Client1 async block did not run");
-    assert!(client2_ran.load(Ordering::SeqCst), "Client2 async block did not run");
+    assert!(
+        server_ran.load(Ordering::SeqCst),
+        "Server async block did not run"
+    );
+    assert!(
+        client1_ran.load(Ordering::SeqCst),
+        "Client1 async block did not run"
+    );
+    assert!(
+        client2_ran.load(Ordering::SeqCst),
+        "Client2 async block did not run"
+    );
 }
 
 // ============================================================================
@@ -2062,7 +2109,11 @@ fn test_notify_survives_subscriber_disconnect() {
 
             // Wait for subscriber - needs enough time for discovery + subscription
             tokio::time::sleep(Duration::from_millis(500)).await;
-            assert!(announced.has_subscribers(EventgroupId::new(0x0001).unwrap()).await);
+            assert!(
+                announced
+                    .has_subscribers(EventgroupId::new(0x0001).unwrap())
+                    .await
+            );
 
             // Subscriber will disconnect during this sleep
             tokio::time::sleep(Duration::from_millis(500)).await;
@@ -2080,7 +2131,11 @@ fn test_notify_survives_subscriber_disconnect() {
             assert!(result.is_ok());
 
             // has_subscribers should now be false
-            assert!(!announced.has_subscribers(EventgroupId::new(0x0001).unwrap()).await);
+            assert!(
+                !announced
+                    .has_subscribers(EventgroupId::new(0x0001).unwrap())
+                    .await
+            );
 
             flag.store(true, Ordering::SeqCst);
             Ok(())
@@ -2336,7 +2391,7 @@ fn test_large_tcp_rpc_payload() {
 }
 
 /// Test: Response should be sent even after offering is dropped
-/// 
+///
 /// Scenario: A shutdown RPC triggers a long shutdown procedure. The offering
 /// is dropped early (service de-registered), but the final response should
 /// still be sent to the client. This is a common pattern where cleanup happens
@@ -2367,16 +2422,13 @@ fn test_response_after_offering_dropped() {
                 .unwrap();
 
             // Wait for RPC request (simulating a "shutdown" command)
-            if let Some(ServiceEvent::Call {
-                responder, ..
-            }) = offering.next().await
-            {
+            if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
                 // Immediately drop the offering (service de-registered)
                 drop(offering);
-                
+
                 // Simulate long shutdown procedure
                 tokio::time::sleep(Duration::from_millis(200)).await;
-                
+
                 // Send response AFTER offering is dropped
                 // This should still work!
                 responder.reply(b"shutdown_ack").await.unwrap();
@@ -2408,7 +2460,7 @@ fn test_response_after_offering_dropped() {
                 .unwrap();
 
             let method_id = MethodId::new(0x0001).unwrap();
-            
+
             // Send "shutdown" command
             let response = tokio::time::timeout(
                 Duration::from_secs(5),
@@ -2430,7 +2482,7 @@ fn test_response_after_offering_dropped() {
         tokio::time::sleep(Duration::from_secs(30)).await;
         Ok(())
     });
-    
+
     sim.run().unwrap();
     assert!(
         server_ran.load(Ordering::SeqCst),
@@ -2539,7 +2591,7 @@ fn test_empty_payload_notify() {
 // ============================================================================
 
 /// Test: rapid bind/announce/stop cycles don't cause issues
-/// 
+///
 /// Each service instance gets its own port. This test verifies that
 /// services can transition through states multiple times and that
 /// proper cleanup happens on drop. Services are kept alive to avoid
@@ -2563,7 +2615,7 @@ fn test_rapid_state_transitions() {
             // Ports are assigned based on offered.len(), so we need to
             // keep services in scope to prevent port reuse
             let mut services = Vec::new();
-            
+
             for i in 0..5 {
                 let service = runtime
                     .bind::<BrakeService>(InstanceId::Id((i + 1) as u16))
@@ -2574,7 +2626,7 @@ fn test_rapid_state_transitions() {
                 let bound = announced.stop_announcing().await.unwrap();
                 let announced2 = bound.announce().await.unwrap();
                 let bound2 = announced2.stop_announcing().await.unwrap();
-                
+
                 // Keep the service alive to prevent port reuse
                 services.push(bound2);
             }

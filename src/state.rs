@@ -349,8 +349,12 @@ mod tests {
         let addr = "127.0.0.1:30490".parse().unwrap();
         let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
         let (client_rpc_tx, _) = mpsc::channel(1);
-        let mut state =
-            RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, RuntimeConfig::default());
+        let mut state = RuntimeState::new(
+            addr,
+            client_rpc_addr,
+            client_rpc_tx,
+            RuntimeConfig::default(),
+        );
 
         // First session should be 1
         assert_eq!(state.next_session_id(), 1, "Session ID should start at 1");
@@ -377,8 +381,12 @@ mod tests {
         let addr = "127.0.0.1:30490".parse().unwrap();
         let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
         let (client_rpc_tx, _) = mpsc::channel(1);
-        let mut state =
-            RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, RuntimeConfig::default());
+        let mut state = RuntimeState::new(
+            addr,
+            client_rpc_addr,
+            client_rpc_tx,
+            RuntimeConfig::default(),
+        );
 
         // Initially reboot flag should be set
         assert!(state.reboot_flag, "Reboot flag should be true initially");
@@ -418,8 +426,12 @@ mod tests {
         let addr = "127.0.0.1:30490".parse().unwrap();
         let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
         let (client_rpc_tx, _) = mpsc::channel(1);
-        let mut state =
-            RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, RuntimeConfig::default());
+        let mut state = RuntimeState::new(
+            addr,
+            client_rpc_addr,
+            client_rpc_tx,
+            RuntimeConfig::default(),
+        );
 
         // Iterate through 2 full cycles + some extra
         for _ in 0..(0xFFFF * 2 + 1000) {

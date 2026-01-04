@@ -548,7 +548,7 @@ fn out_of_order_response_matching() {
     sim.host("server", move || {
         let notify1 = notify1_for_server.clone();
         let notify2 = notify2_for_server.clone();
-        
+
         async move {
             let config = RuntimeConfig::default();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -617,19 +617,15 @@ fn out_of_order_response_matching() {
 
         // Spawn first request in a background task so network I/O can progress
         let proxy1 = proxy.clone();
-        let task1 = tokio::spawn(async move {
-            proxy1.call(method, &[1]).await
-        });
-        
+        let task1 = tokio::spawn(async move { proxy1.call(method, &[1]).await });
+
         // Wait for server to receive first request
         notify1_for_client.notified().await;
 
         // Now send second request after we know first was received
         let proxy2 = proxy.clone();
-        let task2 = tokio::spawn(async move {
-            proxy2.call(method, &[2]).await
-        });
-        
+        let task2 = tokio::spawn(async move { proxy2.call(method, &[2]).await });
+
         // Wait for server to receive second request
         notify2_for_client.notified().await;
 

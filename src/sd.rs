@@ -63,8 +63,8 @@ use tokio::time::Instant;
 use crate::command::ServiceAvailability;
 use crate::config::Transport;
 use crate::state::{
-    DiscoveredService, OfferedService, PendingServerResponse, RuntimeState,
-    ServiceKey, SubscriberKey,
+    DiscoveredService, OfferedService, PendingServerResponse, RuntimeState, ServiceKey,
+    SubscriberKey,
 };
 use crate::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
 
@@ -285,7 +285,7 @@ pub(crate) fn handle_subscribe_request(
         state
             .server_subscribers
             .entry(sub_key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(client_endpoint);
 
         let mut ack = SdMessage::new(state.sd_flags(true));
@@ -469,14 +469,8 @@ pub(crate) fn build_subscribe_message(
         port: client_rpc_port,
         protocol,
     });
-    let mut entry = SdEntry::subscribe_eventgroup(
-        service_id,
-        instance_id,
-        0xFF,
-        eventgroup_id,
-        ttl,
-        0,
-    );
+    let mut entry =
+        SdEntry::subscribe_eventgroup(service_id, instance_id, 0xFF, eventgroup_id, ttl, 0);
     entry.index_1st_option = opt_idx;
     entry.num_options_1 = 1;
     msg.add_entry(entry);

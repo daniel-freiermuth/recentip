@@ -71,19 +71,19 @@ pub enum Error {
     /// Wraps a [`std::io::Error`]. May be transient (connection refused)
     /// or permanent (address already in use).
     Io(io::Error),
-    
+
     /// Configuration error (invalid addresses, ports, etc.).
     ///
     /// Indicates a problem with the provided [`RuntimeConfig`](crate::RuntimeConfig).
     /// Fix the configuration and restart.
     Config(ConfigError),
-    
+
     /// Protocol-level error (malformed messages, version mismatch).
     ///
     /// Indicates incompatibility with the remote peer or a bug.
     /// Check protocol versions and message formats.
     Protocol(ProtocolError),
-    
+
     /// The requested service is not available.
     ///
     /// Causes:
@@ -91,18 +91,18 @@ pub enum Error {
     /// - Service went offline (TTL expired)
     /// - No server is offering this service
     ServiceUnavailable,
-    
+
     /// Not subscribed to the eventgroup.
     ///
     /// Call `subscribe()` before trying to receive events.
     NotSubscribed,
-    
+
     /// The runtime has shut down.
     ///
     /// Occurs when the [`Runtime`](crate::Runtime) is dropped while
     /// operations are pending. Application is terminating.
     RuntimeShutdown,
-    
+
     /// Channel full, event was dropped due to backpressure.
     ///
     /// The receiver isn't consuming events fast enough. Consider:
@@ -110,7 +110,7 @@ pub enum Error {
     /// - Increasing channel capacity
     /// - Dropping old events
     ChannelFull,
-    
+
     /// Service/instance is already offered or bound.
     ///
     /// A service can only be offered once per instance ID. Use the

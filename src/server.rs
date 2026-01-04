@@ -68,7 +68,9 @@ use crate::state::{
     RuntimeState, ServiceKey, SubscriberKey,
 };
 use crate::tcp::{TcpMessage, TcpServer};
-use crate::wire::{Header, L4Protocol, MessageType, SdEntry, SdMessage, SdOption, PROTOCOL_VERSION};
+use crate::wire::{
+    Header, L4Protocol, MessageType, SdEntry, SdMessage, SdOption, PROTOCOL_VERSION,
+};
 use crate::{InstanceId, ServiceId};
 
 // ============================================================================
@@ -344,11 +346,11 @@ pub(crate) async fn handle_listen_static_command<U: UdpSocket>(
                                 if let Some(header) = Header::parse(&mut data) {
                                     // Check if this is a notification
                                     if header.message_type == MessageType::Notification {
-                                        if let Some(event_id) = crate::EventId::new(header.method_id)
+                                        if let Some(event_id) =
+                                            crate::EventId::new(header.method_id)
                                         {
                                             let payload_start = Header::SIZE;
-                                            let payload_end =
-                                                (header.length as usize + 8).min(len);
+                                            let payload_end = (header.length as usize + 8).min(len);
                                             let payload = Bytes::copy_from_slice(
                                                 &buf[payload_start..payload_end],
                                             );
@@ -431,7 +433,7 @@ pub(crate) fn handle_notify(
     let subscribers: Vec<SocketAddr> = state
         .server_subscribers
         .get(&sub_key)
-        .map(|s| s.clone())
+        .cloned()
         .unwrap_or_default();
 
     if !subscribers.is_empty() {
@@ -508,13 +510,7 @@ pub(crate) fn handle_start_announcing(
         offered.is_announcing = true;
         offered.last_offer = Instant::now() - Duration::from_secs(10); // Force immediate offer
 
-        let msg = build_offer_message(
-            &key,
-            offered,
-            sd_flags,
-            ttl,
-            transport,
-        );
+        let msg = build_offer_message(&key, offered, sd_flags, ttl, transport);
 
         actions.push(Action::SendSd {
             message: msg,

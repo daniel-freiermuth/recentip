@@ -61,8 +61,7 @@ use crate::command::ServiceAvailability;
 use crate::config::{Transport, DEFAULT_FIND_REPETITIONS};
 use crate::sd::{build_find_message, build_subscribe_message, build_unsubscribe_message, Action};
 use crate::state::{
-    CallKey, ClientSubscription, FindRequest, PendingCall,
-    RuntimeState, ServiceKey,
+    CallKey, ClientSubscription, FindRequest, PendingCall, RuntimeState, ServiceKey,
 };
 use crate::wire::Header;
 use crate::{Event, EventId, Response, ReturnCode};
@@ -274,7 +273,7 @@ pub(crate) fn handle_subscribe(
         state
             .subscriptions
             .entry(key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(ClientSubscription {
                 eventgroup_id,
                 events_tx: events,
@@ -452,8 +451,8 @@ pub(crate) fn handle_incoming_notification(
 // MESSAGE BUILDING (CLIENT-SIDE)
 // ============================================================================
 
-use bytes::BytesMut;
 use crate::wire::{MessageType, PROTOCOL_VERSION};
+use bytes::BytesMut;
 
 /// Build a SOME/IP request message
 pub(crate) fn build_request(

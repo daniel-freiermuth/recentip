@@ -23,9 +23,7 @@
 #[ctor::ctor]
 fn init_tracing() {
     // Initialize tracing subscriber with test writer for proper output capture
-    let _ = tracing_subscriber::fmt()
-        .with_test_writer()
-        .try_init();
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 }
 
 #[path = "compliance/api_types.rs"]
