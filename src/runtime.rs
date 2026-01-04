@@ -144,6 +144,19 @@ pub(crate) struct RuntimeInner {
 ///
 /// When the `Runtime` is dropped, it signals shutdown and waits for cleanup.
 ///
+/// # Graceful Shutdown
+///
+/// For production code, prefer calling [`shutdown()`](Self::shutdown) explicitly
+/// to ensure all pending RPC responses are sent:
+///
+/// ```no_run
+/// # use someip_runtime::prelude::*;
+/// # async fn example(runtime: Runtime) {
+/// // Process requests...
+/// runtime.shutdown().await;  // Ensures all pending responses are sent
+/// # }
+/// ```
+///
 /// # Socket Types
 ///
 /// The runtime is generic over socket types to support testing with network

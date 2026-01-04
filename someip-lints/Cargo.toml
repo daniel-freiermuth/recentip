@@ -1,0 +1,22 @@
+[package]
+name = "someip-lints"
+version = "0.1.0"
+edition = "2021"
+description = "Custom Clippy-style lints for someip-runtime"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+dylint_linting = "3.0"
+
+[dev-dependencies]
+dylint_testing = "3.0"
+
+[package.metadata.rust-analyzer]
+# Prevents rust-analyzer from loading this crate as a normal library
+rustc_private = true
+
+[workspace]
+# This is a standalone lint crate

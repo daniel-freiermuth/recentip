@@ -171,6 +171,20 @@ cargo tarpaulin --features turmoil
 cargo test --doc
 ```
 
+### Custom Lints
+
+For **compile-time** checking, use the included [dylint](https://github.com/trailofbits/dylint) lint crate:
+
+```bash
+# Install dylint
+cargo install cargo-dylint dylint-link
+
+# Run lints
+cargo dylint --all
+```
+
+The `RUNTIME_MUST_SHUTDOWN` lint warns when a `Runtime` might be dropped without `shutdown()`.
+
 ## Specification Compliance
 
 This implementation targets compliance with the SOME/IP specification. Test coverage is tracked in `spec-data/coverage.json` with compliance tests in `tests/compliance/`.

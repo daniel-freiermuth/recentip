@@ -1,0 +1,7 @@
+# dylint configuration for someip-runtime
+# Run with: cargo dylint --all
+
+[workspace.metadata.dylint]
+libraries = [
+    { path = "someip-lints" },
+]
