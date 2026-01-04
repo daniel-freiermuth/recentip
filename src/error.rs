@@ -121,14 +121,14 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Io(e) => write!(f, "I/O error: {}", e),
-            Error::Config(e) => write!(f, "Configuration error: {}", e.message),
-            Error::Protocol(e) => write!(f, "Protocol error: {}", e.message),
-            Error::ServiceUnavailable => write!(f, "Service unavailable"),
-            Error::NotSubscribed => write!(f, "Not subscribed to eventgroup"),
-            Error::RuntimeShutdown => write!(f, "Runtime has shut down"),
-            Error::ChannelFull => write!(f, "Channel full, event dropped"),
-            Error::AlreadyOffered => write!(f, "Service/instance is already offered or bound"),
+            Self::Io(e) => write!(f, "I/O error: {e}"),
+            Self::Config(e) => write!(f, "Configuration error: {}", e.message),
+            Self::Protocol(e) => write!(f, "Protocol error: {}", e.message),
+            Self::ServiceUnavailable => write!(f, "Service unavailable"),
+            Self::NotSubscribed => write!(f, "Not subscribed to eventgroup"),
+            Self::RuntimeShutdown => write!(f, "Runtime has shut down"),
+            Self::ChannelFull => write!(f, "Channel full, event dropped"),
+            Self::AlreadyOffered => write!(f, "Service/instance is already offered or bound"),
         }
     }
 }
@@ -136,7 +136,7 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Error::Io(e) => Some(e),
+            Self::Io(e) => Some(e),
             _ => None,
         }
     }
@@ -144,7 +144,7 @@ impl std::error::Error for Error {
 
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
-        Error::Io(e)
+        Self::Io(e)
     }
 }
 

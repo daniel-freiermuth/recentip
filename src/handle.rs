@@ -361,7 +361,7 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
 }
 
 impl<S: Service> ProxyHandle<S, Available> {
-    /// Create a new ProxyHandle that is immediately available (for static deployments).
+    /// Create a new `ProxyHandle` that is immediately available (for static deployments).
     pub(crate) fn new_available(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
@@ -857,7 +857,7 @@ impl Responder {
     pub async fn reply_error(mut self, code: ReturnCode) -> Result<()> {
         if let Some(tx) = self.response.take() {
             let _ = tx.send(Err(Error::Protocol(crate::error::ProtocolError {
-                message: format!("Error: {:?}", code),
+                message: format!("Error: {code:?}"),
             })));
         }
         Ok(())
@@ -913,7 +913,7 @@ impl Drop for SubscribeAck {
 ///
 /// The service instance can be in one of two states:
 /// - `Bound`: Listening on an endpoint but NOT announced via Service Discovery
-/// - `Announced`: Listening AND announced via SD (OfferService sent)
+/// - `Announced`: Listening AND announced via SD (`OfferService` sent)
 ///
 /// # Lifecycle
 ///
@@ -966,7 +966,7 @@ impl<S: Service> ServiceInstance<S, Bound> {
 
     /// Announce this service instance via Service Discovery.
     ///
-    /// Sends an OfferService message and starts cyclic offer announcements.
+    /// Sends an `OfferService` message and starts cyclic offer announcements.
     /// After this, clients can discover the service via SD.
     ///
     /// Consumes `self` and returns `ServiceInstance<S, Announced>`.
@@ -1075,7 +1075,7 @@ impl<S: Service> ServiceInstance<S, Bound> {
 impl<S: Service> ServiceInstance<S, Announced> {
     /// Stop announcing this service instance via Service Discovery.
     ///
-    /// Sends a StopOfferService message. The socket remains open for
+    /// Sends a `StopOfferService` message. The socket remains open for
     /// draining existing connections.
     ///
     /// Consumes `self` and returns `ServiceInstance<S, Bound>`.
@@ -1221,7 +1221,7 @@ impl<S: Service> ServiceInstance<S, Announced> {
     /// Receive the next service event.
     ///
     /// In Announced state, this receives:
-    /// - RPC requests (Call, FireForget)
+    /// - RPC requests (Call, `FireForget`)
     /// - Subscription events (Subscribe, Unsubscribe)
     ///
     /// Returns `None` if the runtime has shut down.

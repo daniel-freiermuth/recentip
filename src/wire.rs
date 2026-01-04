@@ -118,8 +118,8 @@ pub const MAGIC_COOKIE_SERVER_METHOD_ID: u16 = 0x8000;
 
 /// Generate a Magic Cookie message (16 bytes).
 ///
-/// Per feat_req_recentip_591: Each TCP segment shall start with a Magic Cookie.
-/// Per feat_req_recentip_592: Only one Magic Cookie per segment.
+/// Per `feat_req_recentip_591`: Each TCP segment shall start with a Magic Cookie.
+/// Per `feat_req_recentip_592`: Only one Magic Cookie per segment.
 ///
 /// Magic Cookie format:
 /// - Service ID: 0xFFFF
@@ -194,18 +194,18 @@ pub struct InterfaceVersion {
 impl InterfaceVersion {
     /// Create a new interface version
     pub fn new(major: u8, minor: u32) -> Self {
-        InterfaceVersion { major, minor }
+        Self { major, minor }
     }
 
     /// Check if this version is compatible with another version.
     ///
     /// Compatible means same major version, and our minor >= required minor.
-    pub fn is_compatible_with(&self, required: &InterfaceVersion) -> bool {
+    pub fn is_compatible_with(&self, required: &Self) -> bool {
         self.major == required.major && self.minor >= required.minor
     }
 
     /// Check if exact match (used for strict mode)
-    pub fn matches_exactly(&self, other: &InterfaceVersion) -> bool {
+    pub fn matches_exactly(&self, other: &Self) -> bool {
         self.major == other.major && self.minor == other.minor
     }
 
@@ -228,7 +228,7 @@ pub enum VersionError {
 
 /// Validate protocol version byte from header.
 ///
-/// Returns Ok if the version matches PROTOCOL_VERSION (0x01).
+/// Returns Ok if the version matches `PROTOCOL_VERSION` (0x01).
 pub fn validate_protocol_version(version_byte: u8) -> Result<(), VersionError> {
     if version_byte == PROTOCOL_VERSION {
         Ok(())
@@ -297,14 +297,14 @@ impl MessageType {
 
     /// Check if this is a request type (expects response)
     pub fn expects_response(&self) -> bool {
-        matches!(self, MessageType::Request | MessageType::TpRequest)
+        matches!(self, Self::Request | Self::TpRequest)
     }
 
     /// Check if this is a fire-and-forget request
     pub fn is_fire_and_forget(&self) -> bool {
         matches!(
             self,
-            MessageType::RequestNoReturn | MessageType::TpRequestNoReturn
+            Self::RequestNoReturn | Self::TpRequestNoReturn
         )
     }
 
@@ -312,7 +312,7 @@ impl MessageType {
     pub fn is_notification(&self) -> bool {
         matches!(
             self,
-            MessageType::Notification | MessageType::TpNotification
+            Self::Notification | Self::TpNotification
         )
     }
 
@@ -320,52 +320,52 @@ impl MessageType {
     pub fn is_response(&self) -> bool {
         matches!(
             self,
-            MessageType::Response
-                | MessageType::TpResponse
-                | MessageType::Error
-                | MessageType::TpError
+            Self::Response
+                | Self::TpResponse
+                | Self::Error
+                | Self::TpError
         )
     }
 
     /// Get the corresponding TP-flagged type
-    pub fn with_tp_flag(&self) -> Option<MessageType> {
+    pub fn with_tp_flag(&self) -> Option<Self> {
         match self {
-            MessageType::Request => Some(MessageType::TpRequest),
-            MessageType::RequestNoReturn => Some(MessageType::TpRequestNoReturn),
-            MessageType::Notification => Some(MessageType::TpNotification),
-            MessageType::Response => Some(MessageType::TpResponse),
-            MessageType::Error => Some(MessageType::TpError),
+            Self::Request => Some(Self::TpRequest),
+            Self::RequestNoReturn => Some(Self::TpRequestNoReturn),
+            Self::Notification => Some(Self::TpNotification),
+            Self::Response => Some(Self::TpResponse),
+            Self::Error => Some(Self::TpError),
             _ => None, // Already TP-flagged
         }
     }
 
     /// Get the base type without TP flag
-    pub fn without_tp_flag(&self) -> MessageType {
+    pub fn without_tp_flag(&self) -> Self {
         match self {
-            MessageType::TpRequest => MessageType::Request,
-            MessageType::TpRequestNoReturn => MessageType::RequestNoReturn,
-            MessageType::TpNotification => MessageType::Notification,
-            MessageType::TpResponse => MessageType::Response,
-            MessageType::TpError => MessageType::Error,
+            Self::TpRequest => Self::Request,
+            Self::TpRequestNoReturn => Self::RequestNoReturn,
+            Self::TpNotification => Self::Notification,
+            Self::TpResponse => Self::Response,
+            Self::TpError => Self::Error,
             other => *other,
         }
     }
 
     /// Get the expected response type for this message type
-    pub fn expected_response_type(&self) -> Option<MessageType> {
+    pub fn expected_response_type(&self) -> Option<Self> {
         match self {
-            MessageType::Request => Some(MessageType::Response),
-            MessageType::TpRequest => Some(MessageType::TpResponse),
+            Self::Request => Some(Self::Response),
+            Self::TpRequest => Some(Self::TpResponse),
             _ => None, // Other types don't expect responses
         }
     }
 
     /// Check if this type is valid as a response to the given request type
-    pub fn is_valid_response_to(&self, request_type: MessageType) -> bool {
+    pub fn is_valid_response_to(&self, request_type: Self) -> bool {
         match request_type {
-            MessageType::Request => matches!(self, MessageType::Response | MessageType::Error),
-            MessageType::TpRequest => {
-                matches!(self, MessageType::TpResponse | MessageType::TpError)
+            Self::Request => matches!(self, Self::Response | Self::Error),
+            Self::TpRequest => {
+                matches!(self, Self::TpResponse | Self::TpError)
             }
             _ => false, // Other types don't expect responses
         }
@@ -379,7 +379,7 @@ pub struct Header {
     pub service_id: u16,
     /// Method ID or Event ID
     pub method_id: u16,
-    /// Length of payload + 8 bytes (client_id, session_id, protocol_version, interface_version, message_type, return_code)
+    /// Length of payload + 8 bytes (`client_id`, `session_id`, `protocol_version`, `interface_version`, `message_type`, `return_code`)
     pub length: u32,
     /// Client ID
     pub client_id: u16,
@@ -641,7 +641,7 @@ impl SdEntry {
         }
     }
 
-    /// Create a FindService entry
+    /// Create a `FindService` entry
     pub fn find_service(
         service_id: u16,
         instance_id: u16,
@@ -665,7 +665,7 @@ impl SdEntry {
         }
     }
 
-    /// Create an OfferService entry
+    /// Create an `OfferService` entry
     pub fn offer_service(
         service_id: u16,
         instance_id: u16,
@@ -691,7 +691,7 @@ impl SdEntry {
         }
     }
 
-    /// Create a StopOfferService entry (OfferService with TTL=0)
+    /// Create a `StopOfferService` entry (`OfferService` with TTL=0)
     pub fn stop_offer_service(
         service_id: u16,
         instance_id: u16,
@@ -709,7 +709,7 @@ impl SdEntry {
         )
     }
 
-    /// Create a SubscribeEventgroup entry
+    /// Create a `SubscribeEventgroup` entry
     pub fn subscribe_eventgroup(
         service_id: u16,
         instance_id: u16,
@@ -734,7 +734,7 @@ impl SdEntry {
         }
     }
 
-    /// Create a SubscribeEventgroupAck entry
+    /// Create a `SubscribeEventgroupAck` entry
     pub fn subscribe_eventgroup_ack(
         service_id: u16,
         instance_id: u16,
@@ -806,7 +806,7 @@ impl SdOption {
                 let _reserved2 = buf.get_u8();
                 let protocol = L4Protocol::from_u8(buf.get_u8())?;
                 let port = buf.get_u16();
-                Some(SdOption::Ipv4Endpoint {
+                Some(Self::Ipv4Endpoint {
                     addr: Ipv4Addr::new(a, b, c, d),
                     port,
                     protocol,
@@ -825,7 +825,7 @@ impl SdOption {
                 let _reserved2 = buf.get_u8();
                 let _protocol = buf.get_u8();
                 let port = buf.get_u16();
-                Some(SdOption::Ipv4Multicast {
+                Some(Self::Ipv4Multicast {
                     addr: Ipv4Addr::new(a, b, c, d),
                     port,
                 })
@@ -833,14 +833,14 @@ impl SdOption {
             _ => {
                 // Unknown option - skip
                 let data = buf.copy_to_bytes(length);
-                Some(SdOption::Unknown { option_type, data })
+                Some(Self::Unknown { option_type, data })
             }
         }
     }
 
     pub fn serialize(&self, buf: &mut impl BufMut) {
         match self {
-            SdOption::Ipv4Endpoint {
+            Self::Ipv4Endpoint {
                 addr,
                 port,
                 protocol,
@@ -853,7 +853,7 @@ impl SdOption {
                 buf.put_u8(*protocol as u8);
                 buf.put_u16(*port);
             }
-            SdOption::Ipv4Multicast { addr, port } => {
+            Self::Ipv4Multicast { addr, port } => {
                 buf.put_u16(9); // length
                 buf.put_u8(0x14); // type
                 buf.put_u8(0); // reserved
@@ -862,7 +862,7 @@ impl SdOption {
                 buf.put_u8(L4Protocol::Udp as u8);
                 buf.put_u16(*port);
             }
-            SdOption::Unknown { option_type, data } => {
+            Self::Unknown { option_type, data } => {
                 buf.put_u16(data.len() as u16);
                 buf.put_u8(*option_type);
                 buf.put_slice(data);
@@ -873,8 +873,8 @@ impl SdOption {
     /// Size in bytes when serialized
     pub fn size(&self) -> usize {
         match self {
-            SdOption::Ipv4Endpoint { .. } | SdOption::Ipv4Multicast { .. } => 12, // 2 + 1 + 9
-            SdOption::Unknown { data, .. } => 3 + data.len(),
+            Self::Ipv4Endpoint { .. } | Self::Ipv4Multicast { .. } => 12, // 2 + 1 + 9
+            Self::Unknown { data, .. } => 3 + data.len(),
         }
     }
 }
@@ -964,7 +964,7 @@ impl SdMessage {
     /// Serialize to bytes (just the SD payload, without SOME/IP header)
     pub fn serialize_payload(&self) -> Bytes {
         let entries_len = self.entries.len() * SdEntry::SIZE;
-        let options_len: usize = self.options.iter().map(|o| o.size()).sum();
+        let options_len: usize = self.options.iter().map(SdOption::size).sum();
         let total_len = 4 + 4 + entries_len + 4 + options_len;
 
         let mut buf = BytesMut::with_capacity(total_len);

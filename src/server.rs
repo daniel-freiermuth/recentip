@@ -77,8 +77,8 @@ use crate::{InstanceId, ServiceId};
 // ASYNC COMMAND HANDLERS (NEED SOCKET CREATION)
 // ============================================================================
 
-/// Handle Command::Offer which requires async socket creation
-pub(crate) async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
+/// Handle `Command::Offer` which requires async socket creation
+pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
     service_id: ServiceId,
     instance_id: InstanceId,
     major_version: u8,
@@ -208,8 +208,8 @@ pub(crate) async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListe
     Some(actions)
 }
 
-/// Handle Command::Bind which creates socket but does NOT announce via SD
-pub(crate) async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
+/// Handle `Command::Bind` which creates socket but does NOT announce via SD
+pub async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
     service_id: ServiceId,
     instance_id: InstanceId,
     major_version: u8,
@@ -310,8 +310,8 @@ pub(crate) async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListen
     }
 }
 
-/// Handle Command::ListenStatic which creates a socket to receive static events
-pub(crate) async fn handle_listen_static_command<U: UdpSocket>(
+/// Handle `Command::ListenStatic` which creates a socket to receive static events
+pub async fn handle_listen_static_command<U: UdpSocket>(
     service_id: ServiceId,
     instance_id: InstanceId,
     eventgroup_id: u16,
@@ -391,8 +391,8 @@ pub(crate) async fn handle_listen_static_command<U: UdpSocket>(
 // SYNC COMMAND HANDLERS (SERVER-SIDE)
 // ============================================================================
 
-/// Handle Command::StopOffer
-pub(crate) fn handle_stop_offer(
+/// Handle `Command::StopOffer`
+pub fn handle_stop_offer(
     service_id: ServiceId,
     instance_id: InstanceId,
     state: &mut RuntimeState,
@@ -410,8 +410,8 @@ pub(crate) fn handle_stop_offer(
     }
 }
 
-/// Handle Command::Notify
-pub(crate) fn handle_notify(
+/// Handle `Command::Notify`
+pub fn handle_notify(
     service_id: ServiceId,
     instance_id: InstanceId,
     eventgroup_id: u16,
@@ -457,8 +457,8 @@ pub(crate) fn handle_notify(
     }
 }
 
-/// Handle Command::NotifyStatic
-pub(crate) fn handle_notify_static(
+/// Handle `Command::NotifyStatic`
+pub fn handle_notify_static(
     service_id: ServiceId,
     instance_id: InstanceId,
     event_id: u16,
@@ -489,8 +489,8 @@ pub(crate) fn handle_notify_static(
     }
 }
 
-/// Handle Command::StartAnnouncing
-pub(crate) fn handle_start_announcing(
+/// Handle `Command::StartAnnouncing`
+pub fn handle_start_announcing(
     service_id: ServiceId,
     instance_id: InstanceId,
     response: oneshot::Sender<Result<()>>,
@@ -523,8 +523,8 @@ pub(crate) fn handle_start_announcing(
     }
 }
 
-/// Handle Command::StopAnnouncing
-pub(crate) fn handle_stop_announcing(
+/// Handle `Command::StopAnnouncing`
+pub fn handle_stop_announcing(
     service_id: ServiceId,
     instance_id: InstanceId,
     response: oneshot::Sender<Result<()>>,
@@ -554,8 +554,8 @@ pub(crate) fn handle_stop_announcing(
     }
 }
 
-/// Handle Command::HasSubscribers
-pub(crate) fn handle_has_subscribers(
+/// Handle `Command::HasSubscribers`
+pub fn handle_has_subscribers(
     service_id: ServiceId,
     instance_id: InstanceId,
     eventgroup_id: u16,
@@ -570,8 +570,7 @@ pub(crate) fn handle_has_subscribers(
     let has_subscribers = state
         .server_subscribers
         .get(&sub_key)
-        .map(|v| !v.is_empty())
-        .unwrap_or(false);
+        .is_some_and(|v| !v.is_empty());
     let _ = response.send(has_subscribers);
 }
 
@@ -580,7 +579,7 @@ pub(crate) fn handle_has_subscribers(
 // ============================================================================
 
 /// Handle an incoming request (server-side)
-pub(crate) fn handle_incoming_request(
+pub fn handle_incoming_request(
     header: &Header,
     payload: Bytes,
     from: SocketAddr,
@@ -656,7 +655,7 @@ pub(crate) fn handle_incoming_request(
 }
 
 /// Handle an incoming fire-and-forget request (server-side, no response)
-pub(crate) fn handle_incoming_fire_forget(
+pub fn handle_incoming_fire_forget(
     header: &Header,
     payload: Bytes,
     from: SocketAddr,
@@ -688,10 +687,10 @@ pub(crate) fn handle_incoming_fire_forget(
 /// Build a SOME/IP response message
 ///
 /// Per SOME/IP specification:
-/// - feat_req_recentip_726: If EXCEPTION is not configured, errors use RESPONSE (0x80)
-/// - feat_req_recentip_106: EXCEPTION (0x81) is optional and must be configured per-method
-/// - feat_req_recentip_107: Receiving errors on both 0x80 and 0x81 must be supported
-pub(crate) fn build_response(
+/// - `feat_req_recentip_726`: If EXCEPTION is not configured, errors use RESPONSE (0x80)
+/// - `feat_req_recentip_106`: EXCEPTION (0x81) is optional and must be configured per-method
+/// - `feat_req_recentip_107`: Receiving errors on both 0x80 and 0x81 must be supported
+pub fn build_response(
     service_id: u16,
     method_id: u16,
     client_id: u16,
@@ -732,7 +731,7 @@ pub(crate) fn build_response(
 }
 
 /// Build a SOME/IP notification (event) message
-pub(crate) fn build_notification(
+pub fn build_notification(
     service_id: u16,
     event_id: u16,
     client_id: u16,
@@ -767,7 +766,7 @@ pub(crate) fn build_notification(
 
 /// Spawns a task to handle an RPC socket for a specific service instance
 /// Returns the endpoint and a sender to send outgoing messages
-pub(crate) async fn spawn_rpc_socket_task<U: UdpSocket>(
+pub async fn spawn_rpc_socket_task<U: UdpSocket>(
     rpc_socket: U,
     service_id: u16,
     instance_id: u16,

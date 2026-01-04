@@ -70,8 +70,8 @@ use crate::{Event, EventId, Response, ReturnCode};
 // COMMAND HANDLERS (CLIENT-SIDE)
 // ============================================================================
 
-/// Handle Command::Find
-pub(crate) fn handle_find(
+/// Handle `Command::Find`
+pub fn handle_find(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     notify: tokio::sync::mpsc::Sender<ServiceAvailability>,
@@ -127,8 +127,8 @@ pub(crate) fn handle_find(
     }
 }
 
-/// Handle Command::StopFind
-pub(crate) fn handle_stop_find(
+/// Handle `Command::StopFind`
+pub fn handle_stop_find(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     state: &mut RuntimeState,
@@ -137,8 +137,8 @@ pub(crate) fn handle_stop_find(
     state.find_requests.remove(&key);
 }
 
-/// Handle Command::Call
-pub(crate) fn handle_call(
+/// Handle `Command::Call`
+pub fn handle_call(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     method_id: u16,
@@ -203,8 +203,8 @@ pub(crate) fn handle_call(
     }
 }
 
-/// Handle Command::FireAndForget
-pub(crate) fn handle_fire_and_forget(
+/// Handle `Command::FireAndForget`
+pub fn handle_fire_and_forget(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     method_id: u16,
@@ -257,8 +257,8 @@ pub(crate) fn handle_fire_and_forget(
     // Note: No error response for fire-and-forget - it's best effort
 }
 
-/// Handle Command::Subscribe
-pub(crate) fn handle_subscribe(
+/// Handle `Command::Subscribe`
+pub fn handle_subscribe(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     eventgroup_id: u16,
@@ -301,8 +301,8 @@ pub(crate) fn handle_subscribe(
     }
 }
 
-/// Handle Command::Unsubscribe
-pub(crate) fn handle_unsubscribe(
+/// Handle `Command::Unsubscribe`
+pub fn handle_unsubscribe(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     eventgroup_id: u16,
@@ -333,8 +333,8 @@ pub(crate) fn handle_unsubscribe(
     }
 }
 
-/// Handle Command::FindStatic
-pub(crate) fn handle_find_static(
+/// Handle `Command::FindStatic`
+pub fn handle_find_static(
     instance_id: crate::InstanceId,
     endpoint: SocketAddr,
     notify: tokio::sync::mpsc::Sender<ServiceAvailability>,
@@ -351,7 +351,7 @@ pub(crate) fn handle_find_static(
 // ============================================================================
 
 /// Handle an incoming response (client-side)
-pub(crate) fn handle_incoming_response(header: &Header, payload: Bytes, state: &mut RuntimeState) {
+pub fn handle_incoming_response(header: &Header, payload: Bytes, state: &mut RuntimeState) {
     let call_key = CallKey {
         client_id: header.client_id,
         session_id: header.session_id,
@@ -389,7 +389,7 @@ pub(crate) fn handle_incoming_response(header: &Header, payload: Bytes, state: &
 }
 
 /// Handle an incoming notification (event)
-pub(crate) fn handle_incoming_notification(
+pub fn handle_incoming_notification(
     header: &Header,
     payload: Bytes,
     from: SocketAddr,
@@ -403,7 +403,7 @@ pub(crate) fn handle_incoming_notification(
 
     let event = Event {
         event_id,
-        payload: payload.clone(),
+        payload: payload,
     };
 
     // Determine which instance this event is from by looking up the 'from' address
@@ -455,7 +455,7 @@ use crate::wire::{MessageType, PROTOCOL_VERSION};
 use bytes::BytesMut;
 
 /// Build a SOME/IP request message
-pub(crate) fn build_request(
+pub fn build_request(
     service_id: u16,
     method_id: u16,
     client_id: u16,
@@ -484,8 +484,8 @@ pub(crate) fn build_request(
     buf.freeze()
 }
 
-/// Build a SOME/IP fire-and-forget (REQUEST_NO_RETURN) message
-pub(crate) fn build_fire_and_forget(
+/// Build a SOME/IP fire-and-forget (`REQUEST_NO_RETURN`) message
+pub fn build_fire_and_forget(
     service_id: u16,
     method_id: u16,
     client_id: u16,

@@ -59,7 +59,7 @@ use crate::{InstanceId, ServiceId};
 
 /// Key for service identification
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct ServiceKey {
+pub struct ServiceKey {
     pub(crate) service_id: u16,
     pub(crate) instance_id: u16,
 }
@@ -82,7 +82,7 @@ impl ServiceKey {
 
 /// Key for tracking server-side subscribers
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct SubscriberKey {
+pub struct SubscriberKey {
     pub(crate) service_id: u16,
     pub(crate) instance_id: u16,
     pub(crate) eventgroup_id: u16,
@@ -90,7 +90,7 @@ pub(crate) struct SubscriberKey {
 
 /// Key for pending calls
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct CallKey {
+pub struct CallKey {
     pub(crate) client_id: u16,
     pub(crate) session_id: u16,
 }
@@ -101,7 +101,7 @@ pub(crate) struct CallKey {
 
 /// Message received from an RPC socket task
 #[derive(Debug)]
-pub(crate) struct RpcMessage {
+pub struct RpcMessage {
     pub(crate) service_key: Option<ServiceKey>,
     pub(crate) data: Vec<u8>,
     pub(crate) from: SocketAddr,
@@ -109,14 +109,14 @@ pub(crate) struct RpcMessage {
 
 /// Message to send via an RPC socket task  
 #[derive(Debug)]
-pub(crate) struct RpcSendMessage {
+pub struct RpcSendMessage {
     pub(crate) data: Vec<u8>,
     pub(crate) to: SocketAddr,
 }
 
 /// Transport sender for offered services - either UDP or TCP
 #[derive(Debug, Clone)]
-pub(crate) enum RpcTransportSender {
+pub enum RpcTransportSender {
     /// UDP socket sender
     Udp(mpsc::Sender<RpcSendMessage>),
     /// TCP server sender
@@ -128,11 +128,11 @@ impl RpcTransportSender {
     pub(crate) async fn send(&self, data: Vec<u8>, to: SocketAddr) -> Result<()> {
         use crate::error::Error;
         match self {
-            RpcTransportSender::Udp(tx) => tx
+            Self::Udp(tx) => tx
                 .send(RpcSendMessage { data, to })
                 .await
                 .map_err(|_| Error::RuntimeShutdown),
-            RpcTransportSender::Tcp(tx) => tx
+            Self::Tcp(tx) => tx
                 .send(TcpSendMessage { data, to })
                 .await
                 .map_err(|_| Error::RuntimeShutdown),
@@ -145,7 +145,7 @@ impl RpcTransportSender {
 // ============================================================================
 
 /// Tracked offered service (our offerings)
-pub(crate) struct OfferedService {
+pub struct OfferedService {
     pub(crate) major_version: u8,
     pub(crate) minor_version: u32,
     pub(crate) requests_tx: mpsc::Sender<ServiceRequest>,
@@ -167,12 +167,12 @@ pub(crate) struct OfferedService {
 /// Discovered remote service
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // Fields used for version matching in future
-pub(crate) struct DiscoveredService {
+pub struct DiscoveredService {
     /// UDP endpoint for sending SOME/IP RPC messages (if using UDP transport)
     pub(crate) udp_endpoint: Option<SocketAddr>,
     /// TCP endpoint for sending SOME/IP RPC messages (if using TCP transport)
     pub(crate) tcp_endpoint: Option<SocketAddr>,
-    /// SD endpoint for sending SD messages (SubscribeEventgroup, etc.)
+    /// SD endpoint for sending SD messages (`SubscribeEventgroup`, etc.)
     pub(crate) sd_endpoint: SocketAddr,
     pub(crate) major_version: u8,
     pub(crate) minor_version: u32,
@@ -195,20 +195,20 @@ impl DiscoveredService {
 // ============================================================================
 
 /// Tracked find request
-pub(crate) struct FindRequest {
+pub struct FindRequest {
     pub(crate) notify: mpsc::Sender<crate::command::ServiceAvailability>,
     pub(crate) repetitions_left: u32,
     pub(crate) last_find: Instant,
 }
 
 /// Active subscription (client-side)
-pub(crate) struct ClientSubscription {
+pub struct ClientSubscription {
     pub(crate) eventgroup_id: u16,
     pub(crate) events_tx: mpsc::Sender<crate::Event>,
 }
 
 /// Pending RPC call (client-side)
-pub(crate) struct PendingCall {
+pub struct PendingCall {
     pub(crate) response: oneshot::Sender<Result<crate::Response>>,
 }
 
@@ -218,7 +218,7 @@ pub(crate) struct PendingCall {
 
 /// Pending server response (server-side) - holds context to send response back
 #[derive(Debug, Clone)]
-pub(crate) struct PendingServerResponse {
+pub struct PendingServerResponse {
     pub(crate) service_id: u16,
     #[allow(dead_code)]
     pub(crate) instance_id: u16,
@@ -239,13 +239,13 @@ pub(crate) struct PendingServerResponse {
 // ============================================================================
 
 /// Runtime state managed by the runtime task
-pub(crate) struct RuntimeState {
+pub struct RuntimeState {
     /// SD endpoint (port 30490) - only for Service Discovery
     pub(crate) local_endpoint: SocketAddr,
     /// Client RPC endpoint (ephemeral port) - for sending client RPC requests
-    /// Per feat_req_recentip_676: Port 30490 is only for SD, not for RPC
+    /// Per `feat_req_recentip_676`: Port 30490 is only for SD, not for RPC
     pub(crate) client_rpc_endpoint: SocketAddr,
-    /// Sender for client RPC messages (sends to client_rpc_socket task)
+    /// Sender for client RPC messages (sends to `client_rpc_socket` task)
     pub(crate) client_rpc_tx: mpsc::Sender<RpcSendMessage>,
     /// Services we're offering
     pub(crate) offered: HashMap<ServiceKey, OfferedService>,

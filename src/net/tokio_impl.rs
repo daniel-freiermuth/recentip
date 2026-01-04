@@ -35,31 +35,31 @@ impl UdpSocket for tokio::net::UdpSocket {
 
         // Convert to tokio socket
         let std_socket: std::net::UdpSocket = socket.into();
-        tokio::net::UdpSocket::from_std(std_socket)
+        Self::from_std(std_socket)
     }
 
     async fn send_to(&self, buf: &[u8], target: SocketAddr) -> io::Result<usize> {
-        tokio::net::UdpSocket::send_to(self, buf, target).await
+        Self::send_to(self, buf, target).await
     }
 
     async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        tokio::net::UdpSocket::recv_from(self, buf).await
+        Self::recv_from(self, buf).await
     }
 
     fn join_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()> {
         // Enable multicast loopback so packets sent from this host are delivered back
         // to other sockets on the same host. This is required for testing on a single machine.
-        tokio::net::UdpSocket::set_multicast_loop_v4(self, true)?;
+        Self::set_multicast_loop_v4(self, true)?;
 
-        tokio::net::UdpSocket::join_multicast_v4(self, multiaddr, interface)
+        Self::join_multicast_v4(self, multiaddr, interface)
     }
 
     fn leave_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()> {
-        tokio::net::UdpSocket::leave_multicast_v4(self, multiaddr, interface)
+        Self::leave_multicast_v4(self, multiaddr, interface)
     }
 
     fn local_addr(&self) -> io::Result<SocketAddr> {
-        tokio::net::UdpSocket::local_addr(self)
+        Self::local_addr(self)
     }
 }
 
@@ -67,7 +67,7 @@ impl TcpStream for tokio::net::TcpStream {
     type Listener = tokio::net::TcpListener;
 
     async fn connect(addr: SocketAddr) -> io::Result<Self> {
-        tokio::net::TcpStream::connect(addr).await
+        Self::connect(addr).await
     }
 
     async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -83,11 +83,11 @@ impl TcpStream for tokio::net::TcpStream {
     }
 
     fn local_addr(&self) -> io::Result<SocketAddr> {
-        tokio::net::TcpStream::local_addr(self)
+        Self::local_addr(self)
     }
 
     fn peer_addr(&self) -> io::Result<SocketAddr> {
-        tokio::net::TcpStream::peer_addr(self)
+        Self::peer_addr(self)
     }
 }
 
@@ -95,14 +95,14 @@ impl TcpListener for tokio::net::TcpListener {
     type Stream = tokio::net::TcpStream;
 
     async fn bind(addr: SocketAddr) -> io::Result<Self> {
-        tokio::net::TcpListener::bind(addr).await
+        Self::bind(addr).await
     }
 
     async fn accept(&self) -> io::Result<(Self::Stream, SocketAddr)> {
-        tokio::net::TcpListener::accept(self).await
+        Self::accept(self).await
     }
 
     fn local_addr(&self) -> io::Result<SocketAddr> {
-        tokio::net::TcpListener::local_addr(self)
+        Self::local_addr(self)
     }
 }

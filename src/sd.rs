@@ -15,13 +15,13 @@
 //!
 //! | Entry Type | Direction | Purpose |
 //! |------------|-----------|---------|
-//! | OfferService | Server → Network | "I'm offering this service" |
-//! | StopOfferService | Server → Network | "I'm no longer offering this" |
-//! | FindService | Client → Network | "Is anyone offering this service?" |
-//! | SubscribeEventgroup | Client → Server | "I want to receive these events" |
-//! | SubscribeEventgroupAck | Server → Client | "Subscription accepted" |
-//! | SubscribeEventgroupNack | Server → Client | "Subscription rejected" |
-//! | StopSubscribeEventgroup | Client → Server | "I no longer want these events" |
+//! | `OfferService` | Server → Network | "I'm offering this service" |
+//! | `StopOfferService` | Server → Network | "I'm no longer offering this" |
+//! | `FindService` | Client → Network | "Is anyone offering this service?" |
+//! | `SubscribeEventgroup` | Client → Server | "I want to receive these events" |
+//! | `SubscribeEventgroupAck` | Server → Client | "Subscription accepted" |
+//! | `SubscribeEventgroupNack` | Server → Client | "Subscription rejected" |
+//! | `StopSubscribeEventgroup` | Client → Server | "I no longer want these events" |
 //!
 //! ## Module Structure
 //!
@@ -73,7 +73,7 @@ use crate::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
 // ============================================================================
 
 /// Action to execute after handling an event
-pub(crate) enum Action {
+pub enum Action {
     /// Send an SD message to a specific target
     SendSd {
         message: SdMessage,
@@ -105,8 +105,8 @@ pub(crate) enum Action {
 // SD MESSAGE HANDLERS
 // ============================================================================
 
-/// Handle an OfferService entry
-pub(crate) fn handle_offer(
+/// Handle an `OfferService` entry
+pub fn handle_offer(
     entry: &SdEntry,
     sd_message: &SdMessage,
     from: SocketAddr,
@@ -136,7 +136,7 @@ pub(crate) fn handle_offer(
         instance_id: entry.instance_id,
     };
 
-    let ttl_duration = Duration::from_secs(entry.ttl as u64);
+    let ttl_duration = Duration::from_secs(u64::from(entry.ttl));
 
     tracing::debug!(
         "Discovered service {:04x}:{:04x} at {:?}/{:?} (TTL={})",
@@ -171,8 +171,8 @@ pub(crate) fn handle_offer(
     }
 }
 
-/// Handle a StopOfferService entry
-pub(crate) fn handle_stop_offer(
+/// Handle a `StopOfferService` entry
+pub fn handle_stop_offer(
     entry: &SdEntry,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
@@ -196,8 +196,8 @@ pub(crate) fn handle_stop_offer(
     }
 }
 
-/// Handle a FindService request (we may need to respond with an offer)
-pub(crate) fn handle_find_request(
+/// Handle a `FindService` request (we may need to respond with an offer)
+pub fn handle_find_request(
     entry: &SdEntry,
     from: SocketAddr,
     state: &mut RuntimeState,
@@ -245,8 +245,8 @@ pub(crate) fn handle_find_request(
     }
 }
 
-/// Handle a SubscribeEventgroup request
-pub(crate) fn handle_subscribe_request(
+/// Handle a `SubscribeEventgroup` request
+pub fn handle_subscribe_request(
     entry: &SdEntry,
     sd_message: &SdMessage,
     from: SocketAddr,
@@ -306,8 +306,8 @@ pub(crate) fn handle_subscribe_request(
     }
 }
 
-/// Handle a StopSubscribeEventgroup request
-pub(crate) fn handle_unsubscribe_request(
+/// Handle a `StopSubscribeEventgroup` request
+pub fn handle_unsubscribe_request(
     entry: &SdEntry,
     sd_message: &SdMessage,
     from: SocketAddr,
@@ -345,8 +345,8 @@ pub(crate) fn handle_unsubscribe_request(
     }
 }
 
-/// Handle a SubscribeEventgroupAck
-pub(crate) fn handle_subscribe_ack(entry: &SdEntry, _state: &mut RuntimeState) {
+/// Handle a `SubscribeEventgroupAck`
+pub fn handle_subscribe_ack(entry: &SdEntry, _state: &mut RuntimeState) {
     tracing::debug!(
         "Subscription acknowledged for {:04x}:{:04x} eventgroup {:04x}",
         entry.service_id,
@@ -355,8 +355,8 @@ pub(crate) fn handle_subscribe_ack(entry: &SdEntry, _state: &mut RuntimeState) {
     );
 }
 
-/// Handle a SubscribeEventgroupNack
-pub(crate) fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
+/// Handle a `SubscribeEventgroupNack`
+pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
@@ -376,8 +376,8 @@ pub(crate) fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
 // SD MESSAGE BUILDING
 // ============================================================================
 
-/// Build an OfferService SD message for the given offered service
-pub(crate) fn build_offer_message(
+/// Build an `OfferService` SD message for the given offered service
+pub fn build_offer_message(
     key: &ServiceKey,
     offered: &OfferedService,
     sd_flags: u8,
@@ -410,8 +410,8 @@ pub(crate) fn build_offer_message(
     msg
 }
 
-/// Build a StopOfferService SD message
-pub(crate) fn build_stop_offer_message(
+/// Build a `StopOfferService` SD message
+pub fn build_stop_offer_message(
     key: &ServiceKey,
     offered: &OfferedService,
     sd_flags: u8,
@@ -426,8 +426,8 @@ pub(crate) fn build_stop_offer_message(
     msg
 }
 
-/// Build a FindService SD message
-pub(crate) fn build_find_message(
+/// Build a `FindService` SD message
+pub fn build_find_message(
     service_id: u16,
     instance_id: u16,
     sd_flags: u8,
@@ -444,8 +444,8 @@ pub(crate) fn build_find_message(
     msg
 }
 
-/// Build a SubscribeEventgroup SD message
-pub(crate) fn build_subscribe_message(
+/// Build a `SubscribeEventgroup` SD message
+pub fn build_subscribe_message(
     service_id: u16,
     instance_id: u16,
     eventgroup_id: u16,
@@ -477,8 +477,8 @@ pub(crate) fn build_subscribe_message(
     msg
 }
 
-/// Build an Unsubscribe (StopSubscribeEventgroup) SD message
-pub(crate) fn build_unsubscribe_message(
+/// Build an Unsubscribe (`StopSubscribeEventgroup`) SD message
+pub fn build_unsubscribe_message(
     service_id: u16,
     instance_id: u16,
     eventgroup_id: u16,

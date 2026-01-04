@@ -6,7 +6,7 @@
 //!
 //! A **type-safe, async SOME/IP protocol implementation** for [tokio](https://tokio.rs).
 //!
-//! SOME/IP (Scalable service-Oriented MiddlewarE over IP) is the standard middleware
+//! SOME/IP (Scalable service-Oriented `MiddlewarE` over IP) is the standard middleware
 //! protocol for automotive Ethernet communication, enabling service-oriented communication
 //! between ECUs in modern vehicles.
 //!
@@ -156,7 +156,7 @@
 //! | [`wire`] | Public | Wire format: [`Header`](wire::Header), [`SdMessage`](wire::SdMessage), parsing |
 //! | [`tcp`] | Public | TCP framing, connection pooling, Magic Cookies |
 //! | `command` | Internal | Command enum for handle→runtime communication |
-//! | `state` | Internal | RuntimeState, ServiceKey, internal data structures |
+//! | `state` | Internal | `RuntimeState`, `ServiceKey`, internal data structures |
 //! | `sd` | Internal | Service Discovery message handlers and builders |
 //! | `client` | Internal | Client-side handlers (find, call, subscribe) |
 //! | `server` | Internal | Server-side handlers (offer, notify, respond) |
@@ -413,7 +413,7 @@ pub use runtime::Runtime;
 pub struct ServiceId(u16);
 
 impl ServiceId {
-    /// Create a new ServiceId. Returns None for reserved values.
+    /// Create a new `ServiceId`. Returns None for reserved values.
     pub fn new(id: u16) -> Option<Self> {
         match id {
             0x0000 | 0xFFFF => None,
@@ -468,7 +468,7 @@ impl InstanceId {
 pub struct MethodId(u16);
 
 impl MethodId {
-    /// Create a new MethodId. Valid range: 0x0000-0x7FFF (high bit reserved for events)
+    /// Create a new `MethodId`. Valid range: 0x0000-0x7FFF (high bit reserved for events)
     pub fn new(id: u16) -> Option<Self> {
         if id >= 0x8000 {
             None // High bit set = event, not method
@@ -487,7 +487,7 @@ impl MethodId {
 pub struct EventId(u16);
 
 impl EventId {
-    /// Create a new EventId. Valid range: 0x8000-0xFFFE
+    /// Create a new `EventId`. Valid range: 0x8000-0xFFFE
     pub fn new(id: u16) -> Option<Self> {
         if id < 0x8000 || id == 0xFFFF {
             None
@@ -506,7 +506,7 @@ impl EventId {
 pub struct EventgroupId(u16);
 
 impl EventgroupId {
-    /// Create a new EventgroupId. Valid range: 0x0001-0xFFFE
+    /// Create a new `EventgroupId`. Valid range: 0x0001-0xFFFE
     pub fn new(id: u16) -> Option<Self> {
         match id {
             0x0000 | 0xFFFF => None,

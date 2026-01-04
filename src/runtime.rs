@@ -34,7 +34,7 @@
 //!
 //! - [`config`](crate::config): Configuration types ([`RuntimeConfig`], [`Transport`])
 //! - [`command`](crate::command): Command enum for handle→runtime communication
-//! - [`state`](crate::state): RuntimeState and internal data structures
+//! - [`state`](crate::state): `RuntimeState` and internal data structures
 //! - [`sd`](crate::sd): Service Discovery message handlers and builders
 //! - [`client`](crate::client): Client-side handlers (find, call, subscribe)
 //! - [`server`](crate::server): Server-side handlers (offer, notify, respond)
@@ -331,7 +331,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// Use this to configure which methods use EXCEPTION (0x81) message type for errors
     /// instead of the default RESPONSE (0x80) with error return code.
     ///
-    /// Per SOME/IP specification (feat_req_recentip_106, feat_req_recentip_726):
+    /// Per SOME/IP specification (`feat_req_recentip_106`, `feat_req_recentip_726)`:
     /// - By default, errors use RESPONSE (0x80) with non-OK return code
     /// - EXCEPTION (0x81) is optional and must be explicitly configured per-method
     ///
@@ -948,9 +948,9 @@ fn handle_packet(
 
 /// Handle an RPC message received via TCP server
 ///
-/// TCP messages from clients don't have an explicit service_key since they come from
-/// a shared channel. We need to determine the service_key from the SOME/IP header's
-/// service_id and find the matching offered service.
+/// TCP messages from clients don't have an explicit `service_key` since they come from
+/// a shared channel. We need to determine the `service_key` from the SOME/IP header's
+/// `service_id` and find the matching offered service.
 fn handle_tcp_rpc_message(tcp_msg: &TcpMessage, state: &mut RuntimeState) -> Option<Vec<Action>> {
     let mut cursor = &tcp_msg.data[..];
 
@@ -1371,7 +1371,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
     }
 }
 
-/// Send StopOffer for all offered services (on shutdown)
+/// Send `StopOffer` for all offered services (on shutdown)
 async fn send_stop_offers<U: UdpSocket>(
     sd_socket: &U,
     config: &RuntimeConfig,

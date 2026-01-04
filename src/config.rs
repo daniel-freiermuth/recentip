@@ -78,13 +78,13 @@ pub const DEFAULT_TTL: u32 = 3600;
 
 /// Default cyclic offer interval in milliseconds (1 second).
 ///
-/// Servers send periodic OfferService messages at this interval.
+/// Servers send periodic `OfferService` messages at this interval.
 /// Lower values = faster discovery, higher network overhead.
 pub const DEFAULT_CYCLIC_OFFER_DELAY: u64 = 1000;
 
-/// Default number of FindService repetitions.
+/// Default number of `FindService` repetitions.
 ///
-/// Clients repeat FindService messages this many times before giving up
+/// Clients repeat `FindService` messages this many times before giving up
 /// on discovery and waiting for server offers.
 pub const DEFAULT_FIND_REPETITIONS: u32 = 3;
 
@@ -122,7 +122,7 @@ pub struct RuntimeConfig {
     pub transport: Transport,
     /// Enable Magic Cookies for TCP resynchronization (default: false)
     ///
-    /// When enabled (feat_req_recentip_586, feat_req_recentip_591, feat_req_recentip_592):
+    /// When enabled (`feat_req_recentip_586`, `feat_req_recentip_591`, `feat_req_recentip_592)`:
     /// - Each TCP segment starts with a Magic Cookie message
     /// - Only one Magic Cookie per segment
     /// - Allows resync in testing/debugging scenarios
@@ -150,7 +150,7 @@ impl RuntimeConfig {
     }
 }
 
-/// Builder for RuntimeConfig
+/// Builder for `RuntimeConfig`
 #[derive(Default)]
 pub struct RuntimeConfigBuilder {
     config: RuntimeConfig,
@@ -190,7 +190,7 @@ impl RuntimeConfigBuilder {
     /// Enable or disable Magic Cookies for TCP (default: false)
     ///
     /// Magic Cookies allow resynchronization in testing/debugging scenarios.
-    /// See feat_req_recentip_586, feat_req_recentip_591, feat_req_recentip_592.
+    /// See `feat_req_recentip_586`, `feat_req_recentip_591`, `feat_req_recentip_592`.
     pub fn magic_cookies(mut self, enabled: bool) -> Self {
         self.config.magic_cookies = enabled;
         self
@@ -208,7 +208,7 @@ impl RuntimeConfigBuilder {
 
 /// Configuration for how a service handles error responses.
 ///
-/// Per SOME/IP specification (feat_req_recentip_106, feat_req_recentip_726):
+/// Per SOME/IP specification (`feat_req_recentip_106`, `feat_req_recentip_726)`:
 /// - By default, errors use RESPONSE (0x80) with non-OK return code
 /// - EXCEPTION (0x81) is optional and must be explicitly configured per-method
 ///

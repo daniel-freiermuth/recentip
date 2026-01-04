@@ -6,10 +6,10 @@
 //! ## SOME/IP TCP Requirements
 //!
 //! Per specification:
-//! - **feat_req_recentip_644**: Single TCP connection per client-server pair
-//! - **feat_req_recentip_646**: Client opens connection on first request
-//! - **feat_req_recentip_647**: Client reestablishes after failure
-//! - **feat_req_recentip_586**: Optional Magic Cookies for resynchronization
+//! - **`feat_req_recentip_644`**: Single TCP connection per client-server pair
+//! - **`feat_req_recentip_646`**: Client opens connection on first request
+//! - **`feat_req_recentip_647`**: Client reestablishes after failure
+//! - **`feat_req_recentip_586`**: Optional Magic Cookies for resynchronization
 //!
 //! ## Connection Pool
 //!
@@ -84,9 +84,9 @@ pub struct TcpConnectionPool<T: TcpStream> {
     senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Vec<u8>>>>>,
     /// Channel to forward received messages to the runtime
     msg_tx: mpsc::Sender<TcpMessage>,
-    /// Enable Magic Cookies for TCP resync (feat_req_recentip_586)
+    /// Enable Magic Cookies for TCP resync (`feat_req_recentip_586`)
     magic_cookies: bool,
-    /// Phantom data for the stream type - use fn() -> T for Send+Sync
+    /// Phantom data for the stream type - use `fn()` -> T for Send+Sync
     _phantom: std::marker::PhantomData<fn() -> T>,
 }
 
@@ -123,11 +123,11 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// Send data to a peer, establishing connection if needed.
     ///
     /// This implements:
-    /// - feat_req_recentip_646: Opens connection on first request
-    /// - feat_req_recentip_644: Reuses existing connection
+    /// - `feat_req_recentip_646`: Opens connection on first request
+    /// - `feat_req_recentip_644`: Reuses existing connection
     ///
     /// When a new connection is established, a reader task is spawned to receive
-    /// responses and forward them to the runtime via the msg_tx channel.
+    /// responses and forward them to the runtime via the `msg_tx` channel.
     pub async fn send(&self, target: SocketAddr, data: &[u8]) -> io::Result<()> {
         // Check if we have a sender for this connection
         let sender = {
@@ -209,8 +209,8 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 /// Handle a client-side TCP connection - both reading and writing
 ///
 /// When `magic_cookies` is enabled:
-/// - Each write is prepended with a Magic Cookie (feat_req_recentip_591)
-/// - Magic Cookies in received data are skipped (feat_req_recentip_586)
+/// - Each write is prepended with a Magic Cookie (`feat_req_recentip_591`)
+/// - Magic Cookies in received data are skipped (`feat_req_recentip_586`)
 async fn handle_client_tcp_connection<T: TcpStream>(
     mut stream: T,
     peer_addr: SocketAddr,
@@ -247,9 +247,8 @@ async fn handle_client_tcp_connection<T: TcpStream>(
                                 if read_buffer.len() >= total_size {
                                     read_buffer.advance(total_size);
                                     continue;
-                                } else {
-                                    break; // Need more data for magic cookie
                                 }
+                                break; // Need more data for magic cookie
                             }
 
                             // Parse length from header (offset 4-8, big-endian u32)
@@ -310,7 +309,7 @@ async fn handle_client_tcp_connection<T: TcpStream>(
 ///
 /// SOME/IP uses the length field in the header for framing:
 /// - Header is 16 bytes, includes length field at offset 4-8
-/// - Length field = 8 + payload length (includes client_id through end)
+/// - Length field = 8 + payload length (includes `client_id` through end)
 /// - Total message size = 8 (first part of header) + length field value
 pub async fn read_framed_message<T: TcpStream>(
     stream: &mut T,
@@ -470,8 +469,8 @@ impl<T: TcpStream> TcpServer<T> {
 /// handling outgoing responses.
 ///
 /// When `magic_cookies` is enabled:
-/// - Each write is prepended with a Magic Cookie (feat_req_recentip_591)
-/// - Magic Cookies in received data are skipped (feat_req_recentip_586)
+/// - Each write is prepended with a Magic Cookie (`feat_req_recentip_591`)
+/// - Magic Cookies in received data are skipped (`feat_req_recentip_586`)
 async fn handle_tcp_connection<T: TcpStream>(
     mut stream: T,
     peer_addr: SocketAddr,
@@ -510,9 +509,8 @@ async fn handle_tcp_connection<T: TcpStream>(
                                 if read_buffer.len() >= total_size {
                                     read_buffer.advance(total_size);
                                     continue;
-                                } else {
-                                    break; // Need more data for magic cookie
                                 }
+                                break; // Need more data for magic cookie
                             }
 
                             // Parse length from header (offset 4-8, big-endian u32)

@@ -67,7 +67,7 @@ use crate::error::Result;
 use crate::{InstanceId, ServiceId};
 
 /// Commands sent from handles to the runtime task
-pub(crate) enum Command {
+pub enum Command {
     /// Find a service
     Find {
         service_id: ServiceId,
@@ -199,7 +199,7 @@ pub(crate) enum Command {
 
 /// Service availability notification
 #[derive(Debug, Clone)]
-pub(crate) enum ServiceAvailability {
+pub enum ServiceAvailability {
     Available {
         endpoint: SocketAddr,
         instance_id: u16,
@@ -208,7 +208,7 @@ pub(crate) enum ServiceAvailability {
 }
 
 /// Service request (for offerings)
-pub(crate) enum ServiceRequest {
+pub enum ServiceRequest {
     MethodCall {
         method_id: u16,
         payload: Bytes,
