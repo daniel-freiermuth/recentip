@@ -3,13 +3,16 @@
 ## Goal
 Create a comprehensive test suite that proves RECENT/IP spec compliance, with a traceability matrix documenting which requirements are tested and why untested ones are excluded.
 
-- [ ] Dirty state weiter aufräumen
+- [x] Dirty state weiter aufräumen
   - [ ] Commented-out lines
-- [ ] Implement fire'n'forget
-- [ ] Tests with real network
-- [ ] Große Datei splitten
+- [x] Implement fire'n'forget
+- [x] Tests with real network
+- [x] Große Datei splitten
 - [ ] Review. Überblick
-- [ ] Docs
+- [x] Docs
+[ ] 100% test coverage
+[ ] 100% requirement coverage
+[ ] Port rotation tests
 - [ ] TP
 - [ ] Config
 - [ ] **Multi-homed host testing with true network isolation**
@@ -59,14 +62,24 @@ Create a comprehensive test suite that proves RECENT/IP spec compliance, with a 
 
 ---
 
-## Current Stats (2025-12-28)
+## Current Stats (2026-01-04)
 
 | Metric | Value |
 |--------|-------|
-| Total Tests | 136 |
-| Tests Passing | 136 |
-| Tests Skipped (ignored) | 15 |
-| Total Test Functions | 151 |
+| Total Tests | 210 |
+| Requirements Covered | 153 |
+| Total Requirements | 639 |
+| Overall Coverage | 23.9% |
+
+### Coverage by Specification
+
+| File | Covered | Total | Coverage |
+|------|---------|-------|----------|
+| someip-rpc.rst | 74 | 248 | 40.9% |
+| someip-sd.rst | 61 | 328 | 25.4% |
+| someip-tp.rst | 9 | 40 | 24.3% |
+| someip-ids.rst | 1 | 8 | 0.0% |
+| someip-compat.rst | 0 | 15 | 0.0% |
 
 ### Ignored Tests by Reason
 
