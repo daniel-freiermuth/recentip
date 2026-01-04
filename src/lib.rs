@@ -404,6 +404,9 @@ pub use error::*;
 pub use handle::*;
 pub use runtime::Runtime;
 
+// Re-export SD event types for monitoring API
+pub use command::SdEvent;
+
 // ============================================================================
 // PROTOCOL IDENTIFIERS
 // ============================================================================

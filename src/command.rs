@@ -195,9 +195,37 @@ pub enum Command {
     /// Shutdown the runtime
     #[allow(dead_code)]
     Shutdown,
+    /// Monitor all Service Discovery events
+    MonitorSd {
+        events: mpsc::Sender<SdEvent>,
+    },
 }
 
-/// Service availability notification
+/// Service Discovery event notification
+#[derive(Debug, Clone)]
+pub enum SdEvent {
+    /// A service has been announced (OfferService entry)
+    ServiceAvailable {
+        service_id: u16,
+        instance_id: u16,
+        major_version: u8,
+        minor_version: u32,
+        endpoint: SocketAddr,
+        ttl: u32,
+    },
+    /// A service has been explicitly stopped (StopOfferService entry)
+    ServiceUnavailable {
+        service_id: u16,
+        instance_id: u16,
+    },
+    /// A service's TTL has expired (no longer sending offers)
+    ServiceExpired {
+        service_id: u16,
+        instance_id: u16,
+    },
+}
+
+/// Service availability notification (internal, for find operations)
 #[derive(Debug, Clone)]
 pub enum ServiceAvailability {
     Available {

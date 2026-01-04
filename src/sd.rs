@@ -97,6 +97,8 @@ pub enum Action {
         context: PendingServerResponse,
         receiver: tokio::sync::oneshot::Receiver<crate::error::Result<Bytes>>,
     },
+    /// Emit an SD event to all monitors
+    EmitSdEvent { event: crate::SdEvent },
     /// Reset TCP connections to a peer (due to reboot detection)
     ResetPeerTcpConnections { peer: std::net::IpAddr },
 }
@@ -168,6 +170,18 @@ pub fn handle_offer(
                 instance_id: entry.instance_id,
             },
         });
+
+        // Emit SD event to monitors
+        actions.push(Action::EmitSdEvent {
+            event: crate::SdEvent::ServiceAvailable {
+                service_id: entry.service_id,
+                instance_id: entry.instance_id,
+                major_version: entry.major_version,
+                minor_version: entry.minor_version,
+                endpoint: effective_endpoint,
+                ttl: entry.ttl,
+            },
+        });
     }
 }
 
@@ -192,6 +206,14 @@ pub fn handle_stop_offer(
         actions.push(Action::NotifyFound {
             key,
             availability: ServiceAvailability::Unavailable,
+        });
+
+        // Emit SD event to monitors
+        actions.push(Action::EmitSdEvent {
+            event: crate::SdEvent::ServiceUnavailable {
+                service_id: entry.service_id,
+                instance_id: entry.instance_id,
+            },
         });
     }
 }

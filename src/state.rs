@@ -273,6 +273,8 @@ pub struct RuntimeState {
     pub(crate) config: RuntimeConfig,
     /// Last known reboot flag state for each peer (by IP) for reboot detection
     pub(crate) peer_reboot_flags: HashMap<std::net::IpAddr, bool>,
+    /// SD event monitors - channels to send all SD events to
+    pub(crate) sd_monitors: Vec<mpsc::Sender<crate::SdEvent>>,
 }
 
 impl RuntimeState {
@@ -301,6 +303,7 @@ impl RuntimeState {
             has_wrapped_once: false,
             config,
             peer_reboot_flags: HashMap::new(),
+            sd_monitors: Vec::new(),
         }
     }
 

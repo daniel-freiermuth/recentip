@@ -82,6 +82,8 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio::time::interval;
 
+use crate::SdEvent;
+
 use crate::client;
 use crate::error::{Error, Result};
 use crate::handle::{Available, OfferingHandle, ProxyHandle, Unavailable};
@@ -623,6 +625,53 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
             let _ = handle.await;
         }
     }
+
+    /// Monitor all Service Discovery (SD) events.
+    ///
+    /// Returns a channel that receives [`SdEvent`] notifications for all SD-related
+    /// activity: service announcements, service unavailability, and service expiration.
+    ///
+    /// This allows applications to monitor the dynamic service landscape without
+    /// knowing specific service IDs in advance.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a receiver channel for [`SdEvent`]s, or an error if
+    /// the command could not be sent.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use someip_runtime::{Runtime, SdEvent};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let runtime = Runtime::create(Default::default()).await?;
+    /// let mut sd_events = runtime.monitor_sd().await?;
+    ///
+    /// while let Some(event) = sd_events.recv().await {
+    ///     match event {
+    ///         SdEvent::ServiceAvailable { service_id, instance_id, .. } => {
+    ///             println!("Service available: {}:{}", service_id, instance_id);
+    ///         }
+    ///         SdEvent::ServiceUnavailable { service_id, instance_id } => {
+    ///             println!("Service unavailable: {}:{}", service_id, instance_id);
+    ///         }
+    ///         SdEvent::ServiceExpired { service_id, instance_id } => {
+    ///             println!("Service expired: {}:{}", service_id, instance_id);
+    ///         }
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn monitor_sd(&self) -> Result<mpsc::Receiver<SdEvent>> {
+        let (tx, rx) = mpsc::channel(100);
+        self.inner
+            .cmd_tx
+            .send(Command::MonitorSd { events: tx })
+            .await
+            .map_err(|_| Error::RuntimeShutdown)?;
+        Ok(rx)
+    }
 }
 
 // ============================================================================
@@ -921,6 +970,13 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             for addr in addresses_to_close {
                 tcp_pool.close(&addr).await;
             }
+        }
+        Action::EmitSdEvent { event } => {
+            // Send event to all SD monitors
+            // Remove monitors that have closed their receivers
+            state.sd_monitors.retain(|monitor| {
+                monitor.try_send(event.clone()).is_ok()
+            });
         }
     }
 }
@@ -1275,6 +1331,10 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             server::handle_has_subscribers(service_id, instance_id, eventgroup_id, response, state);
         }
 
+        Command::MonitorSd { events } => {
+            state.sd_monitors.push(events);
+        }
+
         // These are handled separately in runtime_task for async socket creation
         Command::Shutdown
         | Command::Offer { .. }
@@ -1360,6 +1420,14 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
             actions.push(Action::NotifyFound {
                 key,
                 availability: ServiceAvailability::Unavailable,
+            });
+
+            // Emit SD event to monitors
+            actions.push(Action::EmitSdEvent {
+                event: crate::SdEvent::ServiceExpired {
+                    service_id: key.service_id,
+                    instance_id: key.instance_id,
+                },
             });
         }
     }

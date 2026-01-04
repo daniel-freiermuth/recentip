@@ -23,10 +23,11 @@ turmoil = { version = "0.7", optional = true }
 [dev-dependencies]
 proptest = "1.9.0"
 turmoil = "0.7"
-tokio = { version = "1", features = ["net", "sync", "time", "rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["net", "sync", "time", "rt", "rt-multi-thread", "macros", "signal"] }
 tracing-subscriber = "0.3"
 serial_test = "3"
 ctor = "0.4"
+chrono = "0.4"
 
 [[test]]
 name = "api_tests"
