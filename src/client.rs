@@ -117,7 +117,7 @@ pub fn handle_find(
             service_id.value(),
             instance_id.value(),
             state.sd_flags(true),
-            state.config.ttl,
+            state.config.find_ttl,
         );
 
         actions.push(Action::SendSd {
@@ -286,7 +286,7 @@ pub fn handle_subscribe(
             state.local_endpoint,
             state.client_rpc_endpoint.port(),
             state.sd_flags(true),
-            state.config.ttl,
+            state.config.subscribe_ttl,
             state.config.transport,
         );
 

@@ -1359,7 +1359,8 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
 
     // Capture values before mutable borrow
     let sd_flags = state.sd_flags(true);
-    let ttl = state.config.ttl;
+    let offer_ttl = state.config.offer_ttl;
+    let find_ttl = state.config.find_ttl;
     let transport = state.config.transport;
     let sd_multicast = state.config.sd_multicast;
 
@@ -1373,7 +1374,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         if now.duration_since(offered.last_offer) >= offer_interval {
             offered.last_offer = now;
 
-            let msg = build_offer_message(key, offered, sd_flags, ttl, transport);
+            let msg = build_offer_message(key, offered, sd_flags, offer_ttl, transport);
 
             actions.push(Action::SendSd {
                 message: msg,
@@ -1392,7 +1393,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
             find_req.last_find = now;
             find_req.repetitions_left -= 1;
 
-            let msg = build_find_message(key.service_id, key.instance_id, sd_flags, ttl);
+            let msg = build_find_message(key.service_id, key.instance_id, sd_flags, find_ttl);
 
             actions.push(Action::SendSd {
                 message: msg,

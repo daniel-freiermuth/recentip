@@ -268,6 +268,253 @@ fn sd_offer_entry_type_wire_format() {
     sim.run().unwrap();
 }
 
+/// feat_req_recentipsd_47: Service Entry Type Format (includes TTL field)
+/// feat_req_recentipsd_252: OfferService entry type shall be used to offer a service
+///
+/// Verify OfferService entry contains configured offer_ttl on the wire
+#[test]
+fn offer_service_ttl_on_wire() {
+    covers!(feat_req_recentipsd_47, feat_req_recentipsd_252);
+    const CUSTOM_OFFER_TTL: u32 = 1800; // 30 minutes
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server with custom offer_ttl
+    sim.host("server", || async {
+        let config = RuntimeConfig::builder()
+            .offer_ttl(CUSTOM_OFFER_TTL)
+            .build();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let _offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+
+    // Raw socket verifies TTL on wire
+    sim.client("raw_observer", async move {
+        let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut buf = [0u8; 1500];
+        let mut found_offer = false;
+
+        for _ in 0..20 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), socket.recv_from(&mut buf)).await;
+
+            if let Ok(Ok((len, _from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        eprintln!("Received SD entry: type=0x{:02x}, service=0x{:04x}, ttl={}",
+                            entry.entry_type as u8, entry.service_id, entry.ttl);
+                        // OfferService with TTL > 0 (TTL=0 means StopOffer)
+                        if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 && entry.ttl > 0 {
+                            found_offer = true;
+                            assert_eq!(
+                                entry.ttl, CUSTOM_OFFER_TTL,
+                                "OfferService TTL on wire should match configured offer_ttl (expected {}, got {})",
+                                CUSTOM_OFFER_TTL, entry.ttl
+                            );
+                        }
+                    }
+                }
+            }
+
+            if found_offer {
+                break;
+            }
+        }
+
+        assert!(found_offer, "Should receive OfferService entry");
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// feat_req_recentipsd_109: Eventgroup Entry Type Format (includes TTL field)
+/// feat_req_recentipsd_431: Client sends SubscribeEventgroup entries
+///
+/// Verify SubscribeEventgroup entry contains configured subscribe_ttl on the wire
+#[test]
+fn subscribe_eventgroup_ttl_on_wire() {
+    covers!(feat_req_recentipsd_109, feat_req_recentipsd_431);
+    const CUSTOM_SUBSCRIBE_TTL: u32 = 900; // 15 minutes
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Raw server sends offers, receives subscribe with custom TTL
+    sim.host("raw_server", || async {
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server").to_string().parse().unwrap();
+
+        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+        let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
+
+        let mut buf = [0u8; 1500];
+        let mut found_subscribe = false;
+
+        for _ in 0..30 {
+            sd_socket.send_to(&offer, sd_multicast).await?;
+
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), rpc_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x06 && entry.service_id == 0x1234 {
+                            found_subscribe = true;
+                            assert_eq!(
+                                entry.ttl, CUSTOM_SUBSCRIBE_TTL,
+                                "SubscribeEventgroup TTL on wire should match configured subscribe_ttl (expected {}, got {})",
+                                CUSTOM_SUBSCRIBE_TTL, entry.ttl
+                            );
+
+                            // Send ACK
+                            let ack = build_sd_subscribe_ack(
+                                entry.service_id,
+                                entry.instance_id,
+                                entry.major_version,
+                                entry.eventgroup_id,
+                                3600,
+                            );
+                            rpc_socket.send_to(&ack, from).await?;
+                        }
+                    }
+                }
+            }
+
+            if found_subscribe {
+                break;
+            }
+        }
+
+        assert!(found_subscribe, "Should receive SubscribeEventgroup entry");
+        Ok(())
+    });
+
+    // Client with custom subscribe_ttl
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::builder()
+            .subscribe_ttl(CUSTOM_SUBSCRIBE_TTL)
+            .build();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Should discover service via SD")
+            .expect("Service available");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// feat_req_recentipsd_47: Service Entry Type Format (includes TTL field)
+/// feat_req_recentipsd_238: FindService entry type shall be used for finding service instances
+///
+/// Verify FindService entry contains configured find_ttl on the wire
+#[test]
+fn find_service_ttl_on_wire() {
+    covers!(feat_req_recentipsd_47, feat_req_recentipsd_238);
+    const CUSTOM_FIND_TTL: u32 = 600; // 10 minutes
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Raw server receives FindService messages and verifies TTL
+    sim.client("raw_server",  async {
+        let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut buf = [0u8; 1500];
+        let mut found_find = false;
+
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), socket.recv_from(&mut buf)).await;
+
+            if let Ok(Ok((len, _from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        eprintln!(
+                            "Received SD entry: type=0x{:02x}, service=0x{:04x}, ttl={}",
+                            entry.entry_type as u8, entry.service_id, entry.ttl
+                        );
+                        // FindService entry type is 0x00
+                        if entry.entry_type as u8 == 0x00 && entry.service_id == 0x1234 {
+                            found_find = true;
+                            assert_eq!(
+                                entry.ttl, CUSTOM_FIND_TTL,
+                                "FindService TTL on wire should match configured find_ttl (expected {}, got {})",
+                                CUSTOM_FIND_TTL, entry.ttl
+                            );
+                        }
+                    }
+                }
+            }
+
+            if found_find {
+                break;
+            }
+        }
+
+        assert!(found_find, "Should receive FindService entry");
+        Ok(())
+    });
+
+    // Client with custom find_ttl
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::builder()
+            .find_ttl(CUSTOM_FIND_TTL)
+            .build();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        // Start finding service - calling .available() triggers Command::Find which sends FindService
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        
+        // Use tokio::select to attempt available() but don't wait forever
+        // (service won't be found, but the FindService message will be sent)
+        let _ = tokio::time::timeout(Duration::from_millis(500), proxy.available()).await;
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
 // ============================================================================
 // RPC WIRE FORMAT TESTS
 // ============================================================================

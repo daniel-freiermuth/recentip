@@ -254,7 +254,7 @@ pub fn handle_find_request(
                 key.instance_id,
                 offered.major_version,
                 offered.minor_version,
-                state.config.ttl,
+                state.config.offer_ttl,
                 opt_idx,
                 1,
             ));

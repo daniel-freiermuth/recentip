@@ -182,7 +182,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
                 instance_id.value(),
                 major_version,
                 minor_version,
-                config.ttl,
+                config.offer_ttl,
                 opt_idx,
                 1,
             ));
@@ -501,7 +501,7 @@ pub fn handle_start_announcing(
 
     // Capture values before mutable borrow
     let sd_flags = state.sd_flags(true);
-    let ttl = state.config.ttl;
+    let ttl = state.config.offer_ttl;
     let transport = state.config.transport;
     let sd_multicast = state.config.sd_multicast;
 

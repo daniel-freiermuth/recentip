@@ -42,7 +42,9 @@
 //! |--------|---------|-------------|
 //! | `local_addr` | `0.0.0.0:30490` | Local address to bind SD socket |
 //! | `sd_multicast` | `239.255.0.1:30490` | SD multicast group address |
-//! | `ttl` | 3600 | TTL for SD entries (seconds) |
+//! | `offer_ttl` | 3600 | TTL for OfferService entries (seconds) |
+//! | `find_ttl` | 3600 | TTL for FindService entries (seconds) |
+//! | `subscribe_ttl` | 3600 | TTL for SubscribeEventgroup entries (seconds) |
 //! | `cyclic_offer_delay` | 1000 | Interval between cyclic offers (ms) |
 //! | `transport` | UDP | Transport protocol for RPC (UDP/TCP) |
 //! | `magic_cookies` | false | Enable TCP Magic Cookies for debugging |
@@ -75,6 +77,15 @@ pub const DEFAULT_SD_PORT: u16 = 30490;
 /// Services re-announce before TTL expiry to maintain presence.
 /// Clients remove services from cache when TTL expires without renewal.
 pub const DEFAULT_TTL: u32 = 3600;
+
+/// Default TTL for OfferService entries in seconds (1 hour).
+pub const DEFAULT_OFFER_TTL: u32 = 3600;
+
+/// Default TTL for FindService entries in seconds (1 hour).
+pub const DEFAULT_FIND_TTL: u32 = 3600;
+
+/// Default TTL for SubscribeEventgroup entries in seconds (1 hour).
+pub const DEFAULT_SUBSCRIBE_TTL: u32 = 3600;
 
 /// Default cyclic offer interval in milliseconds (1 second).
 ///
@@ -114,8 +125,12 @@ pub struct RuntimeConfig {
     pub local_addr: SocketAddr,
     /// SD multicast group address (default: 239.255.0.1:30490)
     pub sd_multicast: SocketAddr,
-    /// TTL for SD entries (default: 3600 seconds)
-    pub ttl: u32,
+    /// TTL for OfferService entries (default: 3600 seconds)
+    pub offer_ttl: u32,
+    /// TTL for FindService entries (default: 3600 seconds)
+    pub find_ttl: u32,
+    /// TTL for SubscribeEventgroup entries (default: 3600 seconds)
+    pub subscribe_ttl: u32,
     /// Cyclic offer delay in ms (default: 1000)
     pub cyclic_offer_delay: u64,
     /// Transport protocol for RPC communication (default: UDP)
@@ -135,7 +150,9 @@ impl Default for RuntimeConfig {
             // Use the SD port for multicast group membership to work in turmoil
             local_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_SD_PORT)),
             sd_multicast: SocketAddr::V4(SocketAddrV4::new(DEFAULT_SD_MULTICAST, DEFAULT_SD_PORT)),
-            ttl: DEFAULT_TTL,
+            offer_ttl: DEFAULT_OFFER_TTL,
+            find_ttl: DEFAULT_FIND_TTL,
+            subscribe_ttl: DEFAULT_SUBSCRIBE_TTL,
             cyclic_offer_delay: DEFAULT_CYCLIC_OFFER_DELAY,
             transport: Transport::Udp,
             magic_cookies: false,
@@ -169,10 +186,27 @@ impl RuntimeConfigBuilder {
         self
     }
 
-    /// Set the TTL for SD entries
-    pub fn ttl(mut self, ttl: u32) -> Self {
-        self.config.ttl = ttl;
+    /// Set the TTL for OfferService entries (in seconds)
+    pub fn offer_ttl(mut self, ttl: u32) -> Self {
+        self.config.offer_ttl = ttl;
         self
+    }
+
+    /// Set the TTL for FindService entries (in seconds)
+    pub fn find_ttl(mut self, ttl: u32) -> Self {
+        self.config.find_ttl = ttl;
+        self
+    }
+
+    /// Set the TTL for SubscribeEventgroup entries (in seconds)
+    pub fn subscribe_ttl(mut self, ttl: u32) -> Self {
+        self.config.subscribe_ttl = ttl;
+        self
+    }
+
+    /// Set all TTLs (offer, find, subscribe) to the same value (convenience method)
+    pub fn ttl(self, ttl: u32) -> Self {
+        self.offer_ttl(ttl).find_ttl(ttl).subscribe_ttl(ttl)
     }
 
     /// Set the cyclic offer delay
