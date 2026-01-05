@@ -16,7 +16,7 @@ use std::time::Duration;
 
 // Import only from the public API
 use someip_runtime::{
-    handle::{Announced, Bound, ServiceEvent, ServiceInstance},
+    handle::ServiceEvent,
     runtime::{Runtime, RuntimeConfig},
     EventId, EventgroupId, InstanceId, MethodId, Service, ServiceId,
 };
@@ -418,7 +418,7 @@ fn test_service_disappears_after_stop_announcing() {
             let config = RuntimeConfig::default();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let _proxy = runtime.find::<BrakeService>(InstanceId::Any);
 
             // Verify it's still discoverable before server stops announcing
             let proxy_before_stop = runtime.find::<BrakeService>(InstanceId::Any);
@@ -866,7 +866,7 @@ fn test_graceful_shutdown_drains_requests() {
                 .await
                 .unwrap();
 
-            let mut announced = service.announce().await.unwrap();
+            let announced = service.announce().await.unwrap();
 
             // Wait for client to connect and start request
             tokio::time::sleep(Duration::from_millis(200)).await;
@@ -965,7 +965,7 @@ fn test_drop_announced_sends_stop_offer() {
                 .unwrap();
 
             {
-                let announced = service.announce().await.unwrap();
+                let _announced = service.announce().await.unwrap();
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 // announced dropped here - should send StopOfferService
             }
@@ -1124,7 +1124,7 @@ fn test_multiple_services_same_runtime() {
                 .await
                 .unwrap();
 
-            let temp = runtime
+            let _temp = runtime
                 .bind::<TemperatureService>(InstanceId::Id(0x0002))
                 .await
                 .unwrap();
@@ -1210,7 +1210,7 @@ fn test_multiple_instances_same_service() {
                 .await
                 .unwrap();
 
-            let instance2 = runtime
+            let _instance2 = runtime
                 .bind::<BrakeService>(InstanceId::Id(0x0002))
                 .await
                 .unwrap();
@@ -2856,10 +2856,10 @@ fn test_subscription_events_received() {
                 .flatten()
             {
                 match event {
-                    someip_runtime::handle::ServiceEvent::Subscribe { eventgroup, .. } => {
+                    someip_runtime::handle::ServiceEvent::Subscribe { .. } => {
                         subscribe_count += 1;
                     }
-                    someip_runtime::handle::ServiceEvent::Unsubscribe { eventgroup, .. } => {
+                    someip_runtime::handle::ServiceEvent::Unsubscribe { .. } => {
                         unsubscribe_count += 1;
                     }
                     _ => {}

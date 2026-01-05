@@ -3,7 +3,6 @@
 //! Tests event delivery when subscribing to multiple instances of the same service.
 //! This is a critical scenario that exposes bugs in event routing logic.
 
-use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
 use std::time::Duration;

@@ -40,15 +40,6 @@ impl Service for PubSubService {
     const MINOR_VERSION: u32 = 0;
 }
 
-/// Another service for multi-service tests
-struct AnotherPubSubService;
-
-impl Service for AnotherPubSubService {
-    const SERVICE_ID: u16 = 0x5678;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
-
 // ============================================================================
 // 1. BASIC SUBSCRIPTION FLOW
 // ============================================================================

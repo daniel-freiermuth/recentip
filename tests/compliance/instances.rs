@@ -113,6 +113,7 @@ fn multiple_instances_have_different_ids() {
         let proxy3 = runtime.find::<ServiceA>(InstanceId::Id(0x0003));
         tokio::time::timeout(Duration::from_secs(5), proxy3.available())
             .await
+            .expect("Should not time out")
             .expect("Should discover instance 3");
 
         Ok(())
@@ -424,12 +425,14 @@ fn different_services_have_different_service_ids() {
         let proxy_a = runtime.find::<ServiceA>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy_a.available())
             .await
+            .expect("Should not time out")
             .expect("Should discover service A");
 
         // Discover ServiceB
         let proxy_b = runtime.find::<ServiceB>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy_b.available())
             .await
+            .expect("Should not time out")
             .expect("Should discover service B");
 
         Ok(())
@@ -595,6 +598,7 @@ fn client_can_request_any_instance() {
         let proxy = runtime.find::<ServiceA>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
+            .expect("Should not time out")
             .expect("Should find an instance when using ANY");
 
         Ok(())
@@ -652,6 +656,7 @@ fn client_can_request_specific_instance() {
         let proxy = runtime.find::<ServiceA>(InstanceId::Id(0x0002));
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
+            .expect("Should not time out")
             .expect("Should find specific instance");
 
         Ok(())

@@ -374,6 +374,7 @@ fn sd_reaches_all_participants() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
+            .expect("Should not time out")
             .expect("Client 1 should discover service");
         Ok(())
     });
@@ -384,6 +385,7 @@ fn sd_reaches_all_participants() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
+            .expect("Should not time out")
             .expect("Client 2 should discover service");
         Ok(())
     });
@@ -394,6 +396,7 @@ fn sd_reaches_all_participants() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
+            .expect("Should not time out")
             .expect("Client 3 should discover service");
         Ok(())
     });
@@ -404,6 +407,7 @@ fn sd_reaches_all_participants() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
+            .expect("Should not time out")
             .expect("Client 4 should discover service");
         Ok(())
     });
@@ -414,6 +418,7 @@ fn sd_reaches_all_participants() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
+            .expect("Should not time out")
             .expect("Client 5 should discover service");
         Ok(())
     });
