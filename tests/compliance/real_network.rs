@@ -13,7 +13,6 @@
 //! The turmoil-based tests (run with `--features turmoil`) provide comprehensive
 //! network testing with simulated separate hosts.
 
-use serial_test::serial;
 use someip_runtime::{
     EventId, EventgroupId, InstanceId, MethodId, Runtime, RuntimeConfig, Service, ServiceEvent,
     Transport,
@@ -90,7 +89,6 @@ fn tcp_test_config_with_magic_cookies(_port: u16) -> RuntimeConfig {
 
 /// Test basic UDP request/response on real network
 #[tokio::test]
-#[serial]
 async fn udp_request_response_real_network() {
     // Use different ports to avoid conflicts
     let server_port = 40100;
@@ -149,7 +147,6 @@ async fn udp_request_response_real_network() {
 
 /// Test UDP service discovery on real network
 #[tokio::test]
-#[serial]
 async fn udp_service_discovery_real_network() {
     let server_port = 40300;
     let client_port = 40400;
@@ -192,7 +189,6 @@ async fn udp_service_discovery_real_network() {
 
 /// Test basic TCP request/response on real network
 #[tokio::test]
-#[serial]
 async fn tcp_request_response_real_network() {
     let server_port = 40500;
     let client_port = 40600;
@@ -253,7 +249,6 @@ async fn tcp_request_response_real_network() {
 
 /// Test TCP with Magic Cookies on real network
 #[tokio::test]
-#[serial]
 async fn tcp_magic_cookies_real_network() {
     let server_port = 40700;
     let client_port = 40800;
@@ -310,7 +305,6 @@ async fn tcp_magic_cookies_real_network() {
 
 /// Test multiple TCP requests on same connection
 #[tokio::test]
-#[serial]
 async fn tcp_multiple_requests_real_network() {
     let server_port = 40900;
     let client_port = 41000;
@@ -384,7 +378,6 @@ async fn tcp_multiple_requests_real_network() {
 /// This test verifies unicast event delivery on a real network.
 /// Multicast event delivery is not yet implemented, but this test uses unicast only.
 #[tokio::test]
-#[serial]
 async fn udp_events_real_network() {
     let server_port = 41100;
     let client_port = 41200;
@@ -472,7 +465,6 @@ async fn udp_events_real_network() {
 
 /// Test two runtimes binding to the same SD port (SO_REUSEPORT)
 #[tokio::test]
-#[serial]
 async fn udp_two_runtimes_same_sd_port() {
     let sd_port = 30490;
 
