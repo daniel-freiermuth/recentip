@@ -78,6 +78,15 @@ pub const DEFAULT_SD_PORT: u16 = 30490;
 /// Clients remove services from cache when TTL expires without renewal.
 pub const DEFAULT_TTL: u32 = 3600;
 
+/// Infinite TTL value (0xFFFFFF = ~194 days).
+///
+/// Per SOME/IP-SD specification, TTL=0xFFFFFF means "until next reboot" -
+/// the subscription or offer should never expire due to TTL timeout.
+/// This is the maximum value that fits in the 24-bit TTL field.
+///
+/// See: feat_req_recentipsd_431
+pub const SD_TTL_INFINITE: u32 = 0xFFFFFF;
+
 /// Default TTL for OfferService entries in seconds (1 hour).
 pub const DEFAULT_OFFER_TTL: u32 = 3600;
 

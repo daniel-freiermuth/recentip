@@ -61,7 +61,7 @@ use bytes::Bytes;
 use tokio::time::Instant;
 
 use crate::command::ServiceAvailability;
-use crate::config::Transport;
+use crate::config::{Transport, SD_TTL_INFINITE};
 use crate::state::{
     DiscoveredService, OfferedService, PendingServerResponse, RuntimeState, ServerSubscription,
     ServiceKey, SubscriberKey,
@@ -300,8 +300,13 @@ pub fn handle_subscribe_request(
 
         // Track the subscriber - use the endpoint from the option for event delivery
         // Calculate expiration based on client's TTL from the Subscribe message
-        let ttl_duration = Duration::from_secs(u64::from(entry.ttl));
-        let expires_at = Instant::now() + ttl_duration;
+        // Per feat_req_recentipsd_431: TTL=0xFFFFFF means "until next reboot" (infinite)
+        let expires_at = if entry.ttl == SD_TTL_INFINITE {
+            None // Infinite TTL - never expires
+        } else {
+            let ttl_duration = Duration::from_secs(u64::from(entry.ttl));
+            Some(Instant::now() + ttl_duration)
+        };
 
         let sub_key = SubscriberKey {
             service_id: entry.service_id,

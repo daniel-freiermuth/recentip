@@ -1435,18 +1435,19 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
 
     // Expire stale server-side subscriptions (feat_req_recentipsd_445)
     // Remove subscriptions whose TTL has elapsed without renewal
+    // Note: expires_at=None means infinite TTL (0xFFFFFF) per feat_req_recentipsd_431
     for subscribers in state.server_subscribers.values_mut() {
         let before_count = subscribers.len();
-        subscribers.retain(|sub| {
-            if now >= sub.expires_at {
+        subscribers.retain(|sub| match sub.expires_at {
+            None => true, // Infinite TTL - never expires
+            Some(expires_at) if now >= expires_at => {
                 tracing::debug!(
                     "Subscription from {} expired (TTL elapsed)",
                     sub.endpoint
                 );
                 false
-            } else {
-                true
             }
+            Some(_) => true,
         });
         let expired_count = before_count - subscribers.len();
         if expired_count > 0 {

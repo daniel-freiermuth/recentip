@@ -96,8 +96,9 @@ pub struct SubscriberKey {
 pub struct ServerSubscription {
     /// Client's event endpoint (where to send events)
     pub(crate) endpoint: SocketAddr,
-    /// When this subscription expires (based on client's TTL)
-    pub(crate) expires_at: tokio::time::Instant,
+    /// When this subscription expires (based on client's TTL).
+    /// `None` means infinite TTL (0xFFFFFF) - never expires per feat_req_recentipsd_431.
+    pub(crate) expires_at: Option<tokio::time::Instant>,
 }
 
 /// Key for pending calls

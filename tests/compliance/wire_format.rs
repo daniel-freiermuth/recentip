@@ -1820,6 +1820,146 @@ fn subscribe_ack_entry_type() {
     sim.run().unwrap();
 }
 
+/// feat_req_recentipsd_431: With max TTL (0xFFFFFF), subscription never expires
+///
+/// Verifies that a subscription with maximum TTL continues receiving events
+/// well past the point where a finite TTL would have expired.
+/// Uses turmoil's simulated time to fast-forward through what would be
+/// the expiration period.
+#[test]
+fn subscription_max_ttl_doesnt_expire() {
+    covers!(feat_req_recentipsd_431);
+
+    const MAX_TTL : u32 = 0xFFFFFF; // ~194 days
+    const TICK_SECS : u32 = 100;    // Turmoil tick duration in seconds
+    const CYCLIC_OFFER_DELAY : u32 = 10 * TICK_SECS; // Server offer interval
+    const OFFER_TTL : u32 = 100 * TICK_SECS; // Server offer TTL
+
+    // Simulation needs to run long enough to prove TTL doesn't expire
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(MAX_TTL as u64 + CYCLIC_OFFER_DELAY as u64 + 30 * TICK_SECS as u64))
+        .tick_duration(Duration::from_secs(TICK_SECS as u64))
+        .build();
+
+    // Server offers service and sends events after long delays
+    sim.host("server", || async {
+        tokio::time::sleep(Duration::from_secs(2 * TICK_SECS as u64)).await;
+
+        let config = RuntimeConfig::builder()
+            .cyclic_offer_delay(CYCLIC_OFFER_DELAY as u64 * 1000)
+            .offer_ttl(OFFER_TTL)
+            .build();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_secs(MAX_TTL as u64 - 10 * TICK_SECS as u64)).await;
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let event_id = EventId::new(0x8001).unwrap();
+
+        let mut i: u32 = 0;
+        loop {
+            let _ = offering.notify(eventgroup, event_id, format!("event{}", i).as_bytes()).await;
+            eprintln!("Server sent event {}", i);
+            tokio::time::sleep(Duration::from_secs(TICK_SECS as u64)).await;
+            i += 1;
+        }
+    });
+
+    // Raw client subscribes with max TTL and NEVER renews
+    sim.client("raw_client", async move {
+        // Listen for SD offers
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        // Socket to receive events
+        let event_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30600").await?;
+
+        let mut buf = [0u8; 1500];
+        let mut server_addr: Option<SocketAddr> = None;
+
+        // Find server via SD offer
+        for _ in 0..20 {
+            let result =
+                tokio::time::timeout(Duration::from_secs(2 * TICK_SECS as u64), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
+                            if let Some(opt) = sd_msg.options.first() {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                    let ip = if addr.is_unspecified() { from.ip() } else { std::net::IpAddr::V4(*addr) };
+                                    server_addr = Some(SocketAddr::new(ip, *port));
+                                    eprintln!("Found server at {:?}", server_addr);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if server_addr.is_some() {
+                break;
+            }
+        }
+
+        let server = server_addr.expect("Should find server via SD");
+
+        // Subscribe with MAX TTL (0xFFFFFF = ~194 days) - never needs renewal
+        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, MAX_TTL);
+        event_socket.send_to(&subscribe, server).await?;
+        eprintln!("Raw client sent SubscribeEventgroup with TTL=max (0xFFFFFF)");
+
+        // Wait for SubscribeAck
+        let result = tokio::time::timeout(Duration::from_secs(2 * TICK_SECS as u64), event_socket.recv_from(&mut buf)).await;
+        if let Ok(Ok((len, _))) = result {
+            if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                for entry in &sd_msg.entries {
+                    if entry.entry_type as u8 == 0x07 {
+                        eprintln!("Received SubscribeEventgroupAck");
+                    }
+                }
+            }
+        }
+
+        // Count events received
+        let mut events_received = 0;
+        let start = tokio::time::Instant::now();
+
+        while start.elapsed() < Duration::from_secs(MAX_TTL as u64 + CYCLIC_OFFER_DELAY as u64 + 10 * TICK_SECS as u64) {
+            let result = tokio::time::timeout(Duration::from_secs(2 * TICK_SECS as u64), event_socket.recv_from(&mut buf)).await;
+            if let Ok(Ok((len, _))) = result {
+                if start.elapsed() < Duration::from_secs(MAX_TTL as u64 + CYCLIC_OFFER_DELAY as u64) {
+                    eprintln!("Got early packet");
+                    continue;
+                }
+                assert!(len > 16, "Event packet must be at least 16 bytes");
+                let service_id = u16::from_be_bytes([buf[0], buf[1]]);
+                let method_id = u16::from_be_bytes([buf[2], buf[3]]);
+                // Event IDs start with 0x8xxx
+                if service_id == 0x1234 && (method_id & 0x8000) != 0 {
+                    events_received += 1;
+                    eprintln!("Raw client received event {} at {:?}", events_received, start.elapsed());
+                }
+            }
+        }
+
+        eprintln!("Raw client received {} events total", events_received);
+        
+        assert!(events_received > 8, "Should receive some events before TTL expires");
+        
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
 /// feat_req_recentipsd_445: Cleanup mechanism required to avoid stale client registrations
 ///
 /// Server must expire subscriptions when TTL elapses without renewal.
