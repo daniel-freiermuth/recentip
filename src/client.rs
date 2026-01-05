@@ -61,7 +61,8 @@ use crate::command::ServiceAvailability;
 use crate::config::{Transport, DEFAULT_FIND_REPETITIONS};
 use crate::sd::{build_find_message, build_subscribe_message, build_unsubscribe_message, Action};
 use crate::state::{
-    CallKey, ClientSubscription, FindRequest, PendingCall, RuntimeState, ServiceKey,
+    CallKey, ClientSubscription, FindRequest, PendingCall, PendingSubscription,
+    PendingSubscriptionKey, RuntimeState, ServiceKey,
 };
 use crate::wire::Header;
 use crate::{Event, EventId, Response, ReturnCode};
@@ -295,7 +296,15 @@ pub fn handle_subscribe(
             target: discovered.sd_endpoint, // Send to SD socket, not RPC socket
         });
 
-        let _ = response.send(Ok(()));
+        // Store pending subscription - will be resolved when ACK/NACK is received
+        let pending_key = PendingSubscriptionKey {
+            service_id: service_id.value(),
+            instance_id: instance_id.value(),
+            eventgroup_id,
+        };
+        state
+            .pending_subscriptions
+            .insert(pending_key, PendingSubscription { response });
     } else {
         let _ = response.send(Err(crate::error::Error::ServiceUnavailable));
     }

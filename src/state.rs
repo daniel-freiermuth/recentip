@@ -225,6 +225,19 @@ pub struct PendingCall {
     pub(crate) response: oneshot::Sender<Result<crate::Response>>,
 }
 
+/// Key for pending subscriptions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PendingSubscriptionKey {
+    pub(crate) service_id: u16,
+    pub(crate) instance_id: u16,
+    pub(crate) eventgroup_id: u16,
+}
+
+/// Pending subscription waiting for ACK/NACK from server
+pub struct PendingSubscription {
+    pub(crate) response: oneshot::Sender<crate::error::Result<()>>,
+}
+
 // ============================================================================
 // SERVER-SIDE RESPONSE TRACKING
 // ============================================================================
@@ -275,6 +288,8 @@ pub struct RuntimeState {
     pub(crate) static_listeners: HashMap<SubscriberKey, mpsc::Sender<crate::Event>>,
     /// Pending RPC calls waiting for responses
     pub(crate) pending_calls: HashMap<CallKey, PendingCall>,
+    /// Pending subscriptions waiting for ACK/NACK
+    pub(crate) pending_subscriptions: HashMap<PendingSubscriptionKey, PendingSubscription>,
     /// Client ID for outgoing requests
     pub(crate) client_id: u16,
     /// SD session ID counter
@@ -311,6 +326,7 @@ impl RuntimeState {
             server_subscribers: HashMap::new(),
             static_listeners: HashMap::new(),
             pending_calls: HashMap::new(),
+            pending_subscriptions: HashMap::new(),
             client_id,
             session_id: 1,
             reboot_flag: true,

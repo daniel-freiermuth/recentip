@@ -116,6 +116,12 @@ pub enum Error {
     /// A service can only be offered once per instance ID. Use the
     /// existing [`OfferingHandle`](crate::handle::OfferingHandle).
     AlreadyOffered,
+
+    /// Subscription was rejected by the server.
+    ///
+    /// The server sent a SubscribeEventgroupNack (TTL=0) in response
+    /// to our subscription request.
+    SubscriptionRejected,
 }
 
 impl fmt::Display for Error {
@@ -129,6 +135,7 @@ impl fmt::Display for Error {
             Self::RuntimeShutdown => write!(f, "Runtime has shut down"),
             Self::ChannelFull => write!(f, "Channel full, event dropped"),
             Self::AlreadyOffered => write!(f, "Service/instance is already offered or bound"),
+            Self::SubscriptionRejected => write!(f, "Subscription rejected by server"),
         }
     }
 }

@@ -63,8 +63,8 @@ use tokio::time::Instant;
 use crate::command::ServiceAvailability;
 use crate::config::{Transport, SD_TTL_INFINITE};
 use crate::state::{
-    DiscoveredService, OfferedService, PendingServerResponse, RuntimeState, ServerSubscription,
-    ServiceKey, SubscriberKey,
+    DiscoveredService, OfferedService, PendingServerResponse, PendingSubscriptionKey,
+    RuntimeState, ServerSubscription, ServiceKey, SubscriberKey,
 };
 use crate::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
 
@@ -402,13 +402,23 @@ pub fn handle_unsubscribe_request(
 }
 
 /// Handle a `SubscribeEventgroupAck`
-pub fn handle_subscribe_ack(entry: &SdEntry, _state: &mut RuntimeState) {
+pub fn handle_subscribe_ack(entry: &SdEntry, state: &mut RuntimeState) {
     tracing::debug!(
         "Subscription acknowledged for {:04x}:{:04x} eventgroup {:04x}",
         entry.service_id,
         entry.instance_id,
         entry.eventgroup_id
     );
+
+    // Resolve pending subscription with success
+    let pending_key = PendingSubscriptionKey {
+        service_id: entry.service_id,
+        instance_id: entry.instance_id,
+        eventgroup_id: entry.eventgroup_id,
+    };
+    if let Some(pending) = state.pending_subscriptions.remove(&pending_key) {
+        let _ = pending.response.send(Ok(()));
+    }
 }
 
 /// Handle a `SubscribeEventgroupNack`
@@ -425,7 +435,20 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
         entry.eventgroup_id
     );
 
-    state.subscriptions.remove(&key);
+    // Resolve pending subscription with error
+    let pending_key = PendingSubscriptionKey {
+        service_id: entry.service_id,
+        instance_id: entry.instance_id,
+        eventgroup_id: entry.eventgroup_id,
+    };
+    if let Some(pending) = state.pending_subscriptions.remove(&pending_key) {
+        let _ = pending.response.send(Err(crate::error::Error::SubscriptionRejected));
+    }
+
+    // Also remove the client subscription if it was added
+    if let Some(subs) = state.subscriptions.get_mut(&key) {
+        subs.retain(|s| s.eventgroup_id != entry.eventgroup_id);
+    }
 }
 
 // ============================================================================
