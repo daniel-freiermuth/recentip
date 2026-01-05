@@ -433,7 +433,7 @@ pub fn handle_notify(
     let subscribers: Vec<SocketAddr> = state
         .server_subscribers
         .get(&sub_key)
-        .cloned()
+        .map(|subs| subs.iter().map(|s| s.endpoint).collect())
         .unwrap_or_default();
 
     if !subscribers.is_empty() {

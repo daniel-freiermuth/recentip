@@ -63,8 +63,8 @@ use tokio::time::Instant;
 use crate::command::ServiceAvailability;
 use crate::config::Transport;
 use crate::state::{
-    DiscoveredService, OfferedService, PendingServerResponse, RuntimeState, ServiceKey,
-    SubscriberKey,
+    DiscoveredService, OfferedService, PendingServerResponse, RuntimeState, ServerSubscription,
+    ServiceKey, SubscriberKey,
 };
 use crate::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
 
@@ -299,16 +299,44 @@ pub fn handle_subscribe_request(
             });
 
         // Track the subscriber - use the endpoint from the option for event delivery
+        // Calculate expiration based on client's TTL from the Subscribe message
+        let ttl_duration = Duration::from_secs(u64::from(entry.ttl));
+        let expires_at = Instant::now() + ttl_duration;
+
         let sub_key = SubscriberKey {
             service_id: entry.service_id,
             instance_id: entry.instance_id,
             eventgroup_id: entry.eventgroup_id,
         };
-        state
-            .server_subscribers
-            .entry(sub_key)
-            .or_default()
-            .push(client_endpoint);
+
+        // Check if this client already has a subscription - if so, update the expiration
+        let subscribers = state.server_subscribers.entry(sub_key).or_default();
+        if let Some(existing) = subscribers.iter_mut().find(|s| s.endpoint == client_endpoint) {
+            // Renew: update expiration time
+            existing.expires_at = expires_at;
+            tracing::debug!(
+                "Renewed subscription for {:04x}:{:04x} eventgroup {:04x} from {} (TTL={}s)",
+                entry.service_id,
+                entry.instance_id,
+                entry.eventgroup_id,
+                client_endpoint,
+                entry.ttl
+            );
+        } else {
+            // New subscription
+            subscribers.push(ServerSubscription {
+                endpoint: client_endpoint,
+                expires_at,
+            });
+            tracing::debug!(
+                "New subscription for {:04x}:{:04x} eventgroup {:04x} from {} (TTL={}s)",
+                entry.service_id,
+                entry.instance_id,
+                entry.eventgroup_id,
+                client_endpoint,
+                entry.ttl
+            );
+        }
 
         let mut ack = SdMessage::new(state.sd_flags(true));
         ack.add_entry(SdEntry::subscribe_eventgroup_ack(
@@ -362,7 +390,7 @@ pub fn handle_unsubscribe_request(
             eventgroup_id: entry.eventgroup_id,
         };
         if let Some(subscribers) = state.server_subscribers.get_mut(&sub_key) {
-            subscribers.retain(|addr| *addr != client_endpoint);
+            subscribers.retain(|sub| sub.endpoint != client_endpoint);
         }
     }
 }

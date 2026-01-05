@@ -88,6 +88,18 @@ pub struct SubscriberKey {
     pub(crate) eventgroup_id: u16,
 }
 
+/// Server-side subscription with TTL expiration tracking
+///
+/// Per SOME/IP-SD spec (feat_req_recentipsd_445), subscriptions have a TTL
+/// and must be cleaned up when the TTL expires without renewal.
+#[derive(Debug, Clone)]
+pub struct ServerSubscription {
+    /// Client's event endpoint (where to send events)
+    pub(crate) endpoint: SocketAddr,
+    /// When this subscription expires (based on client's TTL)
+    pub(crate) expires_at: tokio::time::Instant,
+}
+
 /// Key for pending calls
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CallKey {
@@ -256,7 +268,8 @@ pub struct RuntimeState {
     /// Active subscriptions (client-side)
     pub(crate) subscriptions: HashMap<ServiceKey, Vec<ClientSubscription>>,
     /// Server-side subscribers (clients subscribed to our offered services)
-    pub(crate) server_subscribers: HashMap<SubscriberKey, Vec<SocketAddr>>,
+    /// Each subscription includes TTL expiration for cleanup per feat_req_recentipsd_445
+    pub(crate) server_subscribers: HashMap<SubscriberKey, Vec<ServerSubscription>>,
     /// Static event listeners (client-side, no SD)
     pub(crate) static_listeners: HashMap<SubscriberKey, mpsc::Sender<crate::Event>>,
     /// Pending RPC calls waiting for responses

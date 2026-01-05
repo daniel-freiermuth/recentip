@@ -1482,6 +1482,134 @@ fn subscribe_ack_entry_type() {
     sim.run().unwrap();
 }
 
+/// feat_req_recentipsd_445: Cleanup mechanism required to avoid stale client registrations
+///
+/// Server must expire subscriptions when TTL elapses without renewal.
+/// Raw client subscribes with short TTL, server sends events continuously,
+/// subscription expires (no renewal sent), events should stop.
+#[test]
+fn subscription_ttl_expiration_stops_events() {
+    covers!(feat_req_recentipsd_445);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server offers service and sends events continuously
+    sim.host("server", || async {
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(RuntimeConfig::default()).await.unwrap();
+
+        let offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let event_id = EventId::new(0x8001).unwrap();
+
+        let mut i: u32 = 0;
+        loop {
+            let _ = offering.notify(eventgroup, event_id, format!("event{}", i).as_bytes()).await;
+            eprintln!("Server sent event {}", i);
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            i += 1;
+        }
+    });
+
+    // Raw client subscribes with TTL but NEVER renews
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Listen for SD offers
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        // Socket to receive events
+        let event_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30600").await?;
+
+        let mut buf = [0u8; 1500];
+        let mut server_addr: Option<SocketAddr> = None;
+
+        // Find server via SD offer
+        for _ in 0..20 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
+                            // Get endpoint from options
+                            if let Some(opt) = sd_msg.options.first() {
+                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                    let ip = if addr.is_unspecified() { from.ip() } else { std::net::IpAddr::V4(*addr) };
+                                    server_addr = Some(SocketAddr::new(ip, *port));
+                                    eprintln!("Found server at {:?}", server_addr);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if server_addr.is_some() {
+                break;
+            }
+        }
+
+        let server = server_addr.expect("Should find server via SD");
+
+        // Send SubscribeEventgroup with short TTL (2 seconds) - and NEVER renew
+        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, 2);
+        event_socket.send_to(&subscribe, server).await?;
+        eprintln!("Raw client sent SubscribeEventgroup with TTL=2s");
+
+        // Wait for SubscribeAck
+        let result = tokio::time::timeout(Duration::from_secs(2), event_socket.recv_from(&mut buf)).await;
+        if let Ok(Ok((len, _))) = result {
+            if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                for entry in &sd_msg.entries {
+                    if entry.entry_type as u8 == 0x07 {
+                        eprintln!("Received SubscribeEventgroupAck");
+                    }
+                }
+            }
+        }
+
+        // Count events received
+        let mut events_received = 0;
+        let start = tokio::time::Instant::now();
+        
+        // Listen for events for 6 seconds (longer than TTL + events)
+        while start.elapsed() < Duration::from_secs(6) {
+            let result = tokio::time::timeout(Duration::from_millis(200), event_socket.recv_from(&mut buf)).await;
+            if let Ok(Ok((len, _))) = result {
+                assert!(len > 16, "Event packet must be at least 16 bytes");
+                let service_id = u16::from_be_bytes([buf[0], buf[1]]);
+                let method_id = u16::from_be_bytes([buf[2], buf[3]]);
+                // Event IDs start with 0x8xxx
+                if service_id == 0x1234 && (method_id & 0x8000) != 0 {
+                    events_received += 1;
+                    eprintln!("Raw client received event {} at {:?}", events_received, start.elapsed());
+                }
+            }
+        }
+
+        eprintln!("Raw client received {} events total", events_received);
+        
+        // The key assertion: we should have received some events initially,
+        // but NOT all 10 events because TTL expired after 2 seconds
+        // (first 3-4 events sent within TTL, rest should be dropped)
+        assert!(events_received > 0, "Should receive some events before TTL expires");
+        assert!(events_received < 8, "Should stop receiving events after TTL expires (got {})", events_received);
+        
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
 /// feat_req_recentipsd_178: StopSubscribeEventgroup has TTL=0
 ///
 /// When a client unsubscribes (drops subscription), it sends a SubscribeEventgroup
