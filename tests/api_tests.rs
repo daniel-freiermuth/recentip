@@ -444,3 +444,354 @@ fn test_event_subscription() {
 
     sim.run().unwrap();
 }
+
+/// Test that subscribe() returns an error when the server responds with SubscribeEventgroupNack.
+///
+/// Per SOME/IP-SD specification, when a server rejects a subscription it sends a NACK
+/// (SubscribeEventgroupAck with TTL=0 or SubscribeEventgroupNack type 0x07 with TTL=0).
+/// The client should propagate this rejection to the caller.
+#[test]
+fn subscribe_returns_error_on_nack() {
+    use someip_runtime::EventgroupId;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Raw server that sends NACK for all subscriptions
+    sim.host("server", || async {
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("server").to_string().parse().unwrap();
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let sd_multicast: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+        // Build offer message
+        let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
+
+        let mut buf = [0u8; 1500];
+
+        loop {
+            // Send periodic offers
+            sd_socket.send_to(&offer, sd_multicast).await?;
+
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // SubscribeEventgroup is type 0x06
+                        if entry.entry_type as u8 == 0x06 && entry.service_id == 0x1234 {
+                            // Send NACK (TTL=0)
+                            let nack = build_sd_subscribe_nack(
+                                entry.service_id,
+                                entry.instance_id,
+                                entry.major_version,
+                                entry.eventgroup_id,
+                            );
+                            sd_socket.send_to(&nack, from).await?;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+
+        let proxy = runtime.find::<PubSubService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        
+        // Subscribe should return an error when server sends NACK
+        let result = tokio::time::timeout(Duration::from_secs(2), proxy.subscribe(eventgroup)).await;
+        
+        match result {
+            Ok(Ok(_)) => panic!("Subscribe should have returned an error on NACK"),
+            Ok(Err(_)) => { /* Expected: subscribe failed due to NACK */ }
+            Err(_) => panic!("Subscribe should not timeout waiting for NACK"),
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+// ============================================================================
+// TEST HELPERS
+// ============================================================================
+
+/// Parse a SOME/IP-SD message from raw bytes
+fn parse_sd_message(data: &[u8]) -> Option<(SomeIpHeader, SdMessage)> {
+    if data.len() < 16 {
+        return None;
+    }
+
+    let header = SomeIpHeader {
+        service_id: u16::from_be_bytes([data[0], data[1]]),
+        method_id: u16::from_be_bytes([data[2], data[3]]),
+        length: u32::from_be_bytes([data[4], data[5], data[6], data[7]]),
+        client_id: u16::from_be_bytes([data[8], data[9]]),
+        session_id: u16::from_be_bytes([data[10], data[11]]),
+        protocol_version: data[12],
+        interface_version: data[13],
+        message_type: data[14],
+        return_code: data[15],
+    };
+
+    // Verify SD message (service=0xFFFF, method=0x8100)
+    if header.service_id != 0xFFFF || header.method_id != 0x8100 {
+        return None;
+    }
+
+    let sd_payload = &data[16..];
+    if sd_payload.len() < 12 {
+        return None;
+    }
+
+    let flags = sd_payload[0];
+    let entries_len =
+        u32::from_be_bytes([sd_payload[4], sd_payload[5], sd_payload[6], sd_payload[7]]) as usize;
+
+    if sd_payload.len() < 8 + entries_len {
+        return None;
+    }
+
+    let entries_data = &sd_payload[8..8 + entries_len];
+    let mut entries = Vec::new();
+
+    let mut offset = 0;
+    while offset + 16 <= entries_data.len() {
+        let entry = &entries_data[offset..offset + 16];
+        entries.push(SdEntry {
+            entry_type: entry[0].into(),
+            index_1st_option: entry[1],
+            index_2nd_option: entry[2],
+            num_options_1: (entry[3] >> 4) & 0x0F,
+            num_options_2: entry[3] & 0x0F,
+            service_id: u16::from_be_bytes([entry[4], entry[5]]),
+            instance_id: u16::from_be_bytes([entry[6], entry[7]]),
+            major_version: entry[8],
+            ttl: u32::from_be_bytes([0, entry[9], entry[10], entry[11]]),
+            minor_version: u32::from_be_bytes([entry[12], entry[13], entry[14], entry[15]]),
+            eventgroup_id: u16::from_be_bytes([entry[14], entry[15]]),
+            counter: entry[13] & 0x0F,
+        });
+        offset += 16;
+    }
+
+    // Parse options array
+    let options_offset = 8 + entries_len;
+    let options = if sd_payload.len() > options_offset + 4 {
+        let _options_len = u32::from_be_bytes([
+            sd_payload[options_offset],
+            sd_payload[options_offset + 1],
+            sd_payload[options_offset + 2],
+            sd_payload[options_offset + 3],
+        ]) as usize;
+        Vec::new() // Simplified: don't parse options
+    } else {
+        Vec::new()
+    };
+
+    Some((header, SdMessage { flags, entries, options }))
+}
+
+/// Simplified SOME/IP header for test parsing
+#[derive(Debug)]
+#[allow(dead_code)]
+struct SomeIpHeader {
+    service_id: u16,
+    method_id: u16,
+    length: u32,
+    client_id: u16,
+    session_id: u16,
+    protocol_version: u8,
+    interface_version: u8,
+    message_type: u8,
+    return_code: u8,
+}
+
+/// Simplified SD message for test parsing
+#[derive(Debug)]
+#[allow(dead_code)]
+struct SdMessage {
+    flags: u8,
+    entries: Vec<SdEntry>,
+    options: Vec<SdOption>,
+}
+
+impl SdMessage {
+    fn get_udp_endpoint(&self, _entry: &SdEntry) -> Option<std::net::SocketAddr> {
+        None // Simplified
+    }
+}
+
+/// Simplified SD entry for test parsing
+#[derive(Debug)]
+#[allow(dead_code)]
+struct SdEntry {
+    entry_type: SdEntryType,
+    index_1st_option: u8,
+    index_2nd_option: u8,
+    num_options_1: u8,
+    num_options_2: u8,
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    ttl: u32,
+    minor_version: u32,
+    eventgroup_id: u16,
+    counter: u8,
+}
+
+/// SD entry types
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[repr(u8)]
+#[allow(dead_code)]
+enum SdEntryType {
+    FindService = 0x00,
+    OfferService = 0x01,
+    SubscribeEventgroup = 0x06,
+    SubscribeEventgroupAck = 0x07,
+    Unknown = 0xFF,
+}
+
+impl From<u8> for SdEntryType {
+    fn from(v: u8) -> Self {
+        match v {
+            0x00 => SdEntryType::FindService,
+            0x01 => SdEntryType::OfferService,
+            0x06 => SdEntryType::SubscribeEventgroup,
+            0x07 => SdEntryType::SubscribeEventgroupAck,
+            _ => SdEntryType::Unknown,
+        }
+    }
+}
+
+/// Placeholder for SD options
+#[derive(Debug)]
+#[allow(dead_code)]
+struct SdOption;
+
+/// Build a raw SOME/IP-SD OfferService message
+fn build_sd_offer(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    minor_version: u32,
+    addr: std::net::Ipv4Addr,
+    port: u16,
+    ttl: u32,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(64);
+
+    // SOME/IP Header
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
+    packet.extend_from_slice(&0x8100u16.to_be_bytes());
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes());
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.push(0x01);
+    packet.push(0x01);
+    packet.push(0x02);
+    packet.push(0x00);
+
+    // SD Payload
+    packet.push(0xC0);
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+    packet.extend_from_slice(&16u32.to_be_bytes());
+
+    // OfferService Entry
+    packet.push(0x01);
+    packet.push(0x00);
+    packet.push(0x00);
+    packet.push(0x10);
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    packet.push(major_version);
+    let ttl_bytes = ttl.to_be_bytes();
+    packet.extend_from_slice(&ttl_bytes[1..4]);
+    packet.extend_from_slice(&minor_version.to_be_bytes());
+
+    // Options array
+    packet.extend_from_slice(&12u32.to_be_bytes());
+    // IPv4 Endpoint Option
+    packet.extend_from_slice(&9u16.to_be_bytes());
+    packet.push(0x04);
+    packet.push(0x00);
+    packet.extend_from_slice(&addr.octets());
+    packet.push(0x00);
+    packet.push(0x11); // UDP
+    packet.extend_from_slice(&port.to_be_bytes());
+
+    // Fix length
+    let length = (packet.len() - 8) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
+
+    packet
+}
+
+/// Build a raw SOME/IP-SD SubscribeEventgroupNack message (TTL=0)
+fn build_sd_subscribe_nack(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    eventgroup_id: u16,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(64);
+
+    // SOME/IP Header
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
+    packet.extend_from_slice(&0x8100u16.to_be_bytes());
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes());
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.push(0x01);
+    packet.push(0x01);
+    packet.push(0x02);
+    packet.push(0x00);
+
+    // SD Payload
+    packet.push(0xC0);
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+    packet.extend_from_slice(&16u32.to_be_bytes());
+
+    // SubscribeEventgroupAck Entry with TTL=0 (NACK)
+    packet.push(0x07); // SubscribeEventgroupAck type
+    packet.push(0x00);
+    packet.push(0x00);
+    packet.push(0x00);
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    packet.push(major_version);
+    // TTL = 0 (NACK)
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+    // Reserved + counter
+    packet.push(0x00);
+    packet.push(0x00);
+    // Eventgroup ID
+    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
+
+    // Options array (empty)
+    packet.extend_from_slice(&0u32.to_be_bytes());
+
+    // Fix length
+    let length = (packet.len() - 8) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
+
+    packet
+}
