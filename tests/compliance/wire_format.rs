@@ -1682,12 +1682,14 @@ fn subscribe_eventgroup_entry_type() {
 }
 
 /// feat_req_recentipsd_576: SubscribeEventgroupAck entry type is 0x07
+/// feat_req_recentipsd_441: Server shall send SubscribeEventgroupAck after receiving SubscribeEventgroup
 ///
 /// When a server acknowledges a subscription, the SD message must contain
 /// an entry with type 0x07 (SubscribeEventgroupAck).
 #[test]
 fn subscribe_ack_entry_type() {
     covers!(feat_req_recentipsd_576);
+    covers!(feat_req_recentipsd_441);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
