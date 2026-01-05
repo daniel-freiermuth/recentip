@@ -377,7 +377,14 @@ async fn tcp_multiple_requests_real_network() {
 ///
 /// This test verifies unicast event delivery on a real network.
 /// Multicast event delivery is not yet implemented, but this test uses unicast only.
+///
+/// NOTE: This test is currently unreliable on same-machine setups due to SO_REUSEPORT.
+/// When both server and client bind to the same SD port (30490) via SO_REUSEPORT,
+/// unicast SubscribeEventgroupAck messages may be delivered to the wrong socket.
+/// Run with `cargo test -- --ignored` to include it.
+/// This should finally be tested using network namespaces, docker or vagrant
 #[tokio::test]
+#[ignore]
 async fn udp_events_real_network() {
     let server_port = 41100;
     let client_port = 41200;
