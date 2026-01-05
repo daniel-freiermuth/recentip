@@ -358,8 +358,8 @@ fn subscribe_eventgroup_ttl_on_wire() {
     sim.host("raw_server", || async {
         let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server").to_string().parse().unwrap();
 
-        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
-        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
         let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
         let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
@@ -370,11 +370,9 @@ fn subscribe_eventgroup_ttl_on_wire() {
         for _ in 0..30 {
             sd_socket.send_to(&offer, sd_multicast).await?;
 
-            let result =
-                tokio::time::timeout(Duration::from_millis(200), rpc_socket.recv_from(&mut buf))
-                    .await;
 
-            if let Ok(Ok((len, from))) = result {
+            while let Ok(Ok((len, from))) = tokio::time::timeout(Duration::from_millis(50), sd_socket.recv_from(&mut buf))
+                    .await {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x06 && entry.service_id == 0x1234 {
@@ -385,15 +383,15 @@ fn subscribe_eventgroup_ttl_on_wire() {
                                 CUSTOM_SUBSCRIBE_TTL, entry.ttl
                             );
 
-                            // Send ACK
+                            // Send ACK back via SD socket
                             let ack = build_sd_subscribe_ack(
                                 entry.service_id,
                                 entry.instance_id,
                                 entry.major_version,
                                 entry.eventgroup_id,
-                                3600,
+                                CUSTOM_SUBSCRIBE_TTL, // Echo client's TTL per spec
                             );
-                            rpc_socket.send_to(&ack, from).await?;
+                            sd_socket.send_to(&ack, from).await?;
                         }
                     }
                 }
@@ -1592,11 +1590,9 @@ fn subscribe_eventgroup_entry_type() {
             .parse()
             .unwrap();
 
-        // RPC socket (also receives SD subscribe messages in SOME/IP)
-        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
-
-        // SD socket to send offers
-        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        // SD socket to send offers and receive subscribes
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
         let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
         let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
@@ -1608,12 +1604,10 @@ fn subscribe_eventgroup_entry_type() {
         for _ in 0..30 {
             sd_socket.send_to(&offer, sd_multicast).await?;
 
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                rpc_socket.recv_from(&mut buf),
-            ).await;
-
-            if let Ok(Ok((len, _from))) = result {
+            while let Ok(Ok((len, from))) = tokio::time::timeout(
+                Duration::from_millis(50),
+                sd_socket.recv_from(&mut buf),
+                ).await {
                 // Check if this is an SD message
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
@@ -1629,15 +1623,15 @@ fn subscribe_eventgroup_entry_type() {
                             );
                             assert!(entry.ttl > 0, "Subscribe TTL should be > 0");
 
-                            // Send SubscribeAck back
+                            // Send SubscribeAck back via SD socket
                             let ack = build_sd_subscribe_ack(
                                 entry.service_id,
                                 entry.instance_id,
                                 entry.major_version,
                                 entry.eventgroup_id,
-                                3600,
+                                entry.ttl, // Echo TTL
                             );
-                            rpc_socket.send_to(&ack, _from).await?;
+                            sd_socket.send_to(&ack, from).await?;
                         }
                     }
                 }
@@ -2104,8 +2098,8 @@ fn stop_subscribe_has_ttl_zero() {
     sim.host("raw_server", || async {
         let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server").to_string().parse().unwrap();
 
-        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
-        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
         let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
         let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
@@ -2118,11 +2112,9 @@ fn stop_subscribe_has_ttl_zero() {
         for _ in 0..50 {
             sd_socket.send_to(&offer, sd_multicast).await?;
 
-            let result =
-                tokio::time::timeout(Duration::from_millis(200), rpc_socket.recv_from(&mut buf))
-                    .await;
 
-            if let Ok(Ok((len, from))) = result {
+            while let Ok(Ok((len, from))) = tokio::time::timeout(Duration::from_millis(50), sd_socket.recv_from(&mut buf))
+                    .await {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x06 {
@@ -2136,15 +2128,15 @@ fn stop_subscribe_has_ttl_zero() {
                                 found_subscribe = true;
                                 eprintln!("Received SubscribeEventgroup: TTL={}", entry.ttl);
 
-                                // Send SubscribeAck back
+                                // Send SubscribeAck back via SD socket
                                 let ack = build_sd_subscribe_ack(
                                     entry.service_id,
                                     entry.instance_id,
                                     entry.major_version,
                                     entry.eventgroup_id,
-                                    3600,
+                                    entry.ttl, // Echo TTL
                                 );
-                                rpc_socket.send_to(&ack, from).await?;
+                                sd_socket.send_to(&ack, from).await?;
                             }
                         }
                     }
