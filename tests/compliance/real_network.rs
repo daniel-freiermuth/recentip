@@ -420,6 +420,7 @@ async fn udp_events_real_network() {
                 None => break,
             }
         }
+        runtime.shutdown().await;
 
         done_rx.recv().await;
     });
@@ -437,7 +438,7 @@ async fn udp_events_real_network() {
         .expect("Service available");
 
     let eventgroup_id = EventgroupId::new(0x0001).unwrap();
-    let mut subscription = proxy.subscribe(eventgroup_id).await.expect("Subscribe");
+    let mut subscription = tokio::time::timeout(Duration::from_secs(1), proxy.subscribe(eventgroup_id)).await.expect("Sub in time").expect("Subscribe success");
 
     subscribed_rx.recv().await;
 
@@ -449,6 +450,7 @@ async fn udp_events_real_network() {
             received.push(event.payload.to_vec());
         }
     }
+    runtime.shutdown().await;
 
     assert_eq!(received.len(), 3);
     assert_eq!(received[0], b"event0");
