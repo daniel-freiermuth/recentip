@@ -16,6 +16,8 @@
 //! | [`Error::RuntimeShutdown`] | Runtime was dropped | No (restart app) |
 //! | [`Error::ChannelFull`] | Event dropped due to backpressure | Yes (slow down) |
 //! | [`Error::AlreadyOffered`] | Duplicate offer attempt | Yes (use existing) |
+//! | [`Error::SubscriptionRejected`] | Server rejected subscription | Maybe (check eventgroup) |
+//! | [`Error::NotAvailable`] | Service discovery timed out | Yes (retry later) |
 //!
 //! ## Usage Pattern
 //!
@@ -122,6 +124,19 @@ pub enum Error {
     /// The server sent a SubscribeEventgroupNack (TTL=0) in response
     /// to our subscription request.
     SubscriptionRejected,
+
+    /// Service discovery failed - the service could not be found.
+    ///
+    /// Returned by [`ProxyHandle::available()`](crate::handle::ProxyHandle::available)
+    /// when the find request expires without locating the service.
+    ///
+    /// Causes:
+    /// - No server is offering the requested service/instance
+    /// - Network issues preventing SD messages from being received
+    /// - Find request exhausted all repetitions (default: 3)
+    ///
+    /// This is recoverable - you can retry the discovery later.
+    NotAvailable,
 }
 
 impl fmt::Display for Error {
@@ -136,6 +151,7 @@ impl fmt::Display for Error {
             Self::ChannelFull => write!(f, "Channel full, event dropped"),
             Self::AlreadyOffered => write!(f, "Service/instance is already offered or bound"),
             Self::SubscriptionRejected => write!(f, "Subscription rejected by server"),
+            Self::NotAvailable => write!(f, "Service could not be found"),
         }
     }
 }

@@ -408,8 +408,9 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
                 }) => break (endpoint, instance_id),
                 Some(ServiceAvailability::Unavailable) => continue,
                 None => {
-                    // Runtime shut down before service was found
-                    return Err(Error::RuntimeShutdown);
+                    // Channel closed - either runtime shut down or find request expired
+                    // (all repetitions exhausted without finding the service)
+                    return Err(Error::NotAvailable);
                 }
             }
         };
