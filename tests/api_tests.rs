@@ -5,6 +5,7 @@ use someip_runtime::runtime::Runtime;
 use someip_runtime::{
     EventId, EventgroupId, InstanceId, MethodId, RuntimeConfig, Service, ServiceId,
 };
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Type alias for turmoil-based runtime for convenience
@@ -355,6 +356,87 @@ fn test_method_call_rpc() {
     });
 
     sim.run().unwrap();
+}
+
+struct PubSubService;
+
+impl Service for PubSubService {
+    const SERVICE_ID: u16 = 0x1234;
+    const MAJOR_VERSION: u8 = 1;
+    const MINOR_VERSION: u32 = 0;
+}
+
+/// Library auto-renewal test: Events continue beyond initial TTL.
+#[test]
+fn library_auto_renews_subscription() {
+    let events_received = Arc::new(Mutex::new(Vec::<(Duration, String)>::new()));
+    let events_clone = Arc::clone(&events_received);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let offering = runtime
+            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let event_id = EventId::new(0x8001).unwrap();
+
+        let mut i = 0;
+        loop {
+            offering.notify(eventgroup, event_id, format!("event{}", i).as_bytes()).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            i += 1;
+        }
+    });
+
+    sim.client("client", async move {
+        let start = tokio::time::Instant::now();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::builder().subscribe_ttl(2).build();
+        
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
+
+        // Collect events with timestamps
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(6);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(200), subscription.next()).await {
+                Ok(Some(event)) => {
+                    let elapsed = start.elapsed();
+                    let payload = String::from_utf8_lossy(&event.payload).to_string();
+                    eprintln!("Received {} at {:?}", payload, elapsed);
+                    events_clone.lock().unwrap().push((elapsed, payload));
+                }
+                Ok(None) => break,
+                Err(_) => continue,
+            }
+        }
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let events = events_received.lock().unwrap();
+    
+    // Should receive events throughout the 5s window, not just first 2s
+    assert!(events.len() >= 10, "Should receive more than 9 events due to auto-renewal (got {})", events.len());
+    
+    // Verify we received events AFTER the initial 2s TTL would have expired
+    let events_after_ttl = events.iter().filter(|(elapsed, _)| *elapsed > Duration::from_secs(2)).count();
+    assert!(events_after_ttl >= 3, "Should receive events after initial TTL expires (auto-renewal). Got {} events after 2s", events_after_ttl);
 }
 
 #[test]

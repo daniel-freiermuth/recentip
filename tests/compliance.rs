@@ -116,6 +116,11 @@ mod service_instance_api;
 #[path = "compliance/sd_pubsub.rs"]
 mod sd_pubsub;
 
+// SD pub/sub offer→subscribe relationship tests
+#[cfg(feature = "turmoil")]
+#[path = "compliance/sd_pubsub_offer_subscribe.rs"]
+mod sd_pubsub_offer_subscribe;
+
 // Real network tests using tokio sockets (no turmoil simulation)
 #[path = "compliance/real_network.rs"]
 mod real_network;

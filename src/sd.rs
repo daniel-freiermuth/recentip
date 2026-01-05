@@ -108,6 +108,12 @@ pub enum Action {
 // ============================================================================
 
 /// Handle an `OfferService` entry
+///
+/// When we receive an OfferService, we:
+/// 1. Update our discovered services table
+/// 2. Notify any pending find requests
+/// 3. **[feat_req_recentipsd_428/431/631]** If we have active subscriptions for this service,
+///    send SubscribeEventgroup in response (offer-triggered subscription)
 pub fn handle_offer(
     entry: &SdEntry,
     sd_message: &SdMessage,
@@ -182,6 +188,56 @@ pub fn handle_offer(
                 ttl: entry.ttl,
             },
         });
+    }
+
+    // [feat_req_recentipsd_428/431/631] Offer-triggered subscription renewal
+    // If we have active subscriptions for this service, respond with SubscribeEventgroup.
+    // Per feat_req_recentipsd_631: "Subscriptions shall NOT be triggered cyclically
+    // but SHALL be triggered by OfferService entries."
+    
+    // Capture values needed for building messages before mutable borrow
+    let local_endpoint = state.local_endpoint;
+    let client_rpc_port = state.client_rpc_endpoint.port();
+    let sd_flags = state.sd_flags(true);
+    let transport = state.config.transport;
+    
+    if let Some(subscriptions) = state.subscriptions.get_mut(&key) {
+        for sub in subscriptions.iter_mut() {
+            // Skip if TTL is infinite (0xFFFFFF) - no renewal needed
+            if state.config.subscribe_ttl == SD_TTL_INFINITE {
+                tracing::trace!(
+                    "Skipping renewal for {:04x}:{:04x} eventgroup {:04x} (infinite TTL)",
+                    entry.service_id,
+                    entry.instance_id,
+                    sub.eventgroup_id
+                );
+                continue;
+            }
+
+            tracing::debug!(
+                "Offer-triggered subscription renewal for {:04x}:{:04x} eventgroup {:04x}",
+                entry.service_id,
+                entry.instance_id,
+                sub.eventgroup_id
+            );
+
+            // Build and send SubscribeEventgroup message
+            let msg = build_subscribe_message(
+                entry.service_id,
+                entry.instance_id,
+                sub.eventgroup_id,
+                local_endpoint,
+                client_rpc_port,
+                sd_flags,
+                state.config.subscribe_ttl,
+                transport,
+            );
+
+            actions.push(Action::SendSd {
+                message: msg,
+                target: from, // Send to the SD source of the offer
+            });
+        }
     }
 }
 
