@@ -339,12 +339,13 @@ pub fn handle_subscribe_request(
         }
 
         let mut ack = SdMessage::new(state.sd_flags(true));
+        // Per feat_req_recentipsd_614: TTL shall be the same as in the SubscribeEventgroup
         ack.add_entry(SdEntry::subscribe_eventgroup_ack(
             entry.service_id,
             entry.instance_id,
             entry.major_version,
             entry.eventgroup_id,
-            state.config.ttl,
+            entry.ttl, // Echo client's TTL per spec
             entry.counter,
         ));
 

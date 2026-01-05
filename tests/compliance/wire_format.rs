@@ -515,6 +515,342 @@ fn find_service_ttl_on_wire() {
     sim.run().unwrap();
 }
 
+/// feat_req_recentipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
+/// Verify that the server echoes the client's TTL in the Ack, not the server's offer_ttl
+#[test]
+fn subscribe_ack_echoes_client_ttl_123() {
+    covers!(feat_req_recentipsd_614);
+    const CLIENT_SUBSCRIBE_TTL: u32 = 123; // Unusual value to ensure it's echoed, not server's default
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server with default offer_ttl (3600) - we verify the Ack uses client's TTL, not this
+    sim.host("server", || async {
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(Default::default()).await.unwrap();
+
+        let _offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        // Keep server running
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+
+    // Raw client: manually sends Subscribe, receives Ack, verifies TTL
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Bind to SD multicast to receive offers
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut buf = [0u8; 1500];
+        let mut server_endpoint: Option<SocketAddr> = None;
+
+        // Wait for OfferService to discover the server
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // OfferService is type 0x01 with TTL > 0
+                        if entry.entry_type as u8 == 0x01
+                            && entry.service_id == 0x1234
+                            && entry.ttl > 0
+                        {
+                            // Get RPC endpoint from option
+                            if let Some(ep) = sd_msg.get_udp_endpoint(entry) {
+                                server_endpoint = Some(SocketAddr::new(from.ip(), ep.port()));
+                            } else {
+                                server_endpoint = Some(from);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+
+        let server_ep = server_endpoint.expect("Should discover server");
+
+        // Build and send SubscribeEventgroup with custom TTL
+        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, CLIENT_SUBSCRIBE_TTL);
+        sd_socket.send_to(&subscribe, server_ep).await?;
+
+        // Wait for SubscribeEventgroupAck
+        let mut found_ack = false;
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, _from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // SubscribeEventgroupAck is type 0x07 with TTL > 0
+                        if entry.entry_type as u8 == 0x07
+                            && entry.service_id == 0x1234
+                            && entry.ttl > 0
+                        {
+                            found_ack = true;
+                            assert_eq!(
+                                entry.ttl, CLIENT_SUBSCRIBE_TTL,
+                                "feat_req_recentipsd_614: SubscribeEventgroupAck TTL should echo client's TTL (expected {}, got {})",
+                                CLIENT_SUBSCRIBE_TTL, entry.ttl
+                            );
+                        }
+                    }
+                }
+            }
+
+            if found_ack {
+                break;
+            }
+        }
+
+        assert!(found_ack, "Should receive SubscribeEventgroupAck entry");
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// feat_req_recentipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
+/// Verify that the server echoes the client's TTL in the Ack, not the server's offer_ttl
+#[test]
+fn subscribe_ack_echoes_client_ttl_1000_000() {
+    covers!(feat_req_recentipsd_614);
+    const CLIENT_SUBSCRIBE_TTL: u32 = 1000_000; // Unusual value to ensure it's echoed, not server's default
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server with default offer_ttl (3600) - we verify the Ack uses client's TTL, not this
+    sim.host("server", || async {
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(Default::default()).await.unwrap();
+
+        let _offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        // Keep server running
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+
+    // Raw client: manually sends Subscribe, receives Ack, verifies TTL
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Bind to SD multicast to receive offers
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut buf = [0u8; 1500];
+        let mut server_endpoint: Option<SocketAddr> = None;
+
+        // Wait for OfferService to discover the server
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // OfferService is type 0x01 with TTL > 0
+                        if entry.entry_type as u8 == 0x01
+                            && entry.service_id == 0x1234
+                            && entry.ttl > 0
+                        {
+                            // Get RPC endpoint from option
+                            if let Some(ep) = sd_msg.get_udp_endpoint(entry) {
+                                server_endpoint = Some(SocketAddr::new(from.ip(), ep.port()));
+                            } else {
+                                server_endpoint = Some(from);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+
+        let server_ep = server_endpoint.expect("Should discover server");
+
+        // Build and send SubscribeEventgroup with custom TTL
+        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, CLIENT_SUBSCRIBE_TTL);
+        sd_socket.send_to(&subscribe, server_ep).await?;
+
+        // Wait for SubscribeEventgroupAck
+        let mut found_ack = false;
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, _from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // SubscribeEventgroupAck is type 0x07 with TTL > 0
+                        if entry.entry_type as u8 == 0x07
+                            && entry.service_id == 0x1234
+                            && entry.ttl > 0
+                        {
+                            found_ack = true;
+                            assert_eq!(
+                                entry.ttl, CLIENT_SUBSCRIBE_TTL,
+                                "feat_req_recentipsd_614: SubscribeEventgroupAck TTL should echo client's TTL (expected {}, got {})",
+                                CLIENT_SUBSCRIBE_TTL, entry.ttl
+                            );
+                        }
+                    }
+                }
+            }
+
+            if found_ack {
+                break;
+            }
+        }
+
+        assert!(found_ack, "Should receive SubscribeEventgroupAck entry");
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// feat_req_recentipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
+/// Verify that the server echoes the client's TTL in the Ack, not the server's offer_ttl
+#[test]
+fn subscribe_ack_echoes_client_ttl_1() {
+    covers!(feat_req_recentipsd_614);
+    const CLIENT_SUBSCRIBE_TTL: u32 = 1; // Unusual value to ensure it's echoed, not server's default
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server with default offer_ttl (3600) - we verify the Ack uses client's TTL, not this
+    sim.host("server", || async {
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(Default::default()).await.unwrap();
+
+        let _offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .await
+            .unwrap();
+
+        // Keep server running
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+
+    // Raw client: manually sends Subscribe, receives Ack, verifies TTL
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Bind to SD multicast to receive offers
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut buf = [0u8; 1500];
+        let mut server_endpoint: Option<SocketAddr> = None;
+
+        // Wait for OfferService to discover the server
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // OfferService is type 0x01 with TTL > 0
+                        if entry.entry_type as u8 == 0x01
+                            && entry.service_id == 0x1234
+                            && entry.ttl > 0
+                        {
+                            // Get RPC endpoint from option
+                            if let Some(ep) = sd_msg.get_udp_endpoint(entry) {
+                                server_endpoint = Some(SocketAddr::new(from.ip(), ep.port()));
+                            } else {
+                                server_endpoint = Some(from);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+
+        let server_ep = server_endpoint.expect("Should discover server");
+
+        // Build and send SubscribeEventgroup with custom TTL
+        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, CLIENT_SUBSCRIBE_TTL);
+        sd_socket.send_to(&subscribe, server_ep).await?;
+
+        // Wait for SubscribeEventgroupAck
+        let mut found_ack = false;
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, _from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // SubscribeEventgroupAck is type 0x07 with TTL > 0
+                        if entry.entry_type as u8 == 0x07
+                            && entry.service_id == 0x1234
+                            && entry.ttl > 0
+                        {
+                            found_ack = true;
+                            assert_eq!(
+                                entry.ttl, CLIENT_SUBSCRIBE_TTL,
+                                "feat_req_recentipsd_614: SubscribeEventgroupAck TTL should echo client's TTL (expected {}, got {})",
+                                CLIENT_SUBSCRIBE_TTL, entry.ttl
+                            );
+                        }
+                    }
+                }
+            }
+
+            if found_ack {
+                break;
+            }
+        }
+
+        assert!(found_ack, "Should receive SubscribeEventgroupAck entry");
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
 // ============================================================================
 // RPC WIRE FORMAT TESTS
 // ============================================================================
