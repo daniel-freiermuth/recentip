@@ -111,6 +111,11 @@ mod multi_party;
 #[path = "compliance/service_instance_api.rs"]
 mod service_instance_api;
 
+// SD pub/sub compliance tests for subscription lifecycle
+#[cfg(feature = "turmoil")]
+#[path = "compliance/sd_pubsub.rs"]
+mod sd_pubsub;
+
 // Real network tests using tokio sockets (no turmoil simulation)
 #[path = "compliance/real_network.rs"]
 mod real_network;
