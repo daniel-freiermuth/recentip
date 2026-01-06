@@ -222,10 +222,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         let (cmd_tx, cmd_rx) = mpsc::channel(64);
 
         // Create RPC message channel (for messages from UDP RPC socket tasks to runtime)
-        let (rpc_tx, rpc_rx) = mpsc::channel::<RpcMessage>(100);
+        let (method_tx, method_rx) = mpsc::channel::<RpcMessage>(100);
 
         // Create TCP RPC message channel (for messages from TCP server connections to runtime)
-        let (tcp_rpc_tx, tcp_rpc_rx) = mpsc::channel::<TcpMessage>(100);
+        let (tcp_method_tx, tcp_method_rx) = mpsc::channel::<TcpMessage>(100);
 
         // Create TCP client message channel (for responses received on client TCP connections)
         let (tcp_client_tx, tcp_client_rx) = mpsc::channel::<TcpMessage>(100);
@@ -237,41 +237,41 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         // Create dedicated client RPC socket (ephemeral port)
         // Per feat_req_recentip_676: Port 30490 is only for SD, not for RPC
         // Clients need their own socket for sending RPC requests, separate from SD
-        let client_rpc_socket = U::bind(SocketAddr::V4(SocketAddrV4::new(
+        let client_method_socket = U::bind(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
             0, // ephemeral port
         )))
         .await?;
-        let client_rpc_addr = client_rpc_socket.local_addr()?;
+        let client_method_addr = client_method_socket.local_addr()?;
 
         // Spawn task to handle client RPC socket (receives responses to our requests)
-        let (client_rpc_send_tx, mut client_rpc_send_rx) = mpsc::channel::<RpcSendMessage>(100);
-        let client_rpc_tx_clone = rpc_tx.clone();
+        let (client_method_send_tx, mut client_method_send_rx) = mpsc::channel::<RpcSendMessage>(100);
+        let client_method_tx_clone = method_tx.clone();
         tokio::spawn(async move {
             let mut buf = [0u8; 65535];
             loop {
                 tokio::select! {
-                    // Receive incoming RPC responses
-                    result = client_rpc_socket.recv_from(&mut buf) => {
+                    // Receive incoming method responses
+                    result = client_method_socket.recv_from(&mut buf) => {
                         match result {
                             Ok((len, from)) => {
                                 let data = buf[..len].to_vec();
                                 // Forward to runtime task for processing
-                                let _ = client_rpc_tx_clone.send(RpcMessage {
+                                let _ = client_method_tx_clone.send(RpcMessage {
                                     service_key: None,
                                     data,
                                     from,
                                 }).await;
                             }
                             Err(e) => {
-                                tracing::error!("Error receiving on client RPC socket: {}", e);
+                                tracing::error!("Error receiving on client method socket: {}", e);
                             }
                         }
                     }
 
-                    // Send outgoing RPC requests
-                    Some(send_msg) = client_rpc_send_rx.recv() => {
-                        if let Err(e) = client_rpc_socket.send_to(&send_msg.data, send_msg.to).await {
+                    // Send outgoing method requests
+                    Some(send_msg) = client_method_send_rx.recv() => {
+                        if let Err(e) = client_method_socket.send_to(&send_msg.data, send_msg.to).await {
                             tracing::error!("Error sending on client RPC socket: {}", e);
                         }
                     }
@@ -284,8 +284,8 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 
         let state = RuntimeState::new(
             local_addr,
-            client_rpc_addr,
-            client_rpc_send_tx,
+            client_method_addr,
+            client_method_send_tx,
             config.clone(),
         );
 
@@ -294,10 +294,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
                 sd_socket,
                 config,
                 cmd_rx,
-                rpc_rx,
-                rpc_tx,
-                tcp_rpc_rx,
-                tcp_rpc_tx,
+                method_rx,
+                method_tx,
+                tcp_method_rx,
+                tcp_method_tx,
                 tcp_client_rx,
                 state,
                 tcp_pool,
