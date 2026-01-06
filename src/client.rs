@@ -90,13 +90,13 @@ pub fn handle_find(
             .discovered
             .iter()
             .find(|(k, _)| k.service_id == service_id.value())
-            .and_then(|(k, v)| v.rpc_endpoint(prefer_tcp).map(|(ep, tr)| (k.instance_id, ep, tr)))
+            .and_then(|(k, v)| v.method_endpoint(prefer_tcp).map(|(ep, tr)| (k.instance_id, ep, tr)))
     } else {
         // Exact match
         state
             .discovered
             .get(&key)
-            .and_then(|v| v.rpc_endpoint(prefer_tcp).map(|(ep, tr)| (key.instance_id, ep, tr)))
+            .and_then(|v| v.method_endpoint(prefer_tcp).map(|(ep, tr)| (key.instance_id, ep, tr)))
     };
 
     if let Some((discovered_instance_id, endpoint, transport)) = found {
@@ -231,6 +231,18 @@ pub fn handle_subscribe(
                 events_tx: events,
             });
 
+        let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
+        let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
+            // Server offers nothing
+            tracing::error!(
+                "Trying to subscribe to eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no transport endpoints",
+                eventgroup_id,
+                service_id.value(),
+                instance_id.value()
+            );
+            return;
+        };
+
         let msg = build_subscribe_message(
             service_id.value(),
             instance_id.value(),
@@ -239,8 +251,7 @@ pub fn handle_subscribe(
             state.client_rpc_endpoint.port(),
             state.sd_flags(true),
             state.config.subscribe_ttl,
-            // mark. Looks suspicious
-            state.config.preferred_transport,
+            transport,
         );
 
         actions.push(Action::SendSd {
@@ -277,6 +288,18 @@ pub fn handle_unsubscribe(
     }
 
     if let Some(discovered) = state.discovered.get(&key) {
+        let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
+        let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
+            // Server offers nothing
+            tracing::error!(
+                "Trying to subscribe to eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no transport endpoints",
+                eventgroup_id,
+                service_id.value(),
+                instance_id.value()
+            );
+            return;
+        };
+
         let msg = build_unsubscribe_message(
             service_id.value(),
             instance_id.value(),
@@ -284,8 +307,7 @@ pub fn handle_unsubscribe(
             state.local_endpoint,
             state.client_rpc_endpoint.port(),
             state.sd_flags(true),
-            // looks suspicious as well
-            state.config.preferred_transport,
+            transport,
         );
 
         actions.push(Action::SendSd {

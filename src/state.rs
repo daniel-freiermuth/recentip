@@ -96,6 +96,8 @@ pub struct SubscriberKey {
 pub struct ServerSubscription {
     /// Client's event endpoint (where to send events)
     pub(crate) endpoint: SocketAddr,
+    /// Transport protocol for sending events to this subscriber
+    pub(crate) transport: crate::config::Transport,
     /// When this subscription expires (based on client's TTL).
     /// `None` means infinite TTL (0xFFFFFF) - never expires per feat_req_recentipsd_431.
     pub(crate) expires_at: Option<tokio::time::Instant>,
@@ -198,7 +200,7 @@ pub struct DiscoveredService {
 
 impl DiscoveredService {
     /// Get the RPC endpoint and transport based on preferred transport
-    pub(crate) fn rpc_endpoint(&self, prefer_tcp: bool) -> Option<(SocketAddr, crate::config::Transport)> {
+    pub(crate) fn method_endpoint(&self, prefer_tcp: bool) -> Option<(SocketAddr, crate::config::Transport)> {
         if prefer_tcp {
             self.tcp_endpoint
                 .map(|ep| (ep, crate::config::Transport::Tcp))
