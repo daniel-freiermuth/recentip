@@ -733,6 +733,7 @@ impl<S: Service> OfferingHandle<S> {
                     method_id,
                     payload,
                     client,
+                    transport,
                 } => {
                     let Some(method) = MethodId::new(method_id) else {
                         tracing::error!(
@@ -744,7 +745,10 @@ impl<S: Service> OfferingHandle<S> {
                     return Some(ServiceEvent::FireForget {
                         method,
                         payload,
-                        client: ClientInfo { address: client },
+                        client: ClientInfo {
+                            address: client,
+                            transport,
+                        },
                     });
                 }
                 ServiceRequest::Subscribe {
@@ -1312,6 +1316,7 @@ async fn receive_service_event(
                 method_id,
                 payload,
                 client,
+                transport,
             } => {
                 let Some(method) = MethodId::new(method_id) else {
                     tracing::error!(
@@ -1323,7 +1328,10 @@ async fn receive_service_event(
                 return Some(ServiceEvent::FireForget {
                     method,
                     payload,
-                    client: ClientInfo { address: client },
+                    client: ClientInfo {
+                        address: client,
+                        transport,
+                    },
                 });
             }
             ServiceRequest::Subscribe {

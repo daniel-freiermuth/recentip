@@ -245,6 +245,7 @@ pub enum ServiceRequest {
         method_id: u16,
         payload: Bytes,
         client: SocketAddr,
+        transport: crate::config::Transport,
     },
     Subscribe {
         eventgroup_id: u16,

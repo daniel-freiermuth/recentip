@@ -688,6 +688,7 @@ pub fn handle_incoming_fire_forget(
             method_id: header.method_id,
             payload,
             client: from,
+            transport: crate::config::Transport::Udp, // Fire-and-forget is UDP-only for now
         });
         // No response tracking needed - fire and forget
     }
