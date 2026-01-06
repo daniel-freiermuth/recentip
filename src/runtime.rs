@@ -829,7 +829,8 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
 
             // Handle incoming messages from UDP data socket tasks
             Some(method_msg) = method_rx.recv() => {
-                let Some(header) = Header::parse(&mut method_msg.data.as_slice()) else {
+                let mut cursor = method_msg.data.as_slice();
+                let Some(header) = Header::parse(&mut cursor) else {
                     tracing::warn!("Received invalid SOME/IP header on method socket from {}", method_msg.from);
                     continue;
                 };
@@ -839,7 +840,7 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                     continue;
                 }
 
-                if let Some(actions) = handle_method_message(&header, &mut method_msg.data.as_slice(), method_msg.from, &mut state, method_msg.service_key, Transport::Udp) {
+                if let Some(actions) = handle_method_message(&header, &mut cursor, method_msg.from, &mut state, method_msg.service_key, Transport::Udp) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -850,7 +851,8 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
             Some(tcp_msg) = tcp_rpc_rx.recv() => {
                 // For TCP messages, we need to find the service key by looking up which service
                 // this message is for (based on the service_id in the header)
-                let Some(header) = Header::parse(&mut tcp_msg.data.as_slice()) else {
+                let mut cursor = tcp_msg.data.as_slice();
+                let Some(header) = Header::parse(&mut cursor) else {
                     tracing::warn!("Received invalid SOME/IP header on TCP server socket from {}", tcp_msg.from);
                     continue;
                 };
@@ -868,7 +870,7 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                     .find(|(key, _)| key.service_id == header.service_id)
                     .map(|(key, _)| *key);
 
-                if let Some(actions) = handle_method_message(&header, &mut tcp_msg.data.as_slice(), tcp_msg.from, &mut state, service_key, Transport::Tcp) {
+                if let Some(actions) = handle_method_message(&header, &mut cursor, tcp_msg.from, &mut state, service_key, Transport::Tcp) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -879,7 +881,8 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
             Some(tcp_msg) = tcp_client_rx.recv() => {
                 // These are responses to RPC calls we made as a client
                 // Process them like any other incoming packet
-                let Some(header) = Header::parse(&mut tcp_msg.data.as_slice()) else {
+                let mut cursor = tcp_msg.data.as_slice();
+                let Some(header) = Header::parse(&mut cursor) else {
                     tracing::warn!("Received invalid SOME/IP header on TCP client socket from {}", tcp_msg.from);
                     continue;
                 };
@@ -890,7 +893,7 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                 }
 
                 // Protocol is weird. But it works anyway?
-                if let Some(actions) = handle_method_message(&header, &mut tcp_msg.data.as_slice(), tcp_msg.from, &mut state, None, Transport::Udp) {
+                if let Some(actions) = handle_method_message(&header, &mut cursor, tcp_msg.from, &mut state, None, Transport::Udp) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
