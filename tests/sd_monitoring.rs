@@ -321,8 +321,9 @@ fn monitor_sd_multiple_monitors_same_runtime() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    sim.host("server", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+    sim.client("server", async {
+        let config = RuntimeConfig::builder().cyclic_offer_delay(1000).build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -347,7 +348,7 @@ fn monitor_sd_multiple_monitors_same_runtime() {
         let events2_clone = Arc::clone(&events2);
 
         let task1 = tokio::spawn(async move {
-            let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
             while tokio::time::Instant::now() < deadline {
                 match tokio::time::timeout(Duration::from_millis(100), sd_events1.recv()).await {
                     Ok(Some(event)) => events1_clone.lock().unwrap().push(event),
@@ -358,7 +359,7 @@ fn monitor_sd_multiple_monitors_same_runtime() {
         });
 
         let task2 = tokio::spawn(async move {
-            let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
             while tokio::time::Instant::now() < deadline {
                 match tokio::time::timeout(Duration::from_millis(100), sd_events2.recv()).await {
                     Ok(Some(event)) => events2_clone.lock().unwrap().push(event),
