@@ -224,6 +224,7 @@ pub enum SdEvent {
 pub enum ServiceAvailability {
     Available {
         endpoint: SocketAddr,
+        transport: crate::config::Transport,
         instance_id: u16,
     },
     Unavailable,

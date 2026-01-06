@@ -80,7 +80,7 @@ pub fn handle_find(
     actions: &mut Vec<Action>,
 ) {
     let key = ServiceKey::new(service_id, instance_id);
-    let prefer_tcp = state.config.transport == Transport::Tcp;
+    let prefer_tcp = state.config.preferred_transport == Transport::Tcp;
 
     // Check if we already have a matching discovered service
     // Use wildcard-aware matching: if instance_id is Any (0xFFFF), match any instance
@@ -90,18 +90,19 @@ pub fn handle_find(
             .discovered
             .iter()
             .find(|(k, _)| k.service_id == service_id.value())
-            .and_then(|(k, v)| v.rpc_endpoint(prefer_tcp).map(|ep| (k.instance_id, ep)))
+            .and_then(|(k, v)| v.rpc_endpoint(prefer_tcp).map(|(ep, tr)| (k.instance_id, ep, tr)))
     } else {
         // Exact match
         state
             .discovered
             .get(&key)
-            .and_then(|v| v.rpc_endpoint(prefer_tcp).map(|ep| (key.instance_id, ep)))
+            .and_then(|v| v.rpc_endpoint(prefer_tcp).map(|(ep, tr)| (key.instance_id, ep, tr)))
     };
 
-    if let Some((discovered_instance_id, endpoint)) = found {
+    if let Some((discovered_instance_id, endpoint, transport)) = found {
         let _ = notify.try_send(ServiceAvailability::Available {
             endpoint,
+            transport,
             instance_id: discovered_instance_id,
         });
     } else {

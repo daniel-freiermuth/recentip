@@ -194,10 +194,11 @@ pub struct Unavailable;
 
 /// Type-state marker: service **discovered and ready**.
 ///
-/// Contains the service's endpoint address for RPC communication.
+/// Contains the service's endpoint address and transport for RPC communication.
 #[derive(Clone)]
 pub struct Available {
     endpoint: std::net::SocketAddr,
+    transport: crate::config::Transport,
 }
 
 /// Client-side proxy to a remote SOME/IP service.
@@ -401,12 +402,13 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
             .map_err(|_| Error::RuntimeShutdown)?;
 
         // Wait for availability notification
-        let (endpoint, discovered_instance_id) = loop {
+        let (endpoint, transport, discovered_instance_id) = loop {
             match notify_rx.recv().await {
                 Some(ServiceAvailability::Available {
                     endpoint,
+                    transport,
                     instance_id,
-                }) => break (endpoint, instance_id),
+                }) => break (endpoint, transport, instance_id),
                 Some(ServiceAvailability::Unavailable) => continue,
                 None => {
                     // Channel closed - either runtime shut down or find request expired
@@ -420,7 +422,7 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
             inner: Arc::clone(&self.inner),
             service_id: self.service_id,
             instance_id: InstanceId::Id(discovered_instance_id),
-            state: Available { endpoint },
+            state: Available { endpoint, transport },
             _phantom: PhantomData,
         })
     }
