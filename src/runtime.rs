@@ -777,7 +777,7 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
     sd_socket: U,
     config: RuntimeConfig,
     mut cmd_rx: mpsc::Receiver<Command>,
-    mut rpc_rx: mpsc::Receiver<RpcMessage>,
+    mut method_rx: mpsc::Receiver<RpcMessage>,
     rpc_tx: mpsc::Sender<RpcMessage>,
     mut tcp_rpc_rx: mpsc::Receiver<TcpMessage>,
     tcp_rpc_tx: mpsc::Sender<TcpMessage>,
@@ -801,8 +801,19 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
             result = sd_socket.recv_from(&mut buf) => {
                 match result {
                     Ok((len, from)) => {
-                        let data = &buf[..len];
-                        if let Some(actions) = handle_packet(data, from, &mut state, None) {
+                        let mut data = &buf[..len];
+                        
+                        let Some(header) = Header::parse(&mut data) else {
+                            tracing::warn!("Received invalid SOME/IP header on SD socket from {}", from);
+                            continue;
+                        };
+
+                        if header.service_id != SD_SERVICE_ID || header.method_id != SD_METHOD_ID {
+                            tracing::warn!("Received non-SD message on SD socket from {}", from);
+                            continue;
+                        }
+
+                        if let Some(actions) = handle_sd_message(&header, &mut data, from, &mut state) {
                             for action in actions {
                                 execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                             }
@@ -814,9 +825,19 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                 }
             }
 
-            // Handle incoming RPC messages from UDP RPC socket tasks
-            Some(rpc_msg) = rpc_rx.recv() => {
-                if let Some(actions) = handle_packet(&rpc_msg.data, rpc_msg.from, &mut state, rpc_msg.service_key) {
+            // Handle incoming messages from UDP data socket tasks
+            Some(method_msg) = method_rx.recv() => {
+                let Some(header) = Header::parse(&mut method_msg.data.as_slice()) else {
+                    tracing::warn!("Received invalid SOME/IP header on method socket from {}", method_msg.from);
+                    continue;
+                };
+
+                if header.service_id == SD_SERVICE_ID {
+                    tracing::warn!("Received SD message on method socket from {}", method_msg.from);
+                    continue;
+                }
+
+                if let Some(actions) = handle_method_message(&header, &mut method_msg.data.as_slice(), method_msg.from, &mut state, method_msg.service_key, Transport::Udp) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -827,7 +848,25 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
             Some(tcp_msg) = tcp_rpc_rx.recv() => {
                 // For TCP messages, we need to find the service key by looking up which service
                 // this message is for (based on the service_id in the header)
-                if let Some(actions) = handle_tcp_rpc_message(&tcp_msg, &mut state) {
+                let Some(header) = Header::parse(&mut tcp_msg.data.as_slice()) else {
+                    tracing::warn!("Received invalid SOME/IP header on TCP server socket from {}", tcp_msg.from);
+                    continue;
+                };
+
+                if header.service_id == SD_SERVICE_ID {
+                    tracing::warn!("Received SD message on method socket from {}", tcp_msg.from);
+                    continue;
+                }
+
+                // Find which offered service this belongs to based on service_id
+                // TODO This is not matching on on instance id. Is that a problem?
+                let service_key = state
+                    .offered
+                    .iter()
+                    .find(|(key, _)| key.service_id == header.service_id)
+                    .map(|(key, _)| *key);
+
+                if let Some(actions) = handle_method_message(&header, &mut tcp_msg.data.as_slice(), tcp_msg.from, &mut state, service_key, Transport::Tcp) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -838,7 +877,18 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
             Some(tcp_msg) = tcp_client_rx.recv() => {
                 // These are responses to RPC calls we made as a client
                 // Process them like any other incoming packet
-                if let Some(actions) = handle_packet(&tcp_msg.data, tcp_msg.from, &mut state, None) {
+                let Some(header) = Header::parse(&mut tcp_msg.data.as_slice()) else {
+                    tracing::warn!("Received invalid SOME/IP header on TCP client socket from {}", tcp_msg.from);
+                    continue;
+                };
+
+                if header.service_id == SD_SERVICE_ID {
+                    tracing::warn!("Received SD message on TCP client socket from {}", tcp_msg.from);
+                    continue;
+                }
+
+                // Protocol is weird. But it works anyway?
+                if let Some(actions) = handle_method_message(&header, &mut tcp_msg.data.as_slice(), tcp_msg.from, &mut state, None, Transport::Udp) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -1086,49 +1136,6 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
     }
 }
 
-/// Handle an incoming packet (SD or RPC)
-fn handle_packet(
-    data: &[u8],
-    from: SocketAddr,
-    state: &mut RuntimeState,
-    service_key: Option<ServiceKey>,
-) -> Option<Vec<Action>> {
-    let mut cursor = data;
-
-    // Parse SOME/IP header
-    let header = Header::parse(&mut cursor)?;
-
-    // Check if it's an SD message
-    if header.service_id == SD_SERVICE_ID && header.method_id == SD_METHOD_ID {
-        return handle_sd_message(&header, &mut cursor, from, state);
-    }
-
-    // Handle RPC messages
-    handle_rpc_message(&header, &mut cursor, from, state, service_key)
-}
-
-/// Handle an RPC message received via TCP server
-///
-/// TCP messages from clients don't have an explicit `service_key` since they come from
-/// a shared channel. We need to determine the `service_key` from the SOME/IP header's
-/// `service_id` and find the matching offered service.
-fn handle_tcp_rpc_message(tcp_msg: &TcpMessage, state: &mut RuntimeState) -> Option<Vec<Action>> {
-    let mut cursor = &tcp_msg.data[..];
-
-    // Parse SOME/IP header to get service_id
-    let header = Header::parse(&mut cursor)?;
-
-    // Find which offered service this belongs to based on service_id
-    let service_key = state
-        .offered
-        .iter()
-        .find(|(key, _)| key.service_id == header.service_id)
-        .map(|(key, _)| *key);
-
-    // Process as RPC message
-    handle_rpc_message(&header, &mut cursor, tcp_msg.from, state, service_key)
-}
-
 /// Handle an SD message
 fn handle_sd_message(
     _header: &Header,
@@ -1202,12 +1209,13 @@ fn handle_sd_message(
 }
 
 /// Handle an RPC message (Request, Response, etc.)
-fn handle_rpc_message(
+fn handle_method_message(
     header: &Header,
     cursor: &mut &[u8],
     from: SocketAddr,
     state: &mut RuntimeState,
     service_key: Option<ServiceKey>,
+    transport: Transport,
 ) -> Option<Vec<Action>> {
     use bytes::Buf;
 
@@ -1244,6 +1252,7 @@ fn handle_rpc_message(
                 state,
                 &mut actions,
                 service_key,
+                transport,
             );
         }
         MessageType::RequestNoReturn => {

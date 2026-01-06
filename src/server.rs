@@ -579,6 +579,7 @@ pub fn handle_has_subscribers(
 // ============================================================================
 
 /// Handle an incoming request (server-side)
+/// i.e. process RPC request from client
 pub fn handle_incoming_request(
     header: &Header,
     payload: Bytes,
@@ -586,6 +587,7 @@ pub fn handle_incoming_request(
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
     service_key: Option<ServiceKey>,
+    transport: crate::config::Transport,
 ) {
     // Find the offering:
     // - If service_key is provided (from server RPC socket), use exact matching
@@ -613,26 +615,37 @@ pub fn handle_incoming_request(
                 method_id: header.method_id,
                 payload,
                 client: from,
+                transport,
                 response: response_tx,
             })
             .is_ok()
         {
             // Track this pending response - will be polled in the main loop
-            let context = PendingServerResponse {
-                service_id: header.service_id,
-                instance_id: service_key.instance_id,
-                method_id: header.method_id,
-                client_id: header.client_id,
-                session_id: header.session_id,
-                interface_version: header.interface_version,
-                client_addr: from,
-                uses_exception,
-                rpc_transport: offered.rpc_transport.clone(),
+            // Use the transport that the request came in on
+            let rpc_transport = match transport {
+                crate::config::Transport::Tcp => offered.tcp_transport.clone(),
+                crate::config::Transport::Udp => offered.udp_transport.clone(),
             };
-            actions.push(Action::TrackServerResponse {
-                context,
-                receiver: response_rx,
-            });
+
+            if let Some(rpc_transport) = rpc_transport {
+                let context = PendingServerResponse {
+                    service_id: header.service_id,
+                    instance_id: service_key.instance_id,
+                    method_id: header.method_id,
+                    client_id: header.client_id,
+                    session_id: header.session_id,
+                    interface_version: header.interface_version,
+                    client_addr: from,
+                    uses_exception,
+                    rpc_transport,
+                };
+                actions.push(Action::TrackServerResponse {
+                    context,
+                    receiver: response_rx,
+                });
+            } else {
+                tracing::error!("We seemingly got a request via {:?}, which we don't offer", transport);
+            }
         }
     } else {
         // Unknown service - send error response via SD socket
@@ -650,6 +663,7 @@ pub fn handle_incoming_request(
         actions.push(Action::SendClientMessage {
             data: response_data,
             target: from,
+            transport,
         });
     }
 }

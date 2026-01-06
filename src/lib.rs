@@ -622,6 +622,8 @@ impl Response {
 pub struct ClientInfo {
     /// Client's address
     pub address: SocketAddr,
+    /// Transport used by the client
+    pub transport: crate::config::Transport,
 }
 
 // ============================================================================

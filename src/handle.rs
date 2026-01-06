@@ -707,6 +707,7 @@ impl<S: Service> OfferingHandle<S> {
                     method_id,
                     payload,
                     client,
+                    transport,
                     response,
                 } => {
                     let Some(method) = MethodId::new(method_id) else {
@@ -719,7 +720,10 @@ impl<S: Service> OfferingHandle<S> {
                     return Some(ServiceEvent::Call {
                         method,
                         payload,
-                        client: ClientInfo { address: client },
+                        client: ClientInfo {
+                            address: client,
+                            transport,
+                        },
                         responder: Responder {
                             response: Some(response),
                         },
@@ -1282,6 +1286,7 @@ async fn receive_service_event(
                 method_id,
                 payload,
                 client,
+                transport,
                 response,
             } => {
                 let Some(method) = MethodId::new(method_id) else {
@@ -1294,7 +1299,10 @@ async fn receive_service_event(
                 return Some(ServiceEvent::Call {
                     method,
                     payload,
-                    client: ClientInfo { address: client },
+                    client: ClientInfo {
+                        address: client,
+                        transport,
+                    },
                     responder: Responder {
                         response: Some(response),
                     },

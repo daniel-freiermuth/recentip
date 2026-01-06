@@ -238,6 +238,7 @@ pub enum ServiceRequest {
         method_id: u16,
         payload: Bytes,
         client: SocketAddr,
+        transport: crate::config::Transport,
         response: oneshot::Sender<Result<Bytes>>,
     },
     FireForget {
