@@ -121,6 +121,11 @@ mod sd_pubsub;
 #[path = "compliance/sd_pubsub_offer_subscribe.rs"]
 mod sd_pubsub_offer_subscribe;
 
+// Multi-protocol transport tests (TCP + UDP in same scenario)
+#[cfg(feature = "turmoil")]
+#[path = "compliance/multi_protocol.rs"]
+mod multi_protocol;
+
 // Real network tests using tokio sockets (no turmoil simulation)
 #[path = "compliance/real_network.rs"]
 mod real_network;

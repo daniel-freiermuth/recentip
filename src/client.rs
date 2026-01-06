@@ -288,7 +288,8 @@ pub fn handle_subscribe(
             state.client_rpc_endpoint.port(),
             state.sd_flags(true),
             state.config.subscribe_ttl,
-            state.config.transport,
+            // mark. Looks suspicious
+            state.config.preferred_transport,
         );
 
         actions.push(Action::SendSd {
@@ -332,7 +333,8 @@ pub fn handle_unsubscribe(
             state.local_endpoint,
             state.client_rpc_endpoint.port(),
             state.sd_flags(true),
-            state.config.transport,
+            // looks suspicious as well
+            state.config.preferred_transport,
         );
 
         actions.push(Action::SendSd {

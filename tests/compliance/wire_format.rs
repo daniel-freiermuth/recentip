@@ -84,6 +84,8 @@ fn sd_offer_wire_format() {
         // Offer a service - this sends SD Offer messages
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -165,6 +167,8 @@ fn sd_uses_port_30490() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -223,6 +227,8 @@ fn sd_offer_entry_type_wire_format() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -291,6 +297,8 @@ fn offer_service_ttl_on_wire() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -531,6 +539,8 @@ fn subscribe_ack_echoes_client_ttl_123() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -643,6 +653,8 @@ fn subscribe_ack_echoes_client_ttl_1000_000() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -755,6 +767,8 @@ fn subscribe_ack_echoes_client_ttl_1() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -997,6 +1011,8 @@ fn rpc_response_wire_format() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -1246,6 +1262,8 @@ fn fire_and_forget_received_wire_format() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -1349,6 +1367,8 @@ fn header_size_and_endianness_on_wire() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -1697,6 +1717,8 @@ fn subscribe_ack_entry_type() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -1848,6 +1870,8 @@ fn subscription_max_ttl_doesnt_expire() {
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -1974,6 +1998,8 @@ fn subscription_ttl_expiration_stops_events() {
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -2586,6 +2612,8 @@ fn sd_reboot_flag_set_after_startup() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -2674,6 +2702,8 @@ fn sd_session_starts_at_one() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -2748,6 +2778,8 @@ fn sd_reboot_flag_clears_after_wraparound() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -2817,6 +2849,8 @@ fn sd_separate_multicast_unicast_sessions() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -3022,6 +3056,425 @@ fn client_rpc_must_not_use_sd_port() {
                 eprintln!("RPC call timed out");
             }
         }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+// ============================================================================
+// TRANSPORT MISMATCH TESTS
+// ============================================================================
+// These tests verify that a server correctly NACKs subscription requests
+// when the client provides an endpoint option for a transport the server
+// does not offer events on.
+//
+// Per feat_req_recentipsd_786: SubscribeEventgroup can reference UDP and/or TCP endpoint
+// Per feat_req_recentipsd_1144: If options are in conflict → respond negatively (NACK)
+// Per feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
+// ============================================================================
+
+/// Build a raw SOME/IP-SD SubscribeEventgroup with a TCP endpoint option
+/// This is used to test what happens when a client subscribes with TCP
+/// to a service that only offers UDP events.
+fn build_sd_subscribe_with_tcp_endpoint(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    eventgroup_id: u16,
+    ttl: u32,
+    client_ip: std::net::Ipv4Addr,
+    client_port: u16,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(80);
+
+    // === SOME/IP Header (16 bytes) ===
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes()); // Service ID = SD
+    packet.extend_from_slice(&0x8100u16.to_be_bytes()); // Method ID = SD
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes()); // Length placeholder
+    packet.extend_from_slice(&0x0001u16.to_be_bytes()); // Client ID
+    packet.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
+    packet.push(0x01); // Protocol Version
+    packet.push(0x01); // Interface Version
+    packet.push(0x02); // Message Type = NOTIFICATION
+    packet.push(0x00); // Return Code = E_OK
+
+    // === SD Payload ===
+    packet.push(0xC0); // Flags (reboot + unicast)
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
+
+    // Entries array length - 16 bytes for eventgroup entry
+    packet.extend_from_slice(&16u32.to_be_bytes());
+
+    // === SubscribeEventgroup Entry (16 bytes) ===
+    packet.push(0x06); // Type = SubscribeEventgroup
+    packet.push(0x00); // Index 1st options = 0 (references our TCP endpoint)
+    packet.push(0x00); // Index 2nd options
+    packet.push(0x10); // # of opts: 1 in run1, 0 in run2 (0x10 = 1 option in 1st run)
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    packet.push(major_version);
+    let ttl_bytes = ttl.to_be_bytes();
+    packet.extend_from_slice(&ttl_bytes[1..4]); // TTL (24-bit)
+    packet.push(0x00); // Reserved
+    packet.push(0x00); // Flags + Counter
+    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
+
+    // === Options array ===
+    // Options array length (12 bytes for one IPv4 endpoint option)
+    packet.extend_from_slice(&12u32.to_be_bytes());
+
+    // IPv4 Endpoint Option (12 bytes total: 2 length + 1 type + 9 data)
+    packet.extend_from_slice(&9u16.to_be_bytes()); // Length = 9
+    packet.push(0x04); // Type = IPv4 Endpoint
+    packet.push(0x00); // Reserved
+    packet.extend_from_slice(&client_ip.octets()); // IPv4 address
+    packet.push(0x00); // Reserved
+    packet.push(0x06); // L4 Protocol = TCP (0x06)
+    packet.extend_from_slice(&client_port.to_be_bytes()); // Port
+
+    // Fix up length field
+    let length = (packet.len() - 8) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
+
+    packet
+}
+
+/// Build a raw SOME/IP-SD SubscribeEventgroup with a UDP endpoint option
+fn build_sd_subscribe_with_udp_endpoint(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    eventgroup_id: u16,
+    ttl: u32,
+    client_ip: std::net::Ipv4Addr,
+    client_port: u16,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(80);
+
+    // === SOME/IP Header (16 bytes) ===
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
+    packet.extend_from_slice(&0x8100u16.to_be_bytes());
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes());
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.push(0x01);
+    packet.push(0x01);
+    packet.push(0x02);
+    packet.push(0x00);
+
+    // === SD Payload ===
+    packet.push(0xC0);
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+
+    // Entries array length
+    packet.extend_from_slice(&16u32.to_be_bytes());
+
+    // === SubscribeEventgroup Entry ===
+    packet.push(0x06); // Type = SubscribeEventgroup
+    packet.push(0x00); // Index 1st options = 0
+    packet.push(0x00); // Index 2nd options
+    packet.push(0x10); // # of opts: 1 in run1, 0 in run2
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    packet.push(major_version);
+    let ttl_bytes = ttl.to_be_bytes();
+    packet.extend_from_slice(&ttl_bytes[1..4]);
+    packet.push(0x00);
+    packet.push(0x00);
+    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
+
+    // === Options array ===
+    packet.extend_from_slice(&12u32.to_be_bytes());
+
+    // IPv4 Endpoint Option with UDP
+    packet.extend_from_slice(&9u16.to_be_bytes()); // Length = 9
+    packet.push(0x04); // Type = IPv4 Endpoint
+    packet.push(0x00); // Reserved
+    packet.extend_from_slice(&client_ip.octets());
+    packet.push(0x00); // Reserved
+    packet.push(0x11); // L4 Protocol = UDP (0x11)
+    packet.extend_from_slice(&client_port.to_be_bytes());
+
+    // Fix up length field
+    let length = (packet.len() - 8) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
+
+    packet
+}
+
+/// feat_req_recentipsd_1144: Transport mismatch should result in NACK
+/// feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
+///
+/// When a server offers events only via UDP, but a client sends a SubscribeEventgroup
+/// with only a TCP endpoint option, the server MUST respond with a SubscribeEventgroupNack.
+///
+/// Current behavior: Server incorrectly accepts and sends ACK (falling back to source address)
+/// Expected behavior: Server rejects with NACK (TTL=0, entry type 0x07)
+#[test]
+fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
+    covers!(feat_req_recentipsd_1144, feat_req_recentipsd_1137);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server offers events via UDP only
+    sim.host("server", || async {
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(Default::default()).await.unwrap();
+
+        let _offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp() // UDP only!
+            .start()
+            .await
+            .unwrap();
+
+        // Keep server running
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+
+    // Raw client: sends Subscribe with TCP endpoint only
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut buf = [0u8; 1500];
+        let mut server_endpoint: Option<SocketAddr> = None;
+
+        // Wait for OfferService
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x01
+                            && entry.service_id == 0x1234
+                            && entry.ttl > 0
+                        {
+                            if let Some(ep) = sd_msg.get_udp_endpoint(entry) {
+                                server_endpoint = Some(SocketAddr::new(from.ip(), ep.port()));
+                            } else {
+                                server_endpoint = Some(from);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+
+        let server_ep = server_endpoint.expect("Should discover server");
+
+        // Get our local address for the endpoint option
+        let local_addr = sd_socket.local_addr()?;
+        let client_ip: std::net::Ipv4Addr = match local_addr.ip() {
+            std::net::IpAddr::V4(ip) => ip,
+            std::net::IpAddr::V6(_) => "0.0.0.0".parse().unwrap(),
+        };
+
+        // Send SubscribeEventgroup with TCP endpoint (mismatch!)
+        let subscribe = build_sd_subscribe_with_tcp_endpoint(
+            0x1234,
+            0x0001,
+            1,
+            0x0001, // eventgroup
+            3600,   // TTL
+            client_ip,
+            40000, // TCP port we're "listening" on
+        );
+        sd_socket.send_to(&subscribe, server_ep).await?;
+
+        // Wait for response - should be NACK (type 0x07 with TTL=0)
+        let mut found_nack = false;
+        let mut found_ack = false;
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, _from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.service_id == 0x1234 && entry.eventgroup_id == 0x0001 {
+                            if entry.entry_type as u8 == 0x07 {
+                                if entry.ttl == 0 {
+                                    // NACK (type 0x07 with TTL=0)
+                                    found_nack = true;
+                                } else {
+                                    // ACK (type 0x07 with TTL>0)
+                                    found_ack = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if found_nack || found_ack {
+                break;
+            }
+        }
+
+        assert!(
+            found_nack,
+            "Server should NACK subscribe with TCP endpoint when only UDP is offered. \
+             Got ACK={}, NACK={}. \
+             Per feat_req_recentipsd_1144: incompatible options should be responded negatively.",
+            found_ack, found_nack
+        );
+        assert!(
+            !found_ack,
+            "Server should NOT ACK subscribe with incompatible transport"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// feat_req_recentipsd_1144: Transport mismatch should result in NACK
+/// feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
+///
+/// When a server offers events only via TCP, but a client sends a SubscribeEventgroup
+/// with only a UDP endpoint option, the server MUST respond with a SubscribeEventgroupNack.
+#[test]
+fn subscribe_udp_endpoint_to_tcp_only_server_should_nack() {
+    covers!(feat_req_recentipsd_1144, feat_req_recentipsd_1137);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server offers events via TCP only
+    sim.host("server", || async {
+        let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =
+            Runtime::with_socket_type(Default::default()).await.unwrap();
+
+        let _offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp() // TCP only!
+            .start()
+            .await
+            .unwrap();
+
+        // Keep server running
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+
+    // Raw client: sends Subscribe with UDP endpoint only
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut buf = [0u8; 1500];
+
+        // Wait for OfferService (should have TCP endpoint)
+        let mut sd_server_addr: Option<SocketAddr> = None;
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x01
+                            && entry.service_id == 0x1234
+                            && entry.ttl > 0
+                        {
+                            // Use SD source address for sending subscribe
+                            // (not the RPC endpoint from the option)
+                            sd_server_addr = Some(from);
+                        }
+                    }
+                }
+            }
+
+            if sd_server_addr.is_some() {
+                break;
+            }
+        }
+
+        let server_ep = sd_server_addr.expect("Should discover server");
+
+        let local_addr = sd_socket.local_addr()?;
+        let client_ip: std::net::Ipv4Addr = match local_addr.ip() {
+            std::net::IpAddr::V4(ip) => ip,
+            std::net::IpAddr::V6(_) => "0.0.0.0".parse().unwrap(),
+        };
+
+        // Send SubscribeEventgroup with UDP endpoint (mismatch - server is TCP only!)
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234,
+            0x0001,
+            1,
+            0x0001,
+            3600,
+            client_ip,
+            40000,
+        );
+        sd_socket.send_to(&subscribe, server_ep).await?;
+
+        // Wait for response - should be NACK
+        let mut found_nack = false;
+        let mut found_ack = false;
+        for _ in 0..30 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, _from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.service_id == 0x1234 && entry.eventgroup_id == 0x0001 {
+                            if entry.entry_type as u8 == 0x07 {
+                                if entry.ttl == 0 {
+                                    found_nack = true;
+                                } else {
+                                    found_ack = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if found_nack || found_ack {
+                break;
+            }
+        }
+
+        assert!(
+            found_nack,
+            "Server should NACK subscribe with UDP endpoint when only TCP is offered. \
+             Got ACK={}, NACK={}. \
+             Per feat_req_recentipsd_1144: incompatible options should be responded negatively.",
+            found_ack, found_nack
+        );
+        assert!(
+            !found_ack,
+            "Server should NOT ACK subscribe with incompatible transport"
+        );
 
         Ok(())
     });

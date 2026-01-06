@@ -450,6 +450,16 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
 }
 
 impl<S: Service> ProxyHandle<S, Available> {
+    /// Get the transport being used for this proxy.
+    ///
+    /// Returns the transport (TCP or UDP) that was selected during service discovery.
+    /// This reflects the `preferred_transport` configuration at the time of discovery,
+    /// or whichever transport was available if only one was offered.
+    #[cfg(test)]
+    pub fn transport(&self) -> crate::config::Transport {
+        self.state.transport
+    }
+
     /// Call a method and wait for the response.
     ///
     /// Accepts any type that implements `AsRef<[u8]>`, including:
