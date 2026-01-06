@@ -163,10 +163,14 @@ pub struct OfferedService {
     pub(crate) minor_version: u32,
     pub(crate) requests_tx: mpsc::Sender<ServiceRequest>,
     pub(crate) last_offer: Instant,
-    /// Dedicated RPC endpoint for this service instance (separate from SD socket)
-    pub(crate) rpc_endpoint: SocketAddr,
-    /// Channel to send outgoing RPC messages to this service's socket/TCP task
-    pub(crate) rpc_transport: RpcTransportSender,
+    /// UDP endpoint for this service instance (if offering via UDP)
+    pub(crate) udp_endpoint: Option<SocketAddr>,
+    /// UDP transport sender (if offering via UDP)
+    pub(crate) udp_transport: Option<RpcTransportSender>,
+    /// TCP endpoint for this service instance (if offering via TCP)
+    pub(crate) tcp_endpoint: Option<SocketAddr>,
+    /// TCP transport sender (if offering via TCP)
+    pub(crate) tcp_transport: Option<RpcTransportSender>,
     /// Configuration for which methods use EXCEPTION message type
     pub(crate) method_config: MethodConfig,
     /// Whether currently announcing via SD (false = bound but not announced)

@@ -511,36 +511,55 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
 // SD MESSAGE BUILDING
 // ============================================================================
 
-/// Build an `OfferService` SD message for the given offered service
+/// Build an `OfferService` SD message for the given offered service.
+///
+/// This advertises all configured endpoints (TCP and/or UDP) in the SD message.
 pub fn build_offer_message(
     key: &ServiceKey,
     offered: &OfferedService,
     sd_flags: u8,
     ttl: u32,
-    transport: Transport,
 ) -> SdMessage {
-    let protocol = match transport {
-        Transport::Tcp => L4Protocol::Tcp,
-        Transport::Udp => L4Protocol::Udp,
-    };
-
     let mut msg = SdMessage::new(sd_flags);
-    let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-        addr: match offered.rpc_endpoint {
-            SocketAddr::V4(v4) => *v4.ip(),
-            _ => Ipv4Addr::LOCALHOST,
-        },
-        port: offered.rpc_endpoint.port(),
-        protocol,
-    });
+    let mut option_indices = Vec::new();
+
+    // Add UDP endpoint option if present
+    if let Some(ep) = offered.udp_endpoint {
+        let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
+            addr: match ep {
+                SocketAddr::V4(v4) => *v4.ip(),
+                _ => Ipv4Addr::LOCALHOST,
+            },
+            port: ep.port(),
+            protocol: L4Protocol::Udp,
+        });
+        option_indices.push(opt_idx);
+    }
+
+    // Add TCP endpoint option if present
+    if let Some(ep) = offered.tcp_endpoint {
+        let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
+            addr: match ep {
+                SocketAddr::V4(v4) => *v4.ip(),
+                _ => Ipv4Addr::LOCALHOST,
+            },
+            port: ep.port(),
+            protocol: L4Protocol::Tcp,
+        });
+        option_indices.push(opt_idx);
+    }
+
+    let first_opt_idx = option_indices.first().copied().unwrap_or(0);
+    let num_options = option_indices.len() as u8;
+
     msg.add_entry(SdEntry::offer_service(
         key.service_id,
         key.instance_id,
         offered.major_version,
         offered.minor_version,
         ttl,
-        opt_idx,
-        1,
+        first_opt_idx,
+        num_options,
     ));
     msg
 }

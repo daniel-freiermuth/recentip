@@ -83,7 +83,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     instance_id: InstanceId,
     major_version: u8,
     minor_version: u32,
-    method_config: MethodConfig,
+    offer_config: crate::config::OfferConfig,
     response: oneshot::Sender<Result<mpsc::Receiver<ServiceRequest>>>,
     config: &RuntimeConfig,
     state: &mut RuntimeState,
@@ -96,115 +96,109 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     // Create channel for service requests
     let (requests_tx, requests_rx) = mpsc::channel(64);
 
-    // Determine RPC port - use next available port starting from local_addr + 1
-    // For test environments, this gives us predictable ports
-    let rpc_port = state.local_endpoint.port() + 1 + state.offered.len() as u16;
-    let rpc_addr = SocketAddr::new(state.local_endpoint.ip(), rpc_port);
+    // Track endpoints and transports
+    let mut udp_endpoint: Option<SocketAddr> = None;
+    let mut udp_transport: Option<RpcTransportSender> = None;
+    let mut tcp_endpoint: Option<SocketAddr> = None;
+    let mut tcp_transport: Option<RpcTransportSender> = None;
 
-    // Determine protocol based on transport configuration
-    let protocol = match config.transport {
-        Transport::Tcp => L4Protocol::Tcp,
-        Transport::Udp => L4Protocol::Udp,
-    };
+    // Calculate base port
+    // TODO: add test and fix math
+    let base_port = state.local_endpoint.port() + 1 + (state.offered.len() as u16 * 2);
 
-    // Create the appropriate transport listener/socket
-    let result: std::io::Result<(SocketAddr, RpcTransportSender)> = match config.transport {
-        Transport::Udp => {
-            // Create and bind UDP RPC socket
-            match U::bind(rpc_addr).await {
-                Ok(rpc_socket) => {
-                    let (rpc_endpoint, rpc_send_tx) = spawn_rpc_socket_task(
-                        rpc_socket,
-                        service_id.value(),
-                        instance_id.value(),
-                        rpc_tx.clone(),
-                    )
-                    .await;
-                    Ok((rpc_endpoint, RpcTransportSender::Udp(rpc_send_tx)))
-                }
-                Err(e) => Err(e),
+    // Create UDP transport if configured
+    if let Some(port) = offer_config.udp_port {
+        let rpc_port = if port == 0 { base_port } else { port };
+        let rpc_addr = SocketAddr::new(state.local_endpoint.ip(), rpc_port);
+
+        match U::bind(rpc_addr).await {
+            Ok(rpc_socket) => {
+                let (endpoint, rpc_send_tx) = spawn_rpc_socket_task(
+                    rpc_socket,
+                    service_id.value(),
+                    instance_id.value(),
+                    rpc_tx.clone(),
+                )
+                .await;
+                udp_endpoint = Some(endpoint);
+                udp_transport = Some(RpcTransportSender::Udp(rpc_send_tx));
             }
-        }
-        Transport::Tcp => {
-            // Create and bind TCP listener
-            match L::bind(rpc_addr).await {
-                Ok(listener) => {
-                    match TcpServer::<T>::spawn(
-                        listener,
-                        service_id.value(),
-                        instance_id.value(),
-                        tcp_rpc_tx.clone(),
-                        config.magic_cookies,
-                    )
-                    .await
-                    {
-                        Ok(tcp_server) => Ok((
-                            tcp_server.local_addr,
-                            RpcTransportSender::Tcp(tcp_server.send_tx),
-                        )),
-                        Err(e) => Err(e),
-                    }
-                }
-                Err(e) => Err(e),
+            Err(e) => {
+                tracing::error!("Failed to bind UDP RPC on {}: {}", rpc_addr, e);
+                let _ = response.send(Err(Error::Io(e)));
+                return None;
             }
-        }
-    };
-
-    match result {
-        Ok((rpc_endpoint, rpc_transport)) => {
-            // Store the offered service with its RPC endpoint
-            state.offered.insert(
-                key,
-                OfferedService {
-                    major_version,
-                    minor_version,
-                    requests_tx,
-                    last_offer: Instant::now() - Duration::from_secs(10),
-                    rpc_endpoint,
-                    rpc_transport,
-                    method_config,
-                    is_announcing: true, // Offer immediately announces
-                },
-            );
-
-            // Create SD offer message advertising the RPC endpoint (not SD endpoint!)
-            let mut msg = SdMessage::new(state.sd_flags(true));
-            let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-                addr: match rpc_endpoint {
-                    SocketAddr::V4(v4) => *v4.ip(),
-                    _ => Ipv4Addr::LOCALHOST,
-                },
-                port: rpc_endpoint.port(),
-                protocol,
-            });
-            msg.add_entry(SdEntry::offer_service(
-                service_id.value(),
-                instance_id.value(),
-                major_version,
-                minor_version,
-                config.offer_ttl,
-                opt_idx,
-                1,
-            ));
-
-            actions.push(Action::SendSd {
-                message: msg,
-                target: config.sd_multicast,
-            });
-
-            let _ = response.send(Ok(requests_rx));
-        }
-        Err(e) => {
-            tracing::error!(
-                "Failed to bind RPC {:?} on {}: {}",
-                config.transport,
-                rpc_addr,
-                e
-            );
-            let _ = response.send(Err(Error::Io(e)));
         }
     }
 
+    // Create TCP transport if configured
+    if let Some(port) = offer_config.tcp_port {
+        let rpc_port = if port == 0 { base_port + 1 } else { port };
+        let rpc_addr = SocketAddr::new(state.local_endpoint.ip(), rpc_port);
+
+        match L::bind(rpc_addr).await {
+            Ok(listener) => {
+                match TcpServer::<T>::spawn(
+                    listener,
+                    service_id.value(),
+                    instance_id.value(),
+                    tcp_rpc_tx.clone(),
+                    config.magic_cookies,
+                )
+                .await
+                {
+                    Ok(tcp_server) => {
+                        tcp_endpoint = Some(tcp_server.local_addr);
+                        tcp_transport = Some(RpcTransportSender::Tcp(tcp_server.send_tx));
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to create TCP server on {}: {}", rpc_addr, e);
+                        let _ = response.send(Err(Error::Io(e)));
+                        return None;
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to bind TCP listener on {}: {}", rpc_addr, e);
+                let _ = response.send(Err(Error::Io(e)));
+                return None;
+            }
+        }
+    }
+
+    // Ensure at least one transport was created
+    if udp_endpoint.is_none() && tcp_endpoint.is_none() {
+        tracing::error!("No transport configured for offer");
+        let _ = response.send(Err(Error::Config(crate::error::ConfigError::new("No transport configured"))));
+        return None;
+    }
+
+    // Store the offered service
+    state.offered.insert(
+        key,
+        OfferedService {
+            major_version,
+            minor_version,
+            requests_tx,
+            last_offer: Instant::now() - Duration::from_secs(10),
+            udp_endpoint,
+            udp_transport,
+            tcp_endpoint,
+            tcp_transport,
+            method_config: offer_config.method_config,
+            is_announcing: true, // Offer immediately announces
+        },
+    );
+
+    // Build and send the initial offer message (reuse sd.rs helper)
+    let offered = state.offered.get(&key).expect("just inserted");
+    let msg = build_offer_message(&key, offered, state.sd_flags(true), config.offer_ttl);
+    actions.push(Action::SendSd {
+        message: msg,
+        target: config.sd_multicast,
+    });
+
+    let _ = response.send(Ok(requests_rx));
     Some(actions)
 }
 

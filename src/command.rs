@@ -85,7 +85,8 @@ pub enum Command {
         instance_id: InstanceId,
         major_version: u8,
         minor_version: u32,
-        method_config: MethodConfig,
+        /// Transport endpoints to offer on (TCP port, UDP port)
+        offer_config: crate::config::OfferConfig,
         response: oneshot::Sender<Result<mpsc::Receiver<ServiceRequest>>>,
     },
     /// Stop offering a service

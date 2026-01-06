@@ -883,9 +883,9 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                         break;
                     }
                     // Special handling for Offer - needs async socket/listener creation
-                    Some(Command::Offer { service_id, instance_id, major_version, minor_version, method_config, response }) => {
+                    Some(Command::Offer { service_id, instance_id, major_version, minor_version, offer_config, response }) => {
                         if let Some(actions) = server::handle_offer_command::<U, T, L>(
-                            service_id, instance_id, major_version, minor_version, method_config, response,
+                            service_id, instance_id, major_version, minor_version, offer_config, response,
                             &config, &mut state, &rpc_tx, &tcp_rpc_tx
                         ).await {
                             for action in actions {
@@ -1450,7 +1450,6 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
     let sd_flags = state.sd_flags(true);
     let offer_ttl = state.config.offer_ttl;
     let find_ttl = state.config.find_ttl;
-    let transport = state.config.transport;
     let sd_multicast = state.config.sd_multicast;
 
     // Cyclic offers (only for services that are announcing)
@@ -1463,7 +1462,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         if now.duration_since(offered.last_offer) >= offer_interval {
             offered.last_offer = now;
 
-            let msg = build_offer_message(key, offered, sd_flags, offer_ttl, transport);
+            let msg = build_offer_message(key, offered, sd_flags, offer_ttl);
 
             actions.push(Action::SendSd {
                 message: msg,
