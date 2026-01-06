@@ -51,7 +51,7 @@
 //! - Other handlers are sync and return `Vec<Action>`
 //! - Server responses must use the same transport as the request
 
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
@@ -68,9 +68,7 @@ use crate::state::{
     RuntimeState, ServiceKey, SubscriberKey,
 };
 use crate::tcp::{TcpMessage, TcpServer};
-use crate::wire::{
-    Header, L4Protocol, MessageType, SdEntry, SdMessage, SdOption, PROTOCOL_VERSION,
-};
+use crate::wire::{Header, MessageType, PROTOCOL_VERSION};
 use crate::{InstanceId, ServiceId};
 
 // ============================================================================
@@ -208,6 +206,7 @@ pub async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stre
     instance_id: InstanceId,
     major_version: u8,
     minor_version: u32,
+    transport: Transport,
     method_config: MethodConfig,
     response: oneshot::Sender<Result<mpsc::Receiver<ServiceRequest>>>,
     config: &RuntimeConfig,
@@ -231,7 +230,7 @@ pub async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stre
     let rpc_addr = SocketAddr::new(state.local_endpoint.ip(), rpc_port);
 
     // Create the appropriate transport listener/socket
-    let result: std::io::Result<(SocketAddr, RpcTransportSender)> = match config.transport {
+    let result: std::io::Result<(SocketAddr, RpcTransportSender)> = match transport {
         Transport::Udp => {
             // Create and bind UDP RPC socket
             match U::bind(rpc_addr).await {
@@ -276,6 +275,11 @@ pub async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stre
     match result {
         Ok((rpc_endpoint, rpc_transport)) => {
             // Store the offered service with its RPC endpoint (NOT announcing yet)
+            // Bind uses only the specified transport (no dual-stack for static binding)
+            let (udp_endpoint, udp_transport, tcp_endpoint, tcp_transport) = match transport {
+                Transport::Udp => (Some(rpc_endpoint), Some(rpc_transport), None, None),
+                Transport::Tcp => (None, None, Some(rpc_endpoint), Some(rpc_transport)),
+            };
             state.offered.insert(
                 key,
                 OfferedService {
@@ -283,8 +287,10 @@ pub async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stre
                     minor_version,
                     requests_tx,
                     last_offer: Instant::now(),
-                    rpc_endpoint,
-                    rpc_transport,
+                    udp_endpoint,
+                    udp_transport,
+                    tcp_endpoint,
+                    tcp_transport,
                     method_config,
                     is_announcing: false, // Bind does NOT announce
                 },
@@ -295,7 +301,7 @@ pub async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stre
         Err(e) => {
             tracing::error!(
                 "Failed to bind RPC {:?} on {}: {}",
-                config.transport,
+                transport,
                 rpc_addr,
                 e
             );

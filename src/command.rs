@@ -152,6 +152,7 @@ pub enum Command {
         instance_id: InstanceId,
         major_version: u8,
         minor_version: u32,
+        transport: crate::config::Transport,
         method_config: MethodConfig,
         response: oneshot::Sender<Result<mpsc::Receiver<ServiceRequest>>>,
     },

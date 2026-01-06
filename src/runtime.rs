@@ -396,8 +396,9 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     pub async fn bind<S: Service>(
         &self,
         instance: InstanceId,
+        transport: Transport,
     ) -> Result<crate::handle::ServiceInstance<S, crate::handle::Bound>> {
-        self.bind_with_config::<S>(instance, MethodConfig::default())
+        self.bind_with_config::<S>(instance, transport, MethodConfig::default())
             .await
     }
 
@@ -408,6 +409,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     pub async fn bind_with_config<S: Service>(
         &self,
         instance: InstanceId,
+        transport: Transport,
         method_config: MethodConfig,
     ) -> Result<crate::handle::ServiceInstance<S, crate::handle::Bound>> {
         let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
@@ -421,6 +423,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
                 instance_id: instance,
                 major_version: S::MAJOR_VERSION,
                 minor_version: S::MINOR_VERSION,
+                transport,
                 method_config,
                 response: response_tx,
             })
@@ -894,9 +897,9 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                         }
                     }
                     // Special handling for Bind - needs async socket/listener creation (no SD announcement)
-                    Some(Command::Bind { service_id, instance_id, major_version, minor_version, method_config, response }) => {
+                    Some(Command::Bind { service_id, instance_id, major_version, minor_version, transport, method_config, response }) => {
                         server::handle_bind_command::<U, T, L>(
-                            service_id, instance_id, major_version, minor_version, method_config, response,
+                            service_id, instance_id, major_version, minor_version, transport, method_config, response,
                             &config, &mut state, &rpc_tx, &tcp_rpc_tx
                         ).await;
                     }
