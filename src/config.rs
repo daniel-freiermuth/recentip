@@ -29,7 +29,7 @@
 //!         Ipv4Addr::new(192, 168, 1, 100),
 //!         30490
 //!     )))
-//!     .transport(Transport::Tcp)
+//!     .preferred_transport(Transport::Tcp)  // Prefer TCP when service offers both
 //!     .ttl(1800)  // 30 minutes
 //!     .cyclic_offer_delay(2000)  // 2 seconds
 //!     .magic_cookies(true)  // Enable for debugging
@@ -46,7 +46,7 @@
 //! | `find_ttl` | 3600 | TTL for FindService entries (seconds) |
 //! | `subscribe_ttl` | 3600 | TTL for SubscribeEventgroup entries (seconds) |
 //! | `cyclic_offer_delay` | 1000 | Interval between cyclic offers (ms) |
-//! | `transport` | UDP | Transport protocol for RPC (UDP/TCP) |
+//! | `preferred_transport` | UDP | Preferred transport when service offers both |
 //! | `magic_cookies` | false | Enable TCP Magic Cookies for debugging |
 //!
 //! ## Transport Selection
@@ -142,8 +142,11 @@ pub struct RuntimeConfig {
     pub subscribe_ttl: u32,
     /// Cyclic offer delay in ms (default: 1000)
     pub cyclic_offer_delay: u64,
-    /// Transport protocol for RPC communication (default: UDP)
-    pub transport: Transport,
+    /// Preferred transport protocol when a service advertises both (default: UDP)
+    ///
+    /// When a remote service offers both TCP and UDP endpoints, this setting
+    /// determines which endpoint the client will use for RPC calls.
+    pub preferred_transport: Transport,
     /// Enable Magic Cookies for TCP resynchronization (default: false)
     ///
     /// When enabled (`feat_req_recentip_586`, `feat_req_recentip_591`, `feat_req_recentip_592)`:
@@ -163,7 +166,7 @@ impl Default for RuntimeConfig {
             find_ttl: DEFAULT_FIND_TTL,
             subscribe_ttl: DEFAULT_SUBSCRIBE_TTL,
             cyclic_offer_delay: DEFAULT_CYCLIC_OFFER_DELAY,
-            transport: Transport::Udp,
+            preferred_transport: Transport::Udp,
             magic_cookies: false,
         }
     }
@@ -224,10 +227,20 @@ impl RuntimeConfigBuilder {
         self
     }
 
-    /// Set the transport protocol (UDP or TCP)
-    pub fn transport(mut self, transport: Transport) -> Self {
-        self.config.transport = transport;
+    /// Set the preferred transport when a service advertises both TCP and UDP.
+    ///
+    /// This is only used for client-side endpoint selection when discovering
+    /// services that offer both transports. For explicit transport selection,
+    /// use `bind()` or `offer()` with the specific transport.
+    pub fn preferred_transport(mut self, transport: Transport) -> Self {
+        self.config.preferred_transport = transport;
         self
+    }
+
+    /// Deprecated: Use `preferred_transport` instead.
+    #[deprecated(since = "0.2.0", note = "Use `preferred_transport()` instead")]
+    pub fn transport(self, transport: Transport) -> Self {
+        self.preferred_transport(transport)
     }
 
     /// Enable or disable Magic Cookies for TCP (default: false)
