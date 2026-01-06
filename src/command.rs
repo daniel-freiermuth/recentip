@@ -168,14 +168,6 @@ pub enum Command {
         instance_id: InstanceId,
         response: oneshot::Sender<Result<()>>,
     },
-    /// Create a static proxy (pre-configured address, no SD)
-    #[allow(dead_code)]
-    FindStatic {
-        service_id: ServiceId,
-        instance_id: InstanceId,
-        endpoint: SocketAddr,
-        notify: mpsc::Sender<ServiceAvailability>,
-    },
     /// Query if there are subscribers for an eventgroup
     HasSubscribers {
         service_id: ServiceId,

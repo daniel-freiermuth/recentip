@@ -344,19 +344,6 @@ pub fn handle_unsubscribe(
     }
 }
 
-/// Handle `Command::FindStatic`
-pub fn handle_find_static(
-    instance_id: crate::InstanceId,
-    endpoint: SocketAddr,
-    notify: tokio::sync::mpsc::Sender<ServiceAvailability>,
-) {
-    // Immediately notify that service is available at the given endpoint
-    let _ = notify.try_send(ServiceAvailability::Available {
-        endpoint,
-        instance_id: instance_id.value(),
-    });
-}
-
 // ============================================================================
 // INCOMING MESSAGE HANDLERS (CLIENT-SIDE)
 // ============================================================================

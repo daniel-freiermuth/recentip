@@ -464,6 +464,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///     let proxy = runtime.find_static::<MyService>(
     ///         InstanceId::Id(1),
     ///         "192.168.1.10:30509".parse().unwrap(),
+    ///         Transport::Tcp,
     ///     );
     ///     // Can immediately make RPC calls
     ///     let method = MethodId::new(0x0001).unwrap();
@@ -475,9 +476,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         &self,
         instance: InstanceId,
         endpoint: SocketAddr,
+        transport: Transport,
     ) -> ProxyHandle<S, Available> {
         let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
-        ProxyHandle::new_available(Arc::clone(&self.inner), service_id, instance, endpoint)
+        ProxyHandle::new_available(Arc::clone(&self.inner), service_id, instance, endpoint, transport)
     }
 
     /// Listen for events from a static (pre-configured) service endpoint.
@@ -1403,15 +1405,6 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             response,
         } => {
             server::handle_stop_announcing(service_id, instance_id, response, state, &mut actions);
-        }
-
-        Command::FindStatic {
-            service_id: _,
-            instance_id,
-            endpoint,
-            notify,
-        } => {
-            client::handle_find_static(instance_id, endpoint, notify);
         }
 
         Command::HasSubscribers {

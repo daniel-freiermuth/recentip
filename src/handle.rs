@@ -367,12 +367,13 @@ impl<S: Service> ProxyHandle<S, Available> {
         service_id: ServiceId,
         instance_id: InstanceId,
         endpoint: SocketAddr,
+        transport: crate::config::Transport,
     ) -> Self {
         Self {
             inner,
             service_id,
             instance_id,
-            state: Available { endpoint },
+            state: Available { endpoint, transport },
             _phantom: PhantomData,
         }
     }
