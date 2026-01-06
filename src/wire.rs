@@ -1068,7 +1068,7 @@ impl SdMessage {
 mod tests {
     use super::*;
 
-    #[test]
+    #[test_log::test]
     fn test_header_roundtrip() {
         let header = Header {
             service_id: 0x1234,
@@ -1091,7 +1091,7 @@ mod tests {
         assert_eq!(header, parsed);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_sd_entry_roundtrip() {
         let entry = SdEntry::offer_service(0x1234, 0x0001, 1, 0, 3600, 0, 1);
 
@@ -1109,7 +1109,7 @@ mod tests {
         assert_eq!(entry.minor_version, parsed.minor_version);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_sd_option_roundtrip() {
         let option = SdOption::Ipv4Endpoint {
             addr: Ipv4Addr::new(192, 168, 1, 100),
@@ -1126,7 +1126,7 @@ mod tests {
         assert_eq!(option, parsed);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_sd_message_roundtrip() {
         let mut msg = SdMessage::initial();
         let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
@@ -1149,7 +1149,7 @@ mod tests {
         assert_eq!(msg.options.len(), parsed.options.len());
     }
 
-    #[test]
+    #[test_log::test]
     fn test_header_rejects_short_input() {
         use bytes::Bytes;
 
@@ -1201,7 +1201,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_header_rejects_invalid_length() {
         use bytes::Bytes;
 
@@ -1279,7 +1279,7 @@ mod tests {
     // MessageType Unit Tests
     // ========================================================================
 
-    #[test]
+    #[test_log::test]
     fn message_type_parse_all_valid_values() {
         // Non-TP types
         assert_eq!(MessageType::from_u8(0x00), Some(MessageType::Request));
@@ -1305,7 +1305,7 @@ mod tests {
         assert_eq!(MessageType::from_u8(0xA1), Some(MessageType::TpError));
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_rejects_invalid_values() {
         assert!(MessageType::from_u8(0x03).is_none());
         assert!(MessageType::from_u8(0x23).is_none());
@@ -1313,7 +1313,7 @@ mod tests {
         assert!(MessageType::from_u8(0xFF).is_none());
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_tp_flag_is_bit_5() {
         assert!(!MessageType::Request.is_tp());
         assert!(!MessageType::RequestNoReturn.is_tp());
@@ -1328,7 +1328,7 @@ mod tests {
         assert!(MessageType::TpError.is_tp());
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_request_expects_response() {
         assert!(MessageType::Request.expects_response());
         assert!(MessageType::TpRequest.expects_response());
@@ -1338,14 +1338,14 @@ mod tests {
         assert!(!MessageType::Response.expects_response());
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_request_no_return_is_fire_and_forget() {
         assert!(MessageType::RequestNoReturn.is_fire_and_forget());
         assert!(MessageType::TpRequestNoReturn.is_fire_and_forget());
         assert!(!MessageType::Request.is_fire_and_forget());
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_notification_classification() {
         assert!(MessageType::Notification.is_notification());
         assert!(MessageType::TpNotification.is_notification());
@@ -1353,7 +1353,7 @@ mod tests {
         assert!(!MessageType::Response.is_notification());
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_tp_flag_conversion() {
         assert_eq!(
             MessageType::Request.with_tp_flag(),
@@ -1378,7 +1378,7 @@ mod tests {
         assert_eq!(MessageType::TpRequest.with_tp_flag(), None);
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_tp_flag_removal() {
         assert_eq!(
             MessageType::TpRequest.without_tp_flag(),
@@ -1400,7 +1400,7 @@ mod tests {
         assert_eq!(MessageType::Request.without_tp_flag(), MessageType::Request);
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_response_bit_pattern() {
         assert_eq!(0x00u8 | 0x80, 0x80); // Request -> Response
         assert_eq!(0x01u8 | 0x80, 0x81); // RequestNoReturn -> Error
@@ -1408,7 +1408,7 @@ mod tests {
         assert_eq!(0x21u8 | 0x80, 0xA1); // TpRequestNoReturn -> TpError
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_tp_bit_pattern() {
         assert_eq!(0x00u8 | 0x20, 0x20); // Request -> TpRequest
         assert_eq!(0x01u8 | 0x20, 0x21); // RequestNoReturn -> TpRequestNoReturn
@@ -1417,7 +1417,7 @@ mod tests {
         assert_eq!(0x81u8 | 0x20, 0xA1); // Error -> TpError
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_valid_responses_to_request() {
         assert!(MessageType::Response.is_valid_response_to(MessageType::Request));
         assert!(MessageType::Error.is_valid_response_to(MessageType::Request));
@@ -1429,7 +1429,7 @@ mod tests {
         assert!(!MessageType::TpResponse.is_valid_response_to(MessageType::Request));
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_no_responses_to_fire_and_forget() {
         assert!(!MessageType::Response.is_valid_response_to(MessageType::RequestNoReturn));
         assert!(!MessageType::Error.is_valid_response_to(MessageType::RequestNoReturn));
@@ -1437,13 +1437,13 @@ mod tests {
         assert!(!MessageType::TpError.is_valid_response_to(MessageType::TpRequestNoReturn));
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_no_responses_to_notification() {
         assert!(!MessageType::Response.is_valid_response_to(MessageType::Notification));
         assert!(!MessageType::Error.is_valid_response_to(MessageType::Notification));
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_expected_response() {
         assert_eq!(
             MessageType::Request.expected_response_type(),
@@ -1459,7 +1459,7 @@ mod tests {
         assert_eq!(MessageType::Error.expected_response_type(), None);
     }
 
-    #[test]
+    #[test_log::test]
     fn message_type_response_classification() {
         assert!(MessageType::Response.is_response());
         assert!(MessageType::Error.is_response());
@@ -1477,25 +1477,25 @@ mod tests {
     // ========================================================================
 
     /// [feat_req_recentip_300] Protocol version is 0x01
-    #[test]
+    #[test_log::test]
     fn protocol_version_is_0x01() {
         assert_eq!(PROTOCOL_VERSION, 0x01);
     }
 
     /// [feat_req_recentip_300] Protocol version is at byte offset 12
-    #[test]
+    #[test_log::test]
     fn protocol_version_offset_is_12() {
         assert_eq!(PROTOCOL_VERSION_OFFSET, 12);
     }
 
     /// [feat_req_recentip_300] Valid protocol version is accepted
-    #[test]
+    #[test_log::test]
     fn protocol_version_valid_accepted() {
         assert!(validate_protocol_version(0x01).is_ok());
     }
 
     /// [feat_req_recentip_300] Invalid protocol version is rejected
-    #[test]
+    #[test_log::test]
     fn protocol_version_invalid_rejected() {
         // Version 0x00 is invalid
         let result = validate_protocol_version(0x00);
@@ -1533,13 +1533,13 @@ mod tests {
     // ========================================================================
 
     /// [feat_req_recentip_278] Interface version is at byte offset 13
-    #[test]
+    #[test_log::test]
     fn interface_version_offset_is_13() {
         assert_eq!(INTERFACE_VERSION_OFFSET, 13);
     }
 
     /// [feat_req_recentip_278] Interface version major can be any value 0-255
-    #[test]
+    #[test_log::test]
     fn interface_version_major_range() {
         // All major versions 0-255 are valid
         for major in 0u8..=255u8 {
@@ -1549,7 +1549,7 @@ mod tests {
     }
 
     /// [feat_req_recentip_278] Interface version minor is 32-bit
-    #[test]
+    #[test_log::test]
     fn interface_version_minor_is_32bit() {
         let version = InterfaceVersion::new(1, u32::MAX);
         assert_eq!(version.minor, u32::MAX);
@@ -1559,7 +1559,7 @@ mod tests {
     }
 
     /// [feat_req_recentip_278] Same major version is compatible
-    #[test]
+    #[test_log::test]
     fn interface_version_same_major_compatible() {
         let v1 = InterfaceVersion::new(1, 0);
         let v2 = InterfaceVersion::new(1, 5);
@@ -1570,7 +1570,7 @@ mod tests {
     }
 
     /// [feat_req_recentip_278] Different major version is incompatible
-    #[test]
+    #[test_log::test]
     fn interface_version_different_major_incompatible() {
         let v1 = InterfaceVersion::new(1, 0);
         let v2 = InterfaceVersion::new(2, 0);
@@ -1580,7 +1580,7 @@ mod tests {
     }
 
     /// [feat_req_recentip_278] Higher minor version is compatible with lower
-    #[test]
+    #[test_log::test]
     fn interface_version_higher_minor_compatible() {
         let server_v = InterfaceVersion::new(1, 5);
         let required_v = InterfaceVersion::new(1, 3);
@@ -1594,7 +1594,7 @@ mod tests {
     }
 
     /// [feat_req_recentip_278] Exact version match check
-    #[test]
+    #[test_log::test]
     fn interface_version_exact_match() {
         let v1 = InterfaceVersion::new(1, 5);
         let v2 = InterfaceVersion::new(1, 5);
@@ -1607,7 +1607,7 @@ mod tests {
     }
 
     /// [feat_req_recentip_278] Validate interface version header byte
-    #[test]
+    #[test_log::test]
     fn interface_version_header_validation() {
         let expected = InterfaceVersion::new(1, 0);
 
@@ -1630,7 +1630,7 @@ mod tests {
     // ========================================================================
 
     /// [feat_req_recentip_300] Protocol version in header at correct offset
-    #[test]
+    #[test_log::test]
     fn wire_format_protocol_version_position() {
         // Minimal valid SOME/IP header
         let header = [
@@ -1649,7 +1649,7 @@ mod tests {
     }
 
     /// [feat_req_recentip_278] Interface version in header at correct offset
-    #[test]
+    #[test_log::test]
     fn wire_format_interface_version_position() {
         let interface_v = 0x05u8; // Major version 5
 
@@ -1676,7 +1676,7 @@ mod tests {
     }
 
     /// [feat_req_recentip_300] Parse protocol version from raw bytes
-    #[test]
+    #[test_log::test]
     fn parse_protocol_version_from_bytes() {
         let header_bytes = [
             0x12, 0x34, 0x00, 0x01, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01, 0x00, 0x01, 0x01, 0x05,
@@ -1698,7 +1698,7 @@ mod proptest_suite {
 
     proptest! {
         /// MessageType round-trips through u8
-        #[test]
+        #[test_log::test]
         fn message_type_roundtrip(byte in prop::sample::select(vec![
             0x00u8, 0x01, 0x02, 0x80, 0x81, 0x20, 0x21, 0x22, 0xA0, 0xA1
         ])) {
@@ -1708,7 +1708,7 @@ mod proptest_suite {
         }
 
         /// Only valid message types parse successfully
-        #[test]
+        #[test_log::test]
         fn invalid_message_types_fail(byte in 0u8..=255u8) {
             let valid = [0x00, 0x01, 0x02, 0x80, 0x81, 0x20, 0x21, 0x22, 0xA0, 0xA1];
             let result = MessageType::from_u8(byte);
@@ -1721,7 +1721,7 @@ mod proptest_suite {
         }
 
         /// TP flag only affects bit 5
-        #[test]
+        #[test_log::test]
         fn tp_flag_only_bit_5(base in prop::sample::select(vec![
             0x00u8, 0x01, 0x02, 0x80, 0x81
         ])) {
@@ -1735,7 +1735,7 @@ mod proptest_suite {
         }
 
         /// without_tp_flag is inverse of with_tp_flag
-        #[test]
+        #[test_log::test]
         fn tp_flag_inverse_operations(base in prop::sample::select(vec![
             0x00u8, 0x01, 0x02, 0x80, 0x81
         ])) {
@@ -1747,7 +1747,7 @@ mod proptest_suite {
         }
 
         /// Only REQUEST types expect responses
-        #[test]
+        #[test_log::test]
         fn only_requests_expect_responses(byte in prop::sample::select(vec![
             0x00u8, 0x01, 0x02, 0x80, 0x81, 0x20, 0x21, 0x22, 0xA0, 0xA1
         ])) {
@@ -1762,7 +1762,7 @@ mod proptest_suite {
         // ====================================================================
 
         /// [feat_req_recentip_300] Only protocol version 0x01 is valid
-        #[test]
+        #[test_log::test]
         fn only_protocol_v1_valid(version in 0u8..=255u8) {
             let result = validate_protocol_version(version);
             if version == 0x01 {
@@ -1773,28 +1773,28 @@ mod proptest_suite {
         }
 
         /// [feat_req_recentip_278] Interface version major matches header byte
-        #[test]
+        #[test_log::test]
         fn interface_version_wire_major(major in 0u8..=255u8, minor in 0u32..=u32::MAX) {
             let version = InterfaceVersion::new(major, minor);
             prop_assert_eq!(version.wire_major(), major);
         }
 
         /// [feat_req_recentip_278] Compatibility is reflexive
-        #[test]
+        #[test_log::test]
         fn interface_version_reflexive_compat(major in 0u8..=255u8, minor in 0u32..=u32::MAX) {
             let version = InterfaceVersion::new(major, minor);
             prop_assert!(version.is_compatible_with(&version));
         }
 
         /// [feat_req_recentip_278] Exact match is reflexive
-        #[test]
+        #[test_log::test]
         fn interface_version_reflexive_exact(major in 0u8..=255u8, minor in 0u32..=u32::MAX) {
             let version = InterfaceVersion::new(major, minor);
             prop_assert!(version.matches_exactly(&version));
         }
 
         /// [feat_req_recentip_278] Different major always incompatible
-        #[test]
+        #[test_log::test]
         fn interface_version_major_mismatch(
             major1 in 0u8..=127u8,
             major2 in 128u8..=255u8,
@@ -1810,7 +1810,7 @@ mod proptest_suite {
         }
 
         /// [feat_req_recentip_278] Higher minor is compatible with lower
-        #[test]
+        #[test_log::test]
         fn interface_version_minor_forward_compat(
             major in 0u8..=255u8,
             minor_low in 0u32..100u32,

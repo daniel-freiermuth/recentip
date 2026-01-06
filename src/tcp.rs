@@ -575,7 +575,7 @@ mod tests {
     use super::*;
     use bytes::BufMut;
 
-    #[test]
+    #[test_log::test]
     fn test_frame_parsing_logic() {
         // Simulate a SOME/IP message: header (16 bytes) + 4 bytes payload
         let mut msg = BytesMut::new();

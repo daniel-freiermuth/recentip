@@ -377,7 +377,7 @@ mod tests {
     /// feat_req_recentip_649: Session ID starts at 0x0001
     ///
     /// Session ID 0x0000 is reserved for "session handling disabled" and must never be used.
-    #[test]
+    #[test_log::test]
     fn session_id_wraps_to_0001_not_0000() {
         let addr = "127.0.0.1:30490".parse().unwrap();
         let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
@@ -409,7 +409,7 @@ mod tests {
     }
 
     /// feat_req_recentipsd_41: Reboot flag is cleared after first wraparound
-    #[test]
+    #[test_log::test]
     fn reboot_flag_clears_after_wraparound() {
         let addr = "127.0.0.1:30490".parse().unwrap();
         let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
@@ -454,7 +454,7 @@ mod tests {
     }
 
     /// Session ID never returns 0
-    #[test]
+    #[test_log::test]
     fn session_id_never_zero() {
         let addr = "127.0.0.1:30490".parse().unwrap();
         let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
