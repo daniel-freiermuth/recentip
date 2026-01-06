@@ -124,6 +124,8 @@ pub(crate) struct RuntimeInner {
     /// All handle operations (find, offer, call, etc.) send commands through
     /// this channel. The runtime's event loop receives and processes them.
     pub(crate) cmd_tx: mpsc::Sender<Command>,
+    /// Runtime configuration (for static proxy creation)
+    pub(crate) config: crate::config::RuntimeConfig,
 }
 
 /// SOME/IP Runtime — the central coordinator for all SOME/IP communication.
@@ -278,7 +280,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         });
 
         // Spawn the runtime task
-        let inner = Arc::new(RuntimeInner { cmd_tx });
+        let inner = Arc::new(RuntimeInner { cmd_tx, config: config.clone() });
 
         let state = RuntimeState::new(
             local_addr,
