@@ -473,6 +473,29 @@ pub fn handle_subscribe_request(
             message: ack,
             target: from,
         });
+    } else {
+        tracing::warn!(
+            "Received SubscribeEventgroup for unknown service {:04x}:{:04x} eventgroup {:04x} from {}",
+            entry.service_id,
+            entry.instance_id,
+            entry.eventgroup_id,
+            from
+        );
+
+        /*
+        let mut nack = SdMessage::new(state.sd_flags(true));
+        nack.add_entry(SdEntry::subscribe_eventgroup_nack(
+            entry.service_id,
+            entry.instance_id,
+            entry.major_version,
+            entry.eventgroup_id,
+            entry.counter,
+        ));
+
+        actions.push(Action::SendSd {
+            message: nack,
+            target: from,
+        }); */
     }
 }
 
@@ -488,19 +511,32 @@ pub fn handle_unsubscribe_request(
         instance_id: entry.instance_id,
     };
 
-    // Get client's event endpoint from SD option (same as subscribe)
-    let client_endpoint = match sd_message.get_udp_endpoint(entry) {
-        Some(ep) if !ep.ip().is_unspecified() => ep,
-        Some(ep) => SocketAddr::new(from.ip(), ep.port()),
-        None => from,
-    };
-
     if let Some(offered) = state.offered.get(&key) {
+        let client_udp_endpoint = sd_message.get_udp_endpoint(entry);
+        let client_tcp_endpoint = sd_message.get_tcp_endpoint(entry);
+        let Some((client_endpoint, transport)) = offered.udp_endpoint.and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
+                .or(offered.tcp_endpoint.and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))) else {
+            // Transport mismatch - send NACK
+            tracing::warn!(
+                "Rejecting subscription for {:04x}:{:04x} eventgroup {:04x} from {}: \
+                    transport mismatch (server offers UDP={}, TCP={}; client wants UDP={}, TCP={})",
+                entry.service_id,
+                entry.instance_id,
+                entry.eventgroup_id,
+                from,
+                offered.udp_endpoint.is_some(),
+                offered.tcp_endpoint.is_some(),
+                client_udp_endpoint.is_some(),
+                client_tcp_endpoint.is_some()
+            );
+            return;
+        };
         let _ = offered
             .requests_tx
             .try_send(crate::command::ServiceRequest::Unsubscribe {
                 eventgroup_id: entry.eventgroup_id,
                 client: client_endpoint,
+                transport,
             });
 
         // Remove the subscriber
@@ -512,6 +548,14 @@ pub fn handle_unsubscribe_request(
         if let Some(subscribers) = state.server_subscribers.get_mut(&sub_key) {
             subscribers.retain(|sub| sub.endpoint != client_endpoint);
         }
+    } else {
+        tracing::warn!(
+            "Received Unsubscribe for unknown service {:04x}:{:04x} eventgroup {:04x} from {}",
+            entry.service_id,
+            entry.instance_id,
+            entry.eventgroup_id,
+            from
+        );
     }
 }
 
