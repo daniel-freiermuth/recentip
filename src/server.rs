@@ -485,6 +485,8 @@ pub fn handle_notify_static(
                 service_key,
                 data: notification_data.clone(),
                 target,
+                // TODO: Accept transport in API
+                transport: crate::config::Transport::Udp,
             });
         }
     }
