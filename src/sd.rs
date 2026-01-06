@@ -96,6 +96,8 @@ pub enum Action {
         service_key: ServiceKey,
         data: Bytes,
         target: SocketAddr,
+        /// Transport to use (TCP or UDP) - should match what subscriber used
+        transport: crate::config::Transport,
     },
     /// Track a pending server response
     TrackServerResponse {
@@ -328,6 +330,9 @@ pub fn handle_find_request(
 }
 
 /// Handle a `SubscribeEventgroup` request
+///
+/// Per feat_req_recentipsd_1144: If options are in conflict, respond negatively (NACK)
+/// Per feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
 pub fn handle_subscribe_request(
     entry: &SdEntry,
     sd_message: &SdMessage,
@@ -340,21 +345,65 @@ pub fn handle_subscribe_request(
         instance_id: entry.instance_id,
     };
 
-    // Get client's event endpoint from SD option, falling back to source address
-    // If the endpoint has unspecified IP (0.0.0.0), use the source IP with the option's port
-    let client_endpoint = match sd_message.get_udp_endpoint(entry) {
-        Some(ep) if !ep.ip().is_unspecified() => ep,
-        Some(ep) => SocketAddr::new(from.ip(), ep.port()),
-        None => from,
-    };
+    // Get client's endpoint options from the SD message
+    let client_udp_endpoint = sd_message.get_udp_endpoint(entry).map(|ep| {
+        // TODO: do we want to be so kind?
+        if ep.ip().is_unspecified() {
+            SocketAddr::new(from.ip(), ep.port())
+        } else {
+            ep
+        }
+    });
+    let client_tcp_endpoint = sd_message.get_tcp_endpoint(entry).map(|ep| {
+        if ep.ip().is_unspecified() {
+            SocketAddr::new(from.ip(), ep.port())
+        } else {
+            ep
+        }
+    });
 
     if let Some(offered) = state.offered.get(&key) {
+        // Check transport compatibility per feat_req_recentipsd_1144
+        // Server offers UDP and/or TCP. Client requests UDP and/or TCP endpoint.
+        let Some((client_endpoint, transport)) = offered.udp_endpoint.and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
+                .or(offered.tcp_endpoint.and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))) else {
+            // Transport mismatch - send NACK
+            tracing::warn!(
+                "Rejecting subscription for {:04x}:{:04x} eventgroup {:04x} from {}: \
+                 transport mismatch (server offers UDP={}, TCP={}; client wants UDP={}, TCP={})",
+                entry.service_id,
+                entry.instance_id,
+                entry.eventgroup_id,
+                from,
+                offered.udp_endpoint.is_some(),
+                offered.tcp_endpoint.is_some(),
+                client_udp_endpoint.is_some(),
+                client_tcp_endpoint.is_some()
+            );
+
+            let mut nack = SdMessage::new(state.sd_flags(true));
+            nack.add_entry(SdEntry::subscribe_eventgroup_nack(
+                entry.service_id,
+                entry.instance_id,
+                entry.major_version,
+                entry.eventgroup_id,
+                entry.counter,
+            ));
+
+            actions.push(Action::SendSd {
+                message: nack,
+                target: from,
+            });
+            return;
+        };
+
         let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
         let _ = offered
             .requests_tx
             .try_send(crate::command::ServiceRequest::Subscribe {
                 eventgroup_id: entry.eventgroup_id,
                 client: client_endpoint,
+                transport,
                 response: response_tx,
             });
 
@@ -377,28 +426,32 @@ pub fn handle_subscribe_request(
         // Check if this client already has a subscription - if so, update the expiration
         let subscribers = state.server_subscribers.entry(sub_key).or_default();
         if let Some(existing) = subscribers.iter_mut().find(|s| s.endpoint == client_endpoint) {
-            // Renew: update expiration time
+            // Renew: update expiration time (and possibly transport)
             existing.expires_at = expires_at;
+            existing.transport = transport;
             tracing::debug!(
-                "Renewed subscription for {:04x}:{:04x} eventgroup {:04x} from {} (TTL={}s)",
+                "Renewed subscription for {:04x}:{:04x} eventgroup {:04x} from {} via {:?} (TTL={}s)",
                 entry.service_id,
                 entry.instance_id,
                 entry.eventgroup_id,
                 client_endpoint,
+                transport,
                 entry.ttl
             );
         } else {
             // New subscription
             subscribers.push(ServerSubscription {
                 endpoint: client_endpoint,
+                transport,
                 expires_at,
             });
             tracing::debug!(
-                "New subscription for {:04x}:{:04x} eventgroup {:04x} from {} (TTL={}s)",
+                "New subscription for {:04x}:{:04x} eventgroup {:04x} from {} via {:?} (TTL={}s)",
                 entry.service_id,
                 entry.instance_id,
                 entry.eventgroup_id,
                 client_endpoint,
+                transport,
                 entry.ttl
             );
         }

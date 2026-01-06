@@ -430,10 +430,10 @@ pub fn handle_notify(
     };
 
     // Clone subscribers to avoid borrow conflict with next_session_id
-    let subscribers: Vec<SocketAddr> = state
+    let subscribers: Vec<(SocketAddr, crate::config::Transport)> = state
         .server_subscribers
         .get(&sub_key)
-        .map(|subs| subs.iter().map(|s| s.endpoint).collect())
+        .map(|subs| subs.iter().map(|s| (s.endpoint, s.transport)).collect())
         .unwrap_or_default();
 
     if !subscribers.is_empty() {
@@ -447,11 +447,12 @@ pub fn handle_notify(
             &payload,
         );
 
-        for subscriber in subscribers {
+        for (subscriber, transport) in subscribers {
             actions.push(Action::SendServerMessage {
                 service_key,
                 data: notification_data.clone(),
                 target: subscriber,
+                transport,
             });
         }
     }

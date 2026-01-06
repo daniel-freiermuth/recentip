@@ -758,6 +758,32 @@ impl SdEntry {
             num_options_2: 0,
         }
     }
+
+    /// Create a `SubscribeEventgroupNack` entry (TTL=0 indicates rejection)
+    ///
+    /// Per feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
+    pub fn subscribe_eventgroup_nack(
+        service_id: u16,
+        instance_id: u16,
+        major_version: u8,
+        eventgroup_id: u16,
+        counter: u8,
+    ) -> Self {
+        Self {
+            entry_type: SdEntryType::SubscribeEventgroupAck, // Same type, TTL=0 indicates NACK
+            service_id,
+            instance_id,
+            major_version,
+            ttl: 0, // TTL=0 indicates NACK
+            minor_version: 0,
+            eventgroup_id,
+            counter,
+            index_1st_option: 0,
+            index_2nd_option: 0,
+            num_options_1: 0,
+            num_options_2: 0,
+        }
+    }
 }
 
 /// SD Option (IPv4 endpoint, multicast, etc.)

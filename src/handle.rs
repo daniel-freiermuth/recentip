@@ -754,6 +754,7 @@ impl<S: Service> OfferingHandle<S> {
                 ServiceRequest::Subscribe {
                     eventgroup_id,
                     client,
+                    transport,
                     response,
                 } => {
                     let Some(eventgroup) = EventgroupId::new(eventgroup_id) else {
@@ -765,7 +766,10 @@ impl<S: Service> OfferingHandle<S> {
                     };
                     return Some(ServiceEvent::Subscribe {
                         eventgroup,
-                        client: ClientInfo { address: client },
+                        client: ClientInfo {
+                            address: client,
+                            transport,
+                        },
                         ack: SubscribeAck {
                             response: Some(response),
                         },
@@ -774,6 +778,7 @@ impl<S: Service> OfferingHandle<S> {
                 ServiceRequest::Unsubscribe {
                     eventgroup_id,
                     client,
+                    transport,
                 } => {
                     let Some(eventgroup) = EventgroupId::new(eventgroup_id) else {
                         tracing::error!(
@@ -784,7 +789,10 @@ impl<S: Service> OfferingHandle<S> {
                     };
                     return Some(ServiceEvent::Unsubscribe {
                         eventgroup,
-                        client: ClientInfo { address: client },
+                        client: ClientInfo {
+                            address: client,
+                            transport,
+                        },
                     });
                 }
             }
@@ -1337,6 +1345,7 @@ async fn receive_service_event(
             ServiceRequest::Subscribe {
                 eventgroup_id,
                 client,
+                transport,
                 response,
             } => {
                 let Some(eventgroup) = EventgroupId::new(eventgroup_id) else {
@@ -1348,7 +1357,10 @@ async fn receive_service_event(
                 };
                 return Some(ServiceEvent::Subscribe {
                     eventgroup,
-                    client: ClientInfo { address: client },
+                    client: ClientInfo {
+                        address: client,
+                        transport,
+                    },
                     ack: SubscribeAck {
                         response: Some(response),
                     },
@@ -1357,6 +1369,7 @@ async fn receive_service_event(
             ServiceRequest::Unsubscribe {
                 eventgroup_id,
                 client,
+                transport,
             } => {
                 let Some(eventgroup) = EventgroupId::new(eventgroup_id) else {
                     tracing::error!(
@@ -1367,7 +1380,10 @@ async fn receive_service_event(
                 };
                 return Some(ServiceEvent::Unsubscribe {
                     eventgroup,
-                    client: ClientInfo { address: client },
+                    client: ClientInfo {
+                        address: client,
+                        transport,
+                    },
                 });
             }
         }

@@ -250,10 +250,12 @@ pub enum ServiceRequest {
     Subscribe {
         eventgroup_id: u16,
         client: SocketAddr,
+        transport: crate::config::Transport,
         response: oneshot::Sender<Result<bool>>,
     },
     Unsubscribe {
         eventgroup_id: u16,
         client: SocketAddr,
+        transport: crate::config::Transport,
     },
 }

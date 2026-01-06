@@ -1082,11 +1082,25 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             service_key,
             data,
             target,
+            transport,
         } => {
-            // Server messages use the service's RPC transport (UDP or TCP)
+            // Server messages use the service's method transport (UDP or TCP)
             if let Some(offered) = state.offered.get(&service_key) {
-                if let Err(e) = offered.rpc_transport.send(data.to_vec(), target).await {
-                    tracing::error!("Failed to send server message via RPC transport: {}", e);
+                let method_transport = match transport {
+                    crate::config::Transport::Tcp => offered.tcp_transport.as_ref(),
+                    crate::config::Transport::Udp => offered.udp_transport.as_ref(),
+                };
+                if let Some(method_transport) = method_transport {
+                    if let Err(e) = method_transport.send(data.to_vec(), target).await {
+                        tracing::error!("Failed to send server message via {:?}: {}", transport, e);
+                    }
+                } else {
+                    tracing::error!(
+                        "Service {:04x}:{:04x} does not have {:?} transport configured",
+                        service_key.service_id,
+                        service_key.instance_id,
+                        transport
+                    );
                 }
             } else {
                 tracing::error!(
