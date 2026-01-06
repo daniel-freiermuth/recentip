@@ -503,11 +503,11 @@ impl<S: Service> ProxyHandle<S, Available> {
             .cmd_tx
             .send(Command::Call {
                 service_id: self.service_id,
-                instance_id: self.instance_id,
                 method_id: method.value(),
                 payload: payload_bytes,
                 response: response_tx,
-                target_endpoint: Some(self.state.endpoint),
+                target_endpoint: self.state.endpoint,
+                target_transport: self.state.transport,
             })
             .await
             .map_err(|_| Error::RuntimeShutdown)?;

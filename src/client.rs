@@ -142,67 +142,41 @@ pub fn handle_stop_find(
 /// Handle `Command::Call`
 pub fn handle_call(
     service_id: crate::ServiceId,
-    instance_id: crate::InstanceId,
     method_id: u16,
     payload: Bytes,
     response: tokio::sync::oneshot::Sender<crate::error::Result<Response>>,
-    target_endpoint: Option<SocketAddr>,
+    target_endpoint: SocketAddr,
+    target_transport: Transport,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let key = ServiceKey::new(service_id, instance_id);
-    let prefer_tcp = state.config.transport == Transport::Tcp;
+    let session_id = state.next_session_id();
+    let client_id = state.client_id;
 
-    // Use static endpoint if provided, otherwise look up from discovered services
-    let endpoint = target_endpoint.or_else(|| {
-        state
-            .discovered
-            .get(&key)
-            .and_then(|d| d.rpc_endpoint(prefer_tcp))
-            .or_else(|| {
-                // If searching for Any, find any instance of this service
-                if instance_id.is_any() {
-                    state
-                        .discovered
-                        .iter()
-                        .find(|(k, _)| k.service_id == service_id.value())
-                        .and_then(|(_, v)| v.rpc_endpoint(prefer_tcp))
-                } else {
-                    None
-                }
-            })
+    // Build request message
+    let request_data = build_request(
+        service_id.value(),
+        method_id,
+        client_id,
+        session_id,
+        1, // interface version
+        &payload,
+    );
+
+    // Register pending call
+    let call_key = CallKey {
+        client_id,
+        session_id,
+    };
+    state
+        .pending_calls
+        .insert(call_key, PendingCall { response });
+
+    actions.push(Action::SendClientMessage {
+        data: request_data,
+        target: target_endpoint,
+        transport: target_transport,
     });
-
-    if let Some(endpoint) = endpoint {
-        let session_id = state.next_session_id();
-        let client_id = state.client_id;
-
-        // Build request message
-        let request_data = build_request(
-            service_id.value(),
-            method_id,
-            client_id,
-            session_id,
-            1, // interface version
-            &payload,
-        );
-
-        // Register pending call
-        let call_key = CallKey {
-            client_id,
-            session_id,
-        };
-        state
-            .pending_calls
-            .insert(call_key, PendingCall { response });
-
-        actions.push(Action::SendClientMessage {
-            data: request_data,
-            target: endpoint,
-        });
-    } else {
-        let _ = response.send(Err(crate::error::Error::ServiceUnavailable));
-    }
 }
 
 /// Handle `Command::FireAndForget`

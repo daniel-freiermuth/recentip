@@ -84,8 +84,13 @@ pub enum Action {
         key: ServiceKey,
         availability: ServiceAvailability,
     },
-    /// Send a SOME/IP RPC message as a client (uses client RPC socket)
-    SendClientMessage { data: Bytes, target: SocketAddr },
+    /// Send a SOME/IP RPC message as a client (uses client RPC socket or TCP pool)
+    SendClientMessage {
+        data: Bytes,
+        target: SocketAddr,
+        /// Transport to use (TCP or UDP), determined by discovered service endpoint
+        transport: crate::config::Transport,
+    },
     /// Send a SOME/IP RPC message as a server (uses service's RPC socket)
     SendServerMessage {
         service_key: ServiceKey,

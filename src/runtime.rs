@@ -995,10 +995,21 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                 }
             }
         }
-        Action::SendClientMessage { data, target } => {
-            // Use TCP or UDP based on configuration
-            if config.transport == Transport::Tcp {
+        Action::SendClientMessage {
+            data,
+            target,
+            transport,
+        } => {
+            // Use TCP or UDP based on transport determined by the discovered service endpoint
+            tracing::debug!(
+                "SendClientMessage: target={}, transport={:?}, data_len={}",
+                target,
+                transport,
+                data.len()
+            );
+            if transport == Transport::Tcp {
                 // Send via TCP connection pool (establishes connection if needed)
+                tracing::debug!("Sending via TCP pool to {}", target);
                 if let Err(e) = tcp_pool.send(target, &data).await {
                     tracing::error!("Failed to send client SOME/IP message via TCP: {}", e);
                 }
@@ -1292,19 +1303,19 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
 
         Command::Call {
             service_id,
-            instance_id,
             method_id,
             payload,
             response,
             target_endpoint,
+            target_transport,
         } => {
             client::handle_call(
                 service_id,
-                instance_id,
                 method_id,
                 payload,
                 response,
                 target_endpoint,
+                target_transport,
                 state,
                 &mut actions,
             );
