@@ -117,6 +117,7 @@ mod rpc {
         }
 
         #[test_log::test]
+        // TODO drop?
         fn responder_must_be_consumed() {
             covers!(feat_req_recentip_15);
             // Responder MUST send exactly one response

@@ -146,6 +146,7 @@ pub fn handle_offer(
     // Select endpoint based on client's preferred_transport
     // If preferred is available, use it; otherwise use whatever is available
     let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
+    // might deduplicated with the DiscoveredService helper
     let Some((effective_endpoint, effective_transport)) = (if prefer_tcp {
         tcp_endpoint
             .map(|ep| (ep, crate::config::Transport::Tcp))
