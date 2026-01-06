@@ -136,8 +136,29 @@ pub fn handle_offer(
         None => None,
     };
 
-    // Use UDP endpoint as fallback if neither is present
-    let effective_endpoint = udp_endpoint.or(tcp_endpoint).unwrap_or(from);
+    // Select endpoint based on client's preferred_transport
+    // If preferred is available, use it; otherwise use whatever is available
+    let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
+    let Some((effective_endpoint, effective_transport)) = (if prefer_tcp {
+        tcp_endpoint
+            .map(|ep| (ep, crate::config::Transport::Tcp))
+            .or_else(|| {
+                udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp))
+            })
+    } else {
+        udp_endpoint
+            .map(|ep| (ep, crate::config::Transport::Udp))
+            .or_else(|| {
+                tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp))
+            })
+    }) else {
+        tracing::error!(
+            "Received OfferService for {:04x}:{:04x} but no transport endpoints offered",
+            entry.service_id,
+            entry.instance_id
+        );
+        return;
+    };
 
     let key = ServiceKey {
         service_id: entry.service_id,
@@ -147,11 +168,12 @@ pub fn handle_offer(
     let ttl_duration = Duration::from_secs(u64::from(entry.ttl));
 
     tracing::debug!(
-        "Discovered service {:04x}:{:04x} at {:?}/{:?} (TTL={})",
+        "Discovered service {:04x}:{:04x} at udp={:?} tcp={:?} transport={:?} (TTL={})",
         entry.service_id,
         entry.instance_id,
         udp_endpoint,
         tcp_endpoint,
+        effective_transport,
         entry.ttl
     );
 
@@ -173,6 +195,7 @@ pub fn handle_offer(
             key,
             availability: ServiceAvailability::Available {
                 endpoint: effective_endpoint,
+                transport: effective_transport,
                 instance_id: entry.instance_id,
             },
         });
@@ -199,7 +222,6 @@ pub fn handle_offer(
     let local_endpoint = state.local_endpoint;
     let client_rpc_port = state.client_rpc_endpoint.port();
     let sd_flags = state.sd_flags(true);
-    let transport = state.config.transport;
     
     if let Some(subscriptions) = state.subscriptions.get_mut(&key) {
         for sub in subscriptions.iter_mut() {
@@ -215,10 +237,11 @@ pub fn handle_offer(
             }
 
             tracing::debug!(
-                "Offer-triggered subscription renewal for {:04x}:{:04x} eventgroup {:04x}",
+                "Offer-triggered subscription renewal for {:04x}:{:04x} eventgroup {:04x} via {:?}",
                 entry.service_id,
                 entry.instance_id,
-                sub.eventgroup_id
+                sub.eventgroup_id,
+                effective_transport
             );
 
             // Build and send SubscribeEventgroup message
@@ -230,7 +253,7 @@ pub fn handle_offer(
                 client_rpc_port,
                 sd_flags,
                 state.config.subscribe_ttl,
-                transport,
+                effective_transport,
             );
 
             actions.push(Action::SendSd {
