@@ -38,7 +38,7 @@ impl Service for TestService {
 /// feat_req_recentip_103: REQUEST and RESPONSE message types
 /// feat_req_recentip_60: Message ID composition
 /// feat_req_recentip_83: Request ID composition
-#[test]
+#[test_log::test]
 fn request_response_roundtrip() {
     covers!(
         feat_req_recentip_103,
@@ -106,7 +106,7 @@ fn request_response_roundtrip() {
 
 /// feat_req_recentip_677: Session ID increments
 /// feat_req_recentip_649: Session ID starts at non-zero
-#[test]
+#[test_log::test]
 fn multiple_calls_succeed() {
     covers!(feat_req_recentip_677, feat_req_recentip_649);
 
@@ -173,7 +173,7 @@ fn multiple_calls_succeed() {
 // ============================================================================
 
 /// feat_req_recentipsd_141, feat_req_recentipsd_142: SD discovery works
-#[test]
+#[test_log::test]
 fn service_discovery_finds_offered_service() {
     covers!(feat_req_recentipsd_141, feat_req_recentipsd_142);
 
@@ -218,7 +218,7 @@ fn service_discovery_finds_offered_service() {
 // ============================================================================
 
 /// feat_req_recentip_103: NOTIFICATION message type
-#[test]
+#[test_log::test]
 fn notification_delivery() {
     covers!(feat_req_recentip_103);
 
@@ -289,7 +289,7 @@ fn notification_delivery() {
 // ============================================================================
 
 /// feat_req_recentip_67: Return Code E_OK
-#[test]
+#[test_log::test]
 fn successful_call_returns_ok() {
     covers!(feat_req_recentip_67);
 
@@ -351,7 +351,7 @@ fn successful_call_returns_ok() {
 /// Uses turmoil's partition() to simulate network failures.
 /// After partitioning, calls should fail or timeout.
 /// After repair(), communication should resume.
-#[test]
+#[test_log::test]
 fn network_partition_handling() {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
@@ -466,7 +466,7 @@ fn network_partition_handling() {
 ///
 /// Note: Testing that calls FAIL during crash requires the runtime to actually
 /// depend on network communication, which the current mock may not fully support.
-#[test]
+#[test_log::test]
 fn service_restart_recovery() {
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
@@ -619,7 +619,7 @@ fn service_restart_recovery() {
 ///
 /// Stress test with 100 concurrent requests to verify the runtime
 /// handles high concurrency correctly.
-#[test]
+#[test_log::test]
 fn many_concurrent_requests() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(120))

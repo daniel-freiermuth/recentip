@@ -76,17 +76,17 @@ pub mod message_types {
 mod return_code_tests {
     use super::return_codes::*;
 
-    #[test]
+    #[test_log::test]
     fn e_ok_is_zero() {
         assert_eq!(E_OK, 0x00);
     }
 
-    #[test]
+    #[test_log::test]
     fn e_not_ok_is_one() {
         assert_eq!(E_NOT_OK, 0x01);
     }
 
-    #[test]
+    #[test_log::test]
     fn return_code_values_match_spec() {
         assert_eq!(E_UNKNOWN_SERVICE, 0x02);
         assert_eq!(E_UNKNOWN_METHOD, 0x03);
@@ -99,7 +99,7 @@ mod return_code_tests {
         assert_eq!(E_WRONG_MESSAGE_TYPE, 0x0A);
     }
 
-    #[test]
+    #[test_log::test]
     fn reserved_ranges() {
         // 0x0B-0x1F: Generic SOME/IP errors
         assert!(0x0B <= 0x1F);
@@ -116,7 +116,7 @@ mod return_code_tests {
 mod message_type_tests {
     use super::message_types::*;
 
-    #[test]
+    #[test_log::test]
     fn message_type_values_match_spec() {
         assert_eq!(REQUEST, 0x00);
         assert_eq!(REQUEST_NO_RETURN, 0x01);
@@ -125,7 +125,7 @@ mod message_type_tests {
         assert_eq!(ERROR, 0x81);
     }
 
-    #[test]
+    #[test_log::test]
     fn ack_bit_is_0x40() {
         assert_eq!(REQUEST_ACK, REQUEST | 0x40);
         assert_eq!(REQUEST_NO_RETURN_ACK, REQUEST_NO_RETURN | 0x40);
@@ -134,12 +134,12 @@ mod message_type_tests {
         assert_eq!(ERROR_ACK, ERROR | 0x40);
     }
 
-    #[test]
+    #[test_log::test]
     fn tp_flag_is_0x20() {
         assert_eq!(TP_FLAG, 0x20);
     }
 
-    #[test]
+    #[test_log::test]
     fn response_is_request_with_high_bit() {
         assert_eq!(RESPONSE, REQUEST | 0x80);
         assert_eq!(ERROR, REQUEST_NO_RETURN | 0x80);
@@ -167,7 +167,7 @@ impl Service for TestService {
 /// Regular request (message type 0x00) shall be answered by a response
 /// (message type 0x80) when no error occurred.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 fn request_answered_by_response() {
     covers!(feat_req_recentip_141);
 
@@ -230,7 +230,7 @@ fn request_answered_by_response() {
 /// If an error occurs, response message with return code not equal to 0x00
 /// shall be sent.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 fn error_response_has_nonzero_return_code() {
     covers!(feat_req_recentip_141, feat_req_recentip_726);
 
@@ -302,7 +302,7 @@ fn error_response_has_nonzero_return_code() {
 ///
 /// Events/notifications use message type NOTIFICATION (0x02).
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 fn notification_message_type() {
     covers!(feat_req_recentip_684);
 
@@ -378,7 +378,7 @@ fn notification_message_type() {
 ///
 /// The response Message ID and Request ID must match the request.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 fn response_ids_match_request() {
     covers!(feat_req_recentip_141);
 
@@ -449,7 +449,7 @@ fn response_ids_match_request() {
 
 /// Protocol version must be 0x01
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 fn protocol_version_is_one() {
     covers!(feat_req_recentip_369);
 
@@ -459,7 +459,7 @@ fn protocol_version_is_one() {
 
 /// Return code in successful response is E_OK
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 fn successful_response_has_e_ok() {
     covers!(feat_req_recentip_144);
 

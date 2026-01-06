@@ -57,7 +57,7 @@ impl Service for ServiceB {
 ///
 /// Three clients connect to one server and make concurrent RPC calls.
 /// All clients should receive correct responses.
-#[test]
+#[test_log::test]
 fn multiple_clients_call_same_server() {
     covers!(feat_req_recentip_103);
 
@@ -195,7 +195,7 @@ fn multiple_clients_call_same_server() {
 ///
 /// Three clients subscribe to the same eventgroup. When the server sends an event,
 /// all three subscribers should receive it.
-#[test]
+#[test_log::test]
 fn multiple_clients_subscribe_to_events() {
     covers!(feat_req_recentip_354, feat_req_recentip_804);
 
@@ -337,7 +337,7 @@ fn multiple_clients_subscribe_to_events() {
 ///
 /// When a server offers a service, all clients on the network should be able
 /// to discover it via SD multicast.
-#[test]
+#[test_log::test]
 fn sd_reaches_all_participants() {
     covers!(feat_req_recentipsd_109);
 
@@ -441,7 +441,7 @@ fn sd_reaches_all_participants() {
 /// Node A offers ServiceA and requires ServiceB.
 /// Node B offers ServiceB and requires ServiceA.
 /// Both should successfully discover each other and communicate.
-#[test]
+#[test_log::test]
 fn nodes_with_mixed_client_server_roles() {
     covers!(feat_req_recentip_103);
 
@@ -559,7 +559,7 @@ fn nodes_with_mixed_client_server_roles() {
 ///
 /// Two servers offer the same service with different instance IDs.
 /// Client should be able to discover and call both instances.
-#[test]
+#[test_log::test]
 fn multiple_servers_different_instances() {
     covers!(feat_req_recentip_636);
 

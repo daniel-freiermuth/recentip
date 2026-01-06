@@ -44,7 +44,7 @@ impl Service for TestService {
 ///
 /// When a client makes multiple calls, each should have incrementing session IDs,
 /// and responses must preserve the request ID.
-#[test]
+#[test_log::test]
 fn multiple_calls_incrementing_session() {
     covers!(
         feat_req_recentip_83,
@@ -135,7 +135,7 @@ fn multiple_calls_incrementing_session() {
 }
 
 /// feat_req_recentip_649: First call has Session ID starting at 1
-#[test]
+#[test_log::test]
 fn first_call_session_id() {
     covers!(feat_req_recentip_649);
 
@@ -200,7 +200,7 @@ fn first_call_session_id() {
 /// feat_req_recentip_88: Each call has unique Session ID
 ///
 /// Even concurrent calls should have unique session IDs.
-#[test]
+#[test_log::test]
 fn concurrent_calls_unique_sessions() {
     covers!(feat_req_recentip_88);
 
@@ -287,7 +287,7 @@ fn concurrent_calls_unique_sessions() {
 // ============================================================================
 
 /// feat_req_recentip_711: Error responses also preserve Request ID
-#[test]
+#[test_log::test]
 fn error_response_preserves_request_id() {
     covers!(feat_req_recentip_711);
 
@@ -364,7 +364,7 @@ fn error_response_preserves_request_id() {
 // ============================================================================
 
 /// Session ID increments across different method calls
-#[test]
+#[test_log::test]
 fn session_increments_across_methods() {
     covers!(feat_req_recentip_88);
 
@@ -452,7 +452,7 @@ fn session_increments_across_methods() {
 /// feat_req_recentip_699: Client ID is consistent for a client
 ///
 /// Multiple calls from the same client should use the same Client ID.
-#[test]
+#[test_log::test]
 fn client_id_consistent_across_calls() {
     covers!(feat_req_recentip_699);
 
@@ -525,7 +525,7 @@ fn client_id_consistent_across_calls() {
 ///
 /// When multiple requests are outstanding and responses arrive out of order,
 /// the client must correctly match each response to its request.
-#[test]
+#[test_log::test]
 fn out_of_order_response_matching() {
     covers!(feat_req_recentip_711, feat_req_recentip_83);
 
@@ -670,7 +670,7 @@ fn out_of_order_response_matching() {
 /// feat_req_recentip_667: Events shall use session handling
 ///
 /// Event notifications should have incrementing session IDs.
-#[test]
+#[test_log::test]
 fn events_use_session_handling() {
     covers!(feat_req_recentip_667);
 
@@ -754,7 +754,7 @@ fn events_use_session_handling() {
 /// feat_req_recentip_79: Request ID differentiates multiple parallel calls
 ///
 /// Multiple outstanding requests should have unique Request IDs.
-#[test]
+#[test_log::test]
 fn parallel_requests_have_unique_request_ids() {
     covers!(feat_req_recentip_79);
 
@@ -840,7 +840,7 @@ fn parallel_requests_have_unique_request_ids() {
 ///
 /// After receiving a response, the Request ID (Session ID portion) can be reused.
 /// Make many sequential requests to verify IDs are managed properly.
-#[test]
+#[test_log::test]
 fn request_id_reusable_after_response() {
     covers!(feat_req_recentip_80);
 
@@ -931,7 +931,7 @@ fn request_id_reusable_after_response() {
 ///
 /// NOTE: This test is slow (~100s) because it makes 65536+ RPC calls.
 /// Run with `cargo test -- --ignored` to include it.
-#[test]
+#[test_log::test]
 #[ignore]
 fn session_id_wraps_to_0001_not_0000() {
     covers!(feat_req_recentip_677);
@@ -1065,7 +1065,7 @@ fn session_id_wraps_to_0001_not_0000() {
 /// feat_req_recentip_669: Request/Response shall use session handling
 ///
 /// Request/Response messages must use session handling (Session ID != 0x0000).
-#[test]
+#[test_log::test]
 fn request_response_uses_session_handling() {
     covers!(feat_req_recentip_669);
 
@@ -1137,7 +1137,7 @@ fn request_response_uses_session_handling() {
 /// feat_req_recentip_667: Fire&Forget shall use session handling
 ///
 /// Fire-and-forget messages should use session handling (Session ID != 0x0000).
-#[test]
+#[test_log::test]
 fn fire_and_forget_uses_session_handling() {
     covers!(feat_req_recentip_667);
 
@@ -1214,7 +1214,7 @@ fn fire_and_forget_uses_session_handling() {
 ///
 /// When generating a response message, the server must copy the
 /// Request ID from the request to the response message.
-#[test]
+#[test_log::test]
 fn server_copies_request_id_to_response() {
     covers!(feat_req_recentip_711);
 
@@ -1280,7 +1280,7 @@ fn server_copies_request_id_to_response() {
 /// feat_req_recentip_79: Request IDs must be unique for parallel calls
 ///
 /// Variant test: send many parallel requests and ensure all get correct responses.
-#[test]
+#[test_log::test]
 fn request_id_differentiates_parallel_calls() {
     covers!(feat_req_recentip_79);
 
@@ -1366,7 +1366,7 @@ fn request_id_differentiates_parallel_calls() {
 /// and successfully complete RPC once the server comes online.
 ///
 /// This tests the "find -> wait -> server starts -> RPC" flow.
-#[test]
+#[test_log::test]
 fn late_server_discovery_rpc() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(60))
@@ -1448,7 +1448,7 @@ fn late_server_discovery_rpc() {
 ///
 /// This tests the "find -> wait -> server starts -> subscribe -> receive event" flow.
 ///
-#[test]
+#[test_log::test]
 fn late_server_discovery_subscribe_event() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(60))

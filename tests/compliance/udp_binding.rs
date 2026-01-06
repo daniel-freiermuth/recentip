@@ -100,7 +100,7 @@ fn is_multicast(addr: &SocketAddr) -> bool {
 ///
 /// The UDP binding of SOME/IP is straight forward by transporting SOME/IP
 /// messages in UDP datagrams.
-#[test]
+#[test_log::test]
 fn udp_binding_transports_someip_messages() {
     covers!(feat_req_recentip_318);
 
@@ -164,7 +164,7 @@ fn udp_binding_transports_someip_messages() {
 ///
 /// Each SOME/IP payload shall have its own SOME/IP header.
 /// (Same concept as TCP requirement feat_req_recentip_585)
-#[test]
+#[test_log::test]
 fn udp_each_message_has_own_header() {
     covers!(feat_req_recentip_584, feat_req_recentip_585);
 
@@ -242,7 +242,7 @@ fn udp_each_message_has_own_header() {
 /// Note: The runtime may or may not coalesce messages. This test verifies
 /// that the wire format supports multiple messages per datagram by capturing
 /// raw UDP traffic.
-#[test]
+#[test_log::test]
 fn udp_multiple_messages_format_supported() {
     covers!(feat_req_recentip_319);
 
@@ -352,7 +352,7 @@ fn udp_multiple_messages_format_supported() {
 ///
 /// The UDP Binding shall support unicast and multicast transmission
 /// depending on the use case.
-#[test]
+#[test_log::test]
 fn udp_supports_unicast_and_multicast() {
     covers!(feat_req_recentip_811);
 
@@ -418,7 +418,7 @@ fn udp_supports_unicast_and_multicast() {
 ///
 /// SOME/IP clients shall support receiving via unicast and/or via multicast
 /// depending on configuration.
-#[test]
+#[test_log::test]
 fn udp_client_receives_multicast_offers() {
     covers!(feat_req_recentip_814);
 
@@ -466,7 +466,7 @@ fn udp_client_receives_multicast_offers() {
 ///
 /// The UDP Binding shall support multicast eventgroups with initial events
 /// of fields transported via UDP unicast.
-#[test]
+#[test_log::test]
 fn udp_multicast_eventgroup_with_initial_events() {
     covers!(feat_req_recentip_812);
 
@@ -550,7 +550,7 @@ fn udp_multicast_eventgroup_with_initial_events() {
 // ============================================================================
 
 /// Verify UDP request/response works correctly with varying payload sizes
-#[test]
+#[test_log::test]
 fn udp_handles_various_payload_sizes() {
     covers!(feat_req_recentip_318, feat_req_recentip_584);
 
@@ -627,7 +627,7 @@ fn udp_handles_various_payload_sizes() {
 // ============================================================================
 
 /// Verify default transport is UDP (not TCP)
-#[test]
+#[test_log::test]
 fn default_transport_is_udp() {
     covers!(feat_req_recentip_318);
 

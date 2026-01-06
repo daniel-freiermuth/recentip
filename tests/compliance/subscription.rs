@@ -38,7 +38,7 @@ impl Service for EventService {
 /// feat_req_recentipsd_109: Eventgroup Entry is 16 bytes
 ///
 /// Client can subscribe to an eventgroup and receive events.
-#[test]
+#[test_log::test]
 fn subscribe_and_receive_events() {
     covers!(feat_req_recentipsd_576, feat_req_recentipsd_109);
 
@@ -132,7 +132,7 @@ fn subscribe_and_receive_events() {
 /// feat_req_recentipsd_576: SubscribeAck entry type (0x07)
 ///
 /// Server must acknowledge subscriptions with SubscribeAck.
-#[test]
+#[test_log::test]
 fn subscribe_receives_ack() {
     covers!(feat_req_recentipsd_576);
 
@@ -196,7 +196,7 @@ fn subscribe_receives_ack() {
 /// feat_req_recentipsd_178: StopSubscribe uses TTL=0
 ///
 /// When subscription handle is dropped, StopSubscribe should be sent.
-#[test]
+#[test_log::test]
 fn unsubscribe_on_drop() {
     covers!(feat_req_recentipsd_178);
 
@@ -294,7 +294,7 @@ fn unsubscribe_on_drop() {
 // ============================================================================
 
 /// feat_req_recentipsd_109: Multiple eventgroups can be subscribed
-#[test]
+#[test_log::test]
 fn subscribe_multiple_eventgroups() {
     covers!(feat_req_recentipsd_109);
 
@@ -433,7 +433,7 @@ fn subscribe_multiple_eventgroups() {
 // ============================================================================
 
 /// feat_req_recentip_101: Event IDs have high bit set (0x8000-0xFFFF)
-#[test]
+#[test_log::test]
 fn event_id_has_high_bit() {
     covers!(feat_req_recentip_101);
 
@@ -518,7 +518,7 @@ fn event_id_has_high_bit() {
 // ============================================================================
 
 /// Services can handle both RPC calls and emit events
-#[test]
+#[test_log::test]
 fn mixed_rpc_and_events() {
     covers!(feat_req_recentip_103, feat_req_recentipsd_576);
 

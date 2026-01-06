@@ -43,7 +43,7 @@ impl Service for TestService {
 ///
 /// The system shall not return an error message for events/notifications.
 /// Events are one-way - there's no mechanism to send errors back.
-#[test]
+#[test_log::test]
 fn no_error_response_for_events() {
     covers!(feat_req_recentip_597);
 
@@ -112,7 +112,7 @@ fn no_error_response_for_events() {
 ///
 /// The system shall not return an error message for fire&forget methods.
 /// Fire&forget is one-way - no response or error is expected.
-#[test]
+#[test_log::test]
 fn no_error_response_for_fire_and_forget() {
     covers!(feat_req_recentip_654);
 
@@ -177,7 +177,7 @@ fn no_error_response_for_fire_and_forget() {
 /// feat_req_recentip_683: All defined return codes are valid
 ///
 /// Test that all defined return codes can be used.
-#[test]
+#[test_log::test]
 fn all_return_codes_are_valid() {
     covers!(feat_req_recentip_683);
 
@@ -214,7 +214,7 @@ fn all_return_codes_are_valid() {
 /// feat_req_recentip_683: Server can return any valid return code
 ///
 /// Server responds with various error codes, and client receives them.
-#[test]
+#[test_log::test]
 fn server_returns_various_error_codes() {
     covers!(feat_req_recentip_683, feat_req_recentip_727);
 
@@ -402,7 +402,7 @@ fn parse_sd_message(
 ///
 /// For request/response methods the error message shall copy over the
 /// fields of the header from the request.
-#[test]
+#[test_log::test]
 fn error_response_copies_request_header() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::handle::ServiceEvent;
@@ -582,7 +582,7 @@ fn error_response_copies_request_header() {
 ///
 /// When a method is configured to use EXCEPTION for errors via MethodConfig,
 /// the error response must use message type 0x81 instead of 0x80.
-#[test]
+#[test_log::test]
 fn exception_message_type_when_configured() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::handle::ServiceEvent;
@@ -734,7 +734,7 @@ fn exception_message_type_when_configured() {
 ///
 /// When some methods are configured for EXCEPTION and others are not,
 /// each method should use the appropriate message type.
-#[test]
+#[test_log::test]
 fn mixed_exception_config_per_method() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::handle::ServiceEvent;
@@ -912,7 +912,7 @@ fn mixed_exception_config_per_method() {
 ///
 /// When the runtime itself generates an error (not the application),
 /// it uses RESPONSE with error code since there's no method config available.
-#[test]
+#[test_log::test]
 fn internal_unknown_service_error_uses_response() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::prelude::*;
@@ -1043,7 +1043,7 @@ fn internal_unknown_service_error_uses_response() {
 ///
 /// SOME/IP messages with a length value < 8 bytes shall be ignored.
 /// Length field indicates payload + 8 (for the header tail), so minimum is 8.
-#[test]
+#[test_log::test]
 fn messages_with_short_length_ignored() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::prelude::*;
@@ -1160,7 +1160,7 @@ fn messages_with_short_length_ignored() {
 /// feat_req_recentip_703: Implementation shall use known protocol version
 ///
 /// All messages sent by the library must use protocol version 0x01.
-#[test]
+#[test_log::test]
 fn uses_known_protocol_version() {
     use someip_runtime::prelude::*;
     use someip_runtime::runtime::{Runtime, RuntimeConfig};
@@ -1322,7 +1322,7 @@ fn uses_known_protocol_version() {
 ///
 /// When receiving a message with wrong protocol version, the implementation
 /// may either ignore it or respond with E_WRONG_PROTOCOL_VERSION.
-#[test]
+#[test_log::test]
 fn wrong_protocol_version_returns_error() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::prelude::*;

@@ -35,6 +35,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use test_log::test;
 
 /// Coverage tracking macro
 macro_rules! covers {
@@ -218,7 +219,7 @@ fn find_subscribe_entry(data: &[u8]) -> Option<(u16, u16, u16, u32)> {
 /// NOTE: This test is currently ignored because the library does not yet
 /// implement offer-triggered re-subscription. This is a specification gap
 /// that needs to be addressed. See PUBSUB_REQUIREMENTS.md for details.
-#[test]
+#[test_log::test]
 fn offer_triggers_subscribe_renewal() {
     covers!(feat_req_recentipsd_428);
     covers!(feat_req_recentipsd_431);
@@ -390,7 +391,7 @@ fn offer_triggers_subscribe_renewal() {
 ///
 /// If the client has ANY internal cyclic timer, it will fire during the gaps
 /// and this test will catch it.
-#[test]
+#[test_log::test]
 fn no_cyclic_subscribes_strict_631_compliance() {
     covers!(feat_req_recentipsd_631);
 
@@ -591,7 +592,7 @@ fn no_cyclic_subscribes_strict_631_compliance() {
 ///
 /// The spec implies subscriptions are triggered by offers. A client should not
 /// send SubscribeEventgroup for a service it hasn't discovered yet.
-#[test]
+#[test_log::test]
 fn no_subscribe_without_offer() {
     let subscribe_before_offer = Arc::new(AtomicUsize::new(0));
     let subscribe_after_offer = Arc::new(AtomicUsize::new(0));
@@ -721,7 +722,7 @@ fn no_subscribe_without_offer() {
 /// 3. When repetitions reach 0, the find request is removed
 /// 4. Removing the find request drops the notification channel sender
 /// 5. `available()` receives channel close and returns `RuntimeShutdown` error
-#[test]
+#[test_log::test]
 fn available_returns_error_when_service_not_found() {
     let find_messages_received = Arc::new(AtomicUsize::new(0));
     let find_messages_clone = Arc::clone(&find_messages_received);
@@ -817,7 +818,7 @@ fn available_returns_error_when_service_not_found() {
 /// 3. Server ACKs
 /// 4. Server sends many more offers over 30+ seconds
 /// 5. Verify: client sends exactly ONE subscribe (the initial one)
-#[test]
+#[test_log::test]
 fn max_ttl_subscription_no_renewal_needed() {
     let subscribe_count = Arc::new(AtomicUsize::new(0));
     let subscribe_count_clone = Arc::clone(&subscribe_count);

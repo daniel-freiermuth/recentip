@@ -23,7 +23,7 @@ mod rpc {
 
         /// feat_req_recentip_538: A service shall be identified using the Service ID.
         /// feat_req_recentip_539: Service IDs shall be of type 16 bit length unsigned integer.
-        #[test]
+        #[test_log::test]
         fn service_id_is_u16() {
             covers!(feat_req_recentip_538, feat_req_recentip_539);
 
@@ -38,14 +38,14 @@ mod rpc {
 
         proptest! {
             /// Property: Any u16 except reserved values creates valid ServiceId
-            #[test]
+            #[test_log::test]
             fn service_id_valid_range(value in 0x0001u16..=0xFFFE) {
                 covers!(feat_req_recentip_539);
                 prop_assert!(ServiceId::new(value).is_some());
             }
 
             /// feat_req_recentip_627: Service ID 0x0000 and 0xFFFF reserved
-            #[test]
+            #[test_log::test]
             fn service_id_reserved_rejected(value in prop::sample::select(vec![0x0000u16, 0xFFFF])) {
                 covers!(feat_req_recentip_627);
                 prop_assert!(ServiceId::new(value).is_none());
@@ -54,7 +54,7 @@ mod rpc {
 
         /// feat_req_recentip_625: Methods and events identified by 16 bit Method ID
         /// Events use range 0x8000-0xFFFE (high bit set)
-        #[test]
+        #[test_log::test]
         fn method_event_id_distinction() {
             covers!(feat_req_recentip_625);
             // Methods: 0x0000-0x7FFF (any value, including 0)
@@ -71,7 +71,7 @@ mod rpc {
 
         proptest! {
             /// Property: Event IDs always have high bit set
-            #[test]
+            #[test_log::test]
             fn event_ids_have_high_bit(value in 0x8000u16..=0xFFFE) {
                 let event = EventId::new(value);
                 prop_assert!(event.is_some());
@@ -79,7 +79,7 @@ mod rpc {
             }
 
             /// Property: Values below 0x8000 cannot be EventIds
-            #[test]
+            #[test_log::test]
             fn low_values_not_events(value in 0x0000u16..0x8000) {
                 prop_assert!(EventId::new(value).is_none());
             }
@@ -88,7 +88,7 @@ mod rpc {
         /// feat_req_recentip_542: Service instance identified by Instance ID
         /// feat_req_recentip_543: Instance IDs are uint16
         /// feat_req_recentip_579: Instance IDs 0x0000 and 0xFFFF reserved
-        #[test]
+        #[test_log::test]
         fn instance_id_wildcard() {
             covers!(
                 feat_req_recentip_542,
@@ -107,7 +107,7 @@ mod rpc {
     mod semantics {
         use super::*;
 
-        #[test]
+        #[test_log::test]
         fn fire_and_forget_returns_nothing() {
             covers!(feat_req_recentip_15);
             // Fire&Forget: no response expected
@@ -116,7 +116,7 @@ mod rpc {
             // This is a type-system guarantee.
         }
 
-        #[test]
+        #[test_log::test]
         fn responder_must_be_consumed() {
             covers!(feat_req_recentip_15);
             // Responder MUST send exactly one response
@@ -141,7 +141,7 @@ mod sd {
         use super::*;
 
         /// feat_req_recentipids_555: Eventgroup ID 0x0000 is reserved
-        #[test]
+        #[test_log::test]
         fn eventgroup_zero_reserved() {
             covers!(feat_req_recentipids_555);
             assert!(EventgroupId::new(0x0000).is_none());
@@ -151,7 +151,7 @@ mod sd {
         proptest! {
             /// Property: Non-zero, non-reserved eventgroup IDs are valid
             /// Valid range: 0x0001-0xFFFE (0x0000 and 0xFFFF are reserved)
-            #[test]
+            #[test_log::test]
             fn nonzero_eventgroups_valid(value in 0x0001u16..=0xFFFE) {
                 prop_assert!(EventgroupId::new(value).is_some());
             }
@@ -165,7 +165,7 @@ mod sd {
     mod offer_find {
         use super::*;
 
-        #[test]
+        #[test_log::test]
         fn find_allows_wildcard_instance() {
             // When finding/requiring, can use ANY instance
             assert_eq!(InstanceId::ANY.value(), 0xFFFF);
@@ -181,7 +181,7 @@ mod sd {
     // ------------------------------------------------------------------------
 
     mod subscription {
-        #[test]
+        #[test_log::test]
         fn subscription_typestate() {
             // Cannot subscribe to unavailable service - enforced by typestate
             // subscribe() method only exists on ServiceProxy<_, Available>
@@ -189,7 +189,7 @@ mod sd {
             // Compile-time guarantee, documented here for traceability
         }
 
-        #[test]
+        #[test_log::test]
         fn subscription_cleanup_on_drop() {
             // Dropping a Subscription sends StopSubscribeEventgroup
             // Tested behaviorally in api_usage.rs::subscription_stops_on_drop
@@ -206,7 +206,7 @@ mod properties {
 
     proptest! {
         /// Comprehensive: All newtype IDs preserve their inner value
-        #[test]
+        #[test_log::test]
         fn newtypes_preserve_values(
             service in 0x0001u16..=0xFFFE,
             method in 0x0000u16..=0x7FFF,

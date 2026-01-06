@@ -52,7 +52,7 @@ impl Service for VersionedService {
 ///
 /// This test verifies that when a service is offered, it can be discovered,
 /// which implies correct SD message format.
-#[test]
+#[test_log::test]
 fn sd_offer_discovery_works() {
     covers!(
         feat_req_recentipsd_26,
@@ -115,7 +115,7 @@ fn sd_offer_discovery_works() {
 /// feat_req_recentipsd_39: SD flags field follows header
 ///
 /// Test that specific instance IDs are correctly transmitted in offers.
-#[test]
+#[test_log::test]
 fn sd_offer_with_specific_instance() {
     covers!(feat_req_recentipsd_47, feat_req_recentipsd_39);
 
@@ -174,7 +174,7 @@ fn sd_offer_with_specific_instance() {
 /// feat_req_recentipsd_47: Version information in OfferService entry
 ///
 /// Test that service versions are correctly communicated.
-#[test]
+#[test_log::test]
 fn sd_offer_with_version_info() {
     covers!(feat_req_recentipsd_47);
 
@@ -238,7 +238,7 @@ fn sd_offer_with_version_info() {
 ///
 /// When an offering handle is dropped, a StopOffer (OfferService with TTL=0)
 /// should be sent. Clients should then lose availability.
-#[test]
+#[test_log::test]
 fn sd_stop_offer_on_drop() {
     covers!(feat_req_recentipsd_47);
 
@@ -305,7 +305,7 @@ fn sd_stop_offer_on_drop() {
 // ============================================================================
 
 /// feat_req_recentipsd_47: Multiple services can be offered simultaneously
-#[test]
+#[test_log::test]
 fn sd_multiple_service_offers() {
     covers!(feat_req_recentipsd_47);
 
@@ -368,7 +368,7 @@ fn sd_multiple_service_offers() {
 ///
 /// With proper RPC socket architecture, multiple instances of the same service
 /// can now run on the same host, each with its own dedicated RPC socket.
-#[test]
+#[test_log::test]
 fn sd_multiple_instances_same_service() {
     covers!(feat_req_recentipsd_47, feat_req_recentipsd_782);
 
@@ -445,7 +445,7 @@ fn sd_multiple_instances_same_service() {
 /// feat_req_recentipsd_207: FindService entry for client-initiated discovery
 ///
 /// Client sends FindService, server responds with OfferService.
-#[test]
+#[test_log::test]
 fn sd_find_service_discovery() {
     covers!(feat_req_recentipsd_207);
 
@@ -511,7 +511,7 @@ fn sd_find_service_discovery() {
 /// feat_req_recentip_649: Session ID starts at 1
 ///
 /// Each SD message should have an incrementing session ID.
-#[test]
+#[test_log::test]
 fn sd_session_id_increments() {
     covers!(feat_req_recentipsd_26, feat_req_recentip_649);
 
@@ -580,7 +580,7 @@ fn sd_session_id_increments() {
 ///
 /// SD messages typically use multicast for initial discovery
 /// but unicast flag indicates unicast capability.
-#[test]
+#[test_log::test]
 fn sd_unicast_flag_handling() {
     covers!(feat_req_recentipsd_40, feat_req_recentipsd_453);
 
@@ -634,7 +634,7 @@ fn sd_unicast_flag_handling() {
 // ============================================================================
 
 /// Full integration: SD discovery followed by RPC
-#[test]
+#[test_log::test]
 fn sd_discovery_then_rpc() {
     covers!(
         feat_req_recentipsd_26,

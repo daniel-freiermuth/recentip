@@ -161,7 +161,7 @@ fn build_sd_offer_with_version(
 // ============================================================================
 
 /// [feat_req_recentip_300] RPC request contains protocol version 0x01 on wire
-#[test]
+#[test_log::test]
 fn rpc_request_has_protocol_version_0x01() {
     covers!(feat_req_recentip_300);
 
@@ -247,7 +247,7 @@ fn rpc_request_has_protocol_version_0x01() {
 ///
 /// Note: This test verifies that the runtime should reject messages with
 /// protocol version != 0x01. The runtime validates protocol version and drops invalid messages.
-#[test]
+#[test_log::test]
 fn server_ignores_wrong_protocol_version() {
     covers!(feat_req_recentip_300);
 
@@ -360,7 +360,7 @@ fn server_ignores_wrong_protocol_version() {
 // ============================================================================
 
 /// [feat_req_recentip_278] RPC request contains interface version at offset 13
-#[test]
+#[test_log::test]
 fn rpc_request_has_interface_version_at_offset_13() {
     covers!(feat_req_recentip_278);
 
@@ -442,7 +442,7 @@ fn rpc_request_has_interface_version_at_offset_13() {
 }
 
 /// [feat_req_recentip_278] SD offer contains major version in entry
-#[test]
+#[test_log::test]
 fn sd_offer_contains_major_version() {
     covers!(feat_req_recentip_278);
 
@@ -503,7 +503,7 @@ fn sd_offer_contains_major_version() {
 }
 
 /// [feat_req_recentip_278] Response preserves interface version from request
-#[test]
+#[test_log::test]
 fn response_preserves_interface_version() {
     covers!(feat_req_recentip_278);
 

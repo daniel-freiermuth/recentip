@@ -119,7 +119,7 @@ fn tcp_config_with_magic_cookies() -> RuntimeConfig {
 ///
 /// The TCP connection shall be opened by the client, when the first
 /// request is to be sent to the server.
-#[test]
+#[test_log::test]
 fn client_opens_tcp_connection() {
     covers!(feat_req_recentip_646);
 
@@ -186,7 +186,7 @@ fn client_opens_tcp_connection() {
 ///
 /// The client and server shall use a single TCP connection for
 /// all SOME/IP messages between them.
-#[test]
+#[test_log::test]
 fn single_tcp_connection_reused() {
     covers!(feat_req_recentip_644);
 
@@ -259,7 +259,7 @@ fn single_tcp_connection_reused() {
 ///
 /// The client is responsible for reestablishing the TCP connection
 /// after it has been closed or lost.
-#[test]
+#[test_log::test]
 
 fn client_reestablishes_connection() {
     covers!(feat_req_recentip_647);
@@ -339,7 +339,7 @@ fn client_reestablishes_connection() {
 ///
 /// Every SOME/IP payload shall have its own SOME/IP header (no batching
 /// of payloads under single header).
-#[test]
+#[test_log::test]
 
 fn each_message_has_own_header() {
     covers!(feat_req_recentip_585);
@@ -411,7 +411,7 @@ fn each_message_has_own_header() {
 ///
 /// All Transport Protocol Bindings shall support transporting more than one
 /// SOME/IP message in a single TCP segment.
-#[test]
+#[test_log::test]
 
 fn multiple_messages_per_segment_parsed() {
     covers!(feat_req_recentip_702);
@@ -483,7 +483,7 @@ fn multiple_messages_per_segment_parsed() {
 ///
 /// When the TCP connection is lost, outstanding requests shall be
 /// handled as if a timeout occurred.
-#[test]
+#[test_log::test]
 
 fn connection_lost_fails_pending_requests() {
     covers!(feat_req_recentip_326);
@@ -558,7 +558,7 @@ fn connection_lost_fails_pending_requests() {
 ///
 /// In order to allow resynchronization to SOME/IP over TCP in testing and
 /// debugging scenarios, implementations shall support Magic Cookies.
-#[test]
+#[test_log::test]
 fn magic_cookie_recognized() {
     covers!(feat_req_recentip_586);
 
@@ -617,7 +617,7 @@ fn magic_cookie_recognized() {
 ///
 /// Each TCP segment shall start with a SOME/IP Magic Cookie Message
 /// (when magic cookies are enabled).
-#[test]
+#[test_log::test]
 fn tcp_segment_starts_with_magic_cookie() {
     covers!(feat_req_recentip_591);
 
@@ -685,7 +685,7 @@ fn tcp_segment_starts_with_magic_cookie() {
 ///
 /// The implementation shall only include up to one SOME/IP Magic Cookie
 /// Message per TCP segment.
-#[test]
+#[test_log::test]
 fn only_one_magic_cookie_per_segment() {
     covers!(feat_req_recentip_592);
 
@@ -761,7 +761,7 @@ fn only_one_magic_cookie_per_segment() {
 ///
 /// The TCP binding of SOME/IP is heavily based on the UDP binding.
 /// The header format is identical.
-#[test]
+#[test_log::test]
 
 fn tcp_header_format_matches_udp() {
     covers!(feat_req_recentip_324);
@@ -826,7 +826,7 @@ fn tcp_header_format_matches_udp() {
 /// A lost TCP connection is just a transport event - the peer may still be
 /// running. Session IDs should continue incrementing, not reset to 1.
 /// Reboot detection happens at the SD layer via the Reboot Flag, not TCP.
-#[test]
+#[test_log::test]
 
 fn tcp_loss_does_not_reset_session_id() {
     // This test verifies the distinction between:
@@ -914,7 +914,7 @@ fn tcp_loss_does_not_reset_session_id() {
 /// The reboot flag transitions: Initially set to 1, cleared after session ID wraps.
 /// A new server starts with reboot=1 again, which signals reboot to clients who
 /// previously saw reboot=0.
-#[test]
+#[test_log::test]
 fn reboot_detection_resets_tcp_connections() {
     covers!(feat_req_recentipsd_872);
 
@@ -1001,7 +1001,7 @@ fn reboot_detection_resets_tcp_connections() {
 /// feat_req_recentip_325: Nagle's algorithm disabled
 ///
 /// Nagle's algorithm shall be disabled on TCP connections to reduce latency.
-#[test]
+#[test_log::test]
 
 fn tcp_nodelay_enabled() {
     covers!(feat_req_recentip_325);

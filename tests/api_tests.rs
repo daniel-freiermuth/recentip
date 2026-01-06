@@ -30,7 +30,7 @@ impl Service for AnotherService {
     const MINOR_VERSION: u32 = 1;
 }
 
-#[test]
+#[test_log::test]
 fn test_runtime_creation() {
     let mut sim = turmoil::Builder::new().build();
 
@@ -45,8 +45,7 @@ fn test_runtime_creation() {
 
     sim.run().unwrap();
 }
-
-#[test]
+#[test_log::test]
 fn test_find_service() {
     let mut sim = turmoil::Builder::new().build();
 
@@ -68,7 +67,7 @@ fn test_find_service() {
     sim.run().unwrap();
 }
 
-#[test]
+#[test_log::test]
 fn test_offer_service() {
     let mut sim = turmoil::Builder::new().build();
 
@@ -91,7 +90,7 @@ fn test_offer_service() {
     sim.run().unwrap();
 }
 
-#[test]
+#[test_log::test]
 fn test_instance_id() {
     // Test InstanceId::Any
     assert!(InstanceId::Any.is_any());
@@ -108,7 +107,7 @@ fn test_instance_id() {
     assert_eq!(InstanceId::new(0x0000), None); // Reserved
 }
 
-#[test]
+#[test_log::test]
 fn test_service_id() {
     // Valid IDs
     assert!(ServiceId::new(0x0001).is_some());
@@ -123,7 +122,7 @@ fn test_service_id() {
 // SERVICE DISCOVERY INTEGRATION TESTS
 // ============================================================================
 
-#[test]
+#[test_log::test]
 fn test_service_discovery_offer_find() {
     // Test that a client can discover a server's offered service
     let mut sim = turmoil::Builder::new().build();
@@ -173,7 +172,7 @@ fn test_service_discovery_offer_find() {
     sim.run().unwrap();
 }
 
-#[test]
+#[test_log::test]
 fn test_multiple_services() {
     // Test offering and finding multiple services
     let mut sim = turmoil::Builder::new().build();
@@ -219,7 +218,7 @@ fn test_multiple_services() {
     sim.run().unwrap();
 }
 
-#[test]
+#[test_log::test]
 fn test_specific_instance_id() {
     // Test finding a specific instance ID
     let mut sim = turmoil::Builder::new().build();
@@ -260,7 +259,7 @@ fn test_specific_instance_id() {
     sim.run().unwrap();
 }
 
-#[test]
+#[test_log::test]
 fn test_offering_handle_drop() {
     // Test that dropping an offering handle sends StopOffer
     let mut sim = turmoil::Builder::new().build();
@@ -286,7 +285,7 @@ fn test_offering_handle_drop() {
     sim.run().unwrap();
 }
 
-#[test]
+#[test_log::test]
 fn test_method_call_rpc() {
     // Test full RPC round-trip: client calls method, server responds
     let mut sim = turmoil::Builder::new()
@@ -367,7 +366,7 @@ impl Service for PubSubService {
 }
 
 /// Library auto-renewal test: Events continue beyond initial TTL.
-#[test]
+#[test_log::test]
 fn library_auto_renews_subscription() {
     let events_received = Arc::new(Mutex::new(Vec::<(Duration, String)>::new()));
     let events_clone = Arc::clone(&events_received);
@@ -439,7 +438,7 @@ fn library_auto_renews_subscription() {
     assert!(events_after_ttl >= 3, "Should receive events after initial TTL expires (auto-renewal). Got {} events after 2s", events_after_ttl);
 }
 
-#[test]
+#[test_log::test]
 fn test_event_subscription() {
     // Test event subscription: client subscribes, server sends events
     let mut sim = turmoil::Builder::new()
@@ -532,7 +531,7 @@ fn test_event_subscription() {
 /// Per SOME/IP-SD specification, when a server rejects a subscription it sends a NACK
 /// (SubscribeEventgroupAck with TTL=0 or SubscribeEventgroupNack type 0x07 with TTL=0).
 /// The client should propagate this rejection to the caller.
-#[test]
+#[test_log::test]
 fn subscribe_returns_error_on_nack() {
     use someip_runtime::EventgroupId;
 

@@ -51,7 +51,7 @@ impl Service for ServiceB {
 ///
 /// Service-Instances of the same Service are identified through different
 /// Instance IDs.
-#[test]
+#[test_log::test]
 fn multiple_instances_have_different_ids() {
     covers!(feat_req_recentip_636);
 
@@ -135,7 +135,7 @@ fn multiple_instances_have_different_ids() {
 ///
 /// NOTE: Per SOME/IP spec feat_req_recentipsd_782, multiple instances must use
 /// different endpoints (ports). This test uses separate hosts for each instance.
-#[test]
+#[test_log::test]
 fn messages_dispatched_to_correct_instance() {
     covers!(feat_req_recentip_648);
 
@@ -256,7 +256,7 @@ fn messages_dispatched_to_correct_instance() {
 /// Tests that two instances of the same service can run on the same host
 /// with proper message routing. This works because each instance gets its own
 /// dedicated RPC socket (separate from the SD socket on port 30490).
-#[test]
+#[test_log::test]
 fn two_instances_same_host() {
     covers!(feat_req_recentip_648);
     covers!(feat_req_recentipsd_782);
@@ -382,7 +382,7 @@ fn two_instances_same_host() {
 // ============================================================================
 
 /// feat_req_recentip_541: Different services have different Service IDs
-#[test]
+#[test_log::test]
 fn different_services_have_different_service_ids() {
     covers!(feat_req_recentip_541);
 
@@ -448,7 +448,7 @@ fn different_services_have_different_service_ids() {
 }
 
 /// feat_req_recentip_544: Different instances have unique Service ID + Instance ID
-#[test]
+#[test_log::test]
 fn instance_uniquely_identified_by_service_and_instance_id() {
     covers!(feat_req_recentip_544);
 
@@ -560,7 +560,7 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
 // ============================================================================
 
 /// Client can request ANY instance and get one
-#[test]
+#[test_log::test]
 fn client_can_request_any_instance() {
     covers!(feat_req_recentip_636);
 
@@ -614,7 +614,7 @@ fn client_can_request_any_instance() {
 }
 
 /// Client can request specific instance by ID
-#[test]
+#[test_log::test]
 fn client_can_request_specific_instance() {
     covers!(feat_req_recentip_636);
 
@@ -672,7 +672,7 @@ fn client_can_request_specific_instance() {
 }
 
 /// Requesting non-existent instance times out
-#[test]
+#[test_log::test]
 fn nonexistent_instance_not_found() {
     covers!(feat_req_recentip_636);
 

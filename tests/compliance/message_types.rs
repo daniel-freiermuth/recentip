@@ -50,7 +50,7 @@ impl Service for TestService {
 
 /// [feat_req_recentip_282] REQUEST gets RESPONSE with matching type
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 fn request_receives_response_type() {
     covers!(feat_req_recentip_282);
 
@@ -109,7 +109,7 @@ fn request_receives_response_type() {
 
 /// [feat_req_recentip_282] REQUEST can get ERROR type response
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 fn request_can_receive_error_type() {
     covers!(feat_req_recentip_282);
 
@@ -172,7 +172,7 @@ fn request_can_receive_error_type() {
 
 /// [feat_req_recentip_284] REQUEST_NO_RETURN gets no response
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 fn request_no_return_receives_no_response() {
     covers!(feat_req_recentip_284);
 
@@ -231,7 +231,7 @@ fn request_no_return_receives_no_response() {
 
 /// [feat_req_recentip_285] Server can send NOTIFICATION messages
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 fn server_sends_notification_type() {
     covers!(feat_req_recentip_285);
 
@@ -292,7 +292,7 @@ fn server_sends_notification_type() {
 
 /// [feat_req_recentip_103] TP-flagged request gets TP-flagged response
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_request_gets_tp_response() {
     covers!(feat_req_recentip_103);

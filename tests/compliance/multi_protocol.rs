@@ -85,7 +85,7 @@ impl Service for UdpService {
 /// - SD correctly advertises different endpoints per transport
 /// - Client uses TCP for TcpService, UDP for UdpService
 /// - Both RPC calls complete successfully
-#[test]
+#[test_log::test]
 fn client_talks_to_tcp_and_udp_services() {
     covers!(feat_req_recentip_324);
 
@@ -245,7 +245,7 @@ fn client_talks_to_tcp_and_udp_services() {
 /// NOTE: This test is currently ignored because TCP event delivery for pub/sub
 /// is not yet fully implemented. TCP RPC calls work correctly (see other tests),
 /// but the event delivery path for TCP subscriptions needs additional work.
-#[test]
+#[test_log::test]
 #[ignore = "TCP pub/sub event delivery not yet implemented"]
 fn mixed_transport_event_delivery() {
     let tcp_events = Arc::new(AtomicUsize::new(0));
@@ -456,7 +456,7 @@ fn mixed_transport_event_delivery() {
 /// - When a service only advertises TCP endpoint, client uses TCP
 /// - When a service only advertises UDP endpoint, client uses UDP
 /// - The runtime correctly parses the endpoint options from SD
-#[test]
+#[test_log::test]
 fn client_uses_advertised_transport() {
     covers!(feat_req_recentip_324, feat_req_recentip_644);
 
@@ -581,7 +581,7 @@ fn client_uses_advertised_transport() {
 ///
 /// Verifies that the runtime can handle multiple in-flight requests
 /// simultaneously when using different transports.
-#[test]
+#[test_log::test]
 fn concurrent_calls_different_transports() {
     let total_calls = Arc::new(AtomicUsize::new(0));
     let total_calls_server = Arc::clone(&total_calls);
@@ -719,7 +719,7 @@ fn concurrent_calls_different_transports() {
 ///
 /// This isolates the core issue: can a client with UDP config
 /// successfully call a service that advertises only TCP?
-#[test]
+#[test_log::test]
 fn udp_client_calls_tcp_server() {
     let call_succeeded = Arc::new(std::sync::Mutex::new(false));
     let call_flag = Arc::clone(&call_succeeded);
@@ -802,7 +802,7 @@ fn udp_client_calls_tcp_server() {
 /// Simple test: TCP client discovers TCP server, makes call
 ///
 /// Both client and server use TCP config - baseline for comparison
-#[test]
+#[test_log::test]
 fn tcp_client_calls_tcp_server() {
     let call_succeeded = Arc::new(std::sync::Mutex::new(false));
     let call_flag = Arc::clone(&call_succeeded);
@@ -902,7 +902,7 @@ fn tcp_client_calls_tcp_server() {
 /// - Client discovers the TCP endpoint via SD
 /// - Client uses TCP for the RPC call (overriding preference)
 /// - Call succeeds
-#[test]
+#[test_log::test]
 fn client_prefers_udp_but_connects_to_tcp_only_service() {
     covers!(feat_req_recentip_324);
 
@@ -997,7 +997,7 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
 /// - Client discovers the UDP endpoint via SD
 /// - Client uses UDP for the RPC call (overriding preference)
 /// - Call succeeds
-#[test]
+#[test_log::test]
 fn client_prefers_tcp_but_connects_to_udp_only_service() {
     covers!(feat_req_recentip_324);
 
@@ -1095,7 +1095,7 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
 /// Expected:
 /// - Subscription succeeds
 /// - Events are delivered
-#[test]
+#[test_log::test]
 fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
     covers!(feat_req_recentip_324);
 
@@ -1227,7 +1227,7 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
 /// - Client discovers the UDP endpoint via SD
 /// - Subscription uses UDP (overriding TCP preference)
 /// - Events are delivered
-#[test]
+#[test_log::test]
 fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
     covers!(feat_req_recentip_324);
 
@@ -1355,7 +1355,7 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
 ///
 /// NOTE: This test is currently ignored because TCP pub/sub event delivery
 /// is not yet fully implemented. The RPC equivalent test passes (client_prefers_udp_but_connects_to_tcp_only_service).
-#[test]
+#[test_log::test]
 #[ignore = "TCP pub/sub event delivery not yet implemented"]
 fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
     covers!(feat_req_recentip_324);
@@ -1491,7 +1491,7 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
 ///
 /// This test verifies that `preferred_transport` is respected when both are available
 /// by checking `proxy.transport()` after discovery.
-#[test]
+#[test_log::test]
 fn preferred_transport_respected_when_both_available() {
     covers!(feat_req_recentip_324);
 
@@ -1667,7 +1667,7 @@ fn preferred_transport_respected_when_both_available() {
 /// NOTE: This test is ignored because:
 /// 1. TCP pub/sub event delivery is not yet fully implemented
 /// 2. Verifying which transport was used requires introspection
-#[test]
+#[test_log::test]
 #[ignore = "TCP pub/sub not implemented + requires transport introspection"]
 fn preferred_transport_respected_for_pubsub_when_both_available() {
     covers!(feat_req_recentip_324);
@@ -1833,7 +1833,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
     assert_eq!(udp_count, 1, "UDP-preferring client should have subscribed once");
 }
 
-#[test]
+#[test_log::test]
 fn handle_call_ignores_preferred_transport_for_dual_stack() {
     covers!(feat_req_recentip_324);
 

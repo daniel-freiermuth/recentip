@@ -38,7 +38,7 @@ impl Service for AnotherService {
 // ============================================================================
 
 /// Test that monitor_sd() receives ServiceAvailable events when a service is offered.
-#[test]
+#[test_log::test]
 fn monitor_sd_receives_service_available() {
     let event_received = Arc::new(Mutex::new(None::<SdEvent>));
     let event_clone = Arc::clone(&event_received);
@@ -95,7 +95,7 @@ fn monitor_sd_receives_service_available() {
 }
 
 /// Test that monitor_sd() receives ServiceUnavailable events when an offering is dropped.
-#[test]
+#[test_log::test]
 fn monitor_sd_receives_service_unavailable() {
     let events_received = Arc::new(Mutex::new(Vec::<SdEvent>::new()));
     let events_clone = Arc::clone(&events_received);
@@ -167,7 +167,7 @@ fn monitor_sd_receives_service_unavailable() {
 }
 
 /// Test that ServiceAvailable event contains accurate metadata.
-#[test]
+#[test_log::test]
 fn monitor_sd_event_metadata_accuracy() {
     let event_received = Arc::new(Mutex::new(None::<SdEvent>));
     let event_clone = Arc::clone(&event_received);
@@ -234,7 +234,7 @@ fn monitor_sd_event_metadata_accuracy() {
 // ============================================================================
 
 /// Test that multiple monitors all receive the same events.
-#[test]
+#[test_log::test]
 fn monitor_sd_multiple_monitors_receive_events() {
     let events_monitor1 = Arc::new(Mutex::new(Vec::<SdEvent>::new()));
     let events_monitor2 = Arc::new(Mutex::new(Vec::<SdEvent>::new()));
@@ -310,7 +310,7 @@ fn monitor_sd_multiple_monitors_receive_events() {
 }
 
 /// Test that multiple monitors on the SAME runtime all receive events.
-#[test]
+#[test_log::test]
 fn monitor_sd_multiple_monitors_same_runtime() {
     let events_monitor1 = Arc::new(Mutex::new(Vec::<SdEvent>::new()));
     let events_monitor2 = Arc::new(Mutex::new(Vec::<SdEvent>::new()));
@@ -396,7 +396,7 @@ fn monitor_sd_multiple_monitors_same_runtime() {
 // ============================================================================
 
 /// Test that monitor receives events from multiple different services.
-#[test]
+#[test_log::test]
 fn monitor_sd_multiple_services() {
     let events_received = Arc::new(Mutex::new(Vec::<SdEvent>::new()));
     let events_clone = Arc::clone(&events_received);
@@ -473,7 +473,7 @@ fn monitor_sd_multiple_services() {
 ///
 /// Tests that dropping an offering results in ServiceUnavailable.
 /// Note: True TTL expiration is hard to test since cyclic offers renew automatically.
-#[test]
+#[test_log::test]
 fn monitor_sd_receives_service_expired() {
     let events_received = Arc::new(Mutex::new(Vec::<SdEvent>::new()));
     let events_clone = Arc::clone(&events_received);
@@ -555,7 +555,7 @@ fn monitor_sd_receives_service_expired() {
 // ============================================================================
 
 /// Test that dropping a monitor receiver doesn't affect other monitors.
-#[test]
+#[test_log::test]
 fn monitor_sd_dropped_receiver_cleanup() {
     let events_received = Arc::new(Mutex::new(Vec::<SdEvent>::new()));
     let events_clone = Arc::clone(&events_received);
@@ -611,7 +611,7 @@ fn monitor_sd_dropped_receiver_cleanup() {
 }
 
 /// Test that monitor_sd works even when called before any services exist.
-#[test]
+#[test_log::test]
 fn monitor_sd_before_services_exist() {
     let event_received = Arc::new(Mutex::new(None::<SdEvent>));
     let event_clone = Arc::clone(&event_received);

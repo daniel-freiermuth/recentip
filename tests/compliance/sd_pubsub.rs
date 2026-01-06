@@ -48,7 +48,7 @@ impl Service for PubSubService {
 /// [feat_req_recentipsd_428] OfferService is trigger for Subscriptions.
 ///
 /// When a server offers a service, clients can subscribe to eventgroups.
-#[test]
+#[test_log::test]
 fn client_registers_for_events_via_sd() {
     covers!(feat_req_recentipsd_422, feat_req_recentipsd_428);
 
@@ -96,7 +96,7 @@ fn client_registers_for_events_via_sd() {
 /// [feat_req_recentipsd_429] Server shall send OfferService on startup to discover interested clients.
 ///
 /// When server starts, it sends OfferService which clients can respond to with Subscribe.
-#[test]
+#[test_log::test]
 fn server_offers_on_startup_to_discover_clients() {
     covers!(feat_req_recentipsd_429);
 
@@ -140,7 +140,7 @@ fn server_offers_on_startup_to_discover_clients() {
 /// [feat_req_recentipsd_431] Client shall respond to OfferService with SubscribeEventgroup.
 ///
 /// Client responds to OfferService by sending SubscribeEventgroup.
-#[test]
+#[test_log::test]
 fn client_responds_to_offer_with_subscribe() {
     covers!(feat_req_recentipsd_430, feat_req_recentipsd_431);
 
@@ -203,7 +203,7 @@ fn client_responds_to_offer_with_subscribe() {
 ///
 /// Wire-level verification of SubscribeEventgroupAck (feat_req_recentipsd_441) is in
 /// `wire_format::subscribe_ack_entry_type`.
-#[test]
+#[test_log::test]
 fn subscribe_resolves_on_ack() {
 
     let ack_received = Arc::new(Mutex::new(false));
@@ -255,7 +255,7 @@ fn subscribe_resolves_on_ack() {
 /// [feat_req_recentipsd_432] Server must keep state of SubscribeEventgroup to know if events should be sent.
 ///
 /// Two clients subscribe to different eventgroups; each receives only their eventgroup's events.
-#[test]
+#[test_log::test]
 fn server_tracks_subscription_state() {
     covers!(feat_req_recentipsd_432);
 
@@ -357,7 +357,7 @@ fn server_tracks_subscription_state() {
 /// [feat_req_recentipsd_433] Client shall deregister by sending StopSubscribeEventgroup (TTL=0).
 ///
 /// Dropping subscription sends StopSubscribeEventgroup.
-#[test]
+#[test_log::test]
 fn client_deregisters_with_stop_subscribe() {
     covers!(feat_req_recentipsd_433);
 
@@ -432,7 +432,7 @@ fn client_deregisters_with_stop_subscribe() {
 /// [feat_req_recentipsd_107] Initial events should be sent after SubscribeEventgroupAck.
 ///
 /// After acknowledging subscription, server sends initial field values.
-#[test]
+#[test_log::test]
 fn server_sends_initial_events_after_ack() {
     covers!(feat_req_recentipsd_691, feat_req_recentipsd_107);
 
@@ -494,7 +494,7 @@ fn server_sends_initial_events_after_ack() {
 /// [feat_req_recentipsd_1192] Client shall not request Initial Events if TTL not expired.
 ///
 /// Initial events are only requested on first subscription, not renewals.
-#[test]
+#[test_log::test]
 fn initial_events_only_on_first_subscribe() {
     covers!(feat_req_recentipsd_1191, feat_req_recentipsd_1192);
 
@@ -569,7 +569,7 @@ fn initial_events_only_on_first_subscribe() {
 /// [feat_req_recentipsd_1168] Server shall not send duplicate events for overlapping eventgroups.
 ///
 /// If client subscribes to multiple eventgroups with same event, no duplicates sent.
-#[test]
+#[test_log::test]
 fn no_duplicate_events_for_overlapping_eventgroups() {
     covers!(feat_req_recentipsd_1168);
 
@@ -640,7 +640,7 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
 /// [feat_req_recentipsd_1167] Server shall send initial events separately for different SD messages.
 ///
 /// Initial events behavior for multiple eventgroups.
-#[test]
+#[test_log::test]
 fn initial_events_for_multiple_eventgroups() {
     covers!(feat_req_recentipsd_1166, feat_req_recentipsd_1167);
 
@@ -708,7 +708,7 @@ fn initial_events_for_multiple_eventgroups() {
 /// [feat_req_recentipsd_435] Server shall delete subscription if RECENT/IP error received.
 ///
 /// Server cleans up subscription on error.
-#[test]
+#[test_log::test]
 fn server_deletes_subscription_on_error() {
     covers!(feat_req_recentipsd_435);
 
@@ -755,7 +755,7 @@ fn server_deletes_subscription_on_error() {
 /// [feat_req_recentipsd_437] Server shall delete subscriptions when link goes down.
 ///
 /// Link loss handling on server side.
-#[test]
+#[test_log::test]
 fn server_handles_link_loss() {
     covers!(feat_req_recentipsd_436, feat_req_recentipsd_437);
 
@@ -801,7 +801,7 @@ fn server_handles_link_loss() {
 /// [feat_req_recentipsd_439] Client shall resubscribe if no events received for configured time.
 ///
 /// Timeout-based resubscription.
-#[test]
+#[test_log::test]
 fn client_resubscribes_on_timeout() {
     covers!(feat_req_recentipsd_439);
 
@@ -846,7 +846,7 @@ fn client_resubscribes_on_timeout() {
 /// [feat_req_recentipsd_440] Link-up shall start Initial Wait Phase and trigger SubscribeEventgroup.
 ///
 /// Client subscribes after link comes up.
-#[test]
+#[test_log::test]
 fn client_subscribes_after_link_up() {
     covers!(feat_req_recentipsd_440);
 
@@ -900,7 +900,7 @@ fn client_subscribes_after_link_up() {
 /// [feat_req_recentipsd_1182] Client shall have UDP port ready before sending SubscribeEventgroup.
 ///
 /// Client must be ready to receive before subscribing.
-#[test]
+#[test_log::test]
 fn client_udp_port_ready_before_subscribe() {
     covers!(feat_req_recentipsd_1182);
 
@@ -959,7 +959,7 @@ fn client_udp_port_ready_before_subscribe() {
 /// [feat_req_recentipsd_767] Client shall open TCP connection before SubscribeEventgroup for reliable.
 ///
 /// TCP must be ready before subscribing to reliable eventgroups.
-#[test]
+#[test_log::test]
 fn client_tcp_ready_before_subscribe_reliable() {
     covers!(feat_req_recentipsd_767);
 
@@ -1019,7 +1019,7 @@ fn client_tcp_ready_before_subscribe_reliable() {
 /// [feat_req_recentipsd_828] Timer for cyclic SubscribeEventgroup shall be reset on OfferService.
 ///
 /// Receiving OfferService resets subscription renewal timer.
-#[test]
+#[test_log::test]
 fn subscribe_timer_reset_on_offer() {
     covers!(feat_req_recentipsd_828);
 
@@ -1089,7 +1089,7 @@ fn subscribe_timer_reset_on_offer() {
 /// [feat_req_recentipsd_829] If no cyclic SubscribeEventgroups configured, timer stays off.
 ///
 /// Cyclic subscription renewal is optional.
-#[test]
+#[test_log::test]
 fn no_cyclic_subscribe_if_not_configured() {
     covers!(feat_req_recentipsd_829);
 
@@ -1149,7 +1149,7 @@ fn no_cyclic_subscribe_if_not_configured() {
 /// [feat_req_recentipsd_444] Implicit (pre-configured) registration shall be supported.
 ///
 /// Some deployments use pre-configured subscriptions.
-#[test]
+#[test_log::test]
 fn implicit_registration_supported() {
     covers!(feat_req_recentipsd_444);
 
@@ -1204,7 +1204,7 @@ fn implicit_registration_supported() {
 /// [feat_req_recentipsd_823] State diagram for adaptive unicast/multicast.
 ///
 /// Verifies the overall pub/sub state machine flow.
-#[test]
+#[test_log::test]
 fn pubsub_state_machine_flow() {
     covers!(
         feat_req_recentipsd_442,

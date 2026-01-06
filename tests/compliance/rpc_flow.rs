@@ -159,7 +159,7 @@ fn build_fire_and_forget(
 /// Fire&Forget messages (REQUEST_NO_RETURN) shall not return an error.
 /// This test verifies that when a server receives a fire-and-forget request,
 /// it does NOT send any response or error message back.
-#[test]
+#[test_log::test]
 fn fire_and_forget_no_response_or_error() {
     covers!(feat_req_recentip_348, feat_req_recentip_654);
 
@@ -290,7 +290,7 @@ fn fire_and_forget_no_response_or_error() {
 ///
 /// When multiple requests are pending and responses arrive out of order,
 /// each response must be matched to its correct request using the Request ID.
-#[test]
+#[test_log::test]
 fn concurrent_requests_matched_by_request_id() {
     covers!(feat_req_recentip_338, feat_req_recentip_88);
 
@@ -377,7 +377,7 @@ fn concurrent_requests_matched_by_request_id() {
 ///
 /// One communication partner sends a request and receives a response.
 /// This is a basic integration test for the request/response pattern.
-#[test]
+#[test_log::test]
 fn request_triggers_response() {
     covers!(feat_req_recentip_328, feat_req_recentip_329);
 
@@ -444,7 +444,7 @@ fn request_triggers_response() {
 ///
 /// When the server cannot process a request successfully, it responds with
 /// an ERROR message type (0x81) instead of RESPONSE (0x80).
-#[test]
+#[test_log::test]
 fn request_can_receive_error_response() {
     covers!(feat_req_recentip_141);
 

@@ -62,7 +62,7 @@ fn parse_sd_message(data: &[u8]) -> Option<(Header, SdMessage)> {
 /// feat_req_recentipsd_142: SD Method ID is 0x8100
 /// feat_req_recentipsd_144: SD Client ID is 0x0000
 /// feat_req_recentip_103: SD uses NOTIFICATION (0x02) message type
-#[test]
+#[test_log::test]
 fn sd_offer_wire_format() {
     covers!(
         feat_req_recentipsd_141,
@@ -151,7 +151,7 @@ fn sd_offer_wire_format() {
 }
 
 /// feat_req_recentipsd_27: SD uses UDP port 30490
-#[test]
+#[test_log::test]
 fn sd_uses_port_30490() {
     covers!(feat_req_recentipsd_27);
 
@@ -211,7 +211,7 @@ fn sd_uses_port_30490() {
 }
 
 /// feat_req_recentipsd_147: OfferService entry type = 0x01
-#[test]
+#[test_log::test]
 fn sd_offer_entry_type_wire_format() {
     covers!(feat_req_recentipsd_147);
 
@@ -278,7 +278,7 @@ fn sd_offer_entry_type_wire_format() {
 /// feat_req_recentipsd_252: OfferService entry type shall be used to offer a service
 ///
 /// Verify OfferService entry contains configured offer_ttl on the wire
-#[test]
+#[test_log::test]
 fn offer_service_ttl_on_wire() {
     covers!(feat_req_recentipsd_47, feat_req_recentipsd_252);
     const CUSTOM_OFFER_TTL: u32 = 1800; // 30 minutes
@@ -353,7 +353,7 @@ fn offer_service_ttl_on_wire() {
 /// feat_req_recentipsd_431: Client sends SubscribeEventgroup entries
 ///
 /// Verify SubscribeEventgroup entry contains configured subscribe_ttl on the wire
-#[test]
+#[test_log::test]
 fn subscribe_eventgroup_ttl_on_wire() {
     covers!(feat_req_recentipsd_109, feat_req_recentipsd_431);
     const CUSTOM_SUBSCRIBE_TTL: u32 = 900; // 15 minutes
@@ -448,7 +448,7 @@ fn subscribe_eventgroup_ttl_on_wire() {
 /// feat_req_recentipsd_238: FindService entry type shall be used for finding service instances
 ///
 /// Verify FindService entry contains configured find_ttl on the wire
-#[test]
+#[test_log::test]
 fn find_service_ttl_on_wire() {
     covers!(feat_req_recentipsd_47, feat_req_recentipsd_238);
     const CUSTOM_FIND_TTL: u32 = 600; // 10 minutes
@@ -523,7 +523,7 @@ fn find_service_ttl_on_wire() {
 
 /// feat_req_recentipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
 /// Verify that the server echoes the client's TTL in the Ack, not the server's offer_ttl
-#[test]
+#[test_log::test]
 fn subscribe_ack_echoes_client_ttl_123() {
     covers!(feat_req_recentipsd_614);
     const CLIENT_SUBSCRIBE_TTL: u32 = 123; // Unusual value to ensure it's echoed, not server's default
@@ -637,7 +637,7 @@ fn subscribe_ack_echoes_client_ttl_123() {
 
 /// feat_req_recentipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
 /// Verify that the server echoes the client's TTL in the Ack, not the server's offer_ttl
-#[test]
+#[test_log::test]
 fn subscribe_ack_echoes_client_ttl_1000_000() {
     covers!(feat_req_recentipsd_614);
     const CLIENT_SUBSCRIBE_TTL: u32 = 1000_000; // Unusual value to ensure it's echoed, not server's default
@@ -751,7 +751,7 @@ fn subscribe_ack_echoes_client_ttl_1000_000() {
 
 /// feat_req_recentipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
 /// Verify that the server echoes the client's TTL in the Ack, not the server's offer_ttl
-#[test]
+#[test_log::test]
 fn subscribe_ack_echoes_client_ttl_1() {
     covers!(feat_req_recentipsd_614);
     const CLIENT_SUBSCRIBE_TTL: u32 = 1; // Unusual value to ensure it's echoed, not server's default
@@ -870,7 +870,7 @@ fn subscribe_ack_echoes_client_ttl_1() {
 /// feat_req_recentip_103: REQUEST (0x00) message type on wire
 /// feat_req_recentip_60: Message ID = Service ID || Method ID
 /// feat_req_recentip_45: Header is exactly 16 bytes
-#[test]
+#[test_log::test]
 fn rpc_request_wire_format() {
     covers!(
         feat_req_recentip_103,
@@ -995,7 +995,7 @@ fn rpc_request_wire_format() {
 
 /// feat_req_recentip_103: RESPONSE (0x80) message type on wire
 /// feat_req_recentip_711: Response preserves Request ID
-#[test]
+#[test_log::test]
 fn rpc_response_wire_format() {
     covers!(feat_req_recentip_103, feat_req_recentip_711);
 
@@ -1121,7 +1121,7 @@ fn rpc_response_wire_format() {
 ///
 /// Verifies that when the library sends a fire-and-forget message,
 /// the raw bytes on the wire contain message type 0x01 (REQUEST_NO_RETURN).
-#[test]
+#[test_log::test]
 fn fire_and_forget_wire_format() {
     covers!(feat_req_recentip_103, feat_req_recentip_284);
 
@@ -1246,7 +1246,7 @@ fn fire_and_forget_wire_format() {
 
 /// Verify that a raw REQUEST_NO_RETURN packet is correctly handled by the library.
 /// Server receives fire-and-forget from raw socket and dispatches as FireForget event.
-#[test]
+#[test_log::test]
 fn fire_and_forget_received_wire_format() {
     covers!(feat_req_recentip_103, feat_req_recentip_284);
 
@@ -1351,7 +1351,7 @@ fn fire_and_forget_received_wire_format() {
 
 /// feat_req_recentip_45: SOME/IP header is exactly 16 bytes
 /// feat_req_recentip_42: Big-endian encoding verification
-#[test]
+#[test_log::test]
 fn header_size_and_endianness_on_wire() {
     covers!(feat_req_recentip_45, feat_req_recentip_42);
 
@@ -1435,7 +1435,7 @@ fn header_size_and_endianness_on_wire() {
 
 /// feat_req_recentip_677: Session ID increments across calls
 /// feat_req_recentip_649: Session ID starts at non-zero value
-#[test]
+#[test_log::test]
 fn session_id_increment_on_wire() {
     covers!(feat_req_recentip_677, feat_req_recentip_649);
 
@@ -1595,7 +1595,7 @@ struct EventgroupEntry {
 ///
 /// When a client subscribes to an eventgroup, the SD message must contain
 /// an entry with type 0x06 (SubscribeEventgroup).
-#[test]
+#[test_log::test]
 fn subscribe_eventgroup_entry_type() {
     covers!(feat_req_recentipsd_576);
 
@@ -1700,7 +1700,7 @@ fn subscribe_eventgroup_entry_type() {
 ///
 /// When a server acknowledges a subscription, the SD message must contain
 /// an entry with type 0x07 (SubscribeEventgroupAck).
-#[test]
+#[test_log::test]
 fn subscribe_ack_entry_type() {
     covers!(feat_req_recentipsd_576);
     covers!(feat_req_recentipsd_441);
@@ -1842,7 +1842,7 @@ fn subscribe_ack_entry_type() {
 /// well past the point where a finite TTL would have expired.
 /// Uses turmoil's simulated time to fast-forward through what would be
 /// the expiration period.
-#[test]
+#[test_log::test]
 fn subscription_max_ttl_doesnt_expire() {
     covers!(feat_req_recentipsd_431);
 
@@ -1983,7 +1983,7 @@ fn subscription_max_ttl_doesnt_expire() {
 /// Server must expire subscriptions when TTL elapses without renewal.
 /// Raw client subscribes with short TTL, server sends events continuously,
 /// subscription expires (no renewal sent), events should stop.
-#[test]
+#[test_log::test]
 fn subscription_ttl_expiration_stops_events() {
     covers!(feat_req_recentipsd_445);
 
@@ -2112,7 +2112,7 @@ fn subscription_ttl_expiration_stops_events() {
 ///
 /// When a client unsubscribes (drops subscription), it sends a SubscribeEventgroup
 /// entry with TTL=0, which means StopSubscribeEventgroup.
-#[test]
+#[test_log::test]
 fn stop_subscribe_has_ttl_zero() {
     covers!(feat_req_recentipsd_178);
 
@@ -2596,7 +2596,7 @@ fn parse_sd_flags(data: &[u8]) -> Option<(bool, bool)> {
 ///
 /// When a runtime starts, it must set the reboot flag (bit 7 of SD flags)
 /// to 1 in all SD messages until the session ID wraps around.
-#[test]
+#[test_log::test]
 fn sd_reboot_flag_set_after_startup() {
     covers!(feat_req_recentipsd_41);
 
@@ -2674,7 +2674,7 @@ fn sd_reboot_flag_set_after_startup() {
 /// NOTE: Due to turmoil simulation timing, we may not always capture the very
 /// first packet. This test verifies that session_id=1 exists among the first
 /// few captured messages, which proves the runtime started counting at 1.
-#[test]
+#[test_log::test]
 fn sd_session_starts_at_one() {
     covers!(feat_req_recentipsd_41, feat_req_recentip_649);
 
@@ -2763,7 +2763,7 @@ fn sd_session_starts_at_one() {
 ///
 /// NOTE: This test simulates the wraparound scenario by checking the runtime
 /// state. Full integration would require 65535 actual messages.
-#[test]
+#[test_log::test]
 fn sd_reboot_flag_clears_after_wraparound() {
     covers!(feat_req_recentipsd_41, feat_req_recentipsd_764);
 
@@ -2834,7 +2834,7 @@ fn sd_reboot_flag_clears_after_wraparound() {
 /// Per the specification, session ID counters must be maintained separately
 /// for multicast and unicast SD messages. A peer receiving both types
 /// should see independent session sequences.
-#[test]
+#[test_log::test]
 fn sd_separate_multicast_unicast_sessions() {
     covers!(feat_req_recentipsd_765);
 
@@ -2942,7 +2942,7 @@ fn sd_separate_multicast_unicast_sessions() {
 /// Client should use a dedicated RPC socket with ephemeral port (like servers do)
 ///
 /// **Test Result:** PASSES - verifies correct implementation
-#[test]
+#[test_log::test]
 fn client_rpc_must_not_use_sd_port() {
     covers!(
         feat_req_recentip_676,
@@ -3214,7 +3214,7 @@ fn build_sd_subscribe_with_udp_endpoint(
 ///
 /// Current behavior: Server incorrectly accepts and sends ACK (falling back to source address)
 /// Expected behavior: Server rejects with NACK (TTL=0, entry type 0x07)
-#[test]
+#[test_log::test]
 fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
     covers!(feat_req_recentipsd_1144, feat_req_recentipsd_1137);
 
@@ -3353,7 +3353,7 @@ fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
 ///
 /// When a server offers events only via TCP, but a client sends a SubscribeEventgroup
 /// with only a UDP endpoint option, the server MUST respond with a SubscribeEventgroupNack.
-#[test]
+#[test_log::test]
 fn subscribe_udp_endpoint_to_tcp_only_server_should_nack() {
     covers!(feat_req_recentipsd_1144, feat_req_recentipsd_1137);
 

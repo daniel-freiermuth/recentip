@@ -121,12 +121,12 @@ impl Service for TestService {
 mod tp_header_tests {
     use super::*;
 
-    #[test]
+    #[test_log::test]
     fn tp_header_size_is_4_bytes() {
         assert_eq!(TpHeader::SIZE, 4);
     }
 
-    #[test]
+    #[test_log::test]
     fn tp_header_first_segment() {
         // First segment: offset=0, more_segments=true
         let header = TpHeader {
@@ -143,7 +143,7 @@ mod tp_header_tests {
         assert_eq!(parsed, header);
     }
 
-    #[test]
+    #[test_log::test]
     fn tp_header_middle_segment() {
         // Middle segment: offset=1392 (0x570), more_segments=true
         // offset_field = 1392 / 16 = 87 = 0x57
@@ -162,7 +162,7 @@ mod tp_header_tests {
         assert_eq!(parsed, header);
     }
 
-    #[test]
+    #[test_log::test]
     fn tp_header_last_segment() {
         // Last segment: offset=2784 (0xAE0), more_segments=false
         let header = TpHeader {
@@ -180,7 +180,7 @@ mod tp_header_tests {
         assert_eq!(parsed, header);
     }
 
-    #[test]
+    #[test_log::test]
     fn tp_header_large_offset() {
         // Large offset near max: offset = 0x0FFFFFF0 (268,435,440 bytes)
         let header = TpHeader {
@@ -195,7 +195,7 @@ mod tp_header_tests {
         assert!(!parsed.more_segments);
     }
 
-    #[test]
+    #[test_log::test]
     fn tp_header_offset_must_be_16_aligned() {
         // Offsets must be multiples of 16 (lower 4 bits always 0)
         for offset in [0, 16, 32, 1392, 2784, 0x1000] {
@@ -211,7 +211,7 @@ mod tp_header_tests {
         }
     }
 
-    #[test]
+    #[test_log::test]
     fn tp_header_reserved_ignored_on_receive() {
         // Reserved shall be ignored by receiver
         // Even if reserved bits are set, parsing should succeed
@@ -222,7 +222,7 @@ mod tp_header_tests {
         // reserved bits are captured but should be ignored for validation
     }
 
-    #[test]
+    #[test_log::test]
     fn tp_header_roundtrip() {
         let headers = [
             TpHeader {
@@ -264,7 +264,7 @@ mod tp_header_tests {
 /// When sending a SOME/IP message with payload > 1400 bytes over UDP,
 /// the implementation must automatically segment it using SOME/IP-TP.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn large_udp_messages_use_tp() {
     covers!(feat_req_recentiptp_760);
@@ -331,7 +331,7 @@ fn large_udp_messages_use_tp() {
 ///
 /// All segments of a TP message must share the same Session ID.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_segments_share_session_id() {
     covers!(feat_req_recentiptp_762, feat_req_recentiptp_763);
@@ -343,7 +343,7 @@ fn tp_segments_share_session_id() {
 ///
 /// All TP segments must have the TP flag bit (0x20) set in message type.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_flag_set_on_segments() {
     covers!(feat_req_recentiptp_765);
@@ -354,7 +354,7 @@ fn tp_flag_set_on_segments() {
 ///
 /// TP header must follow the specified format: offset, reserved, more_segments.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_header_format() {
     covers!(feat_req_recentiptp_766);
@@ -365,7 +365,7 @@ fn tp_header_format() {
 ///
 /// The offset field in TP header must be in multiples of 16 bytes.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_offset_is_16_aligned() {
     covers!(feat_req_recentiptp_768);
@@ -376,7 +376,7 @@ fn tp_offset_is_16_aligned() {
 ///
 /// The More Segments flag must be set on all segments except the last.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_more_segments_flag() {
     covers!(feat_req_recentiptp_770);
@@ -387,7 +387,7 @@ fn tp_more_segments_flag() {
 ///
 /// All segment payloads except the last must be multiples of 16 bytes.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_segment_length_alignment() {
     covers!(feat_req_recentiptp_772);
@@ -398,7 +398,7 @@ fn tp_segment_length_alignment() {
 ///
 /// Maximum segment size is 1392 bytes (87 x 16).
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_max_segment_size() {
     covers!(feat_req_recentiptp_773);
@@ -409,7 +409,7 @@ fn tp_max_segment_size() {
 ///
 /// Receiver must correctly reassemble TP segments into original message.
 #[cfg(feature = "turmoil")]
-#[test]
+#[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_reassembly() {
     covers!(feat_req_recentiptp_760);

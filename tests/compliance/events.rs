@@ -133,7 +133,7 @@ fn build_sd_offer(
 /// SOME/IP is used only for transporting the updated value and not for
 /// the publish/subscribe management (which is done by SD).
 /// This test verifies that event payloads contain the actual data.
-#[test]
+#[test_log::test]
 fn event_transports_value_data() {
     covers!(feat_req_recentip_353);
 
@@ -212,7 +212,7 @@ fn event_transports_value_data() {
 ///
 /// Raw client that doesn't subscribe should not receive event notifications.
 /// Server sends events but only subscribers should receive them.
-#[test]
+#[test_log::test]
 fn events_not_sent_to_non_subscribers() {
     covers!(feat_req_recentip_807);
 
@@ -334,7 +334,7 @@ fn events_not_sent_to_non_subscribers() {
 ///
 /// After unsubscribing (dropping subscription), client should not receive
 /// further events for that eventgroup.
-#[test]
+#[test_log::test]
 fn unsubscribe_stops_event_delivery() {
     covers!(feat_req_recentip_807);
 
@@ -421,7 +421,7 @@ fn unsubscribe_stops_event_delivery() {
 /// [feat_req_recentip_352] Event uses NOTIFICATION message type (0x02)
 ///
 /// This verifies at the wire level that events are sent as NOTIFICATION.
-#[test]
+#[test_log::test]
 fn event_uses_notification_message_type_on_wire() {
     covers!(feat_req_recentip_352, feat_req_recentip_684);
 

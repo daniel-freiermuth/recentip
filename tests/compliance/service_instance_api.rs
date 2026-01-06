@@ -50,7 +50,7 @@ impl Service for TemperatureService {
 // ============================================================================
 
 /// Test: bind() returns ServiceInstance<Bound>, announce() transitions to Announced
-#[test]
+#[test_log::test]
 fn test_bind_returns_bound_instance() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let server_ran_clone = server_ran.clone();
@@ -91,7 +91,7 @@ fn test_bind_returns_bound_instance() {
 }
 
 /// Test: announce() transitions Bound → Announced
-#[test]
+#[test_log::test]
 fn test_announce_transitions_to_announced() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let server_ran_clone = server_ran.clone();
@@ -134,7 +134,7 @@ fn test_announce_transitions_to_announced() {
 }
 
 /// Test: stop_announcing() transitions Announced → Bound
-#[test]
+#[test_log::test]
 fn test_stop_announcing_transitions_to_bound() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let server_ran_clone = server_ran.clone();
@@ -179,7 +179,7 @@ fn test_stop_announcing_transitions_to_bound() {
 }
 
 /// Test: full lifecycle Bound → Announced → Bound
-#[test]
+#[test_log::test]
 fn test_full_lifecycle() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let server_ran_clone = server_ran.clone();
@@ -230,7 +230,7 @@ fn test_full_lifecycle() {
 // ============================================================================
 
 /// Test: client cannot discover service that is only Bound (not Announced)
-#[test]
+#[test_log::test]
 fn test_bound_service_not_discoverable() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -300,7 +300,7 @@ fn test_bound_service_not_discoverable() {
 }
 
 /// Test: client CAN discover service after announce()
-#[test]
+#[test_log::test]
 fn test_announced_service_is_discoverable() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -372,7 +372,7 @@ fn test_announced_service_is_discoverable() {
 }
 
 /// Test: client loses service after stop_announcing()
-#[test]
+#[test_log::test]
 fn test_service_disappears_after_stop_announcing() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -470,7 +470,7 @@ fn test_service_disappears_after_stop_announcing() {
 // ============================================================================
 
 /// Test: notify_static() works without announce()
-#[test]
+#[test_log::test]
 fn test_notify_static_without_announce() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let server_ran_clone = server_ran.clone();
@@ -529,7 +529,7 @@ fn test_notify_static_without_announce() {
 // ============================================================================
 
 /// Test: notify() only works in Announced state
-#[test]
+#[test_log::test]
 fn test_notify_requires_announced_state() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -621,7 +621,7 @@ fn test_notify_requires_announced_state() {
 }
 
 /// Test: has_subscribers() only available in Announced state
-#[test]
+#[test_log::test]
 fn test_has_subscribers_in_announced_state() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -713,7 +713,7 @@ fn test_has_subscribers_in_announced_state() {
 // ============================================================================
 
 /// Test: can do initialization work between bind() and announce()
-#[test]
+#[test_log::test]
 fn test_initialization_before_announce() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let server_ran_clone = server_ran.clone();
@@ -761,7 +761,7 @@ fn test_initialization_before_announce() {
 }
 
 /// Test: if initialization fails, service is never announced
-#[test]
+#[test_log::test]
 fn test_init_failure_prevents_announcement() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -844,7 +844,7 @@ fn test_init_failure_prevents_announcement() {
 // ============================================================================
 
 /// Test: graceful shutdown allows draining in-flight requests
-#[test]
+#[test_log::test]
 fn test_graceful_shutdown_drains_requests() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -942,7 +942,7 @@ fn test_graceful_shutdown_drains_requests() {
 // ============================================================================
 
 /// Test: dropping Announced sends StopOfferService
-#[test]
+#[test_log::test]
 fn test_drop_announced_sends_stop_offer() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -1028,7 +1028,7 @@ fn test_drop_announced_sends_stop_offer() {
 }
 
 /// Test: dropping Bound (never announced) sends no SD message
-#[test]
+#[test_log::test]
 fn test_drop_bound_no_sd_message() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -1101,7 +1101,7 @@ fn test_drop_bound_no_sd_message() {
 // ============================================================================
 
 /// Test: multiple services can be bound from the same runtime
-#[test]
+#[test_log::test]
 fn test_multiple_services_same_runtime() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -1187,7 +1187,7 @@ fn test_multiple_services_same_runtime() {
 }
 
 /// Test: multiple instances of same service
-#[test]
+#[test_log::test]
 fn test_multiple_instances_same_service() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -1274,7 +1274,7 @@ fn test_multiple_instances_same_service() {
 // ============================================================================
 
 /// Test: binding same service+instance twice should fail
-#[test]
+#[test_log::test]
 fn test_double_bind_same_instance_fails() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let server_ran_clone = server_ran.clone();
@@ -1320,7 +1320,7 @@ fn test_double_bind_same_instance_fails() {
 // ============================================================================
 
 /// Test: RPC works in Bound state when client has pre-configured address
-#[test]
+#[test_log::test]
 fn test_rpc_in_bound_state() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -1411,7 +1411,7 @@ fn test_rpc_in_bound_state() {
 // ============================================================================
 
 /// Test: notify() with no subscribers succeeds (no-op)
-#[test]
+#[test_log::test]
 fn test_notify_no_subscribers_succeeds() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let server_ran_clone = server_ran.clone();
@@ -1469,7 +1469,7 @@ fn test_notify_no_subscribers_succeeds() {
 }
 
 /// Test: notify_static() with no static subscribers succeeds (no-op)
-#[test]
+#[test_log::test]
 fn test_notify_static_no_subscribers_succeeds() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let server_ran_clone = server_ran.clone();
@@ -1524,7 +1524,7 @@ fn test_notify_static_no_subscribers_succeeds() {
 // ============================================================================
 
 /// Test: static subscribers are preserved when transitioning Bound → Announced
-#[test]
+#[test_log::test]
 fn test_static_subscribers_preserved_after_announce() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -1618,7 +1618,7 @@ fn test_static_subscribers_preserved_after_announce() {
 }
 
 /// Test: static subscribers are preserved when transitioning Announced → Bound
-#[test]
+#[test_log::test]
 fn test_static_subscribers_preserved_after_stop_announcing() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -1720,7 +1720,7 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
 // ============================================================================
 
 /// Test: can re-announce after stop, clients can rediscover
-#[test]
+#[test_log::test]
 fn test_re_announce_after_stop() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -1824,7 +1824,7 @@ fn test_re_announce_after_stop() {
 // ============================================================================
 
 /// Test: static subscribers only receive events for their eventgroups
-#[test]
+#[test_log::test]
 fn test_static_subscriber_eventgroup_filtering() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client1_ran = Arc::new(AtomicBool::new(false));
@@ -1985,7 +1985,7 @@ fn test_static_subscriber_eventgroup_filtering() {
 // ============================================================================
 
 /// Test: concurrent notify calls are safe
-#[test]
+#[test_log::test]
 fn test_concurrent_notify() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -2083,7 +2083,7 @@ fn test_concurrent_notify() {
 // ============================================================================
 
 /// Test: notify succeeds even if subscriber disconnects mid-send
-#[test]
+#[test_log::test]
 fn test_notify_survives_subscriber_disconnect() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -2193,7 +2193,7 @@ fn test_notify_survives_subscriber_disconnect() {
 
 /// Test: maximum UDP-safe payload (1392 bytes = 1400 - 8 bytes UDP header overhead)
 /// This tests the upper bound for single UDP datagram notifications.
-#[test]
+#[test_log::test]
 fn test_max_udp_payload_notify() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -2291,7 +2291,7 @@ fn test_max_udp_payload_notify() {
 
 /// Test: very large RPC payloads work over TCP (10KB payload)
 /// TCP can handle arbitrary payload sizes, unlike UDP which is limited to ~1400 bytes.
-#[test]
+#[test_log::test]
 fn test_large_tcp_rpc_payload() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -2396,7 +2396,7 @@ fn test_large_tcp_rpc_payload() {
 /// is dropped early (service de-registered), but the final response should
 /// still be sent to the client. This is a common pattern where cleanup happens
 /// after the service stops accepting new requests.
-#[test]
+#[test_log::test]
 fn test_response_after_offering_dropped() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -2499,7 +2499,7 @@ fn test_response_after_offering_dropped() {
 // ============================================================================
 
 /// Test: zero-length event payloads work correctly
-#[test]
+#[test_log::test]
 fn test_empty_payload_notify() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -2596,7 +2596,7 @@ fn test_empty_payload_notify() {
 /// services can transition through states multiple times and that
 /// proper cleanup happens on drop. Services are kept alive to avoid
 /// port number conflicts during iteration.
-#[test]
+#[test_log::test]
 fn test_rapid_state_transitions() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let server_ran_clone = server_ran.clone();
@@ -2652,7 +2652,7 @@ fn test_rapid_state_transitions() {
 // ============================================================================
 
 /// Test: next() works in Bound state for RPC
-#[test]
+#[test_log::test]
 fn test_next_in_bound_state() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -2736,7 +2736,7 @@ fn test_next_in_bound_state() {
 }
 
 /// Test: next() works in Announced state
-#[test]
+#[test_log::test]
 fn test_next_in_announced_state() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -2823,7 +2823,7 @@ fn test_next_in_announced_state() {
 // ============================================================================
 
 /// Test: SubscribeEventgroup events received in next()
-#[test]
+#[test_log::test]
 fn test_subscription_events_received() {
     let server_ran = Arc::new(AtomicBool::new(false));
     let client_ran = Arc::new(AtomicBool::new(false));
@@ -2927,28 +2927,28 @@ fn test_subscription_events_received() {
 
 /*
 /// COMPILE-TIME TEST: notify() should NOT be available on Bound
-#[test]
+#[test_log::test]
 fn compile_test_notify_not_on_bound() {
     // This should fail to compile:
     // service_bound.notify(...) // ERROR: method not found
 }
 
 /// COMPILE-TIME TEST: has_subscribers() should NOT be available on Bound
-#[test]
+#[test_log::test]
 fn compile_test_has_subscribers_not_on_bound() {
     // This should fail to compile:
     // service_bound.has_subscribers(...).await // ERROR: method not found
 }
 
 /// COMPILE-TIME TEST: announce() should NOT be available on Announced
-#[test]
+#[test_log::test]
 fn compile_test_announce_not_on_announced() {
     // This should fail to compile:
     // announced.announce() // ERROR: method not found
 }
 
 /// COMPILE-TIME TEST: stop_announcing() should NOT be available on Bound
-#[test]
+#[test_log::test]
 fn compile_test_stop_announcing_not_on_bound() {
     // This should fail to compile:
     // service_bound.stop_announcing() // ERROR: method not found

@@ -39,7 +39,7 @@ impl Service for TestService {
 ///
 /// Actual buggy behavior:
 /// - Both subscriptions receive events from both instances
-#[test]
+#[test_log::test]
 fn subscribe_to_multiple_instances() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

@@ -43,7 +43,7 @@ impl Service for TestService {
 ///
 /// The getter of a field shall be a request/response call that has an empty
 /// payload for the request and the current value as payload of the response.
-#[test]
+#[test_log::test]
 fn field_getter_empty_request_payload() {
     covers!(feat_req_recentip_633);
 
@@ -146,7 +146,7 @@ fn field_getter_empty_request_payload() {
 }
 
 /// feat_req_recentip_633: Getter returns current value in response
-#[test]
+#[test_log::test]
 fn field_getter_returns_current_value() {
     covers!(feat_req_recentip_633);
 
@@ -245,7 +245,7 @@ fn field_getter_returns_current_value() {
 ///
 /// The setter of a field shall be a request/response call that has the
 /// desired value as payload for the request.
-#[test]
+#[test_log::test]
 fn field_setter_sends_value_in_request() {
     covers!(feat_req_recentip_634);
 
@@ -350,7 +350,7 @@ fn field_setter_sends_value_in_request() {
 }
 
 /// feat_req_recentip_634: Setter is request/response (not fire&forget)
-#[test]
+#[test_log::test]
 fn field_setter_gets_response() {
     covers!(feat_req_recentip_634);
 
@@ -443,7 +443,7 @@ fn field_setter_gets_response() {
 ///
 /// The notifier shall send a notification event message that communicates
 /// the updated value of the field.
-#[test]
+#[test_log::test]
 fn field_notifier_sends_updated_value() {
     covers!(feat_req_recentip_635);
 
@@ -553,7 +553,7 @@ fn field_notifier_sends_updated_value() {
 /// feat_req_recentip_631: Field is combination of getter/setter/notifier
 ///
 /// A field is a combination of a getter method, setter method, and notifier event.
-#[test]
+#[test_log::test]
 fn field_combines_getter_setter_notifier() {
     covers!(feat_req_recentip_631);
 
@@ -713,7 +713,7 @@ fn field_combines_getter_setter_notifier() {
 // ============================================================================
 
 /// Setter can reject invalid values with error response
-#[test]
+#[test_log::test]
 fn field_setter_can_reject_invalid_value() {
     covers!(feat_req_recentip_634);
 
