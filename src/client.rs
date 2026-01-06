@@ -182,55 +182,31 @@ pub fn handle_call(
 /// Handle `Command::FireAndForget`
 pub fn handle_fire_and_forget(
     service_id: crate::ServiceId,
-    instance_id: crate::InstanceId,
     method_id: u16,
     payload: Bytes,
-    target_endpoint: Option<SocketAddr>,
+    target_endpoint: SocketAddr,
+    target_transport: Transport,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let key = ServiceKey::new(service_id, instance_id);
-    let prefer_tcp = state.config.transport == Transport::Tcp;
+    let session_id = state.next_session_id();
+    let client_id = state.client_id;
 
-    // Use static endpoint if provided, otherwise look up from discovered services
-    let endpoint = target_endpoint.or_else(|| {
-        state
-            .discovered
-            .get(&key)
-            .and_then(|d| d.rpc_endpoint(prefer_tcp))
-            .or_else(|| {
-                if instance_id.is_any() {
-                    state
-                        .discovered
-                        .iter()
-                        .find(|(k, _)| k.service_id == service_id.value())
-                        .and_then(|(_, v)| v.rpc_endpoint(prefer_tcp))
-                } else {
-                    None
-                }
-            })
+    // Build fire-and-forget message (no response tracking needed)
+    let request_data = build_fire_and_forget(
+        service_id.value(),
+        method_id,
+        client_id,
+        session_id,
+        1, // interface version
+        &payload,
+    );
+
+    actions.push(Action::SendClientMessage {
+        data: request_data,
+        target: target_endpoint,
+        transport: target_transport,
     });
-
-    if let Some(endpoint) = endpoint {
-        let session_id = state.next_session_id();
-        let client_id = state.client_id;
-
-        // Build fire-and-forget message (no response tracking needed)
-        let request_data = build_fire_and_forget(
-            service_id.value(),
-            method_id,
-            client_id,
-            session_id,
-            1, // interface version
-            &payload,
-        );
-
-        actions.push(Action::SendClientMessage {
-            data: request_data,
-            target: endpoint,
-        });
-    }
-    // Note: No error response for fire-and-forget - it's best effort
 }
 
 /// Handle `Command::Subscribe`

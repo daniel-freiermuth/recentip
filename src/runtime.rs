@@ -1323,17 +1323,17 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
 
         Command::FireAndForget {
             service_id,
-            instance_id,
             method_id,
             payload,
             target_endpoint,
+            target_transport,
         } => {
             client::handle_fire_and_forget(
                 service_id,
-                instance_id,
                 method_id,
                 payload,
                 target_endpoint,
+                target_transport,
                 state,
                 &mut actions,
             );

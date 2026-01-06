@@ -108,11 +108,12 @@ pub enum Command {
     /// Fire-and-forget call (no response expected)
     FireAndForget {
         service_id: ServiceId,
-        instance_id: InstanceId,
         method_id: u16,
         payload: Bytes,
-        /// For static deployments: pre-configured endpoint
-        target_endpoint: Option<SocketAddr>,
+        /// Target endpoint (resolved by proxy during discovery)
+        target_endpoint: SocketAddr,
+        /// Transport to use
+        target_transport: crate::config::Transport,
     },
     /// Subscribe to an eventgroup
     Subscribe {
