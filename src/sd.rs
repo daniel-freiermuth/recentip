@@ -304,12 +304,6 @@ pub fn handle_find_request(
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    // Determine protocol based on transport configuration
-    let protocol = match state.config.transport {
-        Transport::Tcp => L4Protocol::Tcp,
-        Transport::Udp => L4Protocol::Udp,
-    };
-
     for (key, offered) in &state.offered {
         // Only respond if the service is actively announcing
         if !offered.is_announcing {
@@ -319,25 +313,7 @@ pub fn handle_find_request(
         if entry.service_id == key.service_id
             && (entry.instance_id == 0xFFFF || entry.instance_id == key.instance_id)
         {
-            let mut response = SdMessage::new(state.sd_flags(true));
-            let opt_idx = response.add_option(SdOption::Ipv4Endpoint {
-                addr: match offered.rpc_endpoint {
-                    SocketAddr::V4(v4) => *v4.ip(),
-                    _ => Ipv4Addr::LOCALHOST,
-                },
-                port: offered.rpc_endpoint.port(), // Use RPC endpoint port, not SD port!
-                protocol,
-            });
-            response.add_entry(SdEntry::offer_service(
-                key.service_id,
-                key.instance_id,
-                offered.major_version,
-                offered.minor_version,
-                state.config.offer_ttl,
-                opt_idx,
-                1,
-            ));
-
+            let response = build_offer_message(key, offered, state.sd_flags(true), state.config.offer_ttl);
             actions.push(Action::SendSd {
                 message: response,
                 target: from,
