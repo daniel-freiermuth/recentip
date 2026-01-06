@@ -3481,3 +3481,785 @@ fn subscribe_udp_endpoint_to_tcp_only_server_should_nack() {
 
     sim.run().unwrap();
 }
+
+// ============================================================================
+// SUBSCRIBE MESSAGE FORMAT TESTS - CYCLIC OFFER RESPONSE
+// ============================================================================
+
+/// Build a raw SOME/IP-SD OfferService message with TCP endpoint only
+fn build_sd_offer_tcp_only(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    minor_version: u32,
+    endpoint_ip: std::net::Ipv4Addr,
+    endpoint_port: u16,
+    ttl: u32,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(56);
+
+    // === SOME/IP Header (16 bytes) ===
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
+    packet.extend_from_slice(&0x8100u16.to_be_bytes());
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes());
+    packet.extend_from_slice(&0x0000u16.to_be_bytes());
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.push(0x01);
+    packet.push(0x01);
+    packet.push(0x02);
+    packet.push(0x00);
+
+    // === SD Payload ===
+    packet.push(0xC0);
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+    packet.extend_from_slice(&16u32.to_be_bytes());
+
+    // === OfferService Entry (16 bytes) ===
+    packet.push(0x01);
+    packet.push(0x00);
+    packet.push(0x00);
+    packet.push(0x10);
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    packet.push(major_version);
+    let ttl_bytes = ttl.to_be_bytes();
+    packet.extend_from_slice(&ttl_bytes[1..4]);
+    packet.extend_from_slice(&minor_version.to_be_bytes());
+
+    // Options array length - 12 bytes for IPv4 endpoint
+    packet.extend_from_slice(&12u32.to_be_bytes());
+
+    // === IPv4 Endpoint Option (12 bytes) - TCP ===
+    packet.extend_from_slice(&9u16.to_be_bytes());
+    packet.push(0x04);
+    packet.push(0x00);
+    packet.extend_from_slice(&endpoint_ip.octets());
+    packet.push(0x00);
+    packet.push(0x06); // L4 Protocol = TCP
+    packet.extend_from_slice(&endpoint_port.to_be_bytes());
+
+    // Fix up length field
+    let length = (packet.len() - 8) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
+
+    packet
+}
+
+/// Build a raw SOME/IP-SD OfferService message with both UDP and TCP endpoints
+fn build_sd_offer_dual_stack(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    minor_version: u32,
+    endpoint_ip: std::net::Ipv4Addr,
+    udp_port: u16,
+    tcp_port: u16,
+    ttl: u32,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(68);
+
+    // === SOME/IP Header (16 bytes) ===
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
+    packet.extend_from_slice(&0x8100u16.to_be_bytes());
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes());
+    packet.extend_from_slice(&0x0000u16.to_be_bytes());
+    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.push(0x01);
+    packet.push(0x01);
+    packet.push(0x02);
+    packet.push(0x00);
+
+    // === SD Payload ===
+    packet.push(0xC0);
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+    packet.extend_from_slice(&16u32.to_be_bytes());
+
+    // === OfferService Entry (16 bytes) ===
+    packet.push(0x01);
+    packet.push(0x00); // 1st option index
+    packet.push(0x00); // 2nd option index
+    packet.push(0x20); // 2 options in run 1
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    packet.push(major_version);
+    let ttl_bytes = ttl.to_be_bytes();
+    packet.extend_from_slice(&ttl_bytes[1..4]);
+    packet.extend_from_slice(&minor_version.to_be_bytes());
+
+    // Options array length - 24 bytes for 2 IPv4 endpoints
+    packet.extend_from_slice(&24u32.to_be_bytes());
+
+    // === IPv4 Endpoint Option 1 (12 bytes) - UDP ===
+    packet.extend_from_slice(&9u16.to_be_bytes());
+    packet.push(0x04);
+    packet.push(0x00);
+    packet.extend_from_slice(&endpoint_ip.octets());
+    packet.push(0x00);
+    packet.push(0x11); // L4 Protocol = UDP
+    packet.extend_from_slice(&udp_port.to_be_bytes());
+
+    // === IPv4 Endpoint Option 2 (12 bytes) - TCP ===
+    packet.extend_from_slice(&9u16.to_be_bytes());
+    packet.push(0x04);
+    packet.push(0x00);
+    packet.extend_from_slice(&endpoint_ip.octets());
+    packet.push(0x00);
+    packet.push(0x06); // L4 Protocol = TCP
+    packet.extend_from_slice(&tcp_port.to_be_bytes());
+
+    // Fix up length field
+    let length = (packet.len() - 8) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
+
+    packet
+}
+
+/// Verify subscribe message format for initial and subsequent subscribes
+/// triggered by cyclic offers.
+///
+/// Setup:
+/// - Wire-level server offers UDP-only service and sends cyclic offers
+/// - Client (our library) subscribes and stays alive
+/// - Server verifies format of initial subscribe AND subsequent re-subscribes
+///
+/// Per feat_req_recentipsd_631: Subscriptions triggered by OfferService entries
+#[test_log::test]
+fn subscribe_format_udp_only_cyclic_offers() {
+    covers!(feat_req_recentipsd_431, feat_req_recentipsd_631);
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let subscribe_count = Arc::new(AtomicUsize::new(0));
+    let subscribe_count_server = Arc::clone(&subscribe_count);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Wire-level server that sends offers and inspects subscribes
+    sim.host("wire_server", move || {
+        let subscribe_count = Arc::clone(&subscribe_count_server);
+
+        async move {
+            let my_ip: std::net::Ipv4Addr =
+                turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+            let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+            let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3);
+            let mut buf = [0u8; 1500];
+
+            // Send offers cyclically and collect subscribes
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+            let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+
+            while tokio::time::Instant::now() < deadline {
+                // Send offer every 1 second (simulating cyclic offer with short TTL)
+                if last_offer.elapsed() >= Duration::from_millis(1000) {
+                    sd_socket.send_to(&offer, sd_multicast).await?;
+                    eprintln!("[wire_server] Sent offer");
+                    last_offer = tokio::time::Instant::now();
+                }
+
+                // Check for incoming messages
+                if let Ok(Ok((len, from))) = tokio::time::timeout(
+                    Duration::from_millis(100),
+                    sd_socket.recv_from(&mut buf),
+                )
+                .await
+                {
+                    if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                        for entry in &sd_msg.entries {
+                            // SubscribeEventgroup = 0x06
+                            if entry.entry_type as u8 == 0x06 && entry.service_id == 0x1234 {
+                                let count = subscribe_count.fetch_add(1, Ordering::SeqCst) + 1;
+                                eprintln!(
+                                    "[wire_server] Received subscribe #{}: eventgroup={:04x}, ttl={}",
+                                    count, entry.eventgroup_id, entry.ttl
+                                );
+
+                                // Verify subscribe has correct format
+                                assert_eq!(entry.service_id, 0x1234, "Service ID mismatch");
+                                assert_eq!(entry.instance_id, 0x0001, "Instance ID mismatch");
+                                assert!(entry.ttl > 0, "Subscribe TTL should be > 0");
+
+                                // Check that subscribe includes endpoint option
+                                // The client should include its endpoint in the subscribe
+                                let has_udp_endpoint = sd_msg.get_udp_endpoint(entry).is_some();
+                                let has_tcp_endpoint = sd_msg.get_tcp_endpoint(entry).is_some();
+                                assert!(
+                                    has_udp_endpoint || has_tcp_endpoint,
+                                    "Subscribe #{} should include endpoint option (UDP={}, TCP={})",
+                                    count, has_udp_endpoint, has_tcp_endpoint
+                                );
+
+                                // For UDP-only offer, client should send UDP endpoint
+                                assert!(
+                                    has_udp_endpoint,
+                                    "Subscribe #{} to UDP-only service should include UDP endpoint",
+                                    count
+                                );
+
+                                // Send ACK
+                                let ack = build_sd_subscribe_ack(
+                                    entry.service_id,
+                                    entry.instance_id,
+                                    entry.major_version,
+                                    entry.eventgroup_id,
+                                    entry.ttl,
+                                );
+                                sd_socket.send_to(&ack, from).await?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        }
+    });
+
+    // Client using our library
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::builder()
+            .subscribe_ttl(5) // Short TTL so we can see renewals
+            .build();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        // Discover and subscribe
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        eprintln!("[client] Service discovered");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+            .await
+            .expect("Subscribe timeout")
+            .expect("Subscribe should succeed");
+
+        eprintln!("[client] Subscribed, staying alive for cyclic offers...");
+
+        // Stay alive to receive cyclic offers and send renewals
+        tokio::time::sleep(Duration::from_secs(6)).await;
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let count = subscribe_count.load(Ordering::SeqCst);
+    eprintln!("Total subscribes received: {}", count);
+    assert!(
+        count >= 2,
+        "Should receive at least initial subscribe + 1 renewal, got {}",
+        count
+    );
+}
+
+/// Verify subscribe message format when server offers TCP only
+///
+/// Setup:
+/// - Wire-level server offers TCP-only service
+/// - Client (our library, with TCP preference) subscribes
+/// - Server verifies subscribe includes TCP endpoint option
+#[test_log::test]
+fn subscribe_format_tcp_only_cyclic_offers() {
+    covers!(feat_req_recentipsd_431, feat_req_recentipsd_631);
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let subscribe_count = Arc::new(AtomicUsize::new(0));
+    let subscribe_count_server = Arc::clone(&subscribe_count);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Wire-level server offering TCP only
+    sim.host("wire_server", move || {
+        let subscribe_count = Arc::clone(&subscribe_count_server);
+
+        async move {
+            let my_ip: std::net::Ipv4Addr =
+                turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+            let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+            let offer = build_sd_offer_tcp_only(0x1234, 0x0001, 1, 0, my_ip, 30509, 3);
+            let mut buf = [0u8; 1500];
+
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+            let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+
+            while tokio::time::Instant::now() < deadline {
+                if last_offer.elapsed() >= Duration::from_millis(1000) {
+                    sd_socket.send_to(&offer, sd_multicast).await?;
+                    eprintln!("[wire_server] Sent TCP-only offer");
+                    last_offer = tokio::time::Instant::now();
+                }
+
+                if let Ok(Ok((len, from))) = tokio::time::timeout(
+                    Duration::from_millis(100),
+                    sd_socket.recv_from(&mut buf),
+                )
+                .await
+                {
+                    if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                        for entry in &sd_msg.entries {
+                            if entry.entry_type as u8 == 0x06 && entry.service_id == 0x1234 {
+                                let count = subscribe_count.fetch_add(1, Ordering::SeqCst) + 1;
+                                eprintln!(
+                                    "[wire_server] Received subscribe #{}: eventgroup={:04x}",
+                                    count, entry.eventgroup_id
+                                );
+
+                                // For TCP-only offer, client MUST send TCP endpoint
+                                let has_tcp_endpoint = sd_msg.get_tcp_endpoint(entry).is_some();
+                                assert!(
+                                    has_tcp_endpoint,
+                                    "Subscribe #{} to TCP-only service MUST include TCP endpoint",
+                                    count
+                                );
+
+                                // Send ACK
+                                let ack = build_sd_subscribe_ack(
+                                    entry.service_id,
+                                    entry.instance_id,
+                                    entry.major_version,
+                                    entry.eventgroup_id,
+                                    entry.ttl,
+                                );
+                                sd_socket.send_to(&ack, from).await?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        }
+    });
+
+    // Client with TCP preference
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::builder()
+            .preferred_transport(someip_runtime::Transport::Tcp)
+            .subscribe_ttl(5)
+            .build();
+        let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        eprintln!("[client] Service discovered via TCP");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+            .await
+            .expect("Subscribe timeout")
+            .expect("Subscribe should succeed");
+
+        eprintln!("[client] Subscribed via TCP, staying alive...");
+        tokio::time::sleep(Duration::from_secs(6)).await;
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let count = subscribe_count.load(Ordering::SeqCst);
+    assert!(
+        count >= 2,
+        "Should receive at least initial subscribe + 1 renewal, got {}",
+        count
+    );
+}
+
+/// Verify subscribe message format when server offers both UDP and TCP
+/// Client prefers UDP - should send UDP endpoint
+#[test_log::test]
+fn subscribe_format_dual_stack_client_prefers_udp() {
+    covers!(feat_req_recentipsd_431, feat_req_recentipsd_631);
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let subscribe_count = Arc::new(AtomicUsize::new(0));
+    let subscribe_count_server = Arc::clone(&subscribe_count);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("wire_server", move || {
+        let subscribe_count = Arc::clone(&subscribe_count_server);
+
+        async move {
+            let my_ip: std::net::Ipv4Addr =
+                turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+            let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+            let offer = build_sd_offer_dual_stack(0x1234, 0x0001, 1, 0, my_ip, 30509, 30510, 3);
+            let mut buf = [0u8; 1500];
+
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+            let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+
+            while tokio::time::Instant::now() < deadline {
+                if last_offer.elapsed() >= Duration::from_millis(1000) {
+                    sd_socket.send_to(&offer, sd_multicast).await?;
+                    eprintln!("[wire_server] Sent dual-stack offer");
+                    last_offer = tokio::time::Instant::now();
+                }
+
+                if let Ok(Ok((len, from))) = tokio::time::timeout(
+                    Duration::from_millis(100),
+                    sd_socket.recv_from(&mut buf),
+                )
+                .await
+                {
+                    if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                        for entry in &sd_msg.entries {
+                            if entry.entry_type as u8 == 0x06 && entry.service_id == 0x1234 {
+                                let count = subscribe_count.fetch_add(1, Ordering::SeqCst) + 1;
+
+                                let has_udp = sd_msg.get_udp_endpoint(entry).is_some();
+                                let has_tcp = sd_msg.get_tcp_endpoint(entry).is_some();
+                                eprintln!(
+                                    "[wire_server] Subscribe #{}: UDP={}, TCP={}",
+                                    count, has_udp, has_tcp
+                                );
+
+                                // Client prefers UDP, so should send UDP endpoint
+                                assert!(
+                                    has_udp,
+                                    "Subscribe #{} from UDP-preferring client should include UDP endpoint",
+                                    count
+                                );
+
+                                let ack = build_sd_subscribe_ack(
+                                    entry.service_id,
+                                    entry.instance_id,
+                                    entry.major_version,
+                                    entry.eventgroup_id,
+                                    entry.ttl,
+                                );
+                                sd_socket.send_to(&ack, from).await?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        }
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Default config prefers UDP
+        let config = RuntimeConfig::builder()
+            .preferred_transport(someip_runtime::Transport::Udp)
+            .subscribe_ttl(5)
+            .build();
+        let runtime: Runtime<turmoil::net::UdpSocket> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+            .await
+            .expect("Subscribe timeout")
+            .expect("Subscribe should succeed");
+
+        tokio::time::sleep(Duration::from_secs(6)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let count = subscribe_count.load(Ordering::SeqCst);
+    assert!(count >= 2, "Should receive at least 2 subscribes, got {}", count);
+}
+
+/// Verify subscribe message format when server offers both UDP and TCP
+/// Client prefers TCP - should send TCP endpoint
+#[test_log::test]
+fn subscribe_format_dual_stack_client_prefers_tcp() {
+    covers!(feat_req_recentipsd_431, feat_req_recentipsd_631);
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let subscribe_count = Arc::new(AtomicUsize::new(0));
+    let subscribe_count_server = Arc::clone(&subscribe_count);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("wire_server", move || {
+        let subscribe_count = Arc::clone(&subscribe_count_server);
+
+        async move {
+            let my_ip: std::net::Ipv4Addr =
+                turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+            let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+            let offer = build_sd_offer_dual_stack(0x1234, 0x0001, 1, 0, my_ip, 30509, 30510, 3);
+            let mut buf = [0u8; 1500];
+
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+            let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+
+            while tokio::time::Instant::now() < deadline {
+                if last_offer.elapsed() >= Duration::from_millis(1000) {
+                    sd_socket.send_to(&offer, sd_multicast).await?;
+                    eprintln!("[wire_server] Sent dual-stack offer");
+                    last_offer = tokio::time::Instant::now();
+                }
+
+                if let Ok(Ok((len, from))) = tokio::time::timeout(
+                    Duration::from_millis(100),
+                    sd_socket.recv_from(&mut buf),
+                )
+                .await
+                {
+                    if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                        for entry in &sd_msg.entries {
+                            if entry.entry_type as u8 == 0x06 && entry.service_id == 0x1234 {
+                                let count = subscribe_count.fetch_add(1, Ordering::SeqCst) + 1;
+
+                                let has_udp = sd_msg.get_udp_endpoint(entry).is_some();
+                                let has_tcp = sd_msg.get_tcp_endpoint(entry).is_some();
+                                eprintln!(
+                                    "[wire_server] Subscribe #{}: UDP={}, TCP={}",
+                                    count, has_udp, has_tcp
+                                );
+
+                                // Client prefers TCP, so should send TCP endpoint
+                                assert!(
+                                    has_tcp,
+                                    "Subscribe #{} from TCP-preferring client should include TCP endpoint",
+                                    count
+                                );
+
+                                let ack = build_sd_subscribe_ack(
+                                    entry.service_id,
+                                    entry.instance_id,
+                                    entry.major_version,
+                                    entry.eventgroup_id,
+                                    entry.ttl,
+                                );
+                                sd_socket.send_to(&ack, from).await?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        }
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::builder()
+            .preferred_transport(someip_runtime::Transport::Tcp)
+            .subscribe_ttl(5)
+            .build();
+        let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+            .await
+            .expect("Subscribe timeout")
+            .expect("Subscribe should succeed");
+
+        tokio::time::sleep(Duration::from_secs(6)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let count = subscribe_count.load(Ordering::SeqCst);
+    assert!(count >= 2, "Should receive at least 2 subscribes, got {}", count);
+}
+
+/// Verify that client adapts transport when preference doesn't match offer
+/// Client prefers TCP but server offers UDP only - client should adapt and use UDP
+#[test_log::test]
+fn subscribe_format_client_adapts_to_available_transport() {
+    covers!(feat_req_recentipsd_431, feat_req_recentip_324);
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let subscribe_count = Arc::new(AtomicUsize::new(0));
+    let subscribe_count_server = Arc::clone(&subscribe_count);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("wire_server", move || {
+        let subscribe_count = Arc::clone(&subscribe_count_server);
+
+        async move {
+            let my_ip: std::net::Ipv4Addr =
+                turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+            let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+            // Offer UDP ONLY
+            let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3);
+            let mut buf = [0u8; 1500];
+
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+            let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+
+            while tokio::time::Instant::now() < deadline {
+                if last_offer.elapsed() >= Duration::from_millis(1000) {
+                    sd_socket.send_to(&offer, sd_multicast).await?;
+                    eprintln!("[wire_server] Sent UDP-only offer");
+                    last_offer = tokio::time::Instant::now();
+                }
+
+                if let Ok(Ok((len, from))) = tokio::time::timeout(
+                    Duration::from_millis(100),
+                    sd_socket.recv_from(&mut buf),
+                )
+                .await
+                {
+                    if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                        for entry in &sd_msg.entries {
+                            if entry.entry_type as u8 == 0x06 && entry.service_id == 0x1234 {
+                                let count = subscribe_count.fetch_add(1, Ordering::SeqCst) + 1;
+
+                                let has_udp = sd_msg.get_udp_endpoint(entry).is_some();
+                                let has_tcp = sd_msg.get_tcp_endpoint(entry).is_some();
+                                eprintln!(
+                                    "[wire_server] Subscribe #{}: UDP={}, TCP={}",
+                                    count, has_udp, has_tcp
+                                );
+
+                                // Client prefers TCP but server only offers UDP
+                                // Client MUST adapt and send UDP endpoint
+                                assert!(
+                                    has_udp,
+                                    "Subscribe #{} to UDP-only service MUST include UDP endpoint \
+                                     even when client prefers TCP",
+                                    count
+                                );
+                                assert!(
+                                    !has_tcp,
+                                    "Subscribe #{} to UDP-only service should NOT include TCP endpoint",
+                                    count
+                                );
+
+                                let ack = build_sd_subscribe_ack(
+                                    entry.service_id,
+                                    entry.instance_id,
+                                    entry.major_version,
+                                    entry.eventgroup_id,
+                                    entry.ttl,
+                                );
+                                sd_socket.send_to(&ack, from).await?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        }
+    });
+
+    // Client PREFERS TCP but server only offers UDP
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::builder()
+            .preferred_transport(someip_runtime::Transport::Tcp) // Prefers TCP!
+            .subscribe_ttl(5)
+            .build();
+        // Use full runtime type to support TCP preference
+        let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =
+            Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        // Verify the proxy detected UDP transport despite TCP preference
+        assert_eq!(
+            proxy.transport(),
+            someip_runtime::Transport::Udp,
+            "Proxy should use UDP transport when that's all that's offered"
+        );
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+            .await
+            .expect("Subscribe timeout")
+            .expect("Subscribe should succeed");
+
+        tokio::time::sleep(Duration::from_secs(6)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let count = subscribe_count.load(Ordering::SeqCst);
+    assert!(count >= 2, "Should receive at least 2 subscribes, got {}", count);
+}
