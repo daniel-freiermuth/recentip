@@ -100,6 +100,8 @@ async fn udp_request_response_real_network() {
 
     let mut offering = server_runtime
         .offer::<EchoService>(InstanceId::Id(0x0001))
+        .udp()
+        .start()
         .await
         .expect("Offer service");
 
@@ -160,6 +162,8 @@ async fn udp_service_discovery_real_network() {
 
         let _offering = runtime
             .offer::<EchoService>(InstanceId::Id(0x0002))
+            .udp()
+            .start()
             .await
             .expect("Offer service");
 
@@ -202,6 +206,8 @@ async fn tcp_request_response_real_network() {
 
         let mut offering = runtime
             .offer::<EchoService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .expect("Offer service");
 
@@ -262,6 +268,8 @@ async fn tcp_magic_cookies_real_network() {
 
         let mut offering = runtime
             .offer::<EchoService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .expect("Offer service");
 
@@ -318,6 +326,8 @@ async fn tcp_multiple_requests_real_network() {
 
         let mut offering = runtime
             .offer::<EchoService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .expect("Offer service");
 
@@ -399,6 +409,8 @@ async fn udp_events_real_network() {
 
         let mut offering = runtime
             .offer::<EchoService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .expect("Offer service");
 
@@ -503,6 +515,8 @@ async fn udp_two_runtimes_same_sd_port() {
     let server_runtime = Runtime::new(server_config).await.expect("Server runtime");
     let mut offering = server_runtime
         .offer::<EchoService>(InstanceId::Id(0x0003))
+        .udp()
+        .start()
         .await
         .expect("Offer service");
 

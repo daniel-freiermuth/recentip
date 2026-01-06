@@ -63,6 +63,8 @@ fn request_receives_response_type() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -122,6 +124,8 @@ fn request_can_receive_error_type() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -185,6 +189,8 @@ fn request_no_return_receives_no_response() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -244,6 +250,8 @@ fn server_sends_notification_type() {
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 

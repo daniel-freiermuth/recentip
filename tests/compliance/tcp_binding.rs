@@ -98,7 +98,6 @@ fn is_magic_cookie(data: &[u8]) -> bool {
 // ============================================================================
 
 /// Create a RuntimeConfig for TCP transport
-#[allow(dead_code)]
 fn tcp_config() -> RuntimeConfig {
     RuntimeConfig::builder().transport(Transport::Tcp).build()
 }
@@ -133,6 +132,8 @@ fn client_opens_tcp_connection() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -200,6 +201,8 @@ fn single_tcp_connection_reused() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -274,6 +277,8 @@ fn client_reestablishes_connection() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -354,6 +359,8 @@ fn each_message_has_own_header() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -426,6 +433,8 @@ fn multiple_messages_per_segment_parsed() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -498,6 +507,8 @@ fn connection_lost_fails_pending_requests() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -572,6 +583,8 @@ fn magic_cookie_recognized() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -635,6 +648,8 @@ fn tcp_segment_starts_with_magic_cookie() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -703,6 +718,8 @@ fn only_one_magic_cookie_per_segment() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -776,6 +793,8 @@ fn tcp_header_format_matches_udp() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -844,6 +863,8 @@ fn tcp_loss_does_not_reset_session_id() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 
@@ -928,6 +949,8 @@ fn reboot_detection_resets_tcp_connections() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
 

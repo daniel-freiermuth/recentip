@@ -146,6 +146,8 @@ fn event_transports_value_data() {
 
         let offering = runtime
             .offer::<EventService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -226,6 +228,8 @@ fn events_not_sent_to_non_subscribers() {
 
         let offering = runtime
             .offer::<EventService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -347,6 +351,8 @@ fn unsubscribe_stops_event_delivery() {
 
         let offering = runtime
             .offer::<EventService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -435,6 +441,8 @@ fn event_uses_notification_message_type_on_wire() {
 
         let offering = runtime
             .offer::<EventService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 

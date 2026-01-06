@@ -283,3 +283,92 @@ impl MethodConfig {
         self.exception_methods.contains(&method_id)
     }
 }
+
+// ============================================================================
+// OFFER CONFIGURATION
+// ============================================================================
+
+/// Configuration for service transport endpoints.
+///
+/// Specifies which transports (TCP and/or UDP) a service should be offered on,
+/// and optionally custom ports for each transport.
+///
+/// # Example
+/// ```
+/// use someip_runtime::config::OfferConfig;
+///
+/// // Offer on both TCP and UDP with custom ports
+/// let config = OfferConfig::new()
+///     .tcp_port(30501)
+///     .udp_port(30502);
+///
+/// // Offer on TCP only with default port
+/// let tcp_only = OfferConfig::new().tcp();
+///
+/// // Offer on UDP only (default behavior)
+/// let udp_only = OfferConfig::new().udp();
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct OfferConfig {
+    /// TCP port to offer on (None = not offered via TCP, Some(0) = use default)
+    pub tcp_port: Option<u16>,
+    /// UDP port to offer on (None = not offered via UDP, Some(0) = use default)
+    pub udp_port: Option<u16>,
+    /// Method-specific configuration (exception handling, etc.)
+    pub method_config: MethodConfig,
+}
+
+impl OfferConfig {
+    /// Create a new empty offer configuration.
+    ///
+    /// By default, no transports are configured. You must call at least one of
+    /// `.tcp()`, `.udp()`, `.tcp_port()`, or `.udp_port()` before starting.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Enable TCP transport with the default RPC port (30491).
+    pub fn tcp(mut self) -> Self {
+        self.tcp_port = Some(0); // 0 means use default
+        self
+    }
+
+    /// Enable TCP transport with a specific port.
+    pub fn tcp_port(mut self, port: u16) -> Self {
+        self.tcp_port = Some(port);
+        self
+    }
+
+    /// Enable UDP transport with the default RPC port (30491).
+    pub fn udp(mut self) -> Self {
+        self.udp_port = Some(0); // 0 means use default
+        self
+    }
+
+    /// Enable UDP transport with a specific port.
+    pub fn udp_port(mut self, port: u16) -> Self {
+        self.udp_port = Some(port);
+        self
+    }
+
+    /// Configure method-specific behavior (e.g., exception handling).
+    pub fn method_config(mut self, config: MethodConfig) -> Self {
+        self.method_config = config;
+        self
+    }
+
+    /// Check if any transport is configured.
+    pub fn has_transport(&self) -> bool {
+        self.tcp_port.is_some() || self.udp_port.is_some()
+    }
+
+    /// Check if TCP is enabled.
+    pub fn has_tcp(&self) -> bool {
+        self.tcp_port.is_some()
+    }
+
+    /// Check if UDP is enabled.
+    pub fn has_udp(&self) -> bool {
+        self.udp_port.is_some()
+    }
+}

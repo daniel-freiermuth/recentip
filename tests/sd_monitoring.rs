@@ -52,6 +52,8 @@ fn monitor_sd_receives_service_available() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -113,6 +115,8 @@ fn monitor_sd_receives_service_unavailable() {
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -182,6 +186,8 @@ fn monitor_sd_event_metadata_accuracy() {
         // Offer with specific instance ID
         let _offering = runtime
             .offer::<AnotherService>(InstanceId::Id(0x0042))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -253,6 +259,8 @@ fn monitor_sd_multiple_monitors_receive_events() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -327,6 +335,8 @@ fn monitor_sd_multiple_monitors_same_runtime() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -410,6 +420,8 @@ fn monitor_sd_multiple_services() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -422,6 +434,8 @@ fn monitor_sd_multiple_services() {
 
         let _offering = runtime
             .offer::<AnotherService>(InstanceId::Id(0x0002))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -490,6 +504,8 @@ fn monitor_sd_receives_service_expired() {
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -569,6 +585,8 @@ fn monitor_sd_dropped_receiver_cleanup() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -643,6 +661,8 @@ fn monitor_sd_before_services_exist() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 

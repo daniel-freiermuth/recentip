@@ -71,14 +71,20 @@ fn multiple_instances_have_different_ids() {
 
             let _offering1 = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
             let _offering2 = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0002))
+                .udp()
+                .start()
                 .await
                 .unwrap();
             let _offering3 = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0003))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -155,6 +161,8 @@ fn messages_dispatched_to_correct_instance() {
 
             let mut offering1 = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -181,6 +189,8 @@ fn messages_dispatched_to_correct_instance() {
 
         let mut offering2 = runtime
             .offer::<ServiceA>(InstanceId::Id(0x0002))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -278,12 +288,16 @@ fn two_instances_same_host() {
             // Offer instance 1
             let mut offering1 = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
             // Offer instance 2 on the SAME runtime/host
             let mut offering2 = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0002))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -402,10 +416,14 @@ fn different_services_have_different_service_ids() {
 
             let _offering_a = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
             let _offering_b = runtime
                 .offer::<ServiceB>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -468,10 +486,14 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
 
             let mut offering_a = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
             let mut offering_b = runtime
                 .offer::<ServiceB>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -580,6 +602,8 @@ fn client_can_request_any_instance() {
 
             let _offering = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x002A)) // 42 in hex
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -634,10 +658,14 @@ fn client_can_request_specific_instance() {
 
             let _offering1 = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
             let _offering2 = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0002))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -692,6 +720,8 @@ fn nonexistent_instance_not_found() {
 
             let _offering = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 

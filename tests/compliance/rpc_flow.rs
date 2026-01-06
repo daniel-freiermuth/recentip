@@ -173,6 +173,8 @@ fn fire_and_forget_no_response_or_error() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -304,6 +306,8 @@ fn concurrent_requests_matched_by_request_id() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -390,6 +394,8 @@ fn request_triggers_response() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -457,6 +463,8 @@ fn request_can_receive_error_response() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 

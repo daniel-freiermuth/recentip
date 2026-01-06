@@ -2316,6 +2316,8 @@ fn test_large_tcp_rpc_payload() {
 
             let mut offering = runtime
                 .offer::<BrakeService>(InstanceId::Id(0x0001))
+                .tcp()
+                .start()
                 .await
                 .unwrap();
 
@@ -2418,6 +2420,8 @@ fn test_response_after_offering_dropped() {
 
             let mut offering = runtime
                 .offer::<BrakeService>(InstanceId::Id(0x0001))
+                .tcp()
+                .start()
                 .await
                 .unwrap();
 

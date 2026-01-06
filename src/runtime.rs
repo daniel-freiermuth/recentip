@@ -318,24 +318,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         ProxyHandle::new(Arc::clone(&self.inner), service_id, instance)
     }
 
-    /// Offer a service.
+    /// Offer a service with configurable transport endpoints.
     ///
-    /// Returns an offering handle to receive requests and send events.
-    /// By default, all methods use RESPONSE (0x80) for errors.
-    /// Use `offer_with_config` to configure specific methods to use EXCEPTION (0x81).
-    pub async fn offer<S: Service>(&self, instance: InstanceId) -> Result<OfferingHandle<S>> {
-        self.offer_with_config::<S>(instance, MethodConfig::default())
-            .await
-    }
-
-    /// Offer a service with custom method configuration.
-    ///
-    /// Use this to configure which methods use EXCEPTION (0x81) message type for errors
-    /// instead of the default RESPONSE (0x80) with error return code.
-    ///
-    /// Per SOME/IP specification (`feat_req_recentip_106`, `feat_req_recentip_726)`:
-    /// - By default, errors use RESPONSE (0x80) with non-OK return code
-    /// - EXCEPTION (0x81) is optional and must be explicitly configured per-method
+    /// Returns an `OfferBuilder` that allows configuring which transports (TCP/UDP)
+    /// the service should be offered on, and with which ports.
     ///
     /// # Example
     /// ```no_run
@@ -352,47 +338,24 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// async fn main() -> Result<()> {
     ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
     ///
-    ///     let config = MethodConfig::new()
-    ///         .use_exception_for(0x0001)  // Method 0x0001 uses EXCEPTION for errors
-    ///         .use_exception_for(0x0002); // Method 0x0002 also uses EXCEPTION
+    ///     // Offer on both TCP and UDP with custom ports
+    ///     let offering = runtime.offer::<MyService>(InstanceId::Id(1))
+    ///         .tcp_port(30501)
+    ///         .udp_port(30502)
+    ///         .start()
+    ///         .await?;
     ///
-    ///     let offering = runtime.offer_with_config::<MyService>(
-    ///         InstanceId::Id(1),
-    ///         config,
-    ///     ).await?;
+    ///     // Or use defaults from runtime config
+    ///     let offering2 = runtime.offer::<MyService>(InstanceId::Id(2))
+    ///         .udp()  // Use default UDP port
+    ///         .start()
+    ///         .await?;
+    ///
     ///     Ok(())
     /// }
     /// ```
-    pub async fn offer_with_config<S: Service>(
-        &self,
-        instance: InstanceId,
-        method_config: MethodConfig,
-    ) -> Result<OfferingHandle<S>> {
-        let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
-
-        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
-
-        self.inner
-            .cmd_tx
-            .send(Command::Offer {
-                service_id,
-                instance_id: instance,
-                major_version: S::MAJOR_VERSION,
-                minor_version: S::MINOR_VERSION,
-                method_config,
-                response: response_tx,
-            })
-            .await
-            .map_err(|_| Error::RuntimeShutdown)?;
-
-        let requests_rx = response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
-
-        Ok(OfferingHandle::new(
-            Arc::clone(&self.inner),
-            service_id,
-            instance,
-            requests_rx,
-        ))
+    pub fn offer<S: Service>(&self, instance: InstanceId) -> OfferBuilder<'_, S, U, T, L> {
+        OfferBuilder::new(self, instance)
     }
 
     /// Bind a service instance to a local endpoint without announcing via SD.
@@ -671,6 +634,132 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
         Ok(rx)
+    }
+}
+
+// ============================================================================
+// OFFER BUILDER
+// ============================================================================
+
+/// Builder for configuring and starting a service offering.
+///
+/// Created by [`Runtime::offer`]. Configure transport endpoints using the builder
+/// methods, then call [`start`](OfferBuilder::start) to begin offering the service.
+///
+/// # Example
+/// ```no_run
+/// use someip_runtime::prelude::*;
+///
+/// # struct MyService;
+/// # impl Service for MyService {
+/// #     const SERVICE_ID: u16 = 0x1234;
+/// #     const MAJOR_VERSION: u8 = 1;
+/// #     const MINOR_VERSION: u32 = 0;
+/// # }
+///
+/// # async fn example(runtime: Runtime) -> Result<()> {
+/// // Offer on both TCP and UDP
+/// let offering = runtime.offer::<MyService>(InstanceId::Id(1))
+///     .tcp_port(30501)
+///     .udp_port(30502)
+///     .start()
+///     .await?;
+///
+/// // Offer on TCP only with default port
+/// let tcp_offering = runtime.offer::<MyService>(InstanceId::Id(2))
+///     .tcp()
+///     .start()
+///     .await?;
+/// # Ok(())
+/// # }
+/// ```
+pub struct OfferBuilder<'a, S: Service, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> {
+    runtime: &'a Runtime<U, T, L>,
+    instance: InstanceId,
+    config: crate::config::OfferConfig,
+    _phantom: std::marker::PhantomData<S>,
+}
+
+impl<'a, S: Service, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>
+    OfferBuilder<'a, S, U, T, L>
+{
+    fn new(runtime: &'a Runtime<U, T, L>, instance: InstanceId) -> Self {
+        Self {
+            runtime,
+            instance,
+            config: crate::config::OfferConfig::new(),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Enable TCP transport with the default RPC port (30491).
+    pub fn tcp(mut self) -> Self {
+        self.config = self.config.tcp();
+        self
+    }
+
+    /// Enable TCP transport with a specific port.
+    pub fn tcp_port(mut self, port: u16) -> Self {
+        self.config = self.config.tcp_port(port);
+        self
+    }
+
+    /// Enable UDP transport with the default RPC port (30491).
+    pub fn udp(mut self) -> Self {
+        self.config = self.config.udp();
+        self
+    }
+
+    /// Enable UDP transport with a specific port.
+    pub fn udp_port(mut self, port: u16) -> Self {
+        self.config = self.config.udp_port(port);
+        self
+    }
+
+    /// Configure method-specific behavior (e.g., exception handling).
+    pub fn method_config(mut self, config: MethodConfig) -> Self {
+        self.config = self.config.method_config(config);
+        self
+    }
+
+    /// Start offering the service with the configured transports.
+    ///
+    /// If no transports are configured, falls back to the runtime's default
+    /// transport configuration for backward compatibility.
+    pub async fn start(mut self) -> Result<OfferingHandle<S>> {
+        // Fallback to runtime config if no transport specified
+        if !self.config.has_transport() {
+            match self.runtime.inner.config.preferred_transport {
+                Transport::Tcp => self.config = self.config.tcp(),
+                Transport::Udp => self.config = self.config.udp(),
+            }
+        }
+
+        let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
+        self.runtime
+            .inner
+            .cmd_tx
+            .send(Command::Offer {
+                service_id,
+                instance_id: self.instance,
+                major_version: S::MAJOR_VERSION,
+                minor_version: S::MINOR_VERSION,
+                offer_config: self.config,
+                response: response_tx,
+            })
+            .await
+            .map_err(|_| Error::RuntimeShutdown)?;
+
+        let requests_rx = response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
+
+        Ok(OfferingHandle::new(
+            Arc::clone(&self.runtime.inner),
+            service_id,
+            self.instance,
+            requests_rx,
+        ))
     }
 }
 

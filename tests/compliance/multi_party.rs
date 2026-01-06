@@ -77,6 +77,8 @@ fn multiple_clients_call_same_server() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -215,6 +217,8 @@ fn multiple_clients_subscribe_to_events() {
 
             let offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -357,6 +361,8 @@ fn sd_reaches_all_participants() {
 
             let _offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -462,6 +468,8 @@ fn nodes_with_mixed_client_server_roles() {
             // Offer ServiceA
             let mut offering = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -507,6 +515,8 @@ fn nodes_with_mixed_client_server_roles() {
         // Offer ServiceB
         let mut offering = runtime
             .offer::<ServiceB>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -579,6 +589,8 @@ fn multiple_servers_different_instances() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -605,6 +617,8 @@ fn multiple_servers_different_instances() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0002))
+            .udp()
+            .start()
             .await
             .unwrap();
 

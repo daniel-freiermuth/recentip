@@ -261,6 +261,8 @@ fn server_ignores_wrong_protocol_version() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -455,6 +457,8 @@ fn sd_offer_contains_major_version() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -516,6 +520,8 @@ fn response_preserves_interface_version() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 

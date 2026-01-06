@@ -57,6 +57,8 @@ fn subscribe_and_receive_events() {
 
             let offering = runtime
                 .offer::<EventService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -151,6 +153,8 @@ fn subscribe_receives_ack() {
 
             let _offering = runtime
                 .offer::<EventService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -215,6 +219,8 @@ fn unsubscribe_on_drop() {
 
             let offering = runtime
                 .offer::<EventService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -313,6 +319,8 @@ fn subscribe_multiple_eventgroups() {
 
             let offering = runtime
                 .offer::<EventService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -452,6 +460,8 @@ fn event_id_has_high_bit() {
 
             let offering = runtime
                 .offer::<EventService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -537,6 +547,8 @@ fn mixed_rpc_and_events() {
 
             let mut offering = runtime
                 .offer::<EventService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 

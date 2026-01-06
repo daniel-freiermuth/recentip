@@ -76,7 +76,11 @@ fn test_offer_service() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Offer a service
-        let offering = runtime.offer::<TestService>(InstanceId::Id(0x0001)).await;
+        let offering = runtime
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
+            .await;
 
         assert!(offering.is_ok(), "Offering should succeed");
 
@@ -134,6 +138,8 @@ fn test_service_discovery_offer_find() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -184,10 +190,14 @@ fn test_multiple_services() {
         // Offer two different services
         let _offering1 = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
         let _offering2 = runtime
             .offer::<AnotherService>(InstanceId::Id(0x0002))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -230,6 +240,8 @@ fn test_specific_instance_id() {
         // Offer instance 0x0001
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -271,6 +283,8 @@ fn test_offering_handle_drop() {
         {
             let _offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
             // offering dropped here
@@ -299,6 +313,8 @@ fn test_method_call_rpc() {
         // Offer the service
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -379,6 +395,8 @@ fn library_auto_renews_subscription() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -452,6 +470,8 @@ fn test_event_subscription() {
         // Offer the service
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 

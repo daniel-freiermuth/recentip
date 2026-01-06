@@ -114,6 +114,8 @@ fn udp_binding_transports_someip_messages() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -179,6 +181,8 @@ fn udp_each_message_has_own_header() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -257,6 +261,8 @@ fn udp_multiple_messages_format_supported() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -367,6 +373,8 @@ fn udp_supports_unicast_and_multicast() {
         // Offer triggers multicast SD messages
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -432,6 +440,8 @@ fn udp_client_receives_multicast_offers() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -481,6 +491,8 @@ fn udp_multicast_eventgroup_with_initial_events() {
         let eventgroup = EventgroupId::new(0x01).unwrap();
         let offering = runtime
             .offer::<EventService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -564,6 +576,8 @@ fn udp_handles_various_payload_sizes() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -642,6 +656,8 @@ fn default_transport_is_udp() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 

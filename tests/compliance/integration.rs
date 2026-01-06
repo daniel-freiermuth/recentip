@@ -56,6 +56,8 @@ fn request_response_roundtrip() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -120,6 +122,8 @@ fn multiple_calls_succeed() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -187,6 +191,8 @@ fn service_discovery_finds_offered_service() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -232,6 +238,8 @@ fn notification_delivery() {
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -303,6 +311,8 @@ fn successful_call_returns_ok() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -371,6 +381,8 @@ fn network_partition_handling() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -495,6 +507,8 @@ fn service_restart_recovery() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -633,6 +647,8 @@ fn many_concurrent_requests() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 

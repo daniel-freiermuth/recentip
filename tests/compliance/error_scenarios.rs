@@ -57,6 +57,8 @@ fn no_error_response_for_events() {
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -126,6 +128,8 @@ fn no_error_response_for_fire_and_forget() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -228,6 +232,8 @@ fn server_returns_various_error_codes() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -433,6 +439,8 @@ fn error_response_copies_request_header() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -615,7 +623,10 @@ fn exception_message_type_when_configured() {
         let method_config = MethodConfig::new().use_exception_for(0x0001);
 
         let mut offering = runtime
-            .offer_with_config::<TestService>(InstanceId::Id(0x0001), method_config)
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .method_config(method_config)
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -767,7 +778,10 @@ fn mixed_exception_config_per_method() {
         let method_config = MethodConfig::new().use_exception_for(0x0001);
 
         let mut offering = runtime
-            .offer_with_config::<TestService>(InstanceId::Id(0x0001), method_config)
+            .offer::<TestService>(InstanceId::Id(0x0001))
+            .method_config(method_config)
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -942,6 +956,8 @@ fn internal_unknown_service_error_uses_response() {
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -1072,6 +1088,8 @@ fn messages_with_short_length_ignored() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -1189,6 +1207,8 @@ fn uses_known_protocol_version() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -1352,6 +1372,8 @@ fn wrong_protocol_version_returns_error() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 

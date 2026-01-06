@@ -45,8 +45,12 @@ async fn main() -> Result<()> {
     let config = RuntimeConfig::default();
     let runtime = Runtime::new(config).await?;
     
-    // Offer the service
-    let mut offering = runtime.offer::<ExampleService>(InstanceId::Id(1)).await?;
+    // Offer the service on UDP
+    let mut offering = runtime
+        .offer::<ExampleService>(InstanceId::Id(1))
+        .udp()
+        .start()
+        .await?;
     
     println!("✓ Service is now being announced via Service Discovery");
     println!("  Press Ctrl+C to stop");

@@ -35,7 +35,6 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use test_log::test;
 
 /// Coverage tracking macro
 macro_rules! covers {

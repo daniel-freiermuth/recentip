@@ -52,6 +52,8 @@ fn subscribe_to_multiple_instances() {
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -82,6 +84,8 @@ fn subscribe_to_multiple_instances() {
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0002))
+            .udp()
+            .start()
             .await
             .unwrap();
 

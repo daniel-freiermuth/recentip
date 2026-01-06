@@ -77,6 +77,8 @@ fn sd_offer_discovery_works() {
 
             let _offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -135,6 +137,8 @@ fn sd_offer_with_specific_instance() {
             // Offer with specific instance ID
             let _offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0042))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -194,6 +198,8 @@ fn sd_offer_with_version_info() {
             // Offer versioned service
             let _offering = runtime
                 .offer::<VersionedService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -259,6 +265,8 @@ fn sd_stop_offer_on_drop() {
             {
                 let _offering = runtime
                     .offer::<TestService>(InstanceId::Id(0x0001))
+                    .udp()
+                    .start()
                     .await
                     .unwrap();
 
@@ -324,10 +332,14 @@ fn sd_multiple_service_offers() {
 
             let _offering1 = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
             let _offering2 = runtime
                 .offer::<VersionedService>(InstanceId::Id(0x0002))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -388,11 +400,15 @@ fn sd_multiple_instances_same_service() {
 
             let _offering1 = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
             let _offering2 = runtime
                 .offer::<TestService>(InstanceId::Id(0x0002))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -485,6 +501,8 @@ fn sd_find_service_discovery() {
 
             let _offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -531,6 +549,8 @@ fn sd_session_id_increments() {
             // Multiple offers to trigger multiple SD messages
             let _offering1 = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -538,6 +558,8 @@ fn sd_session_id_increments() {
 
             let _offering2 = runtime
                 .offer::<VersionedService>(InstanceId::Id(0x0002))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -599,6 +621,8 @@ fn sd_unicast_flag_handling() {
 
             let _offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -657,6 +681,8 @@ fn sd_discovery_then_rpc() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 

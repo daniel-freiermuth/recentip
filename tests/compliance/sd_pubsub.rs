@@ -63,6 +63,8 @@ fn client_registers_for_events_via_sd() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -126,6 +128,8 @@ fn server_offers_on_startup_to_discover_clients() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -157,6 +161,8 @@ fn client_responds_to_offer_with_subscribe() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
             let mut offering = runtime
                 .offer::<PubSubService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -217,6 +223,8 @@ fn subscribe_resolves_on_ack() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -272,6 +280,8 @@ fn server_tracks_subscription_state() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -374,6 +384,8 @@ fn client_deregisters_with_stop_subscribe() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
             let mut offering = runtime
                 .offer::<PubSubService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -447,6 +459,8 @@ fn server_sends_initial_events_after_ack() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -509,6 +523,8 @@ fn initial_events_only_on_first_subscribe() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -584,6 +600,8 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -655,6 +673,8 @@ fn initial_events_for_multiple_eventgroups() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -722,6 +742,8 @@ fn server_deletes_subscription_on_error() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -787,6 +809,8 @@ fn server_handles_link_loss() {
         // Offer service - this sends OfferService
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -814,6 +838,8 @@ fn client_resubscribes_on_timeout() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -861,6 +887,8 @@ fn client_subscribes_after_link_up() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -915,6 +943,8 @@ fn client_udp_port_ready_before_subscribe() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -979,6 +1009,8 @@ fn client_tcp_ready_before_subscribe_reliable() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .tcp()
+            .start()
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -1035,6 +1067,8 @@ fn subscribe_timer_reset_on_offer() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -1105,6 +1139,8 @@ fn no_cyclic_subscribe_if_not_configured() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
@@ -1165,6 +1201,8 @@ fn implicit_registration_supported() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -1224,6 +1262,8 @@ fn pubsub_state_machine_flow() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
         let offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 

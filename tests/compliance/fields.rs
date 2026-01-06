@@ -65,6 +65,8 @@ fn field_getter_empty_request_payload() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -167,6 +169,8 @@ fn field_getter_returns_current_value() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -266,6 +270,8 @@ fn field_setter_sends_value_in_request() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -371,6 +377,8 @@ fn field_setter_gets_response() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -464,6 +472,8 @@ fn field_notifier_sends_updated_value() {
 
             let offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -574,6 +584,8 @@ fn field_combines_getter_setter_notifier() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 
@@ -734,6 +746,8 @@ fn field_setter_can_reject_invalid_value() {
 
             let mut offering = runtime
                 .offer::<TestService>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
                 .await
                 .unwrap();
 

@@ -279,6 +279,8 @@ fn large_udp_messages_use_tp() {
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
+            .udp()
+            .start()
             .await
             .unwrap();
 
