@@ -427,20 +427,6 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
         })
     }
 
-    /// Check if the service is available without blocking.
-    ///
-    /// Returns `Ok(Available)` if available, `Err(self)` if not yet available.
-    pub fn try_available(self) -> std::result::Result<ProxyHandle<S, Available>, Self> {
-        // TODO: Check cached state from runtime
-        Err(self)
-    }
-
-    /// Check if the service is available without consuming self.
-    pub fn is_available(&self) -> bool {
-        // TODO: Check cached state from runtime
-        false
-    }
-
     /// Get the service ID
     pub fn service_id(&self) -> ServiceId {
         self.service_id

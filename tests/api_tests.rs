@@ -59,7 +59,7 @@ fn test_find_service() {
         // Check it's in unavailable state
         assert_eq!(proxy.service_id(), ServiceId::new(0x1234).unwrap());
         assert_eq!(proxy.instance_id(), InstanceId::Any);
-        assert!(!proxy.is_available());
+        assert!(!proxy.available().await.is_ok());
 
         Ok(())
     });
