@@ -458,7 +458,12 @@ impl<S: Service> ProxyHandle<S, Available> {
     /// Returns the transport (TCP or UDP) that was selected during service discovery.
     /// This reflects the `preferred_transport` configuration at the time of discovery,
     /// or whichever transport was available if only one was offered.
-    #[cfg(test)]
+    ///
+    /// # Stability
+    ///
+    /// **This API is unstable and intended for testing/diagnostics only.**
+    /// It may be removed or changed in future versions without notice.
+    #[doc(hidden)]
     pub fn transport(&self) -> crate::config::Transport {
         self.state.transport
     }
