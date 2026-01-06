@@ -503,7 +503,6 @@ pub fn handle_start_announcing(
     // Capture values before mutable borrow
     let sd_flags = state.sd_flags(true);
     let ttl = state.config.offer_ttl;
-    let transport = state.config.transport;
     let sd_multicast = state.config.sd_multicast;
 
     if let Some(offered) = state.offered.get_mut(&key) {
@@ -511,7 +510,7 @@ pub fn handle_start_announcing(
         offered.is_announcing = true;
         offered.last_offer = Instant::now() - Duration::from_secs(10); // Force immediate offer
 
-        let msg = build_offer_message(&key, offered, sd_flags, ttl, transport);
+        let msg = build_offer_message(&key, offered, sd_flags, ttl);
 
         actions.push(Action::SendSd {
             message: msg,
@@ -525,6 +524,7 @@ pub fn handle_start_announcing(
 }
 
 /// Handle `Command::StopAnnouncing`
+/// Announcing a service that was only bound (not offered) before
 pub fn handle_stop_announcing(
     service_id: ServiceId,
     instance_id: InstanceId,
