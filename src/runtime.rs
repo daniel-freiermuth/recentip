@@ -1021,7 +1021,7 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
 /// Execute an action
 async fn execute_action<U: UdpSocket, T: TcpStream>(
     sd_socket: &U,
-    config: &RuntimeConfig,
+    _config: &RuntimeConfig,
     state: &mut RuntimeState,
     action: Action,
     pending_responses: &mut FuturesUnordered<
