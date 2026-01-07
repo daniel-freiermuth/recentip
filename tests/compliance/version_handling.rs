@@ -126,9 +126,9 @@ fn build_sd_offer_with_version(
 
     // OfferService Entry (16 bytes)
     packet.push(0x01); // Type: OfferService
-    packet.push(0x00); // Index 1st options
-    packet.push(0x10); // Index 2nd options + # of opts 1
-    packet.push(0x00); // # of opts 2
+    packet.push(0x00); // Index 1st options (where first option starts)
+    packet.push(0x00); // Index 2nd options (no second option run)
+    packet.push(0x10); // (num_options_1 << 4) | num_options_2 = (1 << 4) | 0
     packet.extend_from_slice(&service_id.to_be_bytes());
     packet.extend_from_slice(&instance_id.to_be_bytes());
     packet.push(major_version);
