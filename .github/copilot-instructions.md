@@ -24,3 +24,7 @@ At the start of each session, read these files in order:
 2. `DESIGN.md` - Design decisions and module responsibilities (if diving deep)
 
 Update `TODO.md` at the end of significant work sessions.
+
+
+# Knowledge base
+In the folder .notes-to-the-agent, you can keep notes to yourself. It would, e.g. be a good idea to note down the results of expensive researchs or solutions to problems you encountered.
