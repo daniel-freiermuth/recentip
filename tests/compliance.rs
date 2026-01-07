@@ -26,9 +26,16 @@ mod api_types;
 #[path = "compliance/integration.rs"]
 mod integration;
 
+// Wire format tests - new modular organization
+#[cfg(feature = "turmoil")]
+#[path = "compliance/wire_format/mod.rs"]
+mod wire_format;
+
+// Old wire_format.rs - behavior tests not yet moved
+// TODO: Move behavior tests to server_behavior module and delete this file
 #[cfg(feature = "turmoil")]
 #[path = "compliance/wire_format.rs"]
-mod wire_format;
+mod wire_format_old;
 
 #[cfg(feature = "turmoil")]
 #[path = "compliance/service_discovery.rs"]
