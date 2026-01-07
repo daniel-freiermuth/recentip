@@ -210,7 +210,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// This is mainly useful for testing with turmoil.
     pub async fn with_socket_type(config: RuntimeConfig) -> Result<Self> {
         // Bind the SD socket (always UDP, per SOME/IP spec)
-        let sd_socket = U::bind(config.local_addr).await?;
+        let sd_socket = U::bind(config.bind_addr).await?;
         let local_addr = sd_socket.local_addr()?;
 
         // Join multicast group

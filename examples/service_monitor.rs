@@ -115,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create runtime with custom multicast address
     let config = RuntimeConfig {
-        local_addr: if let Some(local) = args.local {
+        bind_addr: if let Some(local) = args.local {
             SocketAddr::V4(SocketAddrV4::new(local, 30490))
         } else {
             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30490))

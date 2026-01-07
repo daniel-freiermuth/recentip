@@ -71,6 +71,23 @@ use crate::{Event, EventId, Response, ReturnCode};
 // COMMAND HANDLERS (CLIENT-SIDE)
 // ============================================================================
 
+/// Determine the routable IP address to use in endpoint options
+/// 
+/// Per feat_req_recentipsd_814, endpoint options must contain valid routable IP addresses.
+/// Returns the configured advertised IP, or falls back to local_endpoint/client_rpc_endpoint
+/// if they have non-unspecified IPs, or None if no valid IP is available.
+fn get_endpoint_ip(state: &RuntimeState) -> Option<std::net::IpAddr> {
+    if let Some(advertised) = state.config.advertised_ip {
+        Some(advertised)
+    } else if !state.local_endpoint.ip().is_unspecified() {
+        Some(state.local_endpoint.ip())
+    } else if !state.client_rpc_endpoint.ip().is_unspecified() {
+        Some(state.client_rpc_endpoint.ip())
+    } else {
+        None
+    }
+}
+
 /// Handle `Command::Find`
 pub fn handle_find(
     service_id: crate::ServiceId,
@@ -243,11 +260,31 @@ pub fn handle_subscribe(
             return;
         };
 
+        // Determine the actual local IP address to put in the endpoint option
+        // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
+        let Some(endpoint_ip) = get_endpoint_ip(state) else {
+            tracing::error!(
+                "Cannot subscribe to {:04x}:{:04x} eventgroup {:04x}: \
+                 no valid IP address configured. Set RuntimeConfig::advertised_ip",
+                service_id.value(),
+                instance_id.value(),
+                eventgroup_id
+            );
+            let _ = response.send(Err(crate::error::Error::Config(
+                crate::error::ConfigError::new(
+                    "No advertised IP configured for subscriptions"
+                )
+            )));
+            return;
+        };
+        
+        let endpoint_for_subscribe = SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
+
         let msg = build_subscribe_message(
             service_id.value(),
             instance_id.value(),
             eventgroup_id,
-            state.local_endpoint,
+            endpoint_for_subscribe,
             state.client_rpc_endpoint.port(),
             state.sd_flags(true),
             state.config.subscribe_ttl,
@@ -300,11 +337,26 @@ pub fn handle_unsubscribe(
             return;
         };
 
+        // Determine the actual local IP address to put in the endpoint option
+        // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
+        let Some(endpoint_ip) = get_endpoint_ip(state) else {
+            tracing::error!(
+                "Cannot unsubscribe from {:04x}:{:04x} eventgroup {:04x}: \
+                 no valid IP address configured. Set RuntimeConfig::advertised_ip",
+                service_id.value(),
+                instance_id.value(),
+                eventgroup_id
+            );
+            return;
+        };
+        
+        let endpoint_for_unsubscribe = SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
+
         let msg = build_unsubscribe_message(
             service_id.value(),
             instance_id.value(),
             eventgroup_id,
-            state.local_endpoint,
+            endpoint_for_unsubscribe,
             state.client_rpc_endpoint.port(),
             state.sd_flags(true),
             transport,

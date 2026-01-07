@@ -43,7 +43,7 @@ impl Service for EchoService {
 /// Different runtimes on the same machine can share this port via SO_REUSEPORT.
 fn test_config(_port: u16) -> RuntimeConfig {
     RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
             30490,
         )))
@@ -56,7 +56,7 @@ fn test_config(_port: u16) -> RuntimeConfig {
 
 fn tcp_test_config(_port: u16) -> RuntimeConfig {
     RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
             30490,
         )))
@@ -70,7 +70,7 @@ fn tcp_test_config(_port: u16) -> RuntimeConfig {
 
 fn tcp_test_config_with_magic_cookies(_port: u16) -> RuntimeConfig {
     RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
             30490,
         )))
@@ -492,7 +492,7 @@ async fn udp_two_runtimes_same_sd_port() {
     // Both runtimes bind to INADDR_ANY on the SD multicast port
     // This tests SO_REUSEPORT functionality
     let server_config = RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
             sd_port,
         )))
@@ -502,7 +502,7 @@ async fn udp_two_runtimes_same_sd_port() {
         )))
         .build();
     let client_config = RuntimeConfig::builder()
-        .local_addr(SocketAddr::V4(SocketAddrV4::new(
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
             sd_port,
         )))

@@ -130,8 +130,19 @@ pub enum Transport {
 /// Runtime configuration
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
-    /// Local address to bind to (default: 0.0.0.0:0)
-    pub local_addr: SocketAddr,
+    /// Local address to bind to (default: 0.0.0.0:30490)
+    pub bind_addr: SocketAddr,
+    /// Advertised IP address for endpoint options (default: None, must be configured)
+    ///
+    /// This is the routable IP address that will be included in SD endpoint options
+    /// when subscribing to services. Must be a valid, non-unspecified address.
+    /// 
+    /// - In turmoil tests: Use `turmoil::lookup(hostname)` to get the host's IP
+    /// - On real networks: Use the actual interface IP address
+    /// 
+    /// If not set, will attempt to use the IP from `local_addr`, but `local_addr`
+    /// cannot be 0.0.0.0 (unspecified) if you need to subscribe to services.
+    pub advertised_ip: Option<std::net::IpAddr>,
     /// SD multicast group address (default: 239.255.0.1:30490)
     pub sd_multicast: SocketAddr,
     /// TTL for OfferService entries (default: 3600 seconds)
@@ -160,7 +171,8 @@ impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             // Use the SD port for multicast group membership to work in turmoil
-            local_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_SD_PORT)),
+            bind_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_SD_PORT)),
+            advertised_ip: None,
             sd_multicast: SocketAddr::V4(SocketAddrV4::new(DEFAULT_SD_MULTICAST, DEFAULT_SD_PORT)),
             offer_ttl: DEFAULT_OFFER_TTL,
             find_ttl: DEFAULT_FIND_TTL,
@@ -187,8 +199,27 @@ pub struct RuntimeConfigBuilder {
 
 impl RuntimeConfigBuilder {
     /// Set the local address
-    pub fn local_addr(mut self, addr: SocketAddr) -> Self {
-        self.config.local_addr = addr;
+    pub fn bind_addr(mut self, addr: SocketAddr) -> Self {
+        self.config.bind_addr = addr;
+        self
+    }
+
+    /// Set the advertised IP address for endpoint options
+    /// 
+    /// This is the routable IP address that will be included in SD endpoint options.
+    /// Must be a valid, non-unspecified address. Required for subscribing to services.
+    /// 
+    /// # Example
+    /// ```no_run
+    /// use someip_runtime::prelude::*;
+    /// use std::net::Ipv4Addr;
+    /// 
+    /// let config = RuntimeConfig::builder()
+    ///     .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
+    ///     .build();
+    /// ```
+    pub fn advertised_ip(mut self, ip: std::net::IpAddr) -> Self {
+        self.config.advertised_ip = Some(ip);
         self
     }
 
