@@ -65,7 +65,7 @@ test:
   stage: test
   script:
     - cargo install cargo-nextest --locked
-    - cargo nextest run --all-features
+    - cargo nextest run --no-fail-fast --all-features
   allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -76,7 +76,7 @@ test-slow:
   stage: test
   script:
     - cargo install cargo-nextest --locked
-    - cargo nextest run --all-features --features slow-tests
+    - cargo nextest run --no-fail-fast --all-features --features slow-tests
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   allow_failure: true
