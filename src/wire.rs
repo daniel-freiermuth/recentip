@@ -302,28 +302,19 @@ impl MessageType {
 
     /// Check if this is a fire-and-forget request
     pub fn is_fire_and_forget(&self) -> bool {
-        matches!(
-            self,
-            Self::RequestNoReturn | Self::TpRequestNoReturn
-        )
+        matches!(self, Self::RequestNoReturn | Self::TpRequestNoReturn)
     }
 
     /// Check if this is a notification
     pub fn is_notification(&self) -> bool {
-        matches!(
-            self,
-            Self::Notification | Self::TpNotification
-        )
+        matches!(self, Self::Notification | Self::TpNotification)
     }
 
     /// Check if this is a response type
     pub fn is_response(&self) -> bool {
         matches!(
             self,
-            Self::Response
-                | Self::TpResponse
-                | Self::Error
-                | Self::TpError
+            Self::Response | Self::TpResponse | Self::Error | Self::TpError
         )
     }
 

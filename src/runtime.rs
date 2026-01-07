@@ -245,7 +245,8 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         let client_method_addr = client_method_socket.local_addr()?;
 
         // Spawn task to handle client RPC socket (receives responses to our requests)
-        let (client_method_send_tx, mut client_method_send_rx) = mpsc::channel::<RpcSendMessage>(100);
+        let (client_method_send_tx, mut client_method_send_rx) =
+            mpsc::channel::<RpcSendMessage>(100);
         let client_method_tx_clone = method_tx.clone();
         tokio::spawn(async move {
             let mut buf = [0u8; 65535];
@@ -280,7 +281,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         });
 
         // Spawn the runtime task
-        let inner = Arc::new(RuntimeInner { cmd_tx, config: config.clone() });
+        let inner = Arc::new(RuntimeInner {
+            cmd_tx,
+            config: config.clone(),
+        });
 
         let state = RuntimeState::new(
             local_addr,
@@ -481,7 +485,13 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         transport: Transport,
     ) -> ProxyHandle<S, Available> {
         let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
-        ProxyHandle::new_available(Arc::clone(&self.inner), service_id, instance, endpoint, transport)
+        ProxyHandle::new_available(
+            Arc::clone(&self.inner),
+            service_id,
+            instance,
+            endpoint,
+            transport,
+        )
     }
 
     /// Listen for events from a static (pre-configured) service endpoint.
@@ -804,7 +814,7 @@ async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
                 match result {
                     Ok((len, from)) => {
                         let mut data = &buf[..len];
-                        
+
                         let Some(header) = Header::parse(&mut data) else {
                             tracing::warn!("Received invalid SOME/IP header on SD socket from {}", from);
                             continue;
@@ -1148,9 +1158,9 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
         Action::EmitSdEvent { event } => {
             // Send event to all SD monitors
             // Remove monitors that have closed their receivers
-            state.sd_monitors.retain(|monitor| {
-                monitor.try_send(event.clone()).is_ok()
-            });
+            state
+                .sd_monitors
+                .retain(|monitor| monitor.try_send(event.clone()).is_ok());
         }
     }
 }
@@ -1497,7 +1507,13 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         if now.duration_since(offered.last_offer) >= offer_interval {
             offered.last_offer = now;
 
-            let msg = build_offer_message(key, offered, sd_flags, offer_ttl, state.config.advertised_ip);
+            let msg = build_offer_message(
+                key,
+                offered,
+                sd_flags,
+                offer_ttl,
+                state.config.advertised_ip,
+            );
 
             actions.push(Action::SendSd {
                 message: msg,
@@ -1564,10 +1580,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         subscribers.retain(|sub| match sub.expires_at {
             None => true, // Infinite TTL - never expires
             Some(expires_at) if now >= expires_at => {
-                tracing::debug!(
-                    "Subscription from {} expired (TTL elapsed)",
-                    sub.endpoint
-                );
+                tracing::debug!("Subscription from {} expired (TTL elapsed)", sub.endpoint);
                 false
             }
             Some(_) => true,

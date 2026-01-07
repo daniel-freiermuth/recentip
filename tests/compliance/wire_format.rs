@@ -519,7 +519,7 @@ fn find_service_ttl_on_wire() {
 
         // Start finding service - calling .available() triggers Command::Find which sends FindService
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        
+
         // Use tokio::select to attempt available() but don't wait forever
         // (service won't be found, but the FindService message will be sent)
         let _ = tokio::time::timeout(Duration::from_millis(500), proxy.available()).await;
@@ -1802,9 +1802,13 @@ fn subscribe_ack_entry_type() {
         // Need to send from a port the server can respond to
         let client_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
         let subscribe = build_sd_subscribe_with_udp_endpoint(
-            0x1234, 0x0001, 1, 0x0001, 3600,
+            0x1234,
+            0x0001,
+            1,
+            0x0001,
+            3600,
             "192.168.0.2".parse().unwrap(),
-            12345
+            12345,
         );
         client_socket.send_to(&subscribe, server_addr).await?;
 
@@ -1860,14 +1864,16 @@ fn subscribe_ack_entry_type() {
 fn subscription_max_ttl_doesnt_expire() {
     covers!(feat_req_recentipsd_431);
 
-    const MAX_TTL : u32 = 0xFFFFFF; // ~194 days
-    const TICK_SECS : u32 = 100;    // Turmoil tick duration in seconds
-    const CYCLIC_OFFER_DELAY : u32 = 10 * TICK_SECS; // Server offer interval
-    const OFFER_TTL : u32 = 100 * TICK_SECS; // Server offer TTL
+    const MAX_TTL: u32 = 0xFFFFFF; // ~194 days
+    const TICK_SECS: u32 = 100; // Turmoil tick duration in seconds
+    const CYCLIC_OFFER_DELAY: u32 = 10 * TICK_SECS; // Server offer interval
+    const OFFER_TTL: u32 = 100 * TICK_SECS; // Server offer TTL
 
     // Simulation needs to run long enough to prove TTL doesn't expire
     let mut sim = turmoil::Builder::new()
-        .simulation_duration(Duration::from_secs(MAX_TTL as u64 + CYCLIC_OFFER_DELAY as u64 + 30 * TICK_SECS as u64))
+        .simulation_duration(Duration::from_secs(
+            MAX_TTL as u64 + CYCLIC_OFFER_DELAY as u64 + 30 * TICK_SECS as u64,
+        ))
         .tick_duration(Duration::from_secs(TICK_SECS as u64))
         .build();
 
@@ -1897,7 +1903,9 @@ fn subscription_max_ttl_doesnt_expire() {
 
         let mut i: u32 = 0;
         loop {
-            let _ = offering.notify(eventgroup, event_id, format!("event{}", i).as_bytes()).await;
+            let _ = offering
+                .notify(eventgroup, event_id, format!("event{}", i).as_bytes())
+                .await;
             eprintln!("Server sent event {}", i);
             tokio::time::sleep(Duration::from_secs(TICK_SECS as u64)).await;
             i += 1;
@@ -1918,9 +1926,11 @@ fn subscription_max_ttl_doesnt_expire() {
 
         // Find server via SD offer
         for _ in 0..20 {
-            let result =
-                tokio::time::timeout(Duration::from_secs(2 * TICK_SECS as u64), sd_socket.recv_from(&mut buf))
-                    .await;
+            let result = tokio::time::timeout(
+                Duration::from_secs(2 * TICK_SECS as u64),
+                sd_socket.recv_from(&mut buf),
+            )
+            .await;
 
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
@@ -1942,16 +1952,17 @@ fn subscription_max_ttl_doesnt_expire() {
 
         // Subscribe with MAX TTL (0xFFFFFF = ~194 days) - never needs renewal and UDP endpoint
         let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_client").to_string().parse().unwrap();
-        let subscribe = build_sd_subscribe_with_udp_endpoint(
-            0x1234, 0x0001, 1, 0x0001, MAX_TTL,
-            my_ip,
-            30600
-        );
+        let subscribe =
+            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 1, 0x0001, MAX_TTL, my_ip, 30600);
         event_socket.send_to(&subscribe, server).await?;
         eprintln!("Raw client sent SubscribeEventgroup with TTL=max (0xFFFFFF)");
 
         // Wait for SubscribeAck
-        let result = tokio::time::timeout(Duration::from_secs(2 * TICK_SECS as u64), event_socket.recv_from(&mut buf)).await;
+        let result = tokio::time::timeout(
+            Duration::from_secs(2 * TICK_SECS as u64),
+            event_socket.recv_from(&mut buf),
+        )
+        .await;
         if let Ok(Ok((len, _))) = result {
             if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                 for entry in &sd_msg.entries {
@@ -1966,10 +1977,19 @@ fn subscription_max_ttl_doesnt_expire() {
         let mut events_received = 0;
         let start = tokio::time::Instant::now();
 
-        while start.elapsed() < Duration::from_secs(MAX_TTL as u64 + CYCLIC_OFFER_DELAY as u64 + 10 * TICK_SECS as u64) {
-            let result = tokio::time::timeout(Duration::from_secs(2 * TICK_SECS as u64), event_socket.recv_from(&mut buf)).await;
+        while start.elapsed()
+            < Duration::from_secs(
+                MAX_TTL as u64 + CYCLIC_OFFER_DELAY as u64 + 10 * TICK_SECS as u64,
+            )
+        {
+            let result = tokio::time::timeout(
+                Duration::from_secs(2 * TICK_SECS as u64),
+                event_socket.recv_from(&mut buf),
+            )
+            .await;
             if let Ok(Ok((len, _))) = result {
-                if start.elapsed() < Duration::from_secs(MAX_TTL as u64 + CYCLIC_OFFER_DELAY as u64) {
+                if start.elapsed() < Duration::from_secs(MAX_TTL as u64 + CYCLIC_OFFER_DELAY as u64)
+                {
                     eprintln!("Got early packet");
                     continue;
                 }
@@ -1979,15 +1999,22 @@ fn subscription_max_ttl_doesnt_expire() {
                 // Event IDs start with 0x8xxx
                 if service_id == 0x1234 && (method_id & 0x8000) != 0 {
                     events_received += 1;
-                    eprintln!("Raw client received event {} at {:?}", events_received, start.elapsed());
+                    eprintln!(
+                        "Raw client received event {} at {:?}",
+                        events_received,
+                        start.elapsed()
+                    );
                 }
             }
         }
 
         eprintln!("Raw client received {} events total", events_received);
-        
-        assert!(events_received > 8, "Should receive some events before TTL expires");
-        
+
+        assert!(
+            events_received > 8,
+            "Should receive some events before TTL expires"
+        );
+
         Ok(())
     });
 
@@ -2010,7 +2037,9 @@ fn subscription_ttl_expiration_stops_events() {
     // Server offers service and sends events continuously
     sim.host("server", || async {
         let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(RuntimeConfig::default()).await.unwrap();
+            Runtime::with_socket_type(RuntimeConfig::default())
+                .await
+                .unwrap();
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -2024,7 +2053,9 @@ fn subscription_ttl_expiration_stops_events() {
 
         let mut i: u32 = 0;
         loop {
-            let _ = offering.notify(eventgroup, event_id, format!("event{}", i).as_bytes()).await;
+            let _ = offering
+                .notify(eventgroup, event_id, format!("event{}", i).as_bytes())
+                .await;
             eprintln!("Server sent event {}", i);
             tokio::time::sleep(Duration::from_millis(500)).await;
             i += 1;
@@ -2071,16 +2102,14 @@ fn subscription_ttl_expiration_stops_events() {
 
         // Send SubscribeEventgroup with short TTL (2 seconds) - and NEVER renew
         let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_client").to_string().parse().unwrap();
-        let subscribe = build_sd_subscribe_with_udp_endpoint(
-            0x1234, 0x0001, 1, 0x0001, 2,
-            my_ip,
-            30600,
-        );
+        let subscribe =
+            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 1, 0x0001, 2, my_ip, 30600);
         event_socket.send_to(&subscribe, server).await?;
         eprintln!("Raw client sent SubscribeEventgroup with TTL=2s");
 
         // Wait for SubscribeAck
-        let result = tokio::time::timeout(Duration::from_secs(2), event_socket.recv_from(&mut buf)).await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(2), event_socket.recv_from(&mut buf)).await;
         if let Ok(Ok((len, _))) = result {
             if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                 for entry in &sd_msg.entries {
@@ -2094,10 +2123,12 @@ fn subscription_ttl_expiration_stops_events() {
         // Count events received
         let mut events_received = 0;
         let start = tokio::time::Instant::now();
-        
+
         // Listen for events for 6 seconds (longer than TTL + events)
         while start.elapsed() < Duration::from_secs(6) {
-            let result = tokio::time::timeout(Duration::from_millis(200), event_socket.recv_from(&mut buf)).await;
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), event_socket.recv_from(&mut buf))
+                    .await;
             if let Ok(Ok((len, _))) = result {
                 assert!(len > 16, "Event packet must be at least 16 bytes");
                 let service_id = u16::from_be_bytes([buf[0], buf[1]]);
@@ -2105,19 +2136,30 @@ fn subscription_ttl_expiration_stops_events() {
                 // Event IDs start with 0x8xxx
                 if service_id == 0x1234 && (method_id & 0x8000) != 0 {
                     events_received += 1;
-                    eprintln!("Raw client received event {} at {:?}", events_received, start.elapsed());
+                    eprintln!(
+                        "Raw client received event {} at {:?}",
+                        events_received,
+                        start.elapsed()
+                    );
                 }
             }
         }
 
         eprintln!("Raw client received {} events total", events_received);
-        
+
         // The key assertion: we should have received some events initially,
         // but NOT all 10 events because TTL expired after 2 seconds
         // (first 3-4 events sent within TTL, rest should be dropped)
-        assert!(events_received > 0, "Should receive some events before TTL expires");
-        assert!(events_received < 8, "Should stop receiving events after TTL expires (got {})", events_received);
-        
+        assert!(
+            events_received > 0,
+            "Should receive some events before TTL expires"
+        );
+        assert!(
+            events_received < 8,
+            "Should stop receiving events after TTL expires (got {})",
+            events_received
+        );
+
         Ok(())
     });
 
@@ -2154,9 +2196,9 @@ fn stop_subscribe_has_ttl_zero() {
         for _ in 0..50 {
             sd_socket.send_to(&offer, sd_multicast).await?;
 
-
-            while let Ok(Ok((len, from))) = tokio::time::timeout(Duration::from_millis(50), sd_socket.recv_from(&mut buf))
-                    .await {
+            while let Ok(Ok((len, from))) =
+                tokio::time::timeout(Duration::from_millis(50), sd_socket.recv_from(&mut buf)).await
+            {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x06 {
@@ -3042,7 +3084,7 @@ fn client_rpc_must_not_use_sd_port() {
         }
 
         assert!(request_received, "Should have received an RPC request");
-        
+ 
         if let Some(port) = client_source_port {
             eprintln!("✓ Client used port {} for RPC (not SD port 30490)", port);
         }
@@ -3316,13 +3358,9 @@ fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
 
         // Send SubscribeEventgroup with TCP endpoint (mismatch!)
         let subscribe = build_sd_subscribe_with_tcp_endpoint(
-            0x1234,
-            0x0001,
-            1,
-            0x0001, // eventgroup
+            0x1234, 0x0001, 1, 0x0001, // eventgroup
             3600,   // TTL
-            client_ip,
-            40000, // TCP port we're "listening" on
+            client_ip, 40000, // TCP port we're "listening" on
         );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
@@ -3390,8 +3428,11 @@ fn subscribe_udp_endpoint_to_tcp_only_server_should_nack() {
 
     // Server offers events via TCP only
     sim.host("server", || async {
-        let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =
-            Runtime::with_socket_type(Default::default()).await.unwrap();
+        let runtime: Runtime<
+            turmoil::net::UdpSocket,
+            turmoil::net::TcpStream,
+            turmoil::net::TcpListener,
+        > = Runtime::with_socket_type(Default::default()).await.unwrap();
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -3451,15 +3492,8 @@ fn subscribe_udp_endpoint_to_tcp_only_server_should_nack() {
         };
 
         // Send SubscribeEventgroup with UDP endpoint (mismatch - server is TCP only!)
-        let subscribe = build_sd_subscribe_with_udp_endpoint(
-            0x1234,
-            0x0001,
-            1,
-            0x0001,
-            3600,
-            client_ip,
-            40000,
-        );
+        let subscribe =
+            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40000);
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for response - should be NACK
@@ -3773,10 +3807,11 @@ fn subscribe_format_udp_only_cyclic_offers() {
         eprintln!("[client] Service discovered");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed, staying alive for cyclic offers...");
 
@@ -3843,11 +3878,9 @@ fn subscribe_format_tcp_only_cyclic_offers() {
                     last_offer = tokio::time::Instant::now();
                 }
 
-                if let Ok(Ok((len, from))) = tokio::time::timeout(
-                    Duration::from_millis(100),
-                    sd_socket.recv_from(&mut buf),
-                )
-                .await
+                if let Ok(Ok((len, from))) =
+                    tokio::time::timeout(Duration::from_millis(100), sd_socket.recv_from(&mut buf))
+                        .await
                 {
                     if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                         for entry in &sd_msg.entries {
@@ -3894,8 +3927,11 @@ fn subscribe_format_tcp_only_cyclic_offers() {
             .subscribe_ttl(5)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
-        let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =
-            Runtime::with_socket_type(config).await.unwrap();
+        let runtime: Runtime<
+            turmoil::net::UdpSocket,
+            turmoil::net::TcpStream,
+            turmoil::net::TcpListener,
+        > = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -3906,10 +3942,11 @@ fn subscribe_format_tcp_only_cyclic_offers() {
         eprintln!("[client] Service discovered via TCP");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed via TCP, staying alive...");
         tokio::time::sleep(Duration::from_secs(6)).await;
@@ -4030,10 +4067,11 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_secs(6)).await;
         Ok(())
@@ -4042,7 +4080,11 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
     sim.run().unwrap();
 
     let count = subscribe_count.load(Ordering::SeqCst);
-    assert!(count >= 2, "Should receive at least 2 subscribes, got {}", count);
+    assert!(
+        count >= 2,
+        "Should receive at least 2 subscribes, got {}",
+        count
+    );
 }
 
 /// Verify subscribe message format when server offers both UDP and TCP
@@ -4137,8 +4179,11 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
             .subscribe_ttl(5)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
-        let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =
-            Runtime::with_socket_type(config).await.unwrap();
+        let runtime: Runtime<
+            turmoil::net::UdpSocket,
+            turmoil::net::TcpStream,
+            turmoil::net::TcpListener,
+        > = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -4147,10 +4192,11 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_secs(6)).await;
         Ok(())
@@ -4159,7 +4205,11 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
     sim.run().unwrap();
 
     let count = subscribe_count.load(Ordering::SeqCst);
-    assert!(count >= 2, "Should receive at least 2 subscribes, got {}", count);
+    assert!(
+        count >= 2,
+        "Should receive at least 2 subscribes, got {}",
+        count
+    );
 }
 
 /// Verify that client adapts transport when preference doesn't match offer
@@ -4264,8 +4314,11 @@ fn subscribe_format_client_adapts_to_available_transport() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         // Use full runtime type to support TCP preference
-        let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =
-            Runtime::with_socket_type(config).await.unwrap();
+        let runtime: Runtime<
+            turmoil::net::UdpSocket,
+            turmoil::net::TcpStream,
+            turmoil::net::TcpListener,
+        > = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -4281,10 +4334,11 @@ fn subscribe_format_client_adapts_to_available_transport() {
         );
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_secs(6)).await;
         Ok(())
@@ -4293,5 +4347,9 @@ fn subscribe_format_client_adapts_to_available_transport() {
     sim.run().unwrap();
 
     let count = subscribe_count.load(Ordering::SeqCst);
-    assert!(count >= 2, "Should receive at least 2 subscribes, got {}", count);
+    assert!(
+        count >= 2,
+        "Should receive at least 2 subscribes, got {}",
+        count
+    );
 }

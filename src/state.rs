@@ -200,15 +200,24 @@ pub struct DiscoveredService {
 
 impl DiscoveredService {
     /// Get the RPC endpoint and transport based on preferred transport
-    pub(crate) fn method_endpoint(&self, prefer_tcp: bool) -> Option<(SocketAddr, crate::config::Transport)> {
+    pub(crate) fn method_endpoint(
+        &self,
+        prefer_tcp: bool,
+    ) -> Option<(SocketAddr, crate::config::Transport)> {
         if prefer_tcp {
             self.tcp_endpoint
                 .map(|ep| (ep, crate::config::Transport::Tcp))
-                .or_else(|| self.udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
+                .or_else(|| {
+                    self.udp_endpoint
+                        .map(|ep| (ep, crate::config::Transport::Udp))
+                })
         } else {
             self.udp_endpoint
                 .map(|ep| (ep, crate::config::Transport::Udp))
-                .or_else(|| self.tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))
+                .or_else(|| {
+                    self.tcp_endpoint
+                        .map(|ep| (ep, crate::config::Transport::Tcp))
+                })
         }
     }
 }

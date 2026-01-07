@@ -432,7 +432,10 @@ fn library_auto_renews_subscription() {
 
         let mut i = 0;
         loop {
-            offering.notify(eventgroup, event_id, format!("event{}", i).as_bytes()).await.unwrap();
+            offering
+                .notify(eventgroup, event_id, format!("event{}", i).as_bytes())
+                .await
+                .unwrap();
             tokio::time::sleep(Duration::from_millis(500)).await;
             i += 1;
         }
@@ -446,7 +449,7 @@ fn library_auto_renews_subscription() {
             .subscribe_ttl(2)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
-        
+
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<PubSubService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -477,13 +480,24 @@ fn library_auto_renews_subscription() {
     sim.run().unwrap();
 
     let events = events_received.lock().unwrap();
-    
+
     // Should receive events throughout the 5s window, not just first 2s
-    assert!(events.len() >= 10, "Should receive more than 9 events due to auto-renewal (got {})", events.len());
-    
+    assert!(
+        events.len() >= 10,
+        "Should receive more than 9 events due to auto-renewal (got {})",
+        events.len()
+    );
+
     // Verify we received events AFTER the initial 2s TTL would have expired
-    let events_after_ttl = events.iter().filter(|(elapsed, _)| *elapsed > Duration::from_secs(2)).count();
-    assert!(events_after_ttl >= 3, "Should receive events after initial TTL expires (auto-renewal). Got {} events after 2s", events_after_ttl);
+    let events_after_ttl = events
+        .iter()
+        .filter(|(elapsed, _)| *elapsed > Duration::from_secs(2))
+        .count();
+    assert!(
+        events_after_ttl >= 3,
+        "Should receive events after initial TTL expires (auto-renewal). Got {} events after 2s",
+        events_after_ttl
+    );
 }
 
 #[test_log::test]
@@ -650,10 +664,11 @@ fn subscribe_returns_error_on_nack() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        
+
         // Subscribe should return an error when server sends NACK
-        let result = tokio::time::timeout(Duration::from_secs(2), proxy.subscribe(eventgroup)).await;
-        
+        let result =
+            tokio::time::timeout(Duration::from_secs(2), proxy.subscribe(eventgroup)).await;
+
         match result {
             Ok(Ok(_)) => panic!("Subscribe should have returned an error on NACK"),
             Ok(Err(_)) => { /* Expected: subscribe failed due to NACK */ }
@@ -743,7 +758,14 @@ fn parse_sd_message(data: &[u8]) -> Option<(SomeIpHeader, SdMessage)> {
         Vec::new()
     };
 
-    Some((header, SdMessage { flags, entries, options }))
+    Some((
+        header,
+        SdMessage {
+            flags,
+            entries,
+            options,
+        },
+    ))
 }
 
 /// Simplified SOME/IP header for test parsing

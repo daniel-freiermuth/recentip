@@ -374,7 +374,10 @@ impl<S: Service> ProxyHandle<S, Available> {
             inner,
             service_id,
             instance_id,
-            state: Available { endpoint, transport },
+            state: Available {
+                endpoint,
+                transport,
+            },
             _phantom: PhantomData,
         }
     }
@@ -422,7 +425,10 @@ impl<S: Service> ProxyHandle<S, Unavailable> {
             inner: Arc::clone(&self.inner),
             service_id: self.service_id,
             instance_id: InstanceId::Id(discovered_instance_id),
-            state: Available { endpoint, transport },
+            state: Available {
+                endpoint,
+                transport,
+            },
             _phantom: PhantomData,
         })
     }

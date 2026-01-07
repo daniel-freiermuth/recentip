@@ -30,7 +30,7 @@
 use bytes::Bytes;
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::wire::{Header, SdMessage, SdEntryType, SD_METHOD_ID, SD_SERVICE_ID};
+use someip_runtime::wire::{Header, SdEntryType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -192,7 +192,12 @@ fn find_subscribe_entry(data: &[u8]) -> Option<(u16, u16, u16, u32)> {
     let (_header, sd_msg) = parse_sd_message(data)?;
     for entry in &sd_msg.entries {
         if entry.entry_type == SdEntryType::SubscribeEventgroup && entry.ttl > 0 {
-            return Some((entry.service_id, entry.instance_id, entry.eventgroup_id, entry.ttl));
+            return Some((
+                entry.service_id,
+                entry.instance_id,
+                entry.eventgroup_id,
+                entry.ttl,
+            ));
         }
     }
     None
@@ -357,10 +362,11 @@ fn offer_triggers_subscribe_renewal() {
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscription active, waiting for offer-triggered renewal...");
 
@@ -373,7 +379,10 @@ fn offer_triggers_subscribe_renewal() {
     sim.run().unwrap();
 
     let final_count = subscribe_count.load(Ordering::SeqCst);
-    eprintln!("Test complete: {} total SubscribeEventgroup messages received", final_count);
+    eprintln!(
+        "Test complete: {} total SubscribeEventgroup messages received",
+        final_count
+    );
 }
 
 /// feat_req_recentipsd_631: Subscriptions shall NOT be triggered cyclically but SHALL
@@ -430,13 +439,13 @@ fn no_cyclic_subscribes_strict_631_compliance() {
         // Format: (time_ms, is_offer_window_start)
         // The gaps are designed to be longer than any reasonable TTL/2 renewal interval
         let schedule = [
-            (0, true),      // t=0s: send offer, expect subscribe
-            (500, false),   // t=0.5s: still in response window
-            (1000, false),  // t=1s: end of valid response window
+            (0, true),     // t=0s: send offer, expect subscribe
+            (500, false),  // t=0.5s: still in response window
+            (1000, false), // t=1s: end of valid response window
             // GAP: 1s to 8s (7 seconds) - way past TTL/2=2.5s, should see NO subscribes
-            (8000, true),   // t=8s: send offer, expect subscribe
-            (8500, false),  // t=8.5s: still in response window
-            (9000, false),  // t=9s: end of valid response window
+            (8000, true),  // t=8s: send offer, expect subscribe
+            (8500, false), // t=8.5s: still in response window
+            (9000, false), // t=9s: end of valid response window
             // GAP: 9s to 23s (14 seconds) - way past TTL=5s, should see NO subscribes
             (23000, true),  // t=23s: send offer, expect subscribe
             (23500, false), // t=23.5s: still in response window
@@ -446,7 +455,7 @@ fn no_cyclic_subscribes_strict_631_compliance() {
             (53500, false), // t=53.5s: still in response window
             (54000, false), // t=54s: end of valid response window
             // GAP: 54s to 90s (36 seconds) - final extreme gap
-            (90000, true),  // t=90s: final offer
+            (90000, true), // t=90s: final offer
             (90500, false),
             (91000, false),
         ];
@@ -469,10 +478,14 @@ fn no_cyclic_subscribes_strict_631_compliance() {
                         sd_socket.send_to(&offer, sd_multicast).await?;
                         last_offer_time = Some(elapsed);
                         offer_response_window = true;
-                    } else if offer_response_window && elapsed > last_offer_time.unwrap_or(0) + 1000 {
+                    } else if offer_response_window && elapsed > last_offer_time.unwrap_or(0) + 1000
+                    {
                         // Response window closed after 1 second
                         offer_response_window = false;
-                        eprintln!("[raw_server] t={}ms: Response window closed, entering gap", elapsed);
+                        eprintln!(
+                            "[raw_server] t={}ms: Response window closed, entering gap",
+                            elapsed
+                        );
                     }
                     schedule_idx += 1;
                 } else {
@@ -488,10 +501,9 @@ fn no_cyclic_subscribes_strict_631_compliance() {
             }
 
             // Receive subscribes
-            while let Ok(Ok((len, from))) = tokio::time::timeout(
-                Duration::from_millis(50),
-                sd_socket.recv_from(&mut buf),
-            ).await {
+            while let Ok(Ok((len, from))) =
+                tokio::time::timeout(Duration::from_millis(50), sd_socket.recv_from(&mut buf)).await
+            {
                 if let Some((svc_id, inst_id, eg_id, ttl)) = find_subscribe_entry(&buf[..len]) {
                     let now_ms = start.elapsed().as_millis() as u64;
                     let in_window = offer_response_window;
@@ -501,7 +513,10 @@ fn no_cyclic_subscribes_strict_631_compliance() {
                         now_ms, in_window
                     );
 
-                    subscribe_events_clone.lock().unwrap().push((now_ms, in_window));
+                    subscribe_events_clone
+                        .lock()
+                        .unwrap()
+                        .push((now_ms, in_window));
 
                     // Always ACK to keep the test going
                     let ack = build_sd_subscribe_ack(svc_id, inst_id, 1, eg_id, ttl);
@@ -536,10 +551,11 @@ fn no_cyclic_subscribes_strict_631_compliance() {
         eprintln!("[client] Service discovered, subscribing...");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscription active, keeping alive for test duration...");
 
@@ -559,7 +575,11 @@ fn no_cyclic_subscribes_strict_631_compliance() {
     let mut subscribes_outside_window = 0;
 
     for (time_ms, in_window) in events.iter() {
-        let status = if *in_window { "✓ IN WINDOW" } else { "✗ OUTSIDE WINDOW (631 VIOLATION!)" };
+        let status = if *in_window {
+            "✓ IN WINDOW"
+        } else {
+            "✗ OUTSIDE WINDOW (631 VIOLATION!)"
+        };
         eprintln!("  t={}ms: {}", time_ms, status);
         if *in_window {
             subscribes_in_window += 1;
@@ -569,8 +589,14 @@ fn no_cyclic_subscribes_strict_631_compliance() {
     }
 
     eprintln!("\nSummary:");
-    eprintln!("  Subscribes in offer response window: {}", subscribes_in_window);
-    eprintln!("  Subscribes outside window (violations): {}", subscribes_outside_window);
+    eprintln!(
+        "  Subscribes in offer response window: {}",
+        subscribes_in_window
+    );
+    eprintln!(
+        "  Subscribes outside window (violations): {}",
+        subscribes_outside_window
+    );
 
     // We expect exactly 5 offers, so up to 5 subscribes in response
     // ANY subscribes outside the window are 631 violations
@@ -624,10 +650,10 @@ fn no_subscribe_without_offer() {
         eprintln!("[raw_server] Phase 1: Listening for subscribes before sending offer...");
         let listen_deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while tokio::time::Instant::now() < listen_deadline {
-            if let Ok(Ok((len, _from))) = tokio::time::timeout(
-                Duration::from_millis(100),
-                sd_socket.recv_from(&mut buf),
-            ).await {
+            if let Ok(Ok((len, _from))) =
+                tokio::time::timeout(Duration::from_millis(100), sd_socket.recv_from(&mut buf))
+                    .await
+            {
                 if find_subscribe_entry(&buf[..len]).is_some() {
                     eprintln!("[raw_server] ERROR: Received subscribe BEFORE offer!");
                     subscribe_before.fetch_add(1, Ordering::SeqCst);
@@ -650,17 +676,21 @@ fn no_subscribe_without_offer() {
         for _ in 0..20 {
             sd_socket.send_to(&offer, sd_multicast).await?;
 
-            while let Ok(Ok((len, from))) = tokio::time::timeout(
-                Duration::from_millis(100),
-                sd_socket.recv_from(&mut buf),
-            ).await {
+            while let Ok(Ok((len, from))) =
+                tokio::time::timeout(Duration::from_millis(100), sd_socket.recv_from(&mut buf))
+                    .await
+            {
                 if let Some((svc_id, inst_id, eg_id, ttl)) = find_subscribe_entry(&buf[..len]) {
                     eprintln!("[raw_server] Received subscribe AFTER offer from {}", from);
                     subscribe_after.fetch_add(1, Ordering::SeqCst);
 
                     // ACK
                     let ack = build_sd_subscribe_ack(svc_id, inst_id, 1, eg_id, ttl);
-                    eprintln!("[raw_server] Sending SubscribeAck to {} ({} bytes)", from, ack.len());
+                    eprintln!(
+                        "[raw_server] Sending SubscribeAck to {} ({} bytes)",
+                        from,
+                        ack.len()
+                    );
                     sd_socket.send_to(&ack, from).await?;
                     eprintln!("[raw_server] SubscribeAck sent");
                 }
@@ -691,10 +721,11 @@ fn no_subscribe_without_offer() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
         Ok(())
     });
 
@@ -703,7 +734,10 @@ fn no_subscribe_without_offer() {
     let before = subscribe_before_offer.load(Ordering::SeqCst);
     let after = subscribe_after_offer.load(Ordering::SeqCst);
 
-    eprintln!("Subscribes before offer: {}, after offer: {}", before, after);
+    eprintln!(
+        "Subscribes before offer: {}, after offer: {}",
+        before, after
+    );
 
     assert_eq!(
         before, 0,
@@ -746,10 +780,10 @@ fn available_returns_error_when_service_not_found() {
         // Listen for FindService messages (but never respond with Offer)
         let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
         while tokio::time::Instant::now() < deadline {
-            if let Ok(Ok((len, _from))) = tokio::time::timeout(
-                Duration::from_millis(100),
-                sd_socket.recv_from(&mut buf),
-            ).await {
+            if let Ok(Ok((len, _from))) =
+                tokio::time::timeout(Duration::from_millis(100), sd_socket.recv_from(&mut buf))
+                    .await
+            {
                 // Check if this is a FindService message
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
@@ -793,7 +827,10 @@ fn available_returns_error_when_service_not_found() {
             }
         }
 
-        assert!(result.is_err(), "available() should return error when service not found");
+        assert!(
+            result.is_err(),
+            "available() should return error when service not found"
+        );
 
         Ok(())
     });
@@ -862,14 +899,15 @@ fn max_ttl_subscription_no_renewal_needed() {
         for _ in 0..20 {
             sd_socket.send_to(&offer, sd_multicast).await?;
 
-            while let Ok(Ok((len, from))) = tokio::time::timeout(
-                Duration::from_millis(100),
-                sd_socket.recv_from(&mut buf),
-            ).await {
+            while let Ok(Ok((len, from))) =
+                tokio::time::timeout(Duration::from_millis(100), sd_socket.recv_from(&mut buf))
+                    .await
+            {
                 if let Some((svc_id, inst_id, eg_id, ttl)) = find_subscribe_entry(&buf[..len]) {
                     eprintln!(
                         "[raw_server] t={}ms: Subscribe received (TTL=0x{:06X})",
-                        start.elapsed().as_millis(), ttl
+                        start.elapsed().as_millis(),
+                        ttl
                     );
                     subscribe_count_clone.fetch_add(1, Ordering::SeqCst);
 
@@ -901,17 +939,22 @@ fn max_ttl_subscription_no_renewal_needed() {
         while tokio::time::Instant::now() < phase2_end {
             sd_socket.send_to(&offer, sd_multicast).await?;
             offer_count += 1;
-            eprintln!("[raw_server] t={}ms: Sent offer #{}", start.elapsed().as_millis(), offer_count);
+            eprintln!(
+                "[raw_server] t={}ms: Sent offer #{}",
+                start.elapsed().as_millis(),
+                offer_count
+            );
 
             // Check for any subscribes (we don't expect any)
-            while let Ok(Ok((len, from))) = tokio::time::timeout(
-                Duration::from_millis(100),
-                sd_socket.recv_from(&mut buf),
-            ).await {
+            while let Ok(Ok((len, from))) =
+                tokio::time::timeout(Duration::from_millis(100), sd_socket.recv_from(&mut buf))
+                    .await
+            {
                 if let Some((svc_id, inst_id, eg_id, ttl)) = find_subscribe_entry(&buf[..len]) {
                     eprintln!(
                         "[raw_server] t={}ms: UNEXPECTED re-subscribe! (TTL=0x{:06X})",
-                        start.elapsed().as_millis(), ttl
+                        start.elapsed().as_millis(),
+                        ttl
                     );
                     subscribe_count_clone.fetch_add(1, Ordering::SeqCst);
 
@@ -965,10 +1008,11 @@ fn max_ttl_subscription_no_renewal_needed() {
         eprintln!("[client] Service discovered, subscribing with TTL=max...");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscription active (TTL=max), waiting...");
 

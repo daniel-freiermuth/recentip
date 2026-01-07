@@ -689,7 +689,7 @@ fn exception_message_type_when_configured() {
                 Duration::from_millis(200),
                 sd_socket.recv_from(&mut buf),
             ).await;
-            
+ 
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
@@ -714,9 +714,9 @@ fn exception_message_type_when_configured() {
         }
 
         let server_addr = server_endpoint.expect("Should find server via SD");
-        
+ 
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
-        
+ 
         // Send request to method 0x0001 (configured for EXCEPTION)
         let mut request = BytesMut::with_capacity(24);
         request.put_u16(0x1234); // Service ID

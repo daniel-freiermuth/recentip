@@ -167,7 +167,9 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     // Ensure at least one transport was created
     if udp_endpoint.is_none() && tcp_endpoint.is_none() {
         tracing::error!("No transport configured for offer");
-        let _ = response.send(Err(Error::Config(crate::error::ConfigError::new("No transport configured"))));
+        let _ = response.send(Err(Error::Config(crate::error::ConfigError::new(
+            "No transport configured",
+        ))));
         return None;
     }
 
@@ -190,7 +192,13 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
 
     // Build and send the initial offer message (reuse sd.rs helper)
     let offered = state.offered.get(&key).expect("just inserted");
-    let msg = build_offer_message(&key, offered, state.sd_flags(true), config.offer_ttl, config.advertised_ip);
+    let msg = build_offer_message(
+        &key,
+        offered,
+        state.sd_flags(true),
+        config.offer_ttl,
+        config.advertised_ip,
+    );
     actions.push(Action::SendSd {
         message: msg,
         target: config.sd_multicast,
@@ -299,12 +307,7 @@ pub async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stre
             let _ = response.send(Ok(requests_rx));
         }
         Err(e) => {
-            tracing::error!(
-                "Failed to bind RPC {:?} on {}: {}",
-                transport,
-                rpc_addr,
-                e
-            );
+            tracing::error!("Failed to bind RPC {:?} on {}: {}", transport, rpc_addr, e);
             let _ = response.send(Err(Error::Io(e)));
         }
     }
@@ -647,7 +650,10 @@ pub fn handle_incoming_request(
                     receiver: response_rx,
                 });
             } else {
-                tracing::error!("We seemingly got a request via {:?}, which we don't offer", transport);
+                tracing::error!(
+                    "We seemingly got a request via {:?}, which we don't offer",
+                    transport
+                );
             }
         }
     } else {

@@ -1608,7 +1608,12 @@ fn test_static_subscribers_preserved_after_announce() {
         let flag = client_ran_clone.clone();
         async move {
             let config = RuntimeConfig::builder()
-                .advertised_ip(turmoil::lookup("static_client").to_string().parse().unwrap())
+                .advertised_ip(
+                    turmoil::lookup("static_client")
+                        .to_string()
+                        .parse()
+                        .unwrap(),
+                )
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -1706,7 +1711,12 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
         let flag = client_ran_clone.clone();
         async move {
             let config = RuntimeConfig::builder()
-                .advertised_ip(turmoil::lookup("static_client").to_string().parse().unwrap())
+                .advertised_ip(
+                    turmoil::lookup("static_client")
+                        .to_string()
+                        .parse()
+                        .unwrap(),
+                )
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 

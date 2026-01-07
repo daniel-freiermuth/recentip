@@ -72,7 +72,7 @@ use crate::{Event, EventId, Response, ReturnCode};
 // ============================================================================
 
 /// Determine the routable IP address to use in endpoint options
-/// 
+///
 /// Per feat_req_recentipsd_814, endpoint options must contain valid routable IP addresses.
 /// Returns the configured advertised IP, or falls back to local_endpoint/client_rpc_endpoint
 /// if they have non-unspecified IPs, or None if no valid IP is available.
@@ -105,13 +105,16 @@ pub fn handle_find(
             .discovered
             .iter()
             .find(|(k, _)| k.service_id == service_id.value())
-            .and_then(|(k, v)| v.method_endpoint(prefer_tcp).map(|(ep, tr)| (k.instance_id, ep, tr)))
+            .and_then(|(k, v)| {
+                v.method_endpoint(prefer_tcp)
+                    .map(|(ep, tr)| (k.instance_id, ep, tr))
+            })
     } else {
         // Exact match
-        state
-            .discovered
-            .get(&key)
-            .and_then(|v| v.method_endpoint(prefer_tcp).map(|(ep, tr)| (key.instance_id, ep, tr)))
+        state.discovered.get(&key).and_then(|v| {
+            v.method_endpoint(prefer_tcp)
+                .map(|(ep, tr)| (key.instance_id, ep, tr))
+        })
     };
 
     if let Some((discovered_instance_id, endpoint, transport)) = found {
@@ -269,13 +272,11 @@ pub fn handle_subscribe(
                 eventgroup_id
             );
             let _ = response.send(Err(crate::error::Error::Config(
-                crate::error::ConfigError::new(
-                    "No advertised IP configured for subscriptions"
-                )
+                crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
             )));
             return;
         };
-        
+
         let endpoint_for_subscribe = SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
 
         let msg = build_subscribe_message(
@@ -347,8 +348,9 @@ pub fn handle_unsubscribe(
             );
             return;
         };
-        
-        let endpoint_for_unsubscribe = SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
+
+        let endpoint_for_unsubscribe =
+            SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
 
         let msg = build_unsubscribe_message(
             service_id.value(),

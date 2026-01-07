@@ -63,8 +63,8 @@ use tokio::time::Instant;
 use crate::command::ServiceAvailability;
 use crate::config::{Transport, SD_TTL_INFINITE};
 use crate::state::{
-    DiscoveredService, OfferedService, PendingServerResponse, PendingSubscriptionKey,
-    RuntimeState, ServerSubscription, ServiceKey, SubscriberKey,
+    DiscoveredService, OfferedService, PendingServerResponse, PendingSubscriptionKey, RuntimeState,
+    ServerSubscription, ServiceKey, SubscriberKey,
 };
 use crate::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
 
@@ -150,15 +150,11 @@ pub fn handle_offer(
     let Some((effective_endpoint, effective_transport)) = (if prefer_tcp {
         tcp_endpoint
             .map(|ep| (ep, crate::config::Transport::Tcp))
-            .or_else(|| {
-                udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp))
-            })
+            .or_else(|| udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
     } else {
         udp_endpoint
             .map(|ep| (ep, crate::config::Transport::Udp))
-            .or_else(|| {
-                tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp))
-            })
+            .or_else(|| tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))
     }) else {
         tracing::error!(
             "Received OfferService for {:04x}:{:04x} but no transport endpoints offered",
@@ -225,7 +221,7 @@ pub fn handle_offer(
     // If we have active subscriptions for this service, respond with SubscribeEventgroup.
     // Per feat_req_recentipsd_631: "Subscriptions shall NOT be triggered cyclically
     // but SHALL be triggered by OfferService entries."
-    
+
     // Check if we have any subscriptions for this service first
     if let Some(subscriptions) = state.subscriptions.get(&key) {
         if subscriptions.is_empty() {
@@ -236,7 +232,7 @@ pub fn handle_offer(
         // No subscriptions at all
         return;
     }
-    
+
     // Determine the actual local IP address to put in the endpoint option
     // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
     let endpoint_ip = if let Some(advertised) = state.config.advertised_ip {
@@ -255,11 +251,12 @@ pub fn handle_offer(
         );
         return;
     };
-    
-    let endpoint_for_subscribe = std::net::SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
+
+    let endpoint_for_subscribe =
+        std::net::SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
     let client_rpc_port = state.client_rpc_endpoint.port();
     let sd_flags = state.sd_flags(true);
-    
+
     if let Some(subscriptions) = state.subscriptions.get_mut(&key) {
         for sub in subscriptions.iter_mut() {
             // Skip if TTL is infinite (0xFFFFFF) - no renewal needed
@@ -302,11 +299,7 @@ pub fn handle_offer(
 }
 
 /// Handle a `StopOfferService` entry
-pub fn handle_stop_offer(
-    entry: &SdEntry,
-    state: &mut RuntimeState,
-    actions: &mut Vec<Action>,
-) {
+pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mut Vec<Action>) {
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
@@ -350,7 +343,13 @@ pub fn handle_find_request(
         if entry.service_id == key.service_id
             && (entry.instance_id == 0xFFFF || entry.instance_id == key.instance_id)
         {
-            let response = build_offer_message(key, offered, state.sd_flags(true), state.config.offer_ttl, state.config.advertised_ip);
+            let response = build_offer_message(
+                key,
+                offered,
+                state.sd_flags(true),
+                state.config.offer_ttl,
+                state.config.advertised_ip,
+            );
             actions.push(Action::SendSd {
                 message: response,
                 target: from,
@@ -392,7 +391,7 @@ pub fn handle_subscribe_request(
                 entry.eventgroup_id,
                 from
             );
-            
+
             let mut nack = SdMessage::new(state.sd_flags(true));
             nack.add_entry(SdEntry::subscribe_eventgroup_nack(
                 entry.service_id,
@@ -401,7 +400,7 @@ pub fn handle_subscribe_request(
                 entry.eventgroup_id,
                 entry.counter,
             ));
-            
+
             actions.push(Action::SendSd {
                 message: nack,
                 target: from,
@@ -419,7 +418,7 @@ pub fn handle_subscribe_request(
                 entry.eventgroup_id,
                 from
             );
-            
+
             let mut nack = SdMessage::new(state.sd_flags(true));
             nack.add_entry(SdEntry::subscribe_eventgroup_nack(
                 entry.service_id,
@@ -428,7 +427,7 @@ pub fn handle_subscribe_request(
                 entry.eventgroup_id,
                 entry.counter,
             ));
-            
+
             actions.push(Action::SendSd {
                 message: nack,
                 target: from,
@@ -440,8 +439,13 @@ pub fn handle_subscribe_request(
     if let Some(offered) = state.offered.get(&key) {
         // Check transport compatibility per feat_req_recentipsd_1144
         // Server offers UDP and/or TCP. Client requests UDP and/or TCP endpoint.
-        let Some((client_endpoint, transport)) = offered.udp_endpoint.and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
-                .or(offered.tcp_endpoint.and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))) else {
+        let Some((client_endpoint, transport)) = offered
+            .udp_endpoint
+            .and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
+            .or(offered
+                .tcp_endpoint
+                .and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp))))
+        else {
             // Transport mismatch - send NACK
             tracing::warn!(
                 "Rejecting subscription for {:04x}:{:04x} eventgroup {:04x} from {}: \
@@ -500,7 +504,10 @@ pub fn handle_subscribe_request(
 
         // Check if this client already has a subscription - if so, update the expiration
         let subscribers = state.server_subscribers.entry(sub_key).or_default();
-        if let Some(existing) = subscribers.iter_mut().find(|s| s.endpoint == client_endpoint) {
+        if let Some(existing) = subscribers
+            .iter_mut()
+            .find(|s| s.endpoint == client_endpoint)
+        {
             // Renew: update expiration time (and possibly transport)
             existing.expires_at = expires_at;
             existing.transport = transport;
@@ -587,7 +594,7 @@ pub fn handle_unsubscribe_request(
         entry.eventgroup_id,
         from
     );
-    
+
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
@@ -597,7 +604,7 @@ pub fn handle_unsubscribe_request(
         // Per feat_req_recentipsd_814: Use endpoint option address as provided
         let client_udp_endpoint = sd_message.get_udp_endpoint(entry);
         let client_tcp_endpoint = sd_message.get_tcp_endpoint(entry);
-        
+
         // Validate that endpoint options contain valid, routable IP addresses
         // Reject unspecified (0.0.0.0) addresses
         if let Some(ep) = client_udp_endpoint {
@@ -626,9 +633,14 @@ pub fn handle_unsubscribe_request(
                 return;
             }
         }
-        
-        let Some((client_endpoint, transport)) = offered.udp_endpoint.and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
-                .or(offered.tcp_endpoint.and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))) else {
+
+        let Some((client_endpoint, transport)) = offered
+            .udp_endpoint
+            .and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
+            .or(offered
+                .tcp_endpoint
+                .and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp))))
+        else {
             // Transport mismatch - send NACK
             tracing::warn!(
                 "Rejecting subscription for {:04x}:{:04x} eventgroup {:04x} from {}: \
@@ -644,7 +656,7 @@ pub fn handle_unsubscribe_request(
             );
             return;
         };
-        
+
         let _ = offered
             .requests_tx
             .try_send(crate::command::ServiceRequest::Unsubscribe {
@@ -715,7 +727,9 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
         eventgroup_id: entry.eventgroup_id,
     };
     if let Some(pending) = state.pending_subscriptions.remove(&pending_key) {
-        let _ = pending.response.send(Err(crate::error::Error::SubscriptionRejected));
+        let _ = pending
+            .response
+            .send(Err(crate::error::Error::SubscriptionRejected));
     }
 
     // Also remove the client subscription if it was added
@@ -806,12 +820,7 @@ pub fn build_stop_offer_message(
 }
 
 /// Build a `FindService` SD message
-pub fn build_find_message(
-    service_id: u16,
-    instance_id: u16,
-    sd_flags: u8,
-    ttl: u32,
-) -> SdMessage {
+pub fn build_find_message(service_id: u16, instance_id: u16, sd_flags: u8, ttl: u32) -> SdMessage {
     let mut msg = SdMessage::new(sd_flags);
     msg.add_entry(SdEntry::find_service(
         service_id,

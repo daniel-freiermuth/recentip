@@ -89,7 +89,8 @@ fn client_registers_for_events_via_sd() {
 
         // Subscribe to eventgroup - this registers for events at runtime via SD
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let result = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup)).await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup)).await;
 
         if result.is_ok() && result.unwrap().is_ok() {
             *sub_flag.lock().unwrap() = true;
@@ -98,7 +99,10 @@ fn client_registers_for_events_via_sd() {
     });
 
     sim.run().unwrap();
-    assert!(*subscription_succeeded.lock().unwrap(), "Subscription should succeed");
+    assert!(
+        *subscription_succeeded.lock().unwrap(),
+        "Subscription should succeed"
+    );
 }
 
 /// [feat_req_recentipsd_429] Server shall send OfferService on startup to discover interested clients.
@@ -149,7 +153,10 @@ fn server_offers_on_startup_to_discover_clients() {
     });
 
     sim.run().unwrap();
-    assert!(*offer_received.lock().unwrap(), "Client should receive OfferService from server startup");
+    assert!(
+        *offer_received.lock().unwrap(),
+        "Client should receive OfferService from server startup"
+    );
 }
 
 /// [feat_req_recentipsd_430] Client implements service interface and signals wish using SubscribeEventgroup.
@@ -220,7 +227,10 @@ fn client_responds_to_offer_with_subscribe() {
     });
 
     sim.run().unwrap();
-    assert!(*server_received_subscribe.lock().unwrap(), "Server should receive Subscribe from client");
+    assert!(
+        *server_received_subscribe.lock().unwrap(),
+        "Server should receive Subscribe from client"
+    );
 }
 
 /// Tests API-level behavior: `subscribe()` resolves to Ok when the server acknowledges.
@@ -229,7 +239,6 @@ fn client_responds_to_offer_with_subscribe() {
 /// `wire_format::subscribe_ack_entry_type`.
 #[test_log::test]
 fn subscribe_resolves_on_ack() {
-
     let ack_received = Arc::new(Mutex::new(false));
     let ack_flag = Arc::clone(&ack_received);
 
@@ -266,10 +275,11 @@ fn subscribe_resolves_on_ack() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        
+
         // The subscribe() future resolves when SubscribeEventgroupAck is received.
         // Wire-level verification of entry type 0x07 is in wire_format::subscribe_ack_entry_type.
-        let result = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup)).await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup)).await;
         if let Ok(Ok(_)) = result {
             *ack_flag.lock().unwrap() = true;
         }
@@ -277,7 +287,10 @@ fn subscribe_resolves_on_ack() {
     });
 
     sim.run().unwrap();
-    assert!(*ack_received.lock().unwrap(), "subscribe() should complete successfully when ack received");
+    assert!(
+        *ack_received.lock().unwrap(),
+        "subscribe() should complete successfully when ack received"
+    );
 }
 
 // ============================================================================
@@ -388,13 +401,24 @@ fn server_tracks_subscription_state() {
 
     let c1 = client1_events.lock().unwrap();
     let c2 = client2_events.lock().unwrap();
-    
+
     // Client 1 should only have event 0x8001 (from eg1)
-    assert!(c1.iter().all(|&e| e == 0x8001), "Client1 should only receive eg1 events: {:?}", *c1);
+    assert!(
+        c1.iter().all(|&e| e == 0x8001),
+        "Client1 should only receive eg1 events: {:?}",
+        *c1
+    );
     // Client 2 should only have event 0x8002 (from eg2)
-    assert!(c2.iter().all(|&e| e == 0x8002), "Client2 should only receive eg2 events: {:?}", *c2);
+    assert!(
+        c2.iter().all(|&e| e == 0x8002),
+        "Client2 should only receive eg2 events: {:?}",
+        *c2
+    );
     // At least one client should have received something
-    assert!(!c1.is_empty() && !c2.is_empty(), "Both client should receive events");
+    assert!(
+        !c1.is_empty() && !c2.is_empty(),
+        "Both client should receive events"
+    );
 }
 
 /// [feat_req_recentipsd_433] Client shall deregister by sending StopSubscribeEventgroup (TTL=0).
@@ -456,14 +480,14 @@ fn client_deregisters_with_stop_subscribe() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        
+
         // Subscribe then drop to trigger StopSubscribe
         {
             let _subscription = proxy.subscribe(eventgroup).await.unwrap();
             tokio::time::sleep(Duration::from_millis(200)).await;
             // subscription dropped here
         }
-        
+
         // Give time for StopSubscribe to be sent
         runtime.shutdown().await;
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -471,7 +495,10 @@ fn client_deregisters_with_stop_subscribe() {
     });
 
     sim.run().unwrap();
-    assert!(*unsubscribe_received.lock().unwrap(), "Server should receive Unsubscribe/StopSubscribe");
+    assert!(
+        *unsubscribe_received.lock().unwrap(),
+        "Server should receive Unsubscribe/StopSubscribe"
+    );
 }
 
 /* WIP: To be reviewed
@@ -687,7 +714,7 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
         // Subscribe to two eventgroups (conceptually overlapping)
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
         let eventgroup2 = EventgroupId::new(0x0002).unwrap();
-        
+
         let mut sub1 = proxy.subscribe(eventgroup1).await.unwrap();
         let _sub2 = proxy.subscribe(eventgroup2).await; // May or may not succeed
 
@@ -785,7 +812,7 @@ fn initial_events_for_multiple_eventgroups() {
 }
 
 // ============================================================================
-// 5. LINK LOSS AND ERROR HANDLING  
+// 5. LINK LOSS AND ERROR HANDLING
 // ============================================================================
 
 /// [feat_req_recentipsd_435] Server shall delete subscription if RECENT/IP error received.
@@ -880,7 +907,7 @@ fn server_handles_link_loss() {
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        
+
         // Offer service - this sends OfferService
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
@@ -999,7 +1026,7 @@ fn client_subscribes_after_link_up() {
         if result.is_ok() {
             *sub_flag.lock().unwrap() = true;
         }
-        
+
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
     });
@@ -1063,7 +1090,7 @@ fn client_udp_port_ready_before_subscribe() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        
+
         // When subscribe() completes, client is ready to receive
         let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
 
@@ -1098,7 +1125,7 @@ fn client_tcp_ready_before_subscribe_reliable() {
     sim.host("server", || async {
         let mut config = RuntimeConfig::default();
         config.transport = someip_runtime::Transport::Tcp;
-        
+
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
             .offer::<PubSubService>(InstanceId::Id(0x0001))
@@ -1115,7 +1142,7 @@ fn client_tcp_ready_before_subscribe_reliable() {
 
         let mut config = RuntimeConfig::default();
         config.transport = someip_runtime::Transport::Tcp;
-        
+
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<PubSubService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -1128,7 +1155,7 @@ fn client_tcp_ready_before_subscribe_reliable() {
         if result.is_ok() {
             *sub_flag.lock().unwrap() = true;
         }
-        
+
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
     });
@@ -1173,7 +1200,7 @@ fn subscribe_timer_reset_on_offer() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        
+
         // Send events over time - subscription should be maintained
         for i in 0..3 {
             offering.notify(eventgroup, event_id, format!("event{}", i).as_bytes()).await.unwrap();
@@ -1402,7 +1429,7 @@ fn pubsub_state_machine_flow() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        
+
         // State: Not Subscribed -> Find service
         let proxy = runtime.find::<PubSubService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -1411,7 +1438,7 @@ fn pubsub_state_machine_flow() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        
+
         // State: Subscribe -> Subscribed
         let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
 

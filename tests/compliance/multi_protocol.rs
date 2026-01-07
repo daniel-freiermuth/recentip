@@ -227,7 +227,10 @@ fn client_talks_to_tcp_and_udp_services() {
     let tcp_count = tcp_calls.load(Ordering::SeqCst);
     let udp_count = udp_calls.load(Ordering::SeqCst);
 
-    eprintln!("Test complete: TCP calls={}, UDP calls={}", tcp_count, udp_count);
+    eprintln!(
+        "Test complete: TCP calls={}, UDP calls={}",
+        tcp_count, udp_count
+    );
 
     assert_eq!(tcp_count, 1, "Should have received 1 TCP call");
     assert_eq!(udp_count, 1, "Should have received 1 UDP call");
@@ -284,10 +287,9 @@ fn mixed_transport_event_delivery() {
         let mut subscribed = false;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         while !subscribed && tokio::time::Instant::now() < deadline {
-            if let Ok(Some(event)) = tokio::time::timeout(
-                Duration::from_millis(100),
-                tcp_offering.next(),
-            ).await {
+            if let Ok(Some(event)) =
+                tokio::time::timeout(Duration::from_millis(100), tcp_offering.next()).await
+            {
                 if let ServiceEvent::Subscribe { ack, .. } = event {
                     eprintln!("[tcp_server] TCP subscription received");
                     ack.accept().await.unwrap();
@@ -337,10 +339,9 @@ fn mixed_transport_event_delivery() {
         let mut subscribed = false;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         while !subscribed && tokio::time::Instant::now() < deadline {
-            if let Ok(Some(event)) = tokio::time::timeout(
-                Duration::from_millis(100),
-                udp_offering.next(),
-            ).await {
+            if let Ok(Some(event)) =
+                tokio::time::timeout(Duration::from_millis(100), udp_offering.next()).await
+            {
                 if let ServiceEvent::Subscribe { ack, .. } = event {
                     eprintln!("[udp_server] UDP subscription received");
                     ack.accept().await.unwrap();
@@ -383,13 +384,11 @@ fn mixed_transport_event_delivery() {
             .expect("TCP service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut tcp_sub = tokio::time::timeout(
-            Duration::from_secs(5),
-            tcp_proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("TCP subscribe timeout")
-        .expect("TCP subscribe success");
+        let mut tcp_sub =
+            tokio::time::timeout(Duration::from_secs(5), tcp_proxy.subscribe(eventgroup))
+                .await
+                .expect("TCP subscribe timeout")
+                .expect("TCP subscribe success");
 
         eprintln!("[client] Subscribed to TCP service");
 
@@ -400,13 +399,11 @@ fn mixed_transport_event_delivery() {
             .expect("UDP discovery timeout")
             .expect("UDP service available");
 
-        let mut udp_sub = tokio::time::timeout(
-            Duration::from_secs(5),
-            udp_proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("UDP subscribe timeout")
-        .expect("UDP subscribe success");
+        let mut udp_sub =
+            tokio::time::timeout(Duration::from_secs(5), udp_proxy.subscribe(eventgroup))
+                .await
+                .expect("UDP subscribe timeout")
+                .expect("UDP subscribe success");
 
         eprintln!("[client] Subscribed to UDP service");
 
@@ -422,7 +419,10 @@ fn mixed_transport_event_delivery() {
             {
                 let payload = String::from_utf8_lossy(&event.payload);
                 eprintln!("[client] TCP event: {}", payload);
-                assert!(payload.starts_with("tcp_event_"), "TCP should only receive tcp_event_*");
+                assert!(
+                    payload.starts_with("tcp_event_"),
+                    "TCP should only receive tcp_event_*"
+                );
                 tcp_events.fetch_add(1, Ordering::SeqCst);
             }
         });
@@ -435,7 +435,10 @@ fn mixed_transport_event_delivery() {
             {
                 let payload = String::from_utf8_lossy(&event.payload);
                 eprintln!("[client] UDP event: {}", payload);
-                assert!(payload.starts_with("udp_event_"), "UDP should only receive udp_event_*");
+                assert!(
+                    payload.starts_with("udp_event_"),
+                    "UDP should only receive udp_event_*"
+                );
                 udp_events.fetch_add(1, Ordering::SeqCst);
             }
         });
@@ -450,7 +453,10 @@ fn mixed_transport_event_delivery() {
     let tcp_count = tcp_events.load(Ordering::SeqCst);
     let udp_count = udp_events.load(Ordering::SeqCst);
 
-    eprintln!("Test complete: TCP events={}, UDP events={}", tcp_count, udp_count);
+    eprintln!(
+        "Test complete: TCP events={}, UDP events={}",
+        tcp_count, udp_count
+    );
 
     assert_eq!(tcp_count, 3, "Should have received 3 TCP events");
     assert_eq!(udp_count, 3, "Should have received 3 UDP events");
@@ -489,7 +495,10 @@ fn client_uses_advertised_transport() {
         eprintln!("[tcp_server] TCP service offered");
 
         while let Some(event) = offering.next().await {
-            if let ServiceEvent::Call { method, responder, .. } = event {
+            if let ServiceEvent::Call {
+                method, responder, ..
+            } = event
+            {
                 eprintln!("[tcp_server] Received call on method {:?}", method);
                 responder.reply(b"from_tcp_server").await.unwrap();
             }
@@ -516,7 +525,10 @@ fn client_uses_advertised_transport() {
         eprintln!("[udp_server] UDP service offered");
 
         while let Some(event) = offering.next().await {
-            if let ServiceEvent::Call { method, responder, .. } = event {
+            if let ServiceEvent::Call {
+                method, responder, ..
+            } = event
+            {
                 eprintln!("[udp_server] Received call on method {:?}", method);
                 responder.reply(b"from_udp_server").await.unwrap();
             }
@@ -543,7 +555,10 @@ fn client_uses_advertised_transport() {
             .expect("TCP discovery timeout")
             .expect("TCP service available");
 
-        eprintln!("[client] TCP service discovered at {:?}", tcp_proxy.endpoint());
+        eprintln!(
+            "[client] TCP service discovered at {:?}",
+            tcp_proxy.endpoint()
+        );
 
         // Discover UDP service
         let udp_proxy = runtime.find::<UdpService>(InstanceId::Id(0x0001));
@@ -552,32 +567,37 @@ fn client_uses_advertised_transport() {
             .expect("UDP discovery timeout")
             .expect("UDP service available");
 
-        eprintln!("[client] UDP service discovered at {:?}", udp_proxy.endpoint());
+        eprintln!(
+            "[client] UDP service discovered at {:?}",
+            udp_proxy.endpoint()
+        );
 
         // Call TCP service - should use TCP transport
         let method = MethodId::new(0x0001).unwrap();
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            tcp_proxy.call(method, b"hello_tcp"),
-        )
-        .await
-        .expect("TCP call timeout")
-        .expect("TCP call success");
+        let response =
+            tokio::time::timeout(Duration::from_secs(5), tcp_proxy.call(method, b"hello_tcp"))
+                .await
+                .expect("TCP call timeout")
+                .expect("TCP call success");
 
         assert_eq!(response.payload.as_ref(), b"from_tcp_server");
-        eprintln!("[client] TCP call response: {:?}", String::from_utf8_lossy(&response.payload));
+        eprintln!(
+            "[client] TCP call response: {:?}",
+            String::from_utf8_lossy(&response.payload)
+        );
 
         // Call UDP service - should use UDP transport
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            udp_proxy.call(method, b"hello_udp"),
-        )
-        .await
-        .expect("UDP call timeout")
-        .expect("UDP call success");
+        let response =
+            tokio::time::timeout(Duration::from_secs(5), udp_proxy.call(method, b"hello_udp"))
+                .await
+                .expect("UDP call timeout")
+                .expect("UDP call success");
 
         assert_eq!(response.payload.as_ref(), b"from_udp_server");
-        eprintln!("[client] UDP call response: {:?}", String::from_utf8_lossy(&response.payload));
+        eprintln!(
+            "[client] UDP call response: {:?}",
+            String::from_utf8_lossy(&response.payload)
+        );
 
         eprintln!("[client] Both calls succeeded with correct transports!");
 
@@ -692,14 +712,18 @@ fn concurrent_calls_different_transports() {
         for i in 0..5 {
             let tcp_proxy = tcp_proxy.clone();
             handles.push(tokio::spawn(async move {
-                let result = tcp_proxy.call(method, format!("tcp_{}", i).as_bytes()).await;
+                let result = tcp_proxy
+                    .call(method, format!("tcp_{}", i).as_bytes())
+                    .await;
                 eprintln!("[client] TCP call {} completed: {:?}", i, result.is_ok());
                 result.is_ok()
             }));
 
             let udp_proxy = udp_proxy.clone();
             handles.push(tokio::spawn(async move {
-                let result = udp_proxy.call(method, format!("udp_{}", i).as_bytes()).await;
+                let result = udp_proxy
+                    .call(method, format!("udp_{}", i).as_bytes())
+                    .await;
                 eprintln!("[client] UDP call {} completed: {:?}", i, result.is_ok());
                 result.is_ok()
             }));
@@ -760,8 +784,14 @@ fn udp_client_calls_tcp_server() {
         eprintln!("[tcp_server] TCP service offered, waiting for calls...");
 
         while let Some(event) = offering.next().await {
-            if let ServiceEvent::Call { responder, payload, .. } = event {
-                eprintln!("[tcp_server] Received call with payload: {:?}", payload.as_ref());
+            if let ServiceEvent::Call {
+                responder, payload, ..
+            } = event
+            {
+                eprintln!(
+                    "[tcp_server] Received call with payload: {:?}",
+                    payload.as_ref()
+                );
                 responder.reply(b"tcp_response").await.unwrap();
                 eprintln!("[tcp_server] Sent reply");
             }
@@ -778,14 +808,17 @@ fn udp_client_calls_tcp_server() {
         let config = RuntimeConfig::builder()
             .advertised_ip(turmoil::lookup("udp_client").to_string().parse().unwrap())
             .build();
-        eprintln!("[client] Starting with UDP config (transport={:?})", config.preferred_transport);
-        
+        eprintln!(
+            "[client] Starting with UDP config (transport={:?})",
+            config.preferred_transport
+        );
+
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Discover TCP service
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
         eprintln!("[client] Waiting for TCP service discovery...");
-        
+
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
             .expect("Discovery timeout")
@@ -794,11 +827,8 @@ fn udp_client_calls_tcp_server() {
         eprintln!("[client] TCP service discovered, making call...");
 
         let method = MethodId::new(0x0001).unwrap();
-        let result = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"hello_tcp"),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"hello_tcp")).await;
 
         match &result {
             Ok(Ok(response)) => {
@@ -813,7 +843,10 @@ fn udp_client_calls_tcp_server() {
     });
 
     sim.run().unwrap();
-    assert!(*call_succeeded.lock().unwrap(), "Call to TCP server should succeed");
+    assert!(
+        *call_succeeded.lock().unwrap(),
+        "Call to TCP server should succeed"
+    );
 }
 
 /// Simple test: TCP client discovers TCP server, makes call
@@ -846,8 +879,14 @@ fn tcp_client_calls_tcp_server() {
         eprintln!("[tcp_server] TCP service offered, waiting for calls...");
 
         while let Some(event) = offering.next().await {
-            if let ServiceEvent::Call { responder, payload, .. } = event {
-                eprintln!("[tcp_server] Received call with payload: {:?}", payload.as_ref());
+            if let ServiceEvent::Call {
+                responder, payload, ..
+            } = event
+            {
+                eprintln!(
+                    "[tcp_server] Received call with payload: {:?}",
+                    payload.as_ref()
+                );
                 responder.reply(b"tcp_response").await.unwrap();
                 eprintln!("[tcp_server] Sent reply");
             }
@@ -866,13 +905,13 @@ fn tcp_client_calls_tcp_server() {
             .advertised_ip(turmoil::lookup("tcp_client").to_string().parse().unwrap())
             .build();
         eprintln!("[client] Starting with TCP config");
-        
+
         let runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
         // Discover TCP service
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
         eprintln!("[client] Waiting for TCP service discovery...");
-        
+
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
             .expect("Discovery timeout")
@@ -881,11 +920,8 @@ fn tcp_client_calls_tcp_server() {
         eprintln!("[client] TCP service discovered, making call...");
 
         let method = MethodId::new(0x0001).unwrap();
-        let result = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"hello_tcp"),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"hello_tcp")).await;
 
         match &result {
             Ok(Ok(response)) => {
@@ -900,7 +936,10 @@ fn tcp_client_calls_tcp_server() {
     });
 
     sim.run().unwrap();
-    assert!(*call_succeeded.lock().unwrap(), "Call to TCP server should succeed");
+    assert!(
+        *call_succeeded.lock().unwrap(),
+        "Call to TCP server should succeed"
+    );
 }
 
 // ============================================================================
@@ -941,7 +980,7 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
 
         let mut offering = runtime
             .offer::<TcpService>(InstanceId::Id(0x0001))
-            .tcp()  // TCP only, no UDP
+            .tcp() // TCP only, no UDP
             .start()
             .await
             .unwrap();
@@ -949,8 +988,14 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
         eprintln!("[server] TCP-only service offered");
 
         while let Some(event) = offering.next().await {
-            if let ServiceEvent::Call { responder, payload, .. } = event {
-                eprintln!("[server] Received call with payload: {:?}", payload.as_ref());
+            if let ServiceEvent::Call {
+                responder, payload, ..
+            } = event
+            {
+                eprintln!(
+                    "[server] Received call with payload: {:?}",
+                    payload.as_ref()
+                );
                 responder.reply(b"tcp_response").await.unwrap();
             }
         }
@@ -978,18 +1023,23 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
             .expect("Discovery timeout")
             .expect("Service available");
 
-        eprintln!("[client] Service discovered at {:?} via {:?}", proxy.endpoint(), proxy.transport());
+        eprintln!(
+            "[client] Service discovered at {:?} via {:?}",
+            proxy.endpoint(),
+            proxy.transport()
+        );
         // Verify transport is TCP (since server only offers TCP)
-        assert_eq!(proxy.transport(), Transport::Tcp, "Should use TCP when it's the only option");
+        assert_eq!(
+            proxy.transport(),
+            Transport::Tcp,
+            "Should use TCP when it's the only option"
+        );
 
         let method = MethodId::new(0x0001).unwrap();
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"hello"),
-        )
-        .await
-        .expect("Call timeout")
-        .expect("Call should succeed");
+        let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"hello"))
+            .await
+            .expect("Call timeout")
+            .expect("Call should succeed");
 
         assert_eq!(response.payload.as_ref(), b"tcp_response");
         eprintln!("[client] Call succeeded with TCP despite UDP preference!");
@@ -1039,7 +1089,7 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
 
         let mut offering = runtime
             .offer::<UdpService>(InstanceId::Id(0x0001))
-            .udp()  // UDP only, no TCP
+            .udp() // UDP only, no TCP
             .start()
             .await
             .unwrap();
@@ -1047,8 +1097,14 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
         eprintln!("[server] UDP-only service offered");
 
         while let Some(event) = offering.next().await {
-            if let ServiceEvent::Call { responder, payload, .. } = event {
-                eprintln!("[server] Received call with payload: {:?}", payload.as_ref());
+            if let ServiceEvent::Call {
+                responder, payload, ..
+            } = event
+            {
+                eprintln!(
+                    "[server] Received call with payload: {:?}",
+                    payload.as_ref()
+                );
                 responder.reply(b"udp_response").await.unwrap();
             }
         }
@@ -1076,18 +1132,19 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
             .expect("Discovery timeout")
             .expect("Service available");
 
-        assert_eq!(proxy.transport(), Transport::Udp, "Should use UDP when it's the only option");
+        assert_eq!(
+            proxy.transport(),
+            Transport::Udp,
+            "Should use UDP when it's the only option"
+        );
 
         eprintln!("[client] Service discovered (should be UDP endpoint)");
 
         let method = MethodId::new(0x0001).unwrap();
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.call(method, b"hello"),
-        )
-        .await
-        .expect("Call timeout")
-        .expect("Call should succeed");
+        let response = tokio::time::timeout(Duration::from_secs(5), proxy.call(method, b"hello"))
+            .await
+            .expect("Call timeout")
+            .expect("Call should succeed");
 
         assert_eq!(response.payload.as_ref(), b"udp_response");
         eprintln!("[client] Call succeeded with UDP despite TCP preference!");
@@ -1140,7 +1197,7 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
 
         let mut offering = runtime
             .offer::<UdpService>(InstanceId::Id(0x0001))
-            .udp()  // UDP only
+            .udp() // UDP only
             .start()
             .await
             .unwrap();
@@ -1154,10 +1211,9 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
         let mut subscribed = false;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         while !subscribed && tokio::time::Instant::now() < deadline {
-            if let Ok(Some(event)) = tokio::time::timeout(
-                Duration::from_millis(100),
-                offering.next(),
-            ).await {
+            if let Ok(Some(event)) =
+                tokio::time::timeout(Duration::from_millis(100), offering.next()).await
+            {
                 if let ServiceEvent::Subscribe { ack, .. } = event {
                     eprintln!("[server] Subscription received, accepting");
                     ack.accept().await.unwrap();
@@ -1175,7 +1231,10 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
         tokio::time::sleep(Duration::from_millis(200)).await;
         for i in 0..3 {
             let payload = format!("udp_event_{}", i);
-            offering.notify(eventgroup, event_id, payload.as_bytes()).await.unwrap();
+            offering
+                .notify(eventgroup, event_id, payload.as_bytes())
+                .await
+                .unwrap();
             eprintln!("[server] Sent event {}", i);
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -1206,13 +1265,11 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
         eprintln!("[client] Service discovered, subscribing...");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed, waiting for events...");
 
@@ -1237,7 +1294,11 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
 
     let count = events_received.load(Ordering::SeqCst);
     eprintln!("Test complete: received {} events", count);
-    assert!(count >= 1, "Should have received at least 1 event, got {}", count);
+    assert!(
+        count >= 1,
+        "Should have received at least 1 event, got {}",
+        count
+    );
 }
 
 /// Test that a client with preferred_transport=TCP can still subscribe to events
@@ -1275,7 +1336,7 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
 
         let mut offering = runtime
             .offer::<UdpService>(InstanceId::Id(0x0001))
-            .udp()  // UDP only, no TCP
+            .udp() // UDP only, no TCP
             .start()
             .await
             .unwrap();
@@ -1289,10 +1350,9 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
         let mut subscribed = false;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         while !subscribed && tokio::time::Instant::now() < deadline {
-            if let Ok(Some(event)) = tokio::time::timeout(
-                Duration::from_millis(100),
-                offering.next(),
-            ).await {
+            if let Ok(Some(event)) =
+                tokio::time::timeout(Duration::from_millis(100), offering.next()).await
+            {
                 if let ServiceEvent::Subscribe { .. } = event {
                     eprintln!("[server] Subscription received (auto-ACKed)");
                     subscribed = true;
@@ -1310,7 +1370,10 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
         for i in 0..3 {
             let payload = format!("udp_event_{}", i);
             eprintln!("[server] Sending event {}", i);
-            offering.notify(eventgroup, event_id, payload.as_bytes()).await.unwrap();
+            offering
+                .notify(eventgroup, event_id, payload.as_bytes())
+                .await
+                .unwrap();
             eprintln!("[server] Sent event {}", i);
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -1340,16 +1403,18 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
             .expect("Service available");
 
         eprintln!("[client] Service discovered (should be UDP endpoint despite TCP preference)");
-        assert_eq!(proxy.transport(), Transport::Udp, "Should use UDP when it's the only option");
+        assert_eq!(
+            proxy.transport(),
+            Transport::Udp,
+            "Should use UDP when it's the only option"
+        );
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed via UDP despite TCP preference, waiting for events...");
 
@@ -1374,8 +1439,15 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
     sim.run().unwrap();
 
     let count = events_received.load(Ordering::SeqCst);
-    eprintln!("Test complete: received {} events despite TCP preference", count);
-    assert!(count >= 1, "Client with TCP preference should still receive UDP events, got {}", count);
+    eprintln!(
+        "Test complete: received {} events despite TCP preference",
+        count
+    );
+    assert!(
+        count >= 1,
+        "Client with TCP preference should still receive UDP events, got {}",
+        count
+    );
 }
 
 /// Test that a client with preferred_transport=UDP can still subscribe to events
@@ -1407,7 +1479,7 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
 
         let mut offering = runtime
             .offer::<TcpService>(InstanceId::Id(0x0001))
-            .tcp()  // TCP only, no UDP
+            .tcp() // TCP only, no UDP
             .start()
             .await
             .unwrap();
@@ -1421,10 +1493,9 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
         let mut subscribed = false;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         while !subscribed && tokio::time::Instant::now() < deadline {
-            if let Ok(Some(event)) = tokio::time::timeout(
-                Duration::from_millis(100),
-                offering.next(),
-            ).await {
+            if let Ok(Some(event)) =
+                tokio::time::timeout(Duration::from_millis(100), offering.next()).await
+            {
                 if let ServiceEvent::Subscribe { ack, .. } = event {
                     eprintln!("[server] Subscription received, accepting");
                     ack.accept().await.unwrap();
@@ -1442,7 +1513,10 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
         tokio::time::sleep(Duration::from_millis(200)).await;
         for i in 0..3 {
             let payload = format!("tcp_event_{}", i);
-            offering.notify(eventgroup, event_id, payload.as_bytes()).await.unwrap();
+            offering
+                .notify(eventgroup, event_id, payload.as_bytes())
+                .await
+                .unwrap();
             eprintln!("[server] Sent event {}", i);
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -1474,13 +1548,11 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
         eprintln!("[client] Service discovered (should be TCP endpoint despite UDP preference)");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed via TCP despite UDP preference, waiting for events...");
 
@@ -1504,8 +1576,15 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
     sim.run().unwrap();
 
     let count = events_received.load(Ordering::SeqCst);
-    eprintln!("Test complete: received {} events despite UDP preference", count);
-    assert!(count >= 1, "Client with UDP preference should still receive TCP events, got {}", count);
+    eprintln!(
+        "Test complete: received {} events despite UDP preference",
+        count
+    );
+    assert!(
+        count >= 1,
+        "Client with UDP preference should still receive TCP events, got {}",
+        count
+    );
 }
 
 /// Test that preferred_transport is respected when a service offers BOTH transports.
@@ -1552,7 +1631,7 @@ fn preferred_transport_respected_when_both_available() {
             let mut offering = runtime
                 .offer::<TcpService>(InstanceId::Id(0x0001))
                 .tcp()
-                .udp()  // Dual-stack: both TCP and UDP
+                .udp() // Dual-stack: both TCP and UDP
                 .start()
                 .await
                 .unwrap();
@@ -1560,7 +1639,10 @@ fn preferred_transport_respected_when_both_available() {
             eprintln!("[server] Dual-stack service offered (TCP + UDP)");
 
             while let Some(event) = offering.next().await {
-                if let ServiceEvent::Call { responder, payload, .. } = event {
+                if let ServiceEvent::Call {
+                    responder, payload, ..
+                } = event
+                {
                     let payload_str = String::from_utf8_lossy(&payload);
                     eprintln!("[server] Received call: {}", payload_str);
 
@@ -1682,8 +1764,14 @@ fn preferred_transport_respected_when_both_available() {
     );
 
     // Both clients should have successfully called the service
-    assert_eq!(tcp_count, 1, "TCP-preferring client should have called once");
-    assert_eq!(udp_count, 1, "UDP-preferring client should have called once");
+    assert_eq!(
+        tcp_count, 1,
+        "TCP-preferring client should have called once"
+    );
+    assert_eq!(
+        udp_count, 1,
+        "UDP-preferring client should have called once"
+    );
 }
 
 /// Test that preferred_transport is respected for pub/sub when a service offers BOTH transports.
@@ -1733,7 +1821,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
             let mut offering = runtime
                 .offer::<TcpService>(InstanceId::Id(0x0001))
                 .tcp()
-                .udp()  // Dual-stack: both TCP and UDP
+                .udp() // Dual-stack: both TCP and UDP
                 .start()
                 .await
                 .unwrap();
@@ -1749,16 +1837,15 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
             let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
 
             while tokio::time::Instant::now() < deadline {
-                if let Ok(Some(event)) = tokio::time::timeout(
-                    Duration::from_millis(100),
-                    offering.next(),
-                ).await {
+                if let Ok(Some(event)) =
+                    tokio::time::timeout(Duration::from_millis(100), offering.next()).await
+                {
                     if let ServiceEvent::Subscribe { ack, .. } = event {
                         // In a real scenario, we'd introspect the transport here
                         // For now, we accept all subscriptions
                         eprintln!("[server] Subscription received, accepting");
                         ack.accept().await.unwrap();
-                        
+
                         // Assume alternating subscriptions for demonstration
                         if !tcp_subscribed {
                             tcp_subscribed = true;
@@ -1772,7 +1859,10 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
 
                 // Send events periodically once we have subscribers
                 if tcp_subscribed || udp_subscribed {
-                    offering.notify(eventgroup, event_id, b"event_data").await.ok();
+                    offering
+                        .notify(eventgroup, event_id, b"event_data")
+                        .await
+                        .ok();
                 }
             }
 
@@ -1799,21 +1889,18 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[tcp_client] Subscribed, waiting for events...");
 
         // Receive at least one event
-        if let Ok(Some(event)) = tokio::time::timeout(
-            Duration::from_secs(5),
-            subscription.next(),
-        ).await {
+        if let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_secs(5), subscription.next()).await
+        {
             eprintln!("[tcp_client] Received event: {:?}", event.payload.as_ref());
         }
 
@@ -1839,21 +1926,18 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.subscribe(eventgroup),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[udp_client] Subscribed, waiting for events...");
 
         // Receive at least one event
-        if let Ok(Some(event)) = tokio::time::timeout(
-            Duration::from_secs(5),
-            subscription.next(),
-        ).await {
+        if let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_secs(5), subscription.next()).await
+        {
             eprintln!("[udp_client] Received event: {:?}", event.payload.as_ref());
         }
 
@@ -1871,8 +1955,14 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
     );
 
     // Both clients should have subscribed
-    assert_eq!(tcp_count, 1, "TCP-preferring client should have subscribed once");
-    assert_eq!(udp_count, 1, "UDP-preferring client should have subscribed once");
+    assert_eq!(
+        tcp_count, 1,
+        "TCP-preferring client should have subscribed once"
+    );
+    assert_eq!(
+        udp_count, 1,
+        "UDP-preferring client should have subscribed once"
+    );
 }
 
 #[test_log::test]
@@ -1905,10 +1995,13 @@ fn handle_call_ignores_preferred_transport_for_dual_stack() {
         // infer it by checking which socket received the call. For now, we track
         // that a call was received.
         while let Some(event) = offering.next().await {
-            if let ServiceEvent::Call { responder, payload, .. } = event {
+            if let ServiceEvent::Call {
+                responder, payload, ..
+            } = event
+            {
                 let payload_str = String::from_utf8_lossy(&payload);
                 eprintln!("[server] Received call: {}", payload_str);
-                
+
                 responder.reply(b"response").await.unwrap();
             }
         }
@@ -1921,7 +2014,7 @@ fn handle_call_ignores_preferred_transport_for_dual_stack() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let config = RuntimeConfig::builder()
-            .preferred_transport(Transport::Udp)  // CLIENT PREFERS UDP!
+            .preferred_transport(Transport::Udp) // CLIENT PREFERS UDP!
             .advertised_ip(turmoil::lookup("udp_client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();

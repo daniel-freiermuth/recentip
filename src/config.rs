@@ -191,10 +191,10 @@ pub struct RuntimeConfig {
     ///
     /// This is the routable IP address that will be included in SD endpoint options
     /// when subscribing to services. Must be a valid, non-unspecified address.
-    /// 
+    ///
     /// - In turmoil tests: Use `turmoil::lookup(hostname)` to get the host's IP
     /// - On real networks: Use the actual interface IP address
-    /// 
+    ///
     /// If not set, will attempt to use the IP from `bind_addr`, but `bind_addr`
     /// cannot be 0.0.0.0 (unspecified) if you need to subscribe to services.
     /// See module documentation for full fallback behavior.
@@ -261,15 +261,15 @@ impl RuntimeConfigBuilder {
     }
 
     /// Set the advertised IP address for endpoint options
-    /// 
+    ///
     /// This is the routable IP address that will be included in SD endpoint options.
     /// Must be a valid, non-unspecified address. Required for subscribing to services.
-    /// 
+    ///
     /// # Example
     /// ```no_run
     /// use someip_runtime::prelude::*;
     /// use std::net::Ipv4Addr;
-    /// 
+    ///
     /// let config = RuntimeConfig::builder()
     ///     .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
     ///     .build();

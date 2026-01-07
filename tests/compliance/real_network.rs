@@ -457,7 +457,11 @@ async fn udp_events_real_network() {
         .expect("Service available");
 
     let eventgroup_id = EventgroupId::new(0x0001).unwrap();
-    let mut subscription = tokio::time::timeout(Duration::from_secs(1), proxy.subscribe(eventgroup_id)).await.expect("Sub in time").expect("Subscribe success");
+    let mut subscription =
+        tokio::time::timeout(Duration::from_secs(1), proxy.subscribe(eventgroup_id))
+            .await
+            .expect("Sub in time")
+            .expect("Subscribe success");
 
     subscribed_rx.recv().await;
 

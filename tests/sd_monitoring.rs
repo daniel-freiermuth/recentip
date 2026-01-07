@@ -156,7 +156,7 @@ fn monitor_sd_receives_service_unavailable() {
                 Ok(Some(event)) => {
                     events_clone.lock().unwrap().push(event);
                 }
-                Ok(None) => break, // Channel closed
+                Ok(None) => break,  // Channel closed
                 Err(_) => continue, // Timeout, keep trying
             }
         }
@@ -166,17 +166,21 @@ fn monitor_sd_receives_service_unavailable() {
     sim.run().unwrap();
 
     let events = events_received.lock().unwrap();
-    
+
     // Should have received at least ServiceAvailable
     assert!(
-        events.iter().any(|e| matches!(e, SdEvent::ServiceAvailable { .. })),
+        events
+            .iter()
+            .any(|e| matches!(e, SdEvent::ServiceAvailable { .. })),
         "Should have received ServiceAvailable event"
     );
 
     // Should have received ServiceUnavailable after offering was dropped
     assert!(
-        events.iter().any(|e| matches!(e, SdEvent::ServiceUnavailable { service_id, instance_id } 
-            if *service_id == 0x1234 && *instance_id == 0x0001)),
+        events.iter().any(
+            |e| matches!(e, SdEvent::ServiceUnavailable { service_id, instance_id } 
+            if *service_id == 0x1234 && *instance_id == 0x0001)
+        ),
         "Should have received ServiceUnavailable event for the service. Events: {:?}",
         *events
     );
@@ -230,7 +234,11 @@ fn monitor_sd_event_metadata_accuracy() {
 
     sim.run().unwrap();
 
-    let event = event_received.lock().unwrap().take().expect("Event should be received");
+    let event = event_received
+        .lock()
+        .unwrap()
+        .take()
+        .expect("Event should be received");
 
     match event {
         SdEvent::ServiceAvailable {
@@ -243,8 +251,14 @@ fn monitor_sd_event_metadata_accuracy() {
         } => {
             assert_eq!(service_id, 0x5678, "Service ID should match AnotherService");
             assert_eq!(instance_id, 0x0042, "Instance ID should match");
-            assert_eq!(major_version, 2, "Major version should match AnotherService");
-            assert_eq!(minor_version, 3, "Minor version should match AnotherService");
+            assert_eq!(
+                major_version, 2,
+                "Major version should match AnotherService"
+            );
+            assert_eq!(
+                minor_version, 3,
+                "Minor version should match AnotherService"
+            );
             assert!(ttl > 0, "TTL should be positive");
             // Endpoint should be valid (port > 0)
             assert!(endpoint.port() > 0, "Endpoint port should be valid");
@@ -290,7 +304,7 @@ fn monitor_sd_multiple_monitors_receive_events() {
     });
 
     sim.client("monitor1", async move {
-    // Start monitors first so they don't miss events
+        // Start monitors first so they don't miss events
         let config = RuntimeConfig::builder()
             .advertised_ip(turmoil::lookup("monitor1").to_string().parse().unwrap())
             .build();
@@ -335,11 +349,23 @@ fn monitor_sd_multiple_monitors_receive_events() {
 
     // Both monitors should have received ServiceAvailable
     assert!(
-        m1_events.iter().any(|e| matches!(e, SdEvent::ServiceAvailable { service_id: 0x1234, .. })),
+        m1_events.iter().any(|e| matches!(
+            e,
+            SdEvent::ServiceAvailable {
+                service_id: 0x1234,
+                ..
+            }
+        )),
         "Monitor 1 should have received ServiceAvailable"
     );
     assert!(
-        m2_events.iter().any(|e| matches!(e, SdEvent::ServiceAvailable { service_id: 0x1234, .. })),
+        m2_events.iter().any(|e| matches!(
+            e,
+            SdEvent::ServiceAvailable {
+                service_id: 0x1234,
+                ..
+            }
+        )),
         "Monitor 2 should have received ServiceAvailable"
     );
 }
@@ -423,12 +449,24 @@ fn monitor_sd_multiple_monitors_same_runtime() {
 
     // Both monitors on same runtime should have received ServiceAvailable
     assert!(
-        m1_events.iter().any(|e| matches!(e, SdEvent::ServiceAvailable { service_id: 0x1234, .. })),
+        m1_events.iter().any(|e| matches!(
+            e,
+            SdEvent::ServiceAvailable {
+                service_id: 0x1234,
+                ..
+            }
+        )),
         "Monitor 1 should have received ServiceAvailable. Events: {:?}",
         *m1_events
     );
     assert!(
-        m2_events.iter().any(|e| matches!(e, SdEvent::ServiceAvailable { service_id: 0x1234, .. })),
+        m2_events.iter().any(|e| matches!(
+            e,
+            SdEvent::ServiceAvailable {
+                service_id: 0x1234,
+                ..
+            }
+        )),
         "Monitor 2 should have received ServiceAvailable. Events: {:?}",
         *m2_events
     );
@@ -508,17 +546,37 @@ fn monitor_sd_multiple_services() {
     let events = events_received.lock().unwrap();
 
     // Should have received events from both services
-    let has_test_service = events.iter().any(|e| matches!(
-        e,
-        SdEvent::ServiceAvailable { service_id: 0x1234, instance_id: 0x0001, .. }
-    ));
-    let has_another_service = events.iter().any(|e| matches!(
-        e,
-        SdEvent::ServiceAvailable { service_id: 0x5678, instance_id: 0x0002, .. }
-    ));
+    let has_test_service = events.iter().any(|e| {
+        matches!(
+            e,
+            SdEvent::ServiceAvailable {
+                service_id: 0x1234,
+                instance_id: 0x0001,
+                ..
+            }
+        )
+    });
+    let has_another_service = events.iter().any(|e| {
+        matches!(
+            e,
+            SdEvent::ServiceAvailable {
+                service_id: 0x5678,
+                instance_id: 0x0002,
+                ..
+            }
+        )
+    });
 
-    assert!(has_test_service, "Should have received TestService event. Events: {:?}", *events);
-    assert!(has_another_service, "Should have received AnotherService event. Events: {:?}", *events);
+    assert!(
+        has_test_service,
+        "Should have received TestService event. Events: {:?}",
+        *events
+    );
+    assert!(
+        has_another_service,
+        "Should have received AnotherService event. Events: {:?}",
+        *events
+    );
 }
 
 // ============================================================================
@@ -556,10 +614,10 @@ fn monitor_sd_receives_service_expired() {
 
         // Wait for offer to be sent and received
         tokio::time::sleep(Duration::from_millis(500)).await;
-        
+
         // Drop the offering - this sends StopOffer and we'll get ServiceUnavailable
         drop(offering);
-        
+
         // Keep server alive briefly to let StopOffer be sent
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -594,18 +652,31 @@ fn monitor_sd_receives_service_expired() {
 
     // Should have received ServiceAvailable initially
     assert!(
-        events.iter().any(|e| matches!(e, SdEvent::ServiceAvailable { service_id: 0x1234, .. })),
+        events.iter().any(|e| matches!(
+            e,
+            SdEvent::ServiceAvailable {
+                service_id: 0x1234,
+                ..
+            }
+        )),
         "Should have received ServiceAvailable event. Events: {:?}",
         *events
     );
 
     // Should have received either ServiceUnavailable or ServiceExpired
     // (depending on whether StopOffer was received or TTL expired)
-    let has_unavailable_or_expired = events.iter().any(|e| matches!(
-        e,
-        SdEvent::ServiceUnavailable { service_id: 0x1234, .. } |
-        SdEvent::ServiceExpired { service_id: 0x1234, .. }
-    ));
+    let has_unavailable_or_expired = events.iter().any(|e| {
+        matches!(
+            e,
+            SdEvent::ServiceUnavailable {
+                service_id: 0x1234,
+                ..
+            } | SdEvent::ServiceExpired {
+                service_id: 0x1234,
+                ..
+            }
+        )
+    });
 
     assert!(
         has_unavailable_or_expired,
@@ -676,7 +747,13 @@ fn monitor_sd_dropped_receiver_cleanup() {
 
     let events = events_received.lock().unwrap();
     assert!(
-        events.iter().any(|e| matches!(e, SdEvent::ServiceAvailable { service_id: 0x1234, .. })),
+        events.iter().any(|e| matches!(
+            e,
+            SdEvent::ServiceAvailable {
+                service_id: 0x1234,
+                ..
+            }
+        )),
         "Second monitor should still receive events after first was dropped. Events: {:?}",
         *events
     );
@@ -733,8 +810,11 @@ fn monitor_sd_before_services_exist() {
     sim.run().unwrap();
 
     let event = event_received.lock().unwrap().take();
-    assert!(event.is_some(), "Should have received SD event even when monitoring started first");
-    
+    assert!(
+        event.is_some(),
+        "Should have received SD event even when monitoring started first"
+    );
+
     match event.unwrap() {
         SdEvent::ServiceAvailable { service_id, .. } => {
             assert_eq!(service_id, 0x1234);
