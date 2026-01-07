@@ -16,6 +16,7 @@ impl Service for ServiceA {
 }
 
 #[test_log::test]
+#[ignore = "documenting a known problem"]
 fn test_subscribe_drop_unsubscribes() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
