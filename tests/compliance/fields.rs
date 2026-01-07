@@ -60,7 +60,9 @@ fn field_getter_empty_request_payload() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
@@ -106,7 +108,9 @@ fn field_getter_empty_request_payload() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
@@ -164,7 +168,9 @@ fn field_getter_returns_current_value() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
@@ -198,7 +204,9 @@ fn field_getter_returns_current_value() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
@@ -265,7 +273,9 @@ fn field_setter_sends_value_in_request() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
@@ -314,7 +324,9 @@ fn field_setter_sends_value_in_request() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
@@ -372,7 +384,9 @@ fn field_setter_gets_response() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
@@ -401,7 +415,9 @@ fn field_setter_gets_response() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
@@ -467,7 +483,9 @@ fn field_notifier_sends_updated_value() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let offering = runtime
@@ -500,7 +518,9 @@ fn field_notifier_sends_updated_value() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
@@ -579,7 +599,9 @@ fn field_combines_getter_setter_notifier() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
@@ -658,7 +680,9 @@ fn field_combines_getter_setter_notifier() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
@@ -741,7 +765,9 @@ fn field_setter_can_reject_invalid_value() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
@@ -779,7 +805,9 @@ fn field_setter_can_reject_invalid_value() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);

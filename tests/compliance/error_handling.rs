@@ -176,7 +176,9 @@ fn request_answered_by_response() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -203,7 +205,9 @@ fn request_answered_by_response() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
@@ -241,7 +245,9 @@ fn error_response_has_nonzero_return_code() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -268,7 +274,9 @@ fn error_response_has_nonzero_return_code() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
@@ -321,7 +329,9 @@ fn notification_message_type() {
     let event_received_clone = event_received.clone();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
@@ -348,7 +358,9 @@ fn notification_message_type() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
@@ -393,7 +405,9 @@ fn response_ids_match_request() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -424,7 +438,9 @@ fn response_ids_match_request() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
@@ -476,7 +492,9 @@ fn successful_response_has_e_ok() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -502,7 +520,9 @@ fn successful_response_has_e_ok() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));

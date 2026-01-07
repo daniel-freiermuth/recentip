@@ -274,7 +274,9 @@ fn large_udp_messages_use_tp() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -302,7 +304,9 @@ fn large_udp_messages_use_tp() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));

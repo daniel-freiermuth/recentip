@@ -109,7 +109,9 @@ fn udp_binding_transports_someip_messages() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -136,7 +138,9 @@ fn udp_binding_transports_someip_messages() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
@@ -176,7 +180,9 @@ fn udp_each_message_has_own_header() {
 
     // Server receives requests and verifies each has a valid header
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -209,7 +215,9 @@ fn udp_each_message_has_own_header() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
@@ -256,7 +264,9 @@ fn udp_multiple_messages_format_supported() {
 
     // Server just receives and echoes
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -324,7 +334,9 @@ fn udp_multiple_messages_format_supported() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
@@ -367,7 +379,9 @@ fn udp_supports_unicast_and_multicast() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Offer triggers multicast SD messages
@@ -435,7 +449,9 @@ fn udp_client_receives_multicast_offers() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
@@ -452,7 +468,9 @@ fn udp_client_receives_multicast_offers() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Client discovers service via multicast OfferService
@@ -485,7 +503,9 @@ fn udp_multicast_eventgroup_with_initial_events() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let eventgroup = EventgroupId::new(0x01).unwrap();
@@ -521,7 +541,9 @@ fn udp_multicast_eventgroup_with_initial_events() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<EventService>(InstanceId::Id(0x0001));
@@ -571,7 +593,9 @@ fn udp_handles_various_payload_sizes() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -602,7 +626,9 @@ fn udp_handles_various_payload_sizes() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
@@ -651,7 +677,9 @@ fn default_transport_is_udp() {
 
     sim.host("server", || async {
         // No transport configuration - should default to UDP
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -678,7 +706,9 @@ fn default_transport_is_udp() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // No transport configuration - should default to UDP
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));

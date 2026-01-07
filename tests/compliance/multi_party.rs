@@ -112,7 +112,10 @@ fn multiple_clients_call_same_server() {
     sim.host("client1", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -136,7 +139,10 @@ fn multiple_clients_call_same_server() {
     sim.host("client2", || async {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -160,7 +166,10 @@ fn multiple_clients_call_same_server() {
     sim.host("client3", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client3").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -243,7 +252,10 @@ fn multiple_clients_subscribe_to_events() {
     sim.host("subscriber1", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("subscriber1").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -272,7 +284,10 @@ fn multiple_clients_subscribe_to_events() {
     sim.host("subscriber2", || async {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("subscriber2").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -300,7 +315,10 @@ fn multiple_clients_subscribe_to_events() {
     sim.host("subscriber3", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("subscriber3").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -376,7 +394,10 @@ fn sd_reaches_all_participants() {
     // 5 clients try to discover (using macro to generate inline)
     sim.host("client1", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
@@ -387,7 +408,10 @@ fn sd_reaches_all_participants() {
 
     sim.host("client2", || async {
         tokio::time::sleep(Duration::from_millis(150)).await;
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
@@ -398,7 +422,10 @@ fn sd_reaches_all_participants() {
 
     sim.host("client3", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client3").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
@@ -409,7 +436,10 @@ fn sd_reaches_all_participants() {
 
     sim.host("client4", || async {
         tokio::time::sleep(Duration::from_millis(250)).await;
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client4").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
@@ -420,7 +450,10 @@ fn sd_reaches_all_participants() {
 
     sim.host("client5", || async {
         tokio::time::sleep(Duration::from_millis(300)).await;
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client5").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         tokio::time::timeout(Duration::from_secs(5), proxy.available())
             .await
@@ -510,7 +543,10 @@ fn nodes_with_mixed_client_server_roles() {
 
     // Node B: offers ServiceB, requires ServiceA
     sim.host("nodeB", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("nodeB").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Offer ServiceB
         let mut offering = runtime
@@ -613,7 +649,10 @@ fn multiple_servers_different_instances() {
 
     // Server 2 - Instance 0x0002
     sim.host("server2", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server2").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0002))
@@ -641,7 +680,10 @@ fn multiple_servers_different_instances() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find instance 1
         let proxy1 = runtime.find::<TestService>(InstanceId::Id(0x0001));

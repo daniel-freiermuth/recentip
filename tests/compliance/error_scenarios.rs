@@ -53,7 +53,10 @@ fn no_error_response_for_events() {
 
     // Server offers service with events
     sim.host("server", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -81,7 +84,10 @@ fn no_error_response_for_events() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -124,7 +130,10 @@ fn no_error_response_for_fire_and_forget() {
 
     // Server handles fire&forget
     sim.host("server", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -153,7 +162,10 @@ fn no_error_response_for_fire_and_forget() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -228,7 +240,10 @@ fn server_returns_various_error_codes() {
 
     // Server returns different error codes
     sim.host("server", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -281,7 +296,10 @@ fn server_returns_various_error_codes() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -433,7 +451,9 @@ fn error_response_copies_request_header() {
 
     // Library side - server responds with errors
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -615,7 +635,9 @@ fn exception_message_type_when_configured() {
 
     // Server configured to use EXCEPTION for method 0x0001
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -770,7 +792,9 @@ fn mixed_exception_config_per_method() {
 
     // Server with mixed config: method 0x0001 uses EXCEPTION, method 0x0002 uses RESPONSE
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -950,7 +974,9 @@ fn internal_unknown_service_error_uses_response() {
 
     // Server offers service 0x1234
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1082,7 +1108,9 @@ fn messages_with_short_length_ignored() {
 
     // Server should ignore malformed messages
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1201,7 +1229,9 @@ fn uses_known_protocol_version() {
 
     // Library side - server that can respond to requests
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1366,7 +1396,9 @@ fn wrong_protocol_version_returns_error() {
 
     // Server receives request with wrong protocol version
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 

@@ -72,7 +72,9 @@ fn sd_offer_discovery_works() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
@@ -92,7 +94,9 @@ fn sd_offer_discovery_works() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
@@ -131,7 +135,9 @@ fn sd_offer_with_specific_instance() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Offer with specific instance ID
@@ -151,7 +157,9 @@ fn sd_offer_with_specific_instance() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find specific instance
@@ -192,7 +200,9 @@ fn sd_offer_with_version_info() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Offer versioned service
@@ -212,7 +222,9 @@ fn sd_offer_with_version_info() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<VersionedService>(InstanceId::Any);
@@ -258,7 +270,9 @@ fn sd_stop_offer_on_drop() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Offer then drop
@@ -283,7 +297,9 @@ fn sd_stop_offer_on_drop() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
@@ -327,7 +343,9 @@ fn sd_multiple_service_offers() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering1 = runtime
@@ -352,7 +370,9 @@ fn sd_multiple_service_offers() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy1 = runtime.find::<TestService>(InstanceId::Any);
@@ -395,7 +415,9 @@ fn sd_multiple_instances_same_service() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering1 = runtime
@@ -423,7 +445,9 @@ fn sd_multiple_instances_same_service() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find ANY instance
@@ -474,7 +498,9 @@ fn sd_find_service_discovery() {
 
     // Start client first (before server)
     sim.host("client", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Request service that doesn't exist yet
@@ -496,7 +522,9 @@ fn sd_find_service_discovery() {
             // Delay server start
             tokio::time::sleep(Duration::from_millis(200)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
@@ -543,7 +571,9 @@ fn sd_session_id_increments() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Multiple offers to trigger multiple SD messages
@@ -572,7 +602,9 @@ fn sd_session_id_increments() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy1 = runtime.find::<TestService>(InstanceId::Any);
@@ -616,7 +648,9 @@ fn sd_unicast_flag_handling() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
@@ -635,7 +669,9 @@ fn sd_unicast_flag_handling() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
@@ -676,7 +712,9 @@ fn sd_discovery_then_rpc() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
@@ -708,7 +746,9 @@ fn sd_discovery_then_rpc() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Discover via SD

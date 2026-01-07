@@ -62,7 +62,9 @@ fn test_bind_returns_bound_instance() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // bind() should return ServiceInstance<_, Bound>
@@ -103,7 +105,9 @@ fn test_announce_transitions_to_announced() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Phase 1: Bind (not yet announced)
@@ -146,7 +150,9 @@ fn test_stop_announcing_transitions_to_bound() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -191,7 +197,9 @@ fn test_full_lifecycle() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Bind
@@ -244,7 +252,9 @@ fn test_bound_service_not_discoverable() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Only bind, don't announce
@@ -266,7 +276,9 @@ fn test_bound_service_not_discoverable() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -314,7 +326,9 @@ fn test_announced_service_is_discoverable() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -338,7 +352,9 @@ fn test_announced_service_is_discoverable() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -386,7 +402,9 @@ fn test_service_disappears_after_stop_announcing() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -415,7 +433,9 @@ fn test_service_disappears_after_stop_announcing() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -482,7 +502,9 @@ fn test_notify_static_without_announce() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
@@ -543,7 +565,9 @@ fn test_notify_requires_announced_state() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -581,7 +605,9 @@ fn test_notify_requires_announced_state() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -635,7 +661,9 @@ fn test_has_subscribers_in_announced_state() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -674,7 +702,9 @@ fn test_has_subscribers_in_announced_state() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -725,7 +755,9 @@ fn test_initialization_before_announce() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Phase 1: Bind
@@ -775,7 +807,9 @@ fn test_init_failure_prevents_announcement() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -806,7 +840,9 @@ fn test_init_failure_prevents_announcement() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TemperatureService>(InstanceId::Any);
@@ -858,7 +894,9 @@ fn test_graceful_shutdown_drains_requests() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -901,7 +939,9 @@ fn test_graceful_shutdown_drains_requests() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -956,7 +996,9 @@ fn test_drop_announced_sends_stop_offer() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -983,7 +1025,9 @@ fn test_drop_announced_sends_stop_offer() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -1042,7 +1086,9 @@ fn test_drop_bound_no_sd_message() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             {
@@ -1063,7 +1109,9 @@ fn test_drop_bound_no_sd_message() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -1115,7 +1163,9 @@ fn test_multiple_services_same_runtime() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Bind multiple different services
@@ -1145,7 +1195,9 @@ fn test_multiple_services_same_runtime() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Brake should be discoverable (announced)
@@ -1201,7 +1253,9 @@ fn test_multiple_instances_same_service() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Same service type, different instances
@@ -1231,7 +1285,9 @@ fn test_multiple_instances_same_service() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Instance 0x0001 should be discoverable
@@ -1286,7 +1342,9 @@ fn test_double_bind_same_instance_fails() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _first = runtime
@@ -1336,7 +1394,9 @@ fn test_rpc_in_bound_state() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
@@ -1370,7 +1430,9 @@ fn test_rpc_in_bound_state() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Client with pre-configured address (static deployment)
@@ -1426,7 +1488,9 @@ fn test_notify_no_subscribers_succeeds() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -1484,7 +1548,9 @@ fn test_notify_static_no_subscribers_succeeds() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -1541,7 +1607,9 @@ fn test_static_subscribers_preserved_after_announce() {
     sim.host("static_client", move || {
         let flag = client_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("static_client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Listen for static events on port 30502
@@ -1573,7 +1641,9 @@ fn test_static_subscribers_preserved_after_announce() {
         async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
@@ -1635,7 +1705,9 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
     sim.host("static_client", move || {
         let flag = client_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("static_client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Listen for static events on port 30502
@@ -1667,7 +1739,9 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
         async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
@@ -1737,7 +1811,10 @@ fn test_re_announce_after_stop() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::builder().ttl(5).build(); // Short TTL for testing
+            let config = RuntimeConfig::builder()
+                .ttl(5)
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -1767,7 +1844,9 @@ fn test_re_announce_after_stop() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // First discovery
@@ -1844,7 +1923,9 @@ fn test_static_subscriber_eventgroup_filtering() {
     sim.host("client1", move || {
         let flag = client1_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut listener = runtime
@@ -1882,7 +1963,9 @@ fn test_static_subscriber_eventgroup_filtering() {
     sim.host("client2", move || {
         let flag = client2_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut listener = runtime
@@ -1921,7 +2004,9 @@ fn test_static_subscriber_eventgroup_filtering() {
         async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
@@ -2002,7 +2087,9 @@ fn test_concurrent_notify() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -2040,7 +2127,9 @@ fn test_concurrent_notify() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -2100,7 +2189,9 @@ fn test_notify_survives_subscriber_disconnect() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -2150,7 +2241,9 @@ fn test_notify_survives_subscriber_disconnect() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -2214,7 +2307,9 @@ fn test_max_udp_payload_notify() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -2252,7 +2347,9 @@ fn test_max_udp_payload_notify() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -2520,7 +2617,9 @@ fn test_empty_payload_notify() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -2555,7 +2654,9 @@ fn test_empty_payload_notify() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -2615,7 +2716,9 @@ fn test_rapid_state_transitions() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Keep all services alive to ensure unique ports
@@ -2673,7 +2776,9 @@ fn test_next_in_bound_state() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
@@ -2705,7 +2810,9 @@ fn test_next_in_bound_state() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Static client (pre-configured address)
@@ -2758,7 +2865,9 @@ fn test_next_in_announced_state() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -2793,7 +2902,9 @@ fn test_next_in_announced_state() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
@@ -2845,7 +2956,9 @@ fn test_subscription_events_received() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
@@ -2887,7 +3000,9 @@ fn test_subscription_events_received() {
         async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
 
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);

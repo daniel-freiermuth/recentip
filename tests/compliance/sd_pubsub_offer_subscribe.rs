@@ -339,7 +339,10 @@ fn offer_triggers_subscribe_renewal() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder().subscribe_ttl(5).build();
+        let config = RuntimeConfig::builder()
+            .subscribe_ttl(5)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -516,6 +519,7 @@ fn no_cyclic_subscribes_strict_631_compliance() {
         // Use short TTL to tempt renewal
         let config = RuntimeConfig::builder()
             .subscribe_ttl(5) // 5 second TTL
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
 
         let runtime: Runtime<turmoil::net::UdpSocket> =
@@ -672,7 +676,9 @@ fn no_subscribe_without_offer() {
     // Client attempts to subscribe immediately
     sim.client("client", async move {
         // Start immediately - try to find and subscribe
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -764,7 +770,9 @@ fn available_returns_error_when_service_not_found() {
 
     // Client tries to find a service that doesn't exist
     sim.client("client", async move {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -942,6 +950,7 @@ fn max_ttl_subscription_no_renewal_needed() {
         // Configure with MAX TTL (infinite/until reboot)
         let config = RuntimeConfig::builder()
             .subscribe_ttl(0xFFFFFF) // Max TTL = valid until reboot
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
 
         let runtime: Runtime<turmoil::net::UdpSocket> =

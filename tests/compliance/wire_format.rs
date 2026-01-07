@@ -77,7 +77,9 @@ fn sd_offer_wire_format() {
 
     // Library side - offers a service
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -161,7 +163,9 @@ fn sd_uses_port_30490() {
 
     // Library offers a service - verify SD is sent to port 30490
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -221,7 +225,9 @@ fn sd_offer_entry_type_wire_format() {
 
     // Library side - offers a service
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -291,6 +297,7 @@ fn offer_service_ttl_on_wire() {
     sim.host("server", || async {
         let config = RuntimeConfig::builder()
             .offer_ttl(CUSTOM_OFFER_TTL)
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
             .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -420,6 +427,7 @@ fn subscribe_eventgroup_ttl_on_wire() {
 
         let config = RuntimeConfig::builder()
             .subscribe_ttl(CUSTOM_SUBSCRIBE_TTL)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -504,6 +512,7 @@ fn find_service_ttl_on_wire() {
 
         let config = RuntimeConfig::builder()
             .find_ttl(CUSTOM_FIND_TTL)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -967,7 +976,9 @@ fn rpc_request_wire_format() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1005,7 +1016,9 @@ fn rpc_response_wire_format() {
 
     // Library side - server that responds
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1217,7 +1230,9 @@ fn fire_and_forget_wire_format() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1256,7 +1271,9 @@ fn fire_and_forget_received_wire_format() {
 
     // Library side - server that receives fire-and-forget
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1361,7 +1378,9 @@ fn header_size_and_endianness_on_wire() {
 
     // Library side - offers a service (sends SD)
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1520,7 +1539,9 @@ fn session_id_increment_on_wire() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1670,7 +1691,9 @@ fn subscribe_eventgroup_entry_type() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1711,7 +1734,9 @@ fn subscribe_ack_entry_type() {
 
     // Server offers service and handles subscription
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -1853,6 +1878,7 @@ fn subscription_max_ttl_doesnt_expire() {
         let config = RuntimeConfig::builder()
             .cyclic_offer_delay(CYCLIC_OFFER_DELAY as u64 * 1000)
             .offer_ttl(OFFER_TTL)
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
             .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -2174,7 +2200,9 @@ fn stop_subscribe_has_ttl_zero() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -2594,7 +2622,9 @@ fn sd_reboot_flag_set_after_startup() {
 
     // Library side - offers a service
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -2684,7 +2714,9 @@ fn sd_session_starts_at_one() {
         // Extra delay to ensure observer's multicast join has propagated
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -2760,7 +2792,9 @@ fn sd_reboot_flag_clears_after_wraparound() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -2831,7 +2865,9 @@ fn sd_separate_multicast_unicast_sessions() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -2849,7 +2885,9 @@ fn sd_separate_multicast_unicast_sessions() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -3014,7 +3052,9 @@ fn client_rpc_must_not_use_sd_port() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
@@ -3716,6 +3756,7 @@ fn subscribe_format_udp_only_cyclic_offers() {
 
         let config = RuntimeConfig::builder()
             .subscribe_ttl(5) // Short TTL so we can see renewals
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -3849,6 +3890,7 @@ fn subscribe_format_tcp_only_cyclic_offers() {
         let config = RuntimeConfig::builder()
             .preferred_transport(someip_runtime::Transport::Tcp)
             .subscribe_ttl(5)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -3974,6 +4016,7 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
         let config = RuntimeConfig::builder()
             .preferred_transport(someip_runtime::Transport::Udp)
             .subscribe_ttl(5)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -4090,6 +4133,7 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
         let config = RuntimeConfig::builder()
             .preferred_transport(someip_runtime::Transport::Tcp)
             .subscribe_ttl(5)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =
             Runtime::with_socket_type(config).await.unwrap();
@@ -4215,6 +4259,7 @@ fn subscribe_format_client_adapts_to_available_transport() {
         let config = RuntimeConfig::builder()
             .preferred_transport(someip_runtime::Transport::Tcp) // Prefers TCP!
             .subscribe_ttl(5)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         // Use full runtime type to support TCP preference
         let runtime: Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> =

@@ -223,7 +223,10 @@ fn rpc_request_has_protocol_version_0x01() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -257,7 +260,10 @@ fn server_ignores_wrong_protocol_version() {
 
     // Library server
     sim.host("server", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -423,7 +429,10 @@ fn rpc_request_has_interface_version_at_offset_13() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
@@ -453,7 +462,10 @@ fn sd_offer_contains_major_version() {
         .build();
 
     sim.host("server", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -516,7 +528,10 @@ fn response_preserves_interface_version() {
         .build();
 
     sim.host("server", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))

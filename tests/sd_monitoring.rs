@@ -48,7 +48,10 @@ fn monitor_sd_receives_service_available() {
         .build();
 
     sim.host("server", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -65,7 +68,10 @@ fn monitor_sd_receives_service_available() {
     sim.client("monitor", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Wait for an event with timeout
@@ -111,7 +117,10 @@ fn monitor_sd_receives_service_unavailable() {
         // Wait for monitor to be ready
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -132,7 +141,10 @@ fn monitor_sd_receives_service_unavailable() {
     });
 
     sim.client("monitor", async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Collect events for a while
@@ -181,7 +193,10 @@ fn monitor_sd_event_metadata_accuracy() {
         .build();
 
     sim.host("server", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Offer with specific instance ID
         let _offering = runtime
@@ -198,7 +213,10 @@ fn monitor_sd_event_metadata_accuracy() {
     sim.client("monitor", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         let event = tokio::time::timeout(Duration::from_secs(5), sd_events.recv())
@@ -255,7 +273,10 @@ fn monitor_sd_multiple_monitors_receive_events() {
         // Server starts after monitors are ready
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -270,7 +291,10 @@ fn monitor_sd_multiple_monitors_receive_events() {
 
     sim.client("monitor1", async move {
     // Start monitors first so they don't miss events
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("monitor1").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Collect events
@@ -286,7 +310,10 @@ fn monitor_sd_multiple_monitors_receive_events() {
     });
 
     sim.client("monitor2", async move {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("monitor2").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Collect events
@@ -330,7 +357,10 @@ fn monitor_sd_multiple_monitors_same_runtime() {
         .build();
 
     sim.client("server", async {
-        let config = RuntimeConfig::builder().cyclic_offer_delay(1000).build();
+        let config = RuntimeConfig::builder()
+            .cyclic_offer_delay(1000)
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
@@ -347,7 +377,10 @@ fn monitor_sd_multiple_monitors_same_runtime() {
     sim.client("monitor_host", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("monitor_host").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Create two monitors on the same runtime
         let mut sd_events1 = runtime.monitor_sd().await.unwrap();
@@ -416,7 +449,10 @@ fn monitor_sd_multiple_services() {
         .build();
 
     sim.host("server1", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server1").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -430,7 +466,10 @@ fn monitor_sd_multiple_services() {
     });
 
     sim.host("server2", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server2").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
             .offer::<AnotherService>(InstanceId::Id(0x0002))
@@ -446,7 +485,10 @@ fn monitor_sd_multiple_services() {
     sim.client("monitor", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Collect events for a while
@@ -500,7 +542,10 @@ fn monitor_sd_receives_service_expired() {
         // Wait for monitor to be ready
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -522,7 +567,10 @@ fn monitor_sd_receives_service_expired() {
 
     sim.client("monitor", async move {
         // Monitor starts first
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Collect events for longer to catch the full lifecycle
@@ -581,7 +629,10 @@ fn monitor_sd_dropped_receiver_cleanup() {
         .build();
 
     sim.host("server", || async {
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))
@@ -597,7 +648,10 @@ fn monitor_sd_dropped_receiver_cleanup() {
     sim.client("monitor", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Create first monitor and immediately drop it
         {
@@ -640,7 +694,10 @@ fn monitor_sd_before_services_exist() {
 
     sim.client("monitor", async move {
         // Start monitoring FIRST, before any server exists
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Wait for event (server will start later)
@@ -657,7 +714,10 @@ fn monitor_sd_before_services_exist() {
     sim.host("server", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
             .offer::<TestService>(InstanceId::Id(0x0001))

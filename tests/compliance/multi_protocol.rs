@@ -105,6 +105,7 @@ fn client_talks_to_tcp_and_udp_services() {
         async move {
             let tcp_config = RuntimeConfig::builder()
                 .transport(Transport::Tcp)
+                .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
                 .build();
             let tcp_runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
@@ -136,6 +137,7 @@ fn client_talks_to_tcp_and_udp_services() {
         async move {
             let udp_config = RuntimeConfig::builder()
                 .transport(Transport::Udp)
+                .advertised_ip(turmoil::lookup("udp_server").to_string().parse().unwrap())
                 .build();
             let udp_runtime: TurmoilRuntime = Runtime::with_socket_type(udp_config).await.unwrap();
 
@@ -168,6 +170,7 @@ fn client_talks_to_tcp_and_udp_services() {
         // Client with UDP preference (will use TCP for TcpService based on SD)
         let config = RuntimeConfig::builder()
             .transport(Transport::Udp)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -261,6 +264,7 @@ fn mixed_transport_event_delivery() {
     sim.host("tcp_server", || async move {
         let tcp_config = RuntimeConfig::builder()
             .transport(Transport::Tcp)
+            .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
             .build();
         let tcp_runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
@@ -313,6 +317,7 @@ fn mixed_transport_event_delivery() {
     sim.host("udp_server", || async move {
         let udp_config = RuntimeConfig::builder()
             .transport(Transport::Udp)
+            .advertised_ip(turmoil::lookup("udp_server").to_string().parse().unwrap())
             .build();
         let udp_runtime: TurmoilRuntime = Runtime::with_socket_type(udp_config).await.unwrap();
 
@@ -365,7 +370,9 @@ fn mixed_transport_event_delivery() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Discover and subscribe to TCP service
@@ -468,6 +475,7 @@ fn client_uses_advertised_transport() {
     sim.host("tcp_server", || async {
         let config = RuntimeConfig::builder()
             .transport(Transport::Tcp)
+            .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -494,6 +502,7 @@ fn client_uses_advertised_transport() {
     sim.host("udp_server", || async {
         let config = RuntimeConfig::builder()
             .transport(Transport::Udp)
+            .advertised_ip(turmoil::lookup("udp_server").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -523,6 +532,7 @@ fn client_uses_advertised_transport() {
         // Use UDP as default transport
         let config = RuntimeConfig::builder()
             .transport(Transport::Udp)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -598,6 +608,7 @@ fn concurrent_calls_different_transports() {
         async move {
             let tcp_config = RuntimeConfig::builder()
                 .transport(Transport::Tcp)
+                .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
                 .build();
             let tcp_runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
@@ -627,6 +638,7 @@ fn concurrent_calls_different_transports() {
         async move {
             let udp_config = RuntimeConfig::builder()
                 .transport(Transport::Udp)
+                .advertised_ip(turmoil::lookup("udp_server").to_string().parse().unwrap())
                 .build();
             let udp_runtime: TurmoilRuntime = Runtime::with_socket_type(udp_config).await.unwrap();
 
@@ -652,7 +664,9 @@ fn concurrent_calls_different_transports() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Discover both services
@@ -732,6 +746,7 @@ fn udp_client_calls_tcp_server() {
     sim.host("tcp_server", || async {
         let tcp_config = RuntimeConfig::builder()
             .transport(Transport::Tcp)
+            .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
             .build();
         let tcp_runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
@@ -760,7 +775,9 @@ fn udp_client_calls_tcp_server() {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         // Client uses default UDP config
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("udp_client").to_string().parse().unwrap())
+            .build();
         eprintln!("[client] Starting with UDP config (transport={:?})", config.preferred_transport);
         
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -815,6 +832,7 @@ fn tcp_client_calls_tcp_server() {
     sim.host("tcp_server", || async {
         let tcp_config = RuntimeConfig::builder()
             .transport(Transport::Tcp)
+            .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
             .build();
         let tcp_runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
@@ -845,6 +863,7 @@ fn tcp_client_calls_tcp_server() {
         // Client also uses TCP config
         let tcp_config = RuntimeConfig::builder()
             .transport(Transport::Tcp)
+            .advertised_ip(turmoil::lookup("tcp_client").to_string().parse().unwrap())
             .build();
         eprintln!("[client] Starting with TCP config");
         
@@ -915,7 +934,9 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
 
     // Server offers TCP-only service
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -944,6 +965,7 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
         // Client prefers UDP, but server only offers TCP
         let config = RuntimeConfig::builder()
             .preferred_transport(Transport::Udp)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -1010,7 +1032,9 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
 
     // Server offers UDP-only service
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -1039,6 +1063,7 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
         // Client prefers TCP, but server only offers UDP
         let config = RuntimeConfig::builder()
             .preferred_transport(Transport::Tcp)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -1108,7 +1133,9 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
 
     // Server offers UDP-only service with events
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -1163,6 +1190,7 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
 
         let config = RuntimeConfig::builder()
             .preferred_transport(Transport::Udp)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -1240,7 +1268,9 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
 
     // Server offers UDP-only service with events
     sim.client("server", async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -1296,6 +1326,7 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
         // Client prefers TCP, but server only offers UDP
         let config = RuntimeConfig::builder()
             .preferred_transport(Transport::Tcp)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -1369,7 +1400,9 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
 
     // Server offers TCP-only service with events
     sim.host("server", || async {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
@@ -1425,6 +1458,7 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
         // Client prefers UDP, but server only offers TCP
         let config = RuntimeConfig::builder()
             .preferred_transport(Transport::Udp)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -1510,7 +1544,9 @@ fn preferred_transport_respected_when_both_available() {
         let udp_calls = Arc::clone(&udp_calls_server);
 
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
@@ -1551,6 +1587,7 @@ fn preferred_transport_respected_when_both_available() {
 
         let config = RuntimeConfig::builder()
             .preferred_transport(Transport::Tcp)
+            .advertised_ip(turmoil::lookup("tcp_client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -1595,6 +1632,7 @@ fn preferred_transport_respected_when_both_available() {
 
         let config = RuntimeConfig::builder()
             .preferred_transport(Transport::Udp)
+            .advertised_ip(turmoil::lookup("udp_client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -1687,7 +1725,9 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
         let udp_events = Arc::clone(&udp_events_server);
 
         async move {
-            let config = RuntimeConfig::default();
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
@@ -1746,6 +1786,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
 
         let config = RuntimeConfig::builder()
             .preferred_transport(Transport::Tcp)
+            .advertised_ip(turmoil::lookup("tcp_client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -1785,6 +1826,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
 
         let config = RuntimeConfig::builder()
             .preferred_transport(Transport::Udp)
+            .advertised_ip(turmoil::lookup("udp_client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
@@ -1843,7 +1885,9 @@ fn handle_call_ignores_preferred_transport_for_dual_stack() {
 
     // Server offers service with BOTH TCP and UDP (dual-stack)
     sim.host("server", || async move {
-        let config = RuntimeConfig::default();
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Dual-stack offer - advertises BOTH TCP and UDP endpoints
@@ -1878,6 +1922,7 @@ fn handle_call_ignores_preferred_transport_for_dual_stack() {
 
         let config = RuntimeConfig::builder()
             .preferred_transport(Transport::Udp)  // CLIENT PREFERS UDP!
+            .advertised_ip(turmoil::lookup("udp_client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
