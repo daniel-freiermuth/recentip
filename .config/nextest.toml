@@ -1,3 +1,7 @@
+# Run real_network tests serially (they bind to real ports)
+[test-groups.real-network]
+max-threads = 1
+
 [[profile.default.overrides]]
 filter = 'test(real_network::)'
-threads-required = 'num-cpus'
+test-group = 'real-network'

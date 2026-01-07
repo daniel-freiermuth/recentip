@@ -144,7 +144,6 @@ mod tcp_pubsub;
 
 // Real network tests using tokio sockets (no turmoil simulation)
 #[path = "compliance/real_network.rs"]
-#[cfg(feature = "slow-tests")]
 mod real_network;
 
 /// Macro to document which requirements a test covers.
