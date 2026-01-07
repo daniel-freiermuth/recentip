@@ -575,12 +575,8 @@ fn subscribe_ack_echoes_client_ttl_123() {
                             && entry.service_id == 0x1234
                             && entry.ttl > 0
                         {
-                            // Get RPC endpoint from option
-                            if let Some(ep) = sd_msg.get_udp_endpoint(entry) {
-                                server_endpoint = Some(SocketAddr::new(from.ip(), ep.port()));
-                            } else {
-                                server_endpoint = Some(from);
-                            }
+                            // Subscribe messages should be sent to SD port (30490)
+                            server_endpoint = Some(SocketAddr::new(from.ip(), 30490));
                         }
                     }
                 }
@@ -594,7 +590,11 @@ fn subscribe_ack_echoes_client_ttl_123() {
         let server_ep = server_endpoint.expect("Should discover server");
 
         // Build and send SubscribeEventgroup with custom TTL
-        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, CLIENT_SUBSCRIBE_TTL);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, CLIENT_SUBSCRIBE_TTL,
+            "192.168.0.2".parse().unwrap(),
+            12345
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for SubscribeEventgroupAck
@@ -689,12 +689,8 @@ fn subscribe_ack_echoes_client_ttl_1000_000() {
                             && entry.service_id == 0x1234
                             && entry.ttl > 0
                         {
-                            // Get RPC endpoint from option
-                            if let Some(ep) = sd_msg.get_udp_endpoint(entry) {
-                                server_endpoint = Some(SocketAddr::new(from.ip(), ep.port()));
-                            } else {
-                                server_endpoint = Some(from);
-                            }
+                            // Subscribe messages should be sent to SD port (30490)
+                            server_endpoint = Some(SocketAddr::new(from.ip(), 30490));
                         }
                     }
                 }
@@ -708,7 +704,11 @@ fn subscribe_ack_echoes_client_ttl_1000_000() {
         let server_ep = server_endpoint.expect("Should discover server");
 
         // Build and send SubscribeEventgroup with custom TTL
-        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, CLIENT_SUBSCRIBE_TTL);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, CLIENT_SUBSCRIBE_TTL,
+            "192.168.0.2".parse().unwrap(),
+            12345
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for SubscribeEventgroupAck
@@ -803,12 +803,8 @@ fn subscribe_ack_echoes_client_ttl_1() {
                             && entry.service_id == 0x1234
                             && entry.ttl > 0
                         {
-                            // Get RPC endpoint from option
-                            if let Some(ep) = sd_msg.get_udp_endpoint(entry) {
-                                server_endpoint = Some(SocketAddr::new(from.ip(), ep.port()));
-                            } else {
-                                server_endpoint = Some(from);
-                            }
+                            // Subscribe messages should be sent to SD port (30490)
+                            server_endpoint = Some(SocketAddr::new(from.ip(), 30490));
                         }
                     }
                 }
@@ -822,7 +818,11 @@ fn subscribe_ack_echoes_client_ttl_1() {
         let server_ep = server_endpoint.expect("Should discover server");
 
         // Build and send SubscribeEventgroup with custom TTL
-        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, CLIENT_SUBSCRIBE_TTL);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, CLIENT_SUBSCRIBE_TTL,
+            "192.168.0.2".parse().unwrap(),
+            12345
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for SubscribeEventgroupAck
@@ -1758,22 +1758,8 @@ fn subscribe_ack_entry_type() {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
-                            // Found offer, get endpoint from options
-                            if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
-                                } = opt
-                                {
-                                    let ip = if addr.is_unspecified() {
-                                        from.ip()
-                                    } else {
-                                        std::net::IpAddr::V4(*addr)
-                                    };
-                                    server_endpoint = Some(SocketAddr::new(ip, *port));
-                                }
-                            }
+                            // Subscribe messages should be sent to SD port (30490)
+                            server_endpoint = Some(SocketAddr::new(from.ip(), 30490));
                         }
                     }
                 }
@@ -1787,11 +1773,14 @@ fn subscribe_ack_entry_type() {
         let server_addr = server_endpoint.expect("Should find server via SD");
         eprintln!("Found server at {}", server_addr);
 
-        // Send Subscribe message
-        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, 3600);
-
+        // Send Subscribe message with UDP endpoint
         // Need to send from a port the server can respond to
         let client_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, 3600,
+            "192.168.0.2".parse().unwrap(),
+            12345
+        );
         client_socket.send_to(&subscribe, server_addr).await?;
 
         // Wait for SubscribeAck
@@ -1911,13 +1900,9 @@ fn subscription_max_ttl_doesnt_expire() {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
-                            if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
-                                    let ip = if addr.is_unspecified() { from.ip() } else { std::net::IpAddr::V4(*addr) };
-                                    server_addr = Some(SocketAddr::new(ip, *port));
-                                    eprintln!("Found server at {:?}", server_addr);
-                                }
-                            }
+                            // Subscribe messages should be sent to SD port (30490)
+                            server_addr = Some(SocketAddr::new(from.ip(), 30490));
+                            eprintln!("Found server at {:?}", server_addr);
                         }
                     }
                 }
@@ -1929,8 +1914,12 @@ fn subscription_max_ttl_doesnt_expire() {
 
         let server = server_addr.expect("Should find server via SD");
 
-        // Subscribe with MAX TTL (0xFFFFFF = ~194 days) - never needs renewal
-        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, MAX_TTL);
+        // Subscribe with MAX TTL (0xFFFFFF = ~194 days) - never needs renewal and UDP endpoint
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, MAX_TTL,
+            "192.168.0.2".parse().unwrap(),
+            12345
+        );
         event_socket.send_to(&subscribe, server).await?;
         eprintln!("Raw client sent SubscribeEventgroup with TTL=max (0xFFFFFF)");
 
@@ -2039,14 +2028,9 @@ fn subscription_ttl_expiration_stops_events() {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
-                            // Get endpoint from options
-                            if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
-                                    let ip = if addr.is_unspecified() { from.ip() } else { std::net::IpAddr::V4(*addr) };
-                                    server_addr = Some(SocketAddr::new(ip, *port));
-                                    eprintln!("Found server at {:?}", server_addr);
-                                }
-                            }
+                            // Subscribe messages should be sent to SD port (30490)
+                            server_addr = Some(SocketAddr::new(from.ip(), 30490));
+                            eprintln!("Found server at {:?}", server_addr);
                         }
                     }
                 }
@@ -2059,7 +2043,11 @@ fn subscription_ttl_expiration_stops_events() {
         let server = server_addr.expect("Should find server via SD");
 
         // Send SubscribeEventgroup with short TTL (2 seconds) - and NEVER renew
-        let subscribe = build_sd_subscribe(0x1234, 0x0001, 1, 0x0001, 2);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, 2,
+            "192.168.0.2".parse().unwrap(),
+            12345,
+        );
         event_socket.send_to(&subscribe, server).await?;
         eprintln!("Raw client sent SubscribeEventgroup with TTL=2s");
 
@@ -3263,11 +3251,8 @@ fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
                             && entry.service_id == 0x1234
                             && entry.ttl > 0
                         {
-                            if let Some(ep) = sd_msg.get_udp_endpoint(entry) {
-                                server_endpoint = Some(SocketAddr::new(from.ip(), ep.port()));
-                            } else {
-                                server_endpoint = Some(from);
-                            }
+                            // Subscribe messages should be sent to SD port (30490)
+                            server_endpoint = Some(SocketAddr::new(from.ip(), 30490));
                         }
                     }
                 }
