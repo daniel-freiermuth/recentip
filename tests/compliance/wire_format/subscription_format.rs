@@ -201,15 +201,8 @@ fn subscribe_ack_entry_type() {
         // Send Subscribe message with UDP endpoint
         // Need to send from a port the server can respond to
         let client_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
-        let subscribe = build_sd_subscribe_with_udp_endpoint(
-            0x1234,
-            0x0001,
-            1,
-            0x0001,
-            3600,
-            my_ip,
-            12345,
-        );
+        let subscribe =
+            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 1, 0x0001, 3600, my_ip, 12345);
         client_socket.send_to(&subscribe, server_addr).await?;
 
         // Wait for SubscribeAck

@@ -9,9 +9,7 @@
 //! # Requirements Covered
 //! - feat_req_recentipsd_1137: SubscribeEventgroupNack for invalid subscribes
 
-use super::helpers::{
-    build_sd_subscribe_with_udp_endpoint, covers, parse_sd_message, TestService,
-};
+use super::helpers::{build_sd_subscribe_with_udp_endpoint, covers, parse_sd_message, TestService};
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
 use std::net::SocketAddr;
@@ -668,8 +666,9 @@ fn subscribe_to_wrong_major_version_should_nack() {
             turmoil::lookup("raw_client").to_string().parse().unwrap();
 
         // Subscribe with MAJOR VERSION 99 (NOT 1!)
-        let subscribe =
-            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 99, 0x0001, 3600, client_ip, 40000);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 99, 0x0001, 3600, client_ip, 40000,
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for NACK

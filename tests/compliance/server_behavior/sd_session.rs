@@ -13,9 +13,7 @@
 //! - feat_req_recentipsd_765: Per-peer session tracking
 //! - feat_req_recentip_649: Session ID must start at 1
 
-use super::helpers::{
-    covers, parse_sd_flags, parse_sd_message, TestService,
-};
+use super::helpers::{covers, parse_sd_flags, parse_sd_message, TestService};
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::{Runtime, RuntimeConfig};
 use std::time::Duration;

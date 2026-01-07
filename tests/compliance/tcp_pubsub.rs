@@ -94,7 +94,10 @@ fn tcp_basic_subscribe_and_receive_events() {
 
         for i in 0..5 {
             let payload = format!("tcp_event_{}", i);
-            offering.notify(eventgroup, event_id, payload.as_bytes()).await.unwrap();
+            offering
+                .notify(eventgroup, event_id, payload.as_bytes())
+                .await
+                .unwrap();
             eprintln!("[server] Sent: {}", payload);
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -121,10 +124,11 @@ fn tcp_basic_subscribe_and_receive_events() {
         eprintln!("[client] Service discovered");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe success");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe success");
 
         eprintln!("[client] Subscribed to eventgroup via TCP");
 
@@ -145,7 +149,11 @@ fn tcp_basic_subscribe_and_receive_events() {
     sim.run().unwrap();
 
     let count = events_received.load(Ordering::SeqCst);
-    assert!(count >= 3, "Should have received at least 3 TCP events, got {}", count);
+    assert!(
+        count >= 3,
+        "Should have received at least 3 TCP events, got {}",
+        count
+    );
 }
 
 /// Test that multiple clients can subscribe to the same TCP eventgroup.
@@ -189,7 +197,10 @@ fn tcp_multiple_subscribers_receive_events() {
 
         for i in 0..3 {
             let payload = format!("broadcast_{}", i);
-            offering.notify(eventgroup, event_id, payload.as_bytes()).await.unwrap();
+            offering
+                .notify(eventgroup, event_id, payload.as_bytes())
+                .await
+                .unwrap();
             eprintln!("[server] Broadcast: {}", payload);
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -268,8 +279,16 @@ fn tcp_multiple_subscribers_receive_events() {
     let c2 = client2_events.load(Ordering::SeqCst);
 
     eprintln!("Results: client1={}, client2={}", c1, c2);
-    assert!(c1 >= 2, "Client1 should have received at least 2 events, got {}", c1);
-    assert!(c2 >= 2, "Client2 should have received at least 2 events, got {}", c2);
+    assert!(
+        c1 >= 2,
+        "Client1 should have received at least 2 events, got {}",
+        c1
+    );
+    assert!(
+        c2 >= 2,
+        "Client2 should have received at least 2 events, got {}",
+        c2
+    );
 }
 
 // ============================================================================
@@ -315,7 +334,10 @@ fn tcp_large_payload_events() {
         let sizes = [100, 1000, 5000, 10000, 30000];
         for size in sizes {
             let payload: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
-            offering.notify(eventgroup, event_id, &payload).await.unwrap();
+            offering
+                .notify(eventgroup, event_id, &payload)
+                .await
+                .unwrap();
             eprintln!("[server] Sent {} byte payload", size);
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -361,14 +383,21 @@ fn tcp_large_payload_events() {
 
     let count = events_received.load(Ordering::SeqCst);
     let sizes = payload_sizes_received.lock().unwrap();
-    
+
     eprintln!("Received {} events with sizes: {:?}", count, *sizes);
-    
-    assert!(count >= 3, "Should have received at least 3 large payload events, got {}", count);
-    
+
+    assert!(
+        count >= 3,
+        "Should have received at least 3 large payload events, got {}",
+        count
+    );
+
     // Verify we received at least one large payload (> 1400 bytes, which exceeds UDP MTU)
     let has_large = sizes.iter().any(|&s| s > 1400);
-    assert!(has_large, "Should have received at least one payload > 1400 bytes (UDP MTU limit)");
+    assert!(
+        has_large,
+        "Should have received at least one payload > 1400 bytes (UDP MTU limit)"
+    );
 }
 
 // ============================================================================
@@ -413,7 +442,10 @@ fn tcp_different_eventgroups() {
 
         // Send events to eventgroup 1
         for i in 0..3 {
-            offering.notify(eg1, event1, format!("eg1_{}", i).as_bytes()).await.unwrap();
+            offering
+                .notify(eg1, event1, format!("eg1_{}", i).as_bytes())
+                .await
+                .unwrap();
             eprintln!("[server] Sent to EG1");
         }
 
@@ -421,7 +453,10 @@ fn tcp_different_eventgroups() {
 
         // Send events to eventgroup 2
         for i in 0..3 {
-            offering.notify(eg2, event2, format!("eg2_{}", i).as_bytes()).await.unwrap();
+            offering
+                .notify(eg2, event2, format!("eg2_{}", i).as_bytes())
+                .await
+                .unwrap();
             eprintln!("[server] Sent to EG2");
         }
 
@@ -501,8 +536,16 @@ fn tcp_different_eventgroups() {
     let eg2_count = eg2_events.load(Ordering::SeqCst);
 
     eprintln!("Results: EG1={}, EG2={}", eg1_count, eg2_count);
-    assert!(eg1_count >= 2, "Client1 should have received EG1 events, got {}", eg1_count);
-    assert!(eg2_count >= 2, "Client2 should have received EG2 events, got {}", eg2_count);
+    assert!(
+        eg1_count >= 2,
+        "Client1 should have received EG1 events, got {}",
+        eg1_count
+    );
+    assert!(
+        eg2_count >= 2,
+        "Client2 should have received EG2 events, got {}",
+        eg2_count
+    );
 }
 
 // ============================================================================
@@ -547,7 +590,10 @@ fn dual_stack_service_client_prefers_tcp() {
 
         for i in 0..5 {
             let payload = format!("event_{}", i);
-            offering.notify(eventgroup, event_id, payload.as_bytes()).await.unwrap();
+            offering
+                .notify(eventgroup, event_id, payload.as_bytes())
+                .await
+                .unwrap();
             eprintln!("[server] Sent: {}", payload);
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -592,7 +638,11 @@ fn dual_stack_service_client_prefers_tcp() {
     sim.run().unwrap();
 
     let count = events_received.load(Ordering::SeqCst);
-    assert!(count >= 3, "Should have received at least 3 events, got {}", count);
+    assert!(
+        count >= 3,
+        "Should have received at least 3 events, got {}",
+        count
+    );
 }
 
 /// Test service offering both TCP and UDP, client prefers UDP.
@@ -628,7 +678,10 @@ fn dual_stack_service_client_prefers_udp() {
 
         for i in 0..5 {
             let payload = format!("event_{}", i);
-            offering.notify(eventgroup, event_id, payload.as_bytes()).await.unwrap();
+            offering
+                .notify(eventgroup, event_id, payload.as_bytes())
+                .await
+                .unwrap();
             eprintln!("[server] Sent: {}", payload);
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -673,7 +726,11 @@ fn dual_stack_service_client_prefers_udp() {
     sim.run().unwrap();
 
     let count = events_received.load(Ordering::SeqCst);
-    assert!(count >= 3, "Should have received at least 3 events, got {}", count);
+    assert!(
+        count >= 3,
+        "Should have received at least 3 events, got {}",
+        count
+    );
 }
 
 // ============================================================================
@@ -714,7 +771,10 @@ fn tcp_only_server_udp_preferring_client() {
         let event_id = EventId::new(0x8001).unwrap();
 
         for i in 0..3 {
-            offering.notify(eventgroup, event_id, format!("tcp_{}", i).as_bytes()).await.unwrap();
+            offering
+                .notify(eventgroup, event_id, format!("tcp_{}", i).as_bytes())
+                .await
+                .unwrap();
             eprintln!("[server] Sent via TCP");
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -760,5 +820,9 @@ fn tcp_only_server_udp_preferring_client() {
     sim.run().unwrap();
 
     let count = events_received.load(Ordering::SeqCst);
-    assert!(count >= 2, "Should have received events despite transport preference mismatch, got {}", count);
+    assert!(
+        count >= 2,
+        "Should have received events despite transport preference mismatch, got {}",
+        count
+    );
 }
