@@ -154,7 +154,7 @@ code-coverage:
   stage: test
   script:
     - cargo install cargo-llvm-cov cargo-nextest --locked
-    - cargo llvm-cov nextest --no-fail-fast --all-features --branch --cobertura --output-path coverage.xml
+    - cargo +nightly llvm-cov nextest --no-fail-fast --all-features --branch --cobertura --output-path coverage.xml
     - cargo llvm-cov report --summary-only
   coverage: '/TOTAL.*\s+(\d+\.\d+)%/'
   artifacts:
