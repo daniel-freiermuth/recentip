@@ -130,7 +130,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Set up Ctrl+C handler
     let mut shutdown = tokio::spawn(async {
-        tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to listen for Ctrl+C");
     });
 
     // Process SD events

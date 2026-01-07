@@ -15,8 +15,8 @@
 //!
 //! You should see the monitor detect this service becoming available.
 
-use someip_runtime::prelude::*;
 use someip_runtime::handle::ServiceEvent;
+use someip_runtime::prelude::*;
 
 /// Example service definition
 struct ExampleService;
@@ -39,23 +39,26 @@ async fn main() -> Result<()> {
     println!("║         SOME/IP Simple Service Example                ║");
     println!("╚═══════════════════════════════════════════════════════╝");
     println!();
-    println!("Starting service 0x{:04X} instance 1...", ExampleService::SERVICE_ID);
-    
+    println!(
+        "Starting service 0x{:04X} instance 1...",
+        ExampleService::SERVICE_ID
+    );
+
     // Create runtime
     let config = RuntimeConfig::default();
     let runtime = Runtime::new(config).await?;
-    
+
     // Offer the service on UDP
     let mut offering = runtime
         .offer::<ExampleService>(InstanceId::Id(1))
         .udp()
         .start()
         .await?;
-    
+
     println!("✓ Service is now being announced via Service Discovery");
     println!("  Press Ctrl+C to stop");
     println!();
-    
+
     // Handle incoming requests
     loop {
         tokio::select! {
@@ -63,7 +66,7 @@ async fn main() -> Result<()> {
                 match event {
                     ServiceEvent::Call { method, payload, responder, .. } => {
                         println!("← Received method call 0x{:04X} with {} bytes", method.value(), payload.len());
-                        
+
                         // Echo back the payload
                         if let Err(e) = responder.reply(&payload).await {
                             eprintln!("  Error sending response: {}", e);
@@ -87,7 +90,7 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-            
+
             _ = tokio::signal::ctrl_c() => {
                 println!();
                 println!("Shutting down service...");
@@ -95,10 +98,10 @@ async fn main() -> Result<()> {
             }
         }
     }
-    
+
     // Graceful shutdown
     runtime.shutdown().await;
     println!("Service stopped.");
-    
+
     Ok(())
 }
