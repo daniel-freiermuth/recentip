@@ -63,22 +63,19 @@ test:
   extends: .rust-base
   stage: test
   script:
-    - cargo install cargo-nextest --locked
-    - cargo nextest run --no-fail-fast
+    - cargo install cargo-llvm-cov cargo-nextest --locked
+    - cargo +nightly llvm-cov nextest --no-fail-fast --all-features --branch --cobertura --output-path coverage.xml
+    - cargo llvm-cov report --summary-only
+  coverage: '/TOTAL.*\s+(\d+\.\d+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
   allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-test-slow:
-  extends: .rust-base
-  stage: test
-  script:
-    - cargo install cargo-nextest --locked
-    - cargo nextest run --no-fail-fast --features slow-tests
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-  allow_failure: true
 
 doc-test:
   extends: .rust-base
@@ -140,28 +137,6 @@ requirement-coverage:
       - COMPLIANCE.md
       - spec-data/coverage.json
     expire_in: 1 week
-  allow_failure: true
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-# =============================================================================
-# CODE COVERAGE (Rust source line/branch coverage)
-# =============================================================================
-
-code-coverage:
-  extends: .rust-base
-  stage: test
-  script:
-    - cargo install cargo-llvm-cov cargo-nextest --locked
-    - cargo +nightly llvm-cov nextest --no-fail-fast --all-features --branch --cobertura --output-path coverage.xml
-    - cargo llvm-cov report --summary-only
-  coverage: '/TOTAL.*\s+(\d+\.\d+)%/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: coverage.xml
   allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
