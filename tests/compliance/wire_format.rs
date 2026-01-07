@@ -1941,10 +1941,11 @@ fn subscription_max_ttl_doesnt_expire() {
         let server = server_addr.expect("Should find server via SD");
 
         // Subscribe with MAX TTL (0xFFFFFF = ~194 days) - never needs renewal and UDP endpoint
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_client").to_string().parse().unwrap();
         let subscribe = build_sd_subscribe_with_udp_endpoint(
             0x1234, 0x0001, 1, 0x0001, MAX_TTL,
-            "192.168.0.2".parse().unwrap(),
-            12345
+            my_ip,
+            30600
         );
         event_socket.send_to(&subscribe, server).await?;
         eprintln!("Raw client sent SubscribeEventgroup with TTL=max (0xFFFFFF)");
@@ -2069,10 +2070,11 @@ fn subscription_ttl_expiration_stops_events() {
         let server = server_addr.expect("Should find server via SD");
 
         // Send SubscribeEventgroup with short TTL (2 seconds) - and NEVER renew
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_client").to_string().parse().unwrap();
         let subscribe = build_sd_subscribe_with_udp_endpoint(
             0x1234, 0x0001, 1, 0x0001, 2,
-            "192.168.0.2".parse().unwrap(),
-            12345,
+            my_ip,
+            30600,
         );
         event_socket.send_to(&subscribe, server).await?;
         eprintln!("Raw client sent SubscribeEventgroup with TTL=2s");
