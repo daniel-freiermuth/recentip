@@ -347,8 +347,66 @@ pub fn handle_subscribe_request(
     };
 
     // Get client's endpoint options from the SD message
+    // Per feat_req_recentipsd_814: Use endpoint option address as provided
     let client_udp_endpoint = sd_message.get_udp_endpoint(entry);
     let client_tcp_endpoint = sd_message.get_tcp_endpoint(entry);
+
+    // Validate that endpoint options contain valid, routable IP addresses
+    // Reject unspecified (0.0.0.0) addresses - clients must configure their actual IP
+    if let Some(ep) = client_udp_endpoint {
+        if ep.ip().is_unspecified() {
+            tracing::warn!(
+                "Rejecting subscription for {:04x}:{:04x} eventgroup {:04x} from {}: \
+                 endpoint option has unspecified IP address (0.0.0.0)",
+                entry.service_id,
+                entry.instance_id,
+                entry.eventgroup_id,
+                from
+            );
+            
+            let mut nack = SdMessage::new(state.sd_flags(true));
+            nack.add_entry(SdEntry::subscribe_eventgroup_nack(
+                entry.service_id,
+                entry.instance_id,
+                entry.major_version,
+                entry.eventgroup_id,
+                entry.counter,
+            ));
+            
+            actions.push(Action::SendSd {
+                message: nack,
+                target: from,
+            });
+            return;
+        }
+    }
+    if let Some(ep) = client_tcp_endpoint {
+        if ep.ip().is_unspecified() {
+            tracing::warn!(
+                "Rejecting subscription for {:04x}:{:04x} eventgroup {:04x} from {}: \
+                 endpoint option has unspecified IP address (0.0.0.0)",
+                entry.service_id,
+                entry.instance_id,
+                entry.eventgroup_id,
+                from
+            );
+            
+            let mut nack = SdMessage::new(state.sd_flags(true));
+            nack.add_entry(SdEntry::subscribe_eventgroup_nack(
+                entry.service_id,
+                entry.instance_id,
+                entry.major_version,
+                entry.eventgroup_id,
+                entry.counter,
+            ));
+            
+            actions.push(Action::SendSd {
+                message: nack,
+                target: from,
+            });
+            return;
+        }
+    }
 
     if let Some(offered) = state.offered.get(&key) {
         // Check transport compatibility per feat_req_recentipsd_1144
@@ -507,8 +565,39 @@ pub fn handle_unsubscribe_request(
     };
 
     if let Some(offered) = state.offered.get(&key) {
+        // Per feat_req_recentipsd_814: Use endpoint option address as provided
         let client_udp_endpoint = sd_message.get_udp_endpoint(entry);
         let client_tcp_endpoint = sd_message.get_tcp_endpoint(entry);
+        
+        // Validate that endpoint options contain valid, routable IP addresses
+        // Reject unspecified (0.0.0.0) addresses
+        if let Some(ep) = client_udp_endpoint {
+            if ep.ip().is_unspecified() {
+                tracing::warn!(
+                    "Rejecting unsubscribe for {:04x}:{:04x} eventgroup {:04x} from {}: \
+                     endpoint option has unspecified IP address (0.0.0.0)",
+                    entry.service_id,
+                    entry.instance_id,
+                    entry.eventgroup_id,
+                    from
+                );
+                return;
+            }
+        }
+        if let Some(ep) = client_tcp_endpoint {
+            if ep.ip().is_unspecified() {
+                tracing::warn!(
+                    "Rejecting unsubscribe for {:04x}:{:04x} eventgroup {:04x} from {}: \
+                     endpoint option has unspecified IP address (0.0.0.0)",
+                    entry.service_id,
+                    entry.instance_id,
+                    entry.eventgroup_id,
+                    from
+                );
+                return;
+            }
+        }
+        
         let Some((client_endpoint, transport)) = offered.udp_endpoint.and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
                 .or(offered.tcp_endpoint.and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))) else {
             // Transport mismatch - send NACK
