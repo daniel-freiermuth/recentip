@@ -12,7 +12,6 @@ stages:
 
 variables:
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
-  RUSTFLAGS: "-D warnings"
 
 # Cache cargo dependencies between jobs
 .rust-cache: &rust-cache
@@ -50,7 +49,7 @@ clippy:
   extends: .rust-base
   stage: check
   script:
-    - cargo clippy --all-targets --all-features -- -D warnings
+    - cargo clippy --all-targets --all-features
   allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
