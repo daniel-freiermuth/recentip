@@ -1497,7 +1497,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         if now.duration_since(offered.last_offer) >= offer_interval {
             offered.last_offer = now;
 
-            let msg = build_offer_message(key, offered, sd_flags, offer_ttl);
+            let msg = build_offer_message(key, offered, sd_flags, offer_ttl, state.config.advertised_ip);
 
             actions.push(Action::SendSd {
                 message: msg,

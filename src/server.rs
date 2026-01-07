@@ -190,7 +190,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
 
     // Build and send the initial offer message (reuse sd.rs helper)
     let offered = state.offered.get(&key).expect("just inserted");
-    let msg = build_offer_message(&key, offered, state.sd_flags(true), config.offer_ttl);
+    let msg = build_offer_message(&key, offered, state.sd_flags(true), config.offer_ttl, config.advertised_ip);
     actions.push(Action::SendSd {
         message: msg,
         target: config.sd_multicast,
@@ -512,7 +512,7 @@ pub fn handle_start_announcing(
         offered.is_announcing = true;
         offered.last_offer = Instant::now() - Duration::from_secs(10); // Force immediate offer
 
-        let msg = build_offer_message(&key, offered, sd_flags, ttl);
+        let msg = build_offer_message(&key, offered, sd_flags, ttl, state.config.advertised_ip);
 
         actions.push(Action::SendSd {
             message: msg,

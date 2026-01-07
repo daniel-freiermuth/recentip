@@ -350,7 +350,7 @@ pub fn handle_find_request(
         if entry.service_id == key.service_id
             && (entry.instance_id == 0xFFFF || entry.instance_id == key.instance_id)
         {
-            let response = build_offer_message(key, offered, state.sd_flags(true), state.config.offer_ttl);
+            let response = build_offer_message(key, offered, state.sd_flags(true), state.config.offer_ttl, state.config.advertised_ip);
             actions.push(Action::SendSd {
                 message: response,
                 target: from,
@@ -731,22 +731,33 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
 /// Build an `OfferService` SD message for the given offered service.
 ///
 /// This advertises all configured endpoints (TCP and/or UDP) in the SD message.
+/// If `advertised_ip` is provided, it overrides the IP from the stored endpoints.
 pub fn build_offer_message(
     key: &ServiceKey,
     offered: &OfferedService,
     sd_flags: u8,
     ttl: u32,
+    advertised_ip: Option<std::net::IpAddr>,
 ) -> SdMessage {
     let mut msg = SdMessage::new(sd_flags);
     let mut option_indices = Vec::new();
 
+    // Helper to get the IP address - use advertised_ip if set, otherwise use endpoint IP
+    let get_ip = |ep: SocketAddr| -> Ipv4Addr {
+        if let Some(std::net::IpAddr::V4(ip)) = advertised_ip {
+            ip
+        } else {
+            match ep {
+                SocketAddr::V4(v4) => *v4.ip(),
+                _ => Ipv4Addr::LOCALHOST,
+            }
+        }
+    };
+
     // Add UDP endpoint option if present
     if let Some(ep) = offered.udp_endpoint {
         let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-            addr: match ep {
-                SocketAddr::V4(v4) => *v4.ip(),
-                _ => Ipv4Addr::LOCALHOST,
-            },
+            addr: get_ip(ep),
             port: ep.port(),
             protocol: L4Protocol::Udp,
         });
@@ -756,10 +767,7 @@ pub fn build_offer_message(
     // Add TCP endpoint option if present
     if let Some(ep) = offered.tcp_endpoint {
         let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-            addr: match ep {
-                SocketAddr::V4(v4) => *v4.ip(),
-                _ => Ipv4Addr::LOCALHOST,
-            },
+            addr: get_ip(ep),
             port: ep.port(),
             protocol: L4Protocol::Tcp,
         });

@@ -81,8 +81,6 @@ fn get_endpoint_ip(state: &RuntimeState) -> Option<std::net::IpAddr> {
         Some(advertised)
     } else if !state.local_endpoint.ip().is_unspecified() {
         Some(state.local_endpoint.ip())
-    } else if !state.client_rpc_endpoint.ip().is_unspecified() {
-        Some(state.client_rpc_endpoint.ip())
     } else {
         None
     }

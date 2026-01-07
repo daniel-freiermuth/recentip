@@ -25,10 +25,11 @@
 //! use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
 //!
 //! let config = RuntimeConfig::builder()
-//!     .local_addr(SocketAddr::V4(SocketAddrV4::new(
+//!     .bind_addr(SocketAddr::V4(SocketAddrV4::new(
 //!         Ipv4Addr::new(192, 168, 1, 100),
 //!         30490
 //!     )))
+//!     .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
 //!     .preferred_transport(Transport::Tcp)  // Prefer TCP when service offers both
 //!     .ttl(1800)  // 30 minutes
 //!     .cyclic_offer_delay(2000)  // 2 seconds
@@ -36,11 +37,65 @@
 //!     .build();
 //! ```
 //!
-//! ## Configuration Options
+//! ## IP Address Configuration
+//!
+//! Understanding the different address settings is important for correct operation:
+//!
+//! ### `bind_addr` - Local Socket Binding
+//!
+//! The address to bind local sockets to. Default: `0.0.0.0:30490`.
+//!
+//! - **IP part**: Usually `0.0.0.0` (listen on all interfaces) or a specific interface IP
+//! - **Port part**: The SD port (30490 by default)
+//!
+//! This controls where sockets listen for incoming packets. Using `0.0.0.0` allows
+//! receiving on any interface.
+//!
+//! Note: Multicast loopback only seems to works when binding to `0.0.0.0`.
+//!
+//! ### `advertised_ip` - Endpoint Option Address
+//!
+//! The routable IP address for endpoint options in SD messages. Default: `None`.
+//!
+//! **Required for both offering and subscribing.** This IP is embedded in endpoint
+//! options of `OfferService` and `SubscribeEventgroup` messages, telling remote
+//! peers where to send traffic.
+//!
+//! - Must be a valid, routable IP address (not `0.0.0.0`)
+//! - Should be reachable by remote peers
+//!
+//! ```no_run
+//! use someip_runtime::RuntimeConfig;
+//! use std::net::Ipv4Addr;
+//!
+//! // Real network example
+//! let config = RuntimeConfig::builder()
+//!     .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
+//!     .build();
+//! ```
+//!
+//! ### Why Both?
+//!
+//! - `bind_addr: 0.0.0.0` lets you listen on all interfaces
+//! - `advertised_ip` tells remote peers your specific routable address
+//!
+//! You cannot use `0.0.0.0` in endpoint options because remote peers wouldn't know
+//! where to send traffic. The SOME/IP-SD specification requires valid addresses.
+//!
+//! ### Fallback Behavior
+//!
+//! If `advertised_ip` is not set, the runtime attempts to use:
+//! 1. The IP from `bind_addr` (if not `0.0.0.0`)
+//! 2. The IP of the client method socket (if not `0.0.0.0`)
+//!
+//! If no valid IP is available, subscribe operations will fail with a configuration error.
+//!
+//! ## Configuration Options Reference
 //!
 //! | Option | Default | Description |
 //! |--------|---------|-------------|
-//! | `local_addr` | `0.0.0.0:30490` | Local address to bind SD socket |
+//! | `bind_addr` | `0.0.0.0:30490` | Local address to bind SD socket |
+//! | `advertised_ip` | None | Routable IP for endpoint options (required for subscriptions) |
 //! | `sd_multicast` | `239.255.0.1:30490` | SD multicast group address |
 //! | `offer_ttl` | 3600 | TTL for OfferService entries (seconds) |
 //! | `find_ttl` | 3600 | TTL for FindService entries (seconds) |
@@ -132,7 +187,7 @@ pub enum Transport {
 pub struct RuntimeConfig {
     /// Local address to bind to (default: 0.0.0.0:30490)
     pub bind_addr: SocketAddr,
-    /// Advertised IP address for endpoint options (default: None, must be configured)
+    /// Advertised IP address for endpoint options (default: None)
     ///
     /// This is the routable IP address that will be included in SD endpoint options
     /// when subscribing to services. Must be a valid, non-unspecified address.
@@ -140,8 +195,9 @@ pub struct RuntimeConfig {
     /// - In turmoil tests: Use `turmoil::lookup(hostname)` to get the host's IP
     /// - On real networks: Use the actual interface IP address
     /// 
-    /// If not set, will attempt to use the IP from `local_addr`, but `local_addr`
+    /// If not set, will attempt to use the IP from `bind_addr`, but `bind_addr`
     /// cannot be 0.0.0.0 (unspecified) if you need to subscribe to services.
+    /// See module documentation for full fallback behavior.
     pub advertised_ip: Option<std::net::IpAddr>,
     /// SD multicast group address (default: 239.255.0.1:30490)
     pub sd_multicast: SocketAddr,
