@@ -227,7 +227,26 @@ pub fn handle_offer(
     // but SHALL be triggered by OfferService entries."
     
     // Capture values needed for building messages before mutable borrow
-    let local_endpoint = state.local_endpoint;
+    // Determine the actual local IP address to put in the endpoint option
+    // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
+    let endpoint_ip = if let Some(advertised) = state.config.advertised_ip {
+        advertised
+    } else if !state.local_endpoint.ip().is_unspecified() {
+        state.local_endpoint.ip()
+    } else if !state.client_rpc_endpoint.ip().is_unspecified() {
+        state.client_rpc_endpoint.ip()
+    } else {
+        // No valid IP available - cannot renew subscriptions
+        tracing::error!(
+            "Cannot renew subscription for {:04x}:{:04x}: \
+             no valid IP address configured. Set RuntimeConfig::advertised_ip",
+            entry.service_id,
+            entry.instance_id
+        );
+        return;
+    };
+    
+    let endpoint_for_subscribe = std::net::SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
     let client_rpc_port = state.client_rpc_endpoint.port();
     let sd_flags = state.sd_flags(true);
     
@@ -257,7 +276,7 @@ pub fn handle_offer(
                 entry.service_id,
                 entry.instance_id,
                 sub.eventgroup_id,
-                local_endpoint,
+                endpoint_for_subscribe,
                 client_rpc_port,
                 sd_flags,
                 state.config.subscribe_ttl,
