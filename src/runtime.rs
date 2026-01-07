@@ -378,6 +378,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// # Example
     /// ```no_run
     /// use someip_runtime::prelude::*;
+    /// use someip_runtime::Transport;
     ///
     /// struct MyService;
     /// impl Service for MyService {
@@ -390,7 +391,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// async fn main() -> Result<()> {
     ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
     ///
-    ///     let service = runtime.bind::<MyService>(InstanceId::Id(1)).await?;
+    ///     let service = runtime.bind::<MyService>(InstanceId::Id(1), Transport::Udp).await?;
     ///     // Service is listening, but not announced via SD
     ///     // Can handle static deployments where clients know the address
     ///
@@ -455,6 +456,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// # Example
     /// ```no_run
     /// use someip_runtime::prelude::*;
+    /// use someip_runtime::Transport;
     ///
     /// struct MyService;
     /// impl Service for MyService {
@@ -584,7 +586,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
     ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
-    ///     let mut offering = runtime.offer::<MyService>(InstanceId::Id(1)).await?;
+    ///     let mut offering = runtime.offer::<MyService>(InstanceId::Id(1)).start().await?;
     ///
     ///     // Process one request then shutdown
     ///     if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
@@ -624,7 +626,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// ```no_run
     /// # use someip_runtime::{Runtime, SdEvent};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let runtime = Runtime::create(Default::default()).await?;
+    /// let runtime = Runtime::new(Default::default()).await?;
     /// let mut sd_events = runtime.monitor_sd().await?;
     ///
     /// while let Some(event) = sd_events.recv().await {

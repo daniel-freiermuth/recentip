@@ -78,7 +78,7 @@
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
 //!     // Offer a service (announces via SD)
-//!     let mut offering = runtime.offer::<BrakeService>(InstanceId::Id(0x0001)).await?;
+//!     let mut offering = runtime.offer::<BrakeService>(InstanceId::Id(0x0001)).start().await?;
 //!
 //!     // Handle incoming requests
 //!     while let Some(event) = offering.next().await {

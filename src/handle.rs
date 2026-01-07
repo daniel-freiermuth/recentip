@@ -70,7 +70,7 @@
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
 //!     // 1. Offer a service
-//!     let mut offering = runtime.offer::<MyService>(InstanceId::Id(1)).await?;
+//!     let mut offering = runtime.offer::<MyService>(InstanceId::Id(1)).start().await?;
 //!
 //!     // 2. Handle incoming events
 //!     while let Some(event) = offering.next().await {
@@ -95,6 +95,7 @@
 //! ```no_run
 //! use someip_runtime::prelude::*;
 //! use someip_runtime::handle::{ServiceInstance, Bound, Announced};
+//! use someip_runtime::Transport;
 //!
 //! struct MyService;
 //! impl Service for MyService {
@@ -110,6 +111,7 @@
 //!     // 1. Bind (opens socket, but no SD announcement)
 //!     let instance: ServiceInstance<_, Bound> = runtime.bind::<MyService>(
 //!         InstanceId::Id(1),
+//!         Transport::Udp,
 //!     ).await?;
 //!
 //!     // 2. Start announcing (transitions to Announced)
