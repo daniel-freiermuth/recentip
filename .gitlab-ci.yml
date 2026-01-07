@@ -64,7 +64,7 @@ test:
   stage: test
   script:
     - cargo install cargo-nextest --locked
-    - cargo nextest run --no-fail-fast --all-features
+    - cargo nextest run --no-fail-fast
   allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -75,7 +75,7 @@ test-slow:
   stage: test
   script:
     - cargo install cargo-nextest --locked
-    - cargo nextest run --no-fail-fast --all-features --features slow-tests
+    - cargo nextest run --no-fail-fast --features slow-tests
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   allow_failure: true
@@ -153,8 +153,8 @@ code-coverage:
   extends: .rust-base
   stage: test
   script:
-    - cargo install cargo-llvm-cov --locked
-    - cargo llvm-cov --all-features --cobertura --output-path coverage.xml
+    - cargo install cargo-llvm-cov cargo-nextest --locked
+    - cargo llvm-cov nextest --no-fail-fast --all-features --cobertura --output-path coverage.xml
     - cargo llvm-cov report --summary-only
   coverage: '/TOTAL.*\s+(\d+\.\d+)%/'
   artifacts:
