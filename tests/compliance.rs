@@ -31,11 +31,15 @@ mod integration;
 #[path = "compliance/wire_format/mod.rs"]
 mod wire_format;
 
-// Old wire_format.rs - behavior tests not yet moved
-// TODO: Move behavior tests to server_behavior module and delete this file
+// Server behavior tests - reactions to various inputs
 #[cfg(feature = "turmoil")]
-#[path = "compliance/wire_format.rs"]
-mod wire_format_old;
+#[path = "compliance/server_behavior/mod.rs"]
+mod server_behavior;
+
+// Client behavior tests - client discovery, subscribe, RPC
+#[cfg(feature = "turmoil")]
+#[path = "compliance/client_behavior/mod.rs"]
+mod client_behavior;
 
 #[cfg(feature = "turmoil")]
 #[path = "compliance/service_discovery.rs"]
