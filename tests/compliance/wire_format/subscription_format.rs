@@ -261,6 +261,7 @@ fn subscribe_ack_entry_type() {
 /// Uses turmoil's simulated time to fast-forward through what would be
 /// the expiration period.
 #[test_log::test]
+#[cfg(feature = "slow-tests")]
 fn subscription_max_ttl_doesnt_expire() {
     covers!(feat_req_recentipsd_431);
 

@@ -895,6 +895,7 @@ fn parallel_requests_have_unique_request_ids() {
 /// After receiving a response, the Request ID (Session ID portion) can be reused.
 /// Make many sequential requests to verify IDs are managed properly.
 #[test_log::test]
+#[cfg(feature = "slow-tests")]
 fn request_id_reusable_after_response() {
     covers!(feat_req_recentip_80);
 

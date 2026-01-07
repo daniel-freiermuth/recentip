@@ -403,6 +403,7 @@ fn offer_triggers_subscribe_renewal() {
 /// If the client has ANY internal cyclic timer, it will fire during the gaps
 /// and this test will catch it.
 #[test_log::test]
+#[cfg(feature = "slow-tests")]
 fn no_cyclic_subscribes_strict_631_compliance() {
     covers!(feat_req_recentipsd_631);
 
@@ -863,6 +864,7 @@ fn available_returns_error_when_service_not_found() {
 /// 4. Server sends many more offers over 30+ seconds
 /// 5. Verify: client sends exactly ONE subscribe (the initial one)
 #[test_log::test]
+#[cfg(feature = "slow-tests")]
 fn max_ttl_subscription_no_renewal_needed() {
     let subscribe_count = Arc::new(AtomicUsize::new(0));
     let subscribe_count_clone = Arc::clone(&subscribe_count);
