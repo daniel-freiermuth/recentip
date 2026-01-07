@@ -27,7 +27,7 @@ variables:
 
 # Base image for Rust jobs
 .rust-base:
-  image: rust:1.83
+  image: rust:1.92
   <<: *rust-cache
   before_script:
     - rustup component add clippy rustfmt
