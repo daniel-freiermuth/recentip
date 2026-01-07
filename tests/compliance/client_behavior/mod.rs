@@ -14,3 +14,4 @@
 mod helpers;
 pub mod rpc_port;
 pub mod subscribe_format;
+pub mod subscription_handle;
