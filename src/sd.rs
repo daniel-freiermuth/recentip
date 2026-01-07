@@ -563,7 +563,6 @@ pub fn handle_subscribe_request(
             from
         );
 
-        /*
         let mut nack = SdMessage::new(state.sd_flags(true));
         nack.add_entry(SdEntry::subscribe_eventgroup_nack(
             entry.service_id,
@@ -576,7 +575,7 @@ pub fn handle_subscribe_request(
         actions.push(Action::SendSd {
             message: nack,
             target: from,
-        }); */
+        });
     }
 }
 
