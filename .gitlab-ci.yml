@@ -1,0 +1,162 @@
+# GitLab CI/CD configuration for someip-runtime
+#
+# Stages:
+# - check: Fast linting and formatting checks
+# - test: Run test suite
+# - build: Build release artifacts and cross-compile
+
+stages:
+  - check
+  - test
+  - build
+
+variables:
+  CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+  RUSTFLAGS: "-D warnings"
+
+# Cache cargo dependencies between jobs
+.rust-cache: &rust-cache
+  cache:
+    key:
+      files:
+        - Cargo.lock
+    paths:
+      - .cargo/registry
+      - .cargo/git
+      - target/
+
+# Base image for Rust jobs
+.rust-base:
+  image: rust:1.83
+  <<: *rust-cache
+  before_script:
+    - rustup component add clippy rustfmt
+
+# =============================================================================
+# CHECK STAGE - Fast feedback
+# =============================================================================
+
+format:
+  extends: .rust-base
+  stage: check
+  script:
+    - cargo fmt --check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+clippy:
+  extends: .rust-base
+  stage: check
+  script:
+    - cargo clippy --all-targets --all-features -- -D warnings
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
+# TEST STAGE
+# =============================================================================
+
+test:
+  extends: .rust-base
+  stage: test
+  script:
+    - cargo install cargo-nextest --locked
+    - cargo nextest run --all-features
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+test-slow:
+  extends: .rust-base
+  stage: test
+  script:
+    - cargo install cargo-nextest --locked
+    - cargo nextest run --all-features --features slow-tests
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  allow_failure: true
+
+doc-test:
+  extends: .rust-base
+  stage: test
+  script:
+    - cargo test --doc
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
+# BUILD STAGE
+# =============================================================================
+
+build-release:
+  extends: .rust-base
+  stage: build
+  script:
+    - cargo build --release
+  artifacts:
+    paths:
+      - target/release/libsomeip_runtime.*
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Cross-compile for QNX target
+build-qnx:
+  extends: .rust-base
+  stage: build
+  variables:
+    QNX_TARGET: aarch64-unknown-nto-qnx710
+  before_script:
+    - rustup target add ${QNX_TARGET} || true
+  script:
+    # Check only - actual build requires QNX SDK
+    - cargo check --target ${QNX_TARGET} --no-default-features 2>/dev/null || echo "QNX target not available (expected in CI without QNX SDK)"
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
+# REQUIREMENT COVERAGE (spec requirements via covers!() annotations)
+# =============================================================================
+
+requirement-coverage:
+  stage: test
+  image: python:3.11
+  script:
+    - python scripts/extract_coverage.py
+    - python scripts/generate_compliance.py
+    # Fail if requirement coverage drops (optional threshold)
+    # - grep -oP 'Overall Coverage \| \K[0-9.]+' COVERAGE_REPORT.md | awk '{if ($1 < 15) exit 1}'
+  artifacts:
+    paths:
+      - COVERAGE_REPORT.md
+      - COMPLIANCE.md
+      - spec-data/coverage.json
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
+# CODE COVERAGE (Rust source line/branch coverage)
+# =============================================================================
+
+code-coverage:
+  extends: .rust-base
+  stage: test
+  script:
+    - cargo install cargo-llvm-cov --locked
+    - cargo llvm-cov --all-features --cobertura --output-path coverage.xml
+    - cargo llvm-cov report --summary-only
+  coverage: '/TOTAL.*\s+(\d+\.\d+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
