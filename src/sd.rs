@@ -226,7 +226,17 @@ pub fn handle_offer(
     // Per feat_req_recentipsd_631: "Subscriptions shall NOT be triggered cyclically
     // but SHALL be triggered by OfferService entries."
     
-    // Capture values needed for building messages before mutable borrow
+    // Check if we have any subscriptions for this service first
+    if let Some(subscriptions) = state.subscriptions.get(&key) {
+        if subscriptions.is_empty() {
+            // No subscriptions to renew
+            return;
+        }
+    } else {
+        // No subscriptions at all
+        return;
+    }
+    
     // Determine the actual local IP address to put in the endpoint option
     // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
     let endpoint_ip = if let Some(advertised) = state.config.advertised_ip {
