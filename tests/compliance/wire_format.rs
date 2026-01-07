@@ -4353,3 +4353,238 @@ fn subscribe_format_client_adapts_to_available_transport() {
         count
     );
 }
+
+// ============================================================================
+// TCP CONNECTION TIMING TESTS
+// ============================================================================
+
+/// [feat_req_recentipsd_767] Client opens TCP connection BEFORE sending SubscribeEventgroup.
+///
+/// This wire-level test verifies the timing requirement:
+/// - Raw server offers TCP-only service
+/// - Raw server has TCP listener
+/// - Client (our library) discovers and subscribes
+/// - Server verifies: TCP connection established BEFORE SubscribeEventgroup arrives
+///
+/// This is critical for reliable event delivery - the server needs the TCP connection
+/// ready to send events as soon as it ACKs the subscription.
+///
+/// Currently IGNORED: The client does not yet establish TCP connection before subscribing.
+/// This documents a known compliance gap that needs to be implemented.
+#[test_log::test]
+#[ignore = "TCP connection before subscribe not yet implemented (feat_req_recentipsd_767)"]
+fn tcp_connection_established_before_subscribe_767() {
+    covers!(feat_req_recentipsd_767);
+
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::sync::Notify;
+
+    let tcp_connected_before_subscribe = Arc::new(AtomicBool::new(false));
+    let tcp_connected = Arc::clone(&tcp_connected_before_subscribe);
+
+    let tcp_connection_count = Arc::new(AtomicUsize::new(0));
+    let tcp_count = Arc::clone(&tcp_connection_count);
+
+    let subscribe_received = Arc::new(AtomicBool::new(false));
+    let subscribe_flag = Arc::clone(&subscribe_received);
+
+    // Notify when TCP connection is established
+    let tcp_notify = Arc::new(Notify::new());
+    let tcp_notify_server = Arc::clone(&tcp_notify);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Wire-level server offering TCP only
+    sim.host("wire_server", move || {
+        let tcp_connected = Arc::clone(&tcp_connected);
+        let tcp_count = Arc::clone(&tcp_count);
+        let subscribe_flag = Arc::clone(&subscribe_flag);
+        let tcp_notify = Arc::clone(&tcp_notify_server);
+
+        async move {
+            let my_ip: std::net::Ipv4Addr =
+                turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+            // SD socket for offers and subscription handling
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+            let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+            // TCP listener for RPC/events - THIS IS THE KEY PART
+            let tcp_listener = turmoil::net::TcpListener::bind(format!("0.0.0.0:30509")).await?;
+            eprintln!("[wire_server] TCP listener bound on port 30509");
+
+            let offer = build_sd_offer_tcp_only(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
+            let mut sd_buf = [0u8; 1500];
+
+            // Track if we've seen a TCP connection
+            let tcp_connected_inner = Arc::clone(&tcp_connected);
+            let tcp_count_inner = Arc::clone(&tcp_count);
+            let tcp_notify_inner = Arc::clone(&tcp_notify);
+
+            // Spawn task to accept TCP connections
+            let tcp_accept_task = tokio::spawn(async move {
+                loop {
+                    match tcp_listener.accept().await {
+                        Ok((stream, peer)) => {
+                            let count = tcp_count_inner.fetch_add(1, Ordering::SeqCst) + 1;
+                            eprintln!(
+                                "[wire_server] TCP connection #{} accepted from {}",
+                                count, peer
+                            );
+                            tcp_connected_inner.store(true, Ordering::SeqCst);
+                            tcp_notify_inner.notify_one();
+
+                            // Keep connection alive by reading in background
+                            tokio::spawn(async move {
+                                use tokio::io::AsyncReadExt;
+                                let mut stream = stream;
+                                let mut buf = [0u8; 1024];
+                                loop {
+                                    match stream.read(&mut buf).await {
+                                        Ok(0) => break, // Connection closed
+                                        Ok(n) => {
+                                            eprintln!(
+                                                "[wire_server] TCP received {} bytes",
+                                                n
+                                            );
+                                        }
+                                        Err(_) => break,
+                                    }
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            eprintln!("[wire_server] TCP accept error: {}", e);
+                            break;
+                        }
+                    }
+                }
+            });
+
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+            let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+
+            while tokio::time::Instant::now() < deadline {
+                // Send periodic offers
+                if last_offer.elapsed() >= Duration::from_millis(500) {
+                    sd_socket.send_to(&offer, sd_multicast).await?;
+                    eprintln!("[wire_server] Sent TCP-only offer");
+                    last_offer = tokio::time::Instant::now();
+                }
+
+                // Check for SubscribeEventgroup
+                if let Ok(Ok((len, from))) =
+                    tokio::time::timeout(Duration::from_millis(100), sd_socket.recv_from(&mut sd_buf))
+                        .await
+                {
+                    if let Some((_header, sd_msg)) = parse_sd_message(&sd_buf[..len]) {
+                        for entry in &sd_msg.entries {
+                            if entry.entry_type as u8 == 0x06 && entry.service_id == 0x1234 {
+                                eprintln!(
+                                    "[wire_server] *** SubscribeEventgroup received! ***"
+                                );
+
+                                // THE CRITICAL CHECK: Was TCP connected BEFORE subscribe?
+                                let was_connected = tcp_connected.load(Ordering::SeqCst);
+                                eprintln!(
+                                    "[wire_server] TCP was connected before subscribe: {}",
+                                    was_connected
+                                );
+
+                                // Per feat_req_recentipsd_767, client MUST connect BEFORE subscribing
+                                tcp_connected.store(was_connected, Ordering::SeqCst);
+                                subscribe_flag.store(true, Ordering::SeqCst);
+
+                                // Verify TCP endpoint is in the subscribe
+                                let has_tcp = sd_msg.get_tcp_endpoint(entry).is_some();
+                                eprintln!(
+                                    "[wire_server] Subscribe has TCP endpoint: {}",
+                                    has_tcp
+                                );
+
+                                // Send ACK
+                                let ack = build_sd_subscribe_ack(
+                                    entry.service_id,
+                                    entry.instance_id,
+                                    entry.major_version,
+                                    entry.eventgroup_id,
+                                    entry.ttl,
+                                );
+                                sd_socket.send_to(&ack, from).await?;
+                                eprintln!("[wire_server] Sent SubscribeEventgroupAck");
+                            }
+                        }
+                    }
+                }
+            }
+
+            tcp_accept_task.abort();
+            Ok(())
+        }
+    });
+
+    // Client using our library
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let config = RuntimeConfig::builder()
+            .preferred_transport(someip_runtime::Transport::Tcp)
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
+        let runtime: Runtime<
+            turmoil::net::UdpSocket,
+            turmoil::net::TcpStream,
+            turmoil::net::TcpListener,
+        > = Runtime::with_socket_type(config).await.unwrap();
+
+        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        eprintln!("[client] Service discovered (should be TCP-only)");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
+
+        eprintln!("[client] Subscribed successfully");
+
+        // Keep alive for a bit
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Verify the test actually ran
+    assert!(
+        subscribe_received.load(Ordering::SeqCst),
+        "Server should have received SubscribeEventgroup"
+    );
+
+    // THE KEY ASSERTION: TCP connection must be established BEFORE subscribe
+    assert!(
+        tcp_connected_before_subscribe.load(Ordering::SeqCst),
+        "[feat_req_recentipsd_767] TCP connection MUST be established BEFORE \
+         sending SubscribeEventgroup. The client did not connect to TCP before subscribing."
+    );
+
+    let tcp_count = tcp_connection_count.load(Ordering::SeqCst);
+    assert!(
+        tcp_count >= 1,
+        "Should have at least 1 TCP connection, got {}",
+        tcp_count
+    );
+}
+

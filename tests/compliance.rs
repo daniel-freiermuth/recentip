@@ -126,6 +126,11 @@ mod sd_pubsub_offer_subscribe;
 #[path = "compliance/multi_protocol.rs"]
 mod multi_protocol;
 
+// TCP pub/sub tests for TCP-specific event delivery
+#[cfg(feature = "turmoil")]
+#[path = "compliance/tcp_pubsub.rs"]
+mod tcp_pubsub;
+
 // Real network tests using tokio sockets (no turmoil simulation)
 #[path = "compliance/real_network.rs"]
 mod real_network;
