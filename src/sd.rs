@@ -347,21 +347,8 @@ pub fn handle_subscribe_request(
     };
 
     // Get client's endpoint options from the SD message
-    let client_udp_endpoint = sd_message.get_udp_endpoint(entry).map(|ep| {
-        // TODO: do we want to be so kind?
-        if ep.ip().is_unspecified() {
-            SocketAddr::new(from.ip(), ep.port())
-        } else {
-            ep
-        }
-    });
-    let client_tcp_endpoint = sd_message.get_tcp_endpoint(entry).map(|ep| {
-        if ep.ip().is_unspecified() {
-            SocketAddr::new(from.ip(), ep.port())
-        } else {
-            ep
-        }
-    });
+    let client_udp_endpoint = sd_message.get_udp_endpoint(entry);
+    let client_tcp_endpoint = sd_message.get_tcp_endpoint(entry);
 
     if let Some(offered) = state.offered.get(&key) {
         // Check transport compatibility per feat_req_recentipsd_1144
@@ -506,6 +493,14 @@ pub fn handle_unsubscribe_request(
     from: SocketAddr,
     state: &mut RuntimeState,
 ) {
+    tracing::debug!(
+        "Received StopSubscribe for {:04x}:{:04x} eventgroup {:04x} from {}",
+        entry.service_id,
+        entry.instance_id,
+        entry.eventgroup_id,
+        from
+    );
+    
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
@@ -531,6 +526,7 @@ pub fn handle_unsubscribe_request(
             );
             return;
         };
+        
         let _ = offered
             .requests_tx
             .try_send(crate::command::ServiceRequest::Unsubscribe {
@@ -546,6 +542,7 @@ pub fn handle_unsubscribe_request(
             eventgroup_id: entry.eventgroup_id,
         };
         if let Some(subscribers) = state.server_subscribers.get_mut(&sub_key) {
+            // Remove the subscriber with matching endpoint
             subscribers.retain(|sub| sub.endpoint != client_endpoint);
         }
     } else {

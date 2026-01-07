@@ -292,7 +292,7 @@ pub fn handle_unsubscribe(
         let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
             // Server offers nothing
             tracing::error!(
-                "Trying to subscribe to eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no transport endpoints",
+                "Trying to unsubscribe from eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no transport endpoints",
                 eventgroup_id,
                 service_id.value(),
                 instance_id.value()
@@ -314,6 +314,13 @@ pub fn handle_unsubscribe(
             message: msg,
             target: discovered.sd_endpoint, // Send to SD socket, not RPC socket
         });
+    } else {
+        tracing::warn!(
+            "Trying to unsubscribe from eventgroup {:04x} on service {:04x} instance {:04x}, but service not discovered",
+            eventgroup_id,
+            service_id.value(),
+            instance_id.value()
+        );
     }
 }
 
