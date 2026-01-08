@@ -90,7 +90,7 @@ pub struct SubscriberKey {
 
 /// Server-side subscription with TTL expiration tracking
 ///
-/// Per SOME/IP-SD spec (feat_req_recentipsd_445), subscriptions have a TTL
+/// Per SOME/IP-SD spec (`feat_req_recentipsd_445`), subscriptions have a TTL
 /// and must be cleaned up when the TTL expires without renewal.
 #[derive(Debug, Clone)]
 pub struct ServerSubscription {
@@ -99,7 +99,7 @@ pub struct ServerSubscription {
     /// Transport protocol for sending events to this subscriber
     pub(crate) transport: crate::config::Transport,
     /// When this subscription expires (based on client's TTL).
-    /// `None` means infinite TTL (0xFFFFFF) - never expires per feat_req_recentipsd_431.
+    /// `None` means infinite TTL (0xFFFFFF) - never expires per `feat_req_recentipsd_431`.
     pub(crate) expires_at: Option<tokio::time::Instant>,
 }
 
@@ -301,7 +301,7 @@ pub struct RuntimeState {
     /// Active subscriptions (client-side)
     pub(crate) subscriptions: HashMap<ServiceKey, Vec<ClientSubscription>>,
     /// Server-side subscribers (clients subscribed to our offered services)
-    /// Each subscription includes TTL expiration for cleanup per feat_req_recentipsd_445
+    /// Each subscription includes TTL expiration for cleanup per `feat_req_recentipsd_445`
     pub(crate) server_subscribers: HashMap<SubscriberKey, Vec<ServerSubscription>>,
     /// Static event listeners (client-side, no SD)
     pub(crate) static_listeners: HashMap<SubscriberKey, mpsc::Sender<crate::Event>>,

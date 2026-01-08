@@ -121,7 +121,7 @@ pub enum Error {
 
     /// Subscription was rejected by the server.
     ///
-    /// The server sent a SubscribeEventgroupNack (TTL=0) in response
+    /// The server sent a `SubscribeEventgroupNack` (TTL=0) in response
     /// to our subscription request.
     SubscriptionRejected,
 

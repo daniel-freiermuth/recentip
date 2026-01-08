@@ -752,7 +752,7 @@ impl SdEntry {
 
     /// Create a `SubscribeEventgroupNack` entry (TTL=0 indicates rejection)
     ///
-    /// Per feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
+    /// Per `feat_req_recentipsd_1137`: Respond with `SubscribeEventgroupNack` for invalid subscribe
     pub fn subscribe_eventgroup_nack(
         service_id: u16,
         instance_id: u16,

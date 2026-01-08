@@ -198,7 +198,7 @@ pub enum Command {
 /// Service Discovery event notification
 #[derive(Debug, Clone)]
 pub enum SdEvent {
-    /// A service has been announced (OfferService entry)
+    /// A service has been announced (`OfferService` entry)
     ServiceAvailable {
         service_id: u16,
         instance_id: u16,
@@ -207,7 +207,7 @@ pub enum SdEvent {
         endpoint: SocketAddr,
         ttl: u32,
     },
-    /// A service has been explicitly stopped (StopOfferService entry)
+    /// A service has been explicitly stopped (`StopOfferService` entry)
     ServiceUnavailable { service_id: u16, instance_id: u16 },
     /// A service's TTL has expired (no longer sending offers)
     ServiceExpired { service_id: u16, instance_id: u16 },

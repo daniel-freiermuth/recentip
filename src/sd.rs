@@ -116,11 +116,11 @@ pub enum Action {
 
 /// Handle an `OfferService` entry
 ///
-/// When we receive an OfferService, we:
+/// When we receive an `OfferService`, we:
 /// 1. Update our discovered services table
 /// 2. Notify any pending find requests
-/// 3. **[feat_req_recentipsd_428/431/631]** If we have active subscriptions for this service,
-///    send SubscribeEventgroup in response (offer-triggered subscription)
+/// 3. **[`feat_req_recentipsd_428/431/631`]** If we have active subscriptions for this service,
+///    send `SubscribeEventgroup` in response (offer-triggered subscription)
 pub fn handle_offer(
     entry: &SdEntry,
     sd_message: &SdMessage,
@@ -360,8 +360,8 @@ pub fn handle_find_request(
 
 /// Handle a `SubscribeEventgroup` request
 ///
-/// Per feat_req_recentipsd_1144: If options are in conflict, respond negatively (NACK)
-/// Per feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
+/// Per `feat_req_recentipsd_1144`: If options are in conflict, respond negatively (NACK)
+/// Per `feat_req_recentipsd_1137`: Respond with `SubscribeEventgroupNack` for invalid subscribe
 pub fn handle_subscribe_request(
     entry: &SdEntry,
     sd_message: &SdMessage,

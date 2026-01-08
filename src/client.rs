@@ -73,8 +73,8 @@ use crate::{Event, EventId, Response, ReturnCode};
 
 /// Determine the routable IP address to use in endpoint options
 ///
-/// Per feat_req_recentipsd_814, endpoint options must contain valid routable IP addresses.
-/// Returns the configured advertised IP, or falls back to local_endpoint/client_rpc_endpoint
+/// Per `feat_req_recentipsd_814`, endpoint options must contain valid routable IP addresses.
+/// Returns the configured advertised IP, or falls back to `local_endpoint/client_rpc_endpoint`
 /// if they have non-unspecified IPs, or None if no valid IP is available.
 fn get_endpoint_ip(state: &RuntimeState) -> Option<std::net::IpAddr> {
     if let Some(advertised) = state.config.advertised_ip {
@@ -433,7 +433,7 @@ pub fn handle_incoming_notification(
 
     let event = Event {
         event_id,
-        payload: payload,
+        payload,
     };
 
     // Determine which instance this event is from by looking up the 'from' address

@@ -97,9 +97,9 @@
 //! | `bind_addr` | `0.0.0.0:30490` | Local address to bind SD socket |
 //! | `advertised_ip` | None | Routable IP for endpoint options (required for subscriptions) |
 //! | `sd_multicast` | `239.255.0.1:30490` | SD multicast group address |
-//! | `offer_ttl` | 3600 | TTL for OfferService entries (seconds) |
-//! | `find_ttl` | 3600 | TTL for FindService entries (seconds) |
-//! | `subscribe_ttl` | 3600 | TTL for SubscribeEventgroup entries (seconds) |
+//! | `offer_ttl` | 3600 | TTL for `OfferService` entries (seconds) |
+//! | `find_ttl` | 3600 | TTL for `FindService` entries (seconds) |
+//! | `subscribe_ttl` | 3600 | TTL for `SubscribeEventgroup` entries (seconds) |
 //! | `cyclic_offer_delay` | 1000 | Interval between cyclic offers (ms) |
 //! | `preferred_transport` | UDP | Preferred transport when service offers both |
 //! | `magic_cookies` | false | Enable TCP Magic Cookies for debugging |
@@ -139,16 +139,16 @@ pub const DEFAULT_TTL: u32 = 3600;
 /// the subscription or offer should never expire due to TTL timeout.
 /// This is the maximum value that fits in the 24-bit TTL field.
 ///
-/// See: feat_req_recentipsd_431
+/// See: `feat_req_recentipsd_431`
 pub const SD_TTL_INFINITE: u32 = 0xFFFFFF;
 
-/// Default TTL for OfferService entries in seconds (1 hour).
+/// Default TTL for `OfferService` entries in seconds (1 hour).
 pub const DEFAULT_OFFER_TTL: u32 = 3600;
 
-/// Default TTL for FindService entries in seconds (1 hour).
+/// Default TTL for `FindService` entries in seconds (1 hour).
 pub const DEFAULT_FIND_TTL: u32 = 3600;
 
-/// Default TTL for SubscribeEventgroup entries in seconds (1 hour).
+/// Default TTL for `SubscribeEventgroup` entries in seconds (1 hour).
 pub const DEFAULT_SUBSCRIBE_TTL: u32 = 3600;
 
 /// Default cyclic offer interval in milliseconds (1 second).
@@ -201,11 +201,11 @@ pub struct RuntimeConfig {
     pub advertised_ip: Option<std::net::IpAddr>,
     /// SD multicast group address (default: 239.255.0.1:30490)
     pub sd_multicast: SocketAddr,
-    /// TTL for OfferService entries (default: 3600 seconds)
+    /// TTL for `OfferService` entries (default: 3600 seconds)
     pub offer_ttl: u32,
-    /// TTL for FindService entries (default: 3600 seconds)
+    /// TTL for `FindService` entries (default: 3600 seconds)
     pub find_ttl: u32,
-    /// TTL for SubscribeEventgroup entries (default: 3600 seconds)
+    /// TTL for `SubscribeEventgroup` entries (default: 3600 seconds)
     pub subscribe_ttl: u32,
     /// Cyclic offer delay in ms (default: 1000)
     pub cyclic_offer_delay: u64,
@@ -285,19 +285,19 @@ impl RuntimeConfigBuilder {
         self
     }
 
-    /// Set the TTL for OfferService entries (in seconds)
+    /// Set the TTL for `OfferService` entries (in seconds)
     pub fn offer_ttl(mut self, ttl: u32) -> Self {
         self.config.offer_ttl = ttl;
         self
     }
 
-    /// Set the TTL for FindService entries (in seconds)
+    /// Set the TTL for `FindService` entries (in seconds)
     pub fn find_ttl(mut self, ttl: u32) -> Self {
         self.config.find_ttl = ttl;
         self
     }
 
-    /// Set the TTL for SubscribeEventgroup entries (in seconds)
+    /// Set the TTL for `SubscribeEventgroup` entries (in seconds)
     pub fn subscribe_ttl(mut self, ttl: u32) -> Self {
         self.config.subscribe_ttl = ttl;
         self
