@@ -249,61 +249,78 @@ pub fn handle_subscribe(
                 events_tx: events,
             });
 
-        let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
-        let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
-            // Server offers nothing
-            tracing::error!(
-                "Trying to subscribe to eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no transport endpoints",
-                eventgroup_id,
-                service_id.value(),
-                instance_id.value()
-            );
-            return;
-        };
-
-        // Determine the actual local IP address to put in the endpoint option
-        // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
-        let Some(endpoint_ip) = get_endpoint_ip(state) else {
-            tracing::error!(
-                "Cannot subscribe to {:04x}:{:04x} eventgroup {:04x}: \
-                 no valid IP address configured. Set RuntimeConfig::advertised_ip",
-                service_id.value(),
-                instance_id.value(),
-                eventgroup_id
-            );
-            let _ = response.send(Err(crate::error::Error::Config(
-                crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
-            )));
-            return;
-        };
-
-        let endpoint_for_subscribe = SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
-
-        let msg = build_subscribe_message(
-            service_id.value(),
-            instance_id.value(),
-            eventgroup_id,
-            endpoint_for_subscribe,
-            state.client_rpc_endpoint.port(),
-            state.sd_flags(true),
-            state.config.subscribe_ttl,
-            transport,
-        );
-
-        actions.push(Action::SendSd {
-            message: msg,
-            target: discovered.sd_endpoint, // Send to SD socket, not RPC socket
-        });
-
         // Store pending subscription - will be resolved when ACK/NACK is received
+        // Check if this is the first waiter for this eventgroup - if so, we need to send
+        // the SD Subscribe message. Otherwise, just add to the pending list.
         let pending_key = PendingSubscriptionKey {
             service_id: service_id.value(),
             instance_id: instance_id.value(),
             eventgroup_id,
         };
-        state
-            .pending_subscriptions
-            .insert(pending_key, PendingSubscription { response });
+        let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
+        let is_first_waiter = pending_list.is_empty();
+        pending_list.push(PendingSubscription { response });
+
+        // Only send SD Subscribe message if this is the first waiter
+        if is_first_waiter {
+            let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
+            let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
+                // Server offers no valid transport - fail all pending waiters
+                if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
+                    for pending in pending_list {
+                        let _ = pending.response.send(Err(crate::error::Error::Config(
+                            crate::error::ConfigError::new("Server offers no transport endpoints"),
+                        )));
+                    }
+                }
+                tracing::error!(
+                    "Trying to subscribe to eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no transport endpoints",
+                    eventgroup_id,
+                    service_id.value(),
+                    instance_id.value()
+                );
+                return;
+            };
+
+            // Determine the actual local IP address to put in the endpoint option
+            // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
+            let Some(endpoint_ip) = get_endpoint_ip(state) else {
+                // Fail all pending waiters
+                if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
+                    for pending in pending_list {
+                        let _ = pending.response.send(Err(crate::error::Error::Config(
+                            crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
+                        )));
+                    }
+                }
+                tracing::error!(
+                    "Cannot subscribe to {:04x}:{:04x} eventgroup {:04x}: \
+                     no valid IP address configured. Set RuntimeConfig::advertised_ip",
+                    service_id.value(),
+                    instance_id.value(),
+                    eventgroup_id
+                );
+                return;
+            };
+
+            let endpoint_for_subscribe = SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
+
+            let msg = build_subscribe_message(
+                service_id.value(),
+                instance_id.value(),
+                eventgroup_id,
+                endpoint_for_subscribe,
+                state.client_rpc_endpoint.port(),
+                state.sd_flags(true),
+                state.config.subscribe_ttl,
+                transport,
+            );
+
+            actions.push(Action::SendSd {
+                message: msg,
+                target: discovered.sd_endpoint, // Send to SD socket, not RPC socket
+            });
+        }
     } else {
         let _ = response.send(Err(crate::error::Error::ServiceUnavailable));
     }

@@ -308,7 +308,7 @@ pub struct RuntimeState {
     /// Pending RPC calls waiting for responses
     pub(crate) pending_calls: HashMap<CallKey, PendingCall>,
     /// Pending subscriptions waiting for ACK/NACK
-    pub(crate) pending_subscriptions: HashMap<PendingSubscriptionKey, PendingSubscription>,
+    pub(crate) pending_subscriptions: HashMap<PendingSubscriptionKey, Vec<PendingSubscription>>,
     /// Client ID for outgoing requests
     pub(crate) client_id: u16,
     /// SD session ID counter

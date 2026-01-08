@@ -694,14 +694,16 @@ pub fn handle_subscribe_ack(entry: &SdEntry, state: &mut RuntimeState) {
         entry.eventgroup_id
     );
 
-    // Resolve pending subscription with success
+    // Resolve ALL pending subscriptions for this eventgroup with success
     let pending_key = PendingSubscriptionKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
         eventgroup_id: entry.eventgroup_id,
     };
-    if let Some(pending) = state.pending_subscriptions.remove(&pending_key) {
-        let _ = pending.response.send(Ok(()));
+    if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
+        for pending in pending_list {
+            let _ = pending.response.send(Ok(()));
+        }
     }
 }
 
@@ -719,19 +721,21 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
         entry.eventgroup_id
     );
 
-    // Resolve pending subscription with error
+    // Resolve ALL pending subscriptions for this eventgroup with error
     let pending_key = PendingSubscriptionKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
         eventgroup_id: entry.eventgroup_id,
     };
-    if let Some(pending) = state.pending_subscriptions.remove(&pending_key) {
-        let _ = pending
-            .response
-            .send(Err(crate::error::Error::SubscriptionRejected));
+    if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
+        for pending in pending_list {
+            let _ = pending
+                .response
+                .send(Err(crate::error::Error::SubscriptionRejected));
+        }
     }
 
-    // Also remove the client subscription if it was added
+    // Also remove the client subscriptions if they were added
     if let Some(subs) = state.subscriptions.get_mut(&key) {
         subs.retain(|s| s.eventgroup_id != entry.eventgroup_id);
     }

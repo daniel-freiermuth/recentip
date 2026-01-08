@@ -3,7 +3,8 @@ use std::{
     time::Duration,
 };
 
-use someip_runtime::{EventId, EventgroupId, InstanceId, Runtime, RuntimeConfigBuilder, Service};
+use someip_runtime::{Available, EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder, Service};
+use tracing::Instrument;
 
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
@@ -322,6 +323,89 @@ fn test_dangling_subscription_cannot_unsubscribe() {
             event_count += 1;
         }
         assert!(event_count > 8, "Did not receive enough events: {}", event_count);
+
+        runtime.shutdown().await;
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+#[test_log::test]
+fn test_two_subscribers_get_events() {
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        async move {
+            let runtime: TurmoilRuntime =
+                Runtime::with_socket_type(Default::default()).await.unwrap();
+
+            // Offer instance 1
+            let mut offering = runtime
+                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .udp()
+                .start()
+                .await
+                .unwrap();
+
+            loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                tracing::info!("Server: Sending event");
+                offering
+                    .notify(
+                        EventgroupId::new(1).unwrap(),
+                        EventId::new(0x8001).unwrap(),
+                        "test".as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+                if let Some(event) = offering.next().await {
+                    match event {
+                        someip_runtime::ServiceEvent::Unsubscribe { .. } => {
+                            tracing::info!("Server: Received unsubscribe");
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    });
+
+    sim.client("client", async move {
+        async fn subscribe_and_listen(service: ProxyHandle<ServiceA, Available>) {
+            tracing::info!("Starting subscription flow");
+            let mut subscription = service
+                .subscribe(EventgroupId::new(1).unwrap())
+                .await
+                .unwrap();
+
+            let now = tokio::time::Instant::now();
+            let mut event_count = 0;
+            while now.elapsed() < Duration::from_secs(15) {
+                let _event = subscription.next().await.unwrap();
+                tracing::info!("Received event in flow");
+                event_count += 1;
+            }
+            assert!(event_count > 12, "Did not receive enough events: {}", event_count);
+        }
+
+        let runtime_config = RuntimeConfigBuilder::default()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .build();
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
+
+        let service = runtime
+            .find::<ServiceA>(InstanceId::new(1).unwrap())
+            .available()
+            .await
+            .unwrap();
+
+        let flow1 = subscribe_and_listen(service.clone()).instrument(tracing::info_span!("flow1"));
+        let flow2 = subscribe_and_listen(service.clone()).instrument(tracing::info_span!("flow2"));
+        let _t = tokio::join!(flow1, flow2);
 
         runtime.shutdown().await;
 
