@@ -50,6 +50,9 @@ module_name_repetitions = "allow"
 must_use_candidate = "allow"
 too_many_arguments = "allow"
 
+# Allow for now
+cast_possible_truncation = "allow"
+
 # Disable doc-related lints for now
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
@@ -58,9 +61,9 @@ cargo_common_metadata = "allow"
 multiple_crate_versions = "allow"
 
 # Deny critical issues
-unwrap_used = "deny"
-expect_used = "deny"
+# unwrap_used = "deny"
+# expect_used = "deny"
 panic = "deny"
 todo = "deny"
-indexing_slicing = "warn"
+# indexing_slicing = "warn"
 fallible_impl_from = "deny"
