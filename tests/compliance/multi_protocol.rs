@@ -178,7 +178,7 @@ fn client_talks_to_tcp_and_udp_services() {
 
         // Find TCP service
         let tcp_proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let tcp_proxy = tokio::time::timeout(Duration::from_secs(5), tcp_proxy.available())
+        let tcp_proxy = tokio::time::timeout(Duration::from_secs(5), tcp_proxy)
             .await
             .expect("TCP service discovery timeout")
             .expect("TCP service should be available");
@@ -187,7 +187,7 @@ fn client_talks_to_tcp_and_udp_services() {
 
         // Find UDP service
         let udp_proxy = runtime.find::<UdpService>(InstanceId::Id(0x0001));
-        let udp_proxy = tokio::time::timeout(Duration::from_secs(5), udp_proxy.available())
+        let udp_proxy = tokio::time::timeout(Duration::from_secs(5), udp_proxy)
             .await
             .expect("UDP service discovery timeout")
             .expect("UDP service should be available");
@@ -378,7 +378,7 @@ fn mixed_transport_event_delivery() {
 
         // Discover and subscribe to TCP service
         let tcp_proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let tcp_proxy = tokio::time::timeout(Duration::from_secs(5), tcp_proxy.available())
+        let tcp_proxy = tokio::time::timeout(Duration::from_secs(5), tcp_proxy)
             .await
             .expect("TCP discovery timeout")
             .expect("TCP service available");
@@ -394,7 +394,7 @@ fn mixed_transport_event_delivery() {
 
         // Discover and subscribe to UDP service
         let udp_proxy = runtime.find::<UdpService>(InstanceId::Id(0x0001));
-        let udp_proxy = tokio::time::timeout(Duration::from_secs(5), udp_proxy.available())
+        let udp_proxy = tokio::time::timeout(Duration::from_secs(5), udp_proxy)
             .await
             .expect("UDP discovery timeout")
             .expect("UDP service available");
@@ -550,7 +550,7 @@ fn client_uses_advertised_transport() {
 
         // Discover TCP service
         let tcp_proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let tcp_proxy = tokio::time::timeout(Duration::from_secs(5), tcp_proxy.available())
+        let tcp_proxy = tokio::time::timeout(Duration::from_secs(5), tcp_proxy)
             .await
             .expect("TCP discovery timeout")
             .expect("TCP service available");
@@ -562,7 +562,7 @@ fn client_uses_advertised_transport() {
 
         // Discover UDP service
         let udp_proxy = runtime.find::<UdpService>(InstanceId::Id(0x0001));
-        let udp_proxy = tokio::time::timeout(Duration::from_secs(5), udp_proxy.available())
+        let udp_proxy = tokio::time::timeout(Duration::from_secs(5), udp_proxy)
             .await
             .expect("UDP discovery timeout")
             .expect("UDP service available");
@@ -691,13 +691,13 @@ fn concurrent_calls_different_transports() {
 
         // Discover both services
         let tcp_proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let tcp_proxy = tokio::time::timeout(Duration::from_secs(5), tcp_proxy.available())
+        let tcp_proxy = tokio::time::timeout(Duration::from_secs(5), tcp_proxy)
             .await
             .expect("TCP discovery timeout")
             .expect("TCP service available");
 
         let udp_proxy = runtime.find::<UdpService>(InstanceId::Id(0x0001));
-        let udp_proxy = tokio::time::timeout(Duration::from_secs(5), udp_proxy.available())
+        let udp_proxy = tokio::time::timeout(Duration::from_secs(5), udp_proxy)
             .await
             .expect("UDP discovery timeout")
             .expect("UDP service available");
@@ -819,7 +819,7 @@ fn udp_client_calls_tcp_server() {
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
         eprintln!("[client] Waiting for TCP service discovery...");
 
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -912,7 +912,7 @@ fn tcp_client_calls_tcp_server() {
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
         eprintln!("[client] Waiting for TCP service discovery...");
 
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -1018,7 +1018,7 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
 
         // Find and call the TCP-only service
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -1127,7 +1127,7 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
 
         // Find and call the UDP-only service
         let proxy = runtime.find::<UdpService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -1257,7 +1257,7 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
 
         // Find and subscribe to UDP service
         let proxy = runtime.find::<UdpService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -1397,7 +1397,7 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
 
         // Find and subscribe to UDP-only service
         let proxy = runtime.find::<UdpService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -1540,7 +1540,7 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
 
         // Find and subscribe to TCP-only service
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -1676,7 +1676,7 @@ fn preferred_transport_respected_when_both_available() {
         eprintln!("[tcp_client] Runtime started with preferred_transport=TCP");
 
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -1721,7 +1721,7 @@ fn preferred_transport_respected_when_both_available() {
         eprintln!("[udp_client] Runtime started with preferred_transport=UDP");
 
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -1883,7 +1883,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
         eprintln!("[tcp_client] Runtime started with preferred_transport=TCP");
 
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -1920,7 +1920,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
         eprintln!("[udp_client] Runtime started with preferred_transport=UDP");
 
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -2023,7 +2023,7 @@ fn handle_call_ignores_preferred_transport_for_dual_stack() {
 
         // Discover the dual-stack service
         let proxy = runtime.find::<TcpService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");

@@ -179,7 +179,7 @@ fn event_transports_value_data() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<EventService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -401,7 +401,7 @@ fn unsubscribe_stops_event_delivery() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<EventService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -488,7 +488,7 @@ fn event_uses_notification_message_type_on_wire() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<EventService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");

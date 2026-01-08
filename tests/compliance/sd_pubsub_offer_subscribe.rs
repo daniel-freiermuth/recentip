@@ -353,7 +353,7 @@ fn offer_triggers_subscribe_renewal() {
 
         // Find and wait for service
         let proxy = runtime.find::<SubscribeTestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should discover service")
             .expect("Service available");
@@ -544,7 +544,7 @@ fn no_cyclic_subscribes_strict_631_compliance() {
         eprintln!("[client] Runtime initialized, looking for service...");
 
         let proxy = runtime.find::<SubscribeTestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(10), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(10), proxy)
             .await
             .expect("Should discover service")
             .expect("Service available");
@@ -716,7 +716,7 @@ fn no_subscribe_without_offer() {
         let proxy = runtime.find::<SubscribeTestService>(InstanceId::Id(0x0001));
 
         // Wait for service to become available (should only happen after offer)
-        let proxy = tokio::time::timeout(Duration::from_secs(10), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(10), proxy)
             .await
             .expect("Should eventually discover service")
             .expect("Service available");
@@ -750,14 +750,14 @@ fn no_subscribe_without_offer() {
     );
 }
 
-/// Verify that `.available()` returns an error when the service is never offered.
+/// Verify that `` returns an error when the service is never offered.
 ///
-/// When a client calls `find().available()` and no OfferService is ever received,
+/// When a client calls `find()` and no OfferService is ever received,
 /// the find request will eventually expire after exhausting its repetitions.
 /// The client should receive an error rather than hanging forever.
 ///
 /// This tests the find request cleanup mechanism:
-/// 1. Client calls `proxy.available()` - registers find request with N repetitions
+/// 1. Client calls `proxy` - registers find request with N repetitions
 /// 2. Runtime sends FindService messages, decrementing repetitions each cycle
 /// 3. When repetitions reach 0, the find request is removed
 /// 4. Removing the find request drops the notification channel sender
@@ -816,7 +816,7 @@ fn available_returns_error_when_service_not_found() {
         let proxy = runtime.find::<SubscribeTestService>(InstanceId::Id(0x0001));
 
         // available() should return an error when find request expires
-        let result = proxy.available().await;
+        let result = proxy.await;
 
         match &result {
             Ok(_) => panic!("available() should have returned an error for non-existent service"),
@@ -1002,7 +1002,7 @@ fn max_ttl_subscription_no_renewal_needed() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<SubscribeTestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(10), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(10), proxy)
             .await
             .expect("Should discover service")
             .expect("Service available");

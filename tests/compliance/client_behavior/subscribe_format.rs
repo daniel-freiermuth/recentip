@@ -141,7 +141,7 @@ fn subscribe_format_udp_only_cyclic_offers() {
 
         // Discover and subscribe
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -273,7 +273,7 @@ fn subscribe_format_tcp_only_cyclic_offers() {
         > = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -397,7 +397,7 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -519,7 +519,7 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
         > = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -651,7 +651,7 @@ fn subscribe_format_client_adapts_to_available_transport() {
         > = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");

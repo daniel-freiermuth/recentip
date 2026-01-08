@@ -57,13 +57,11 @@ fn test_find_service() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        // Create a proxy - this should succeed immediately (just creates the handle)
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        // Try to find a service that doesn't exist - should fail
+        let result = runtime.find::<TestService>(InstanceId::Any).await;
 
-        // Check it's in unavailable state
-        assert_eq!(proxy.service_id(), ServiceId::new(0x1234).unwrap());
-        assert_eq!(proxy.instance_id(), InstanceId::Any);
-        assert!(!proxy.available().await.is_ok());
+        // Should fail since no server is offering this service
+        assert!(result.is_err());
 
         Ok(())
     });
@@ -170,7 +168,7 @@ fn test_service_discovery_offer_find() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
 
         // Wait for discovery (with timeout)
-        let result = tokio::time::timeout(Duration::from_millis(300), proxy.available()).await;
+        let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
 
         assert!(
             result.is_ok(),
@@ -230,8 +228,8 @@ fn test_multiple_services() {
         let proxy2 = runtime.find::<AnotherService>(InstanceId::Any);
 
         // Wait for both to be discovered
-        let result1 = tokio::time::timeout(Duration::from_millis(300), proxy1.available()).await;
-        let result2 = tokio::time::timeout(Duration::from_millis(300), proxy2.available()).await;
+        let result1 = tokio::time::timeout(Duration::from_millis(300), proxy1).await;
+        let result2 = tokio::time::timeout(Duration::from_millis(300), proxy2).await;
 
         assert!(result1.is_ok(), "TestService should be discovered");
         assert!(result2.is_ok(), "AnotherService should be discovered");
@@ -276,7 +274,7 @@ fn test_specific_instance_id() {
         // Find specific instance
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
-        let result = tokio::time::timeout(Duration::from_millis(300), proxy.available()).await;
+        let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
 
         assert!(result.is_ok(), "Specific instance should be discovered");
         let available = result.unwrap().expect("Service available");
@@ -374,7 +372,7 @@ fn test_method_call_rpc() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
         // Wait for service to become available
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Timeout waiting for service")
             .expect("Service available");
@@ -452,7 +450,7 @@ fn library_auto_renews_subscription() {
 
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<PubSubService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -557,7 +555,7 @@ fn test_event_subscription() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
         // Wait for service to become available
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Timeout waiting for service")
             .expect("Service available");
@@ -658,7 +656,7 @@ fn subscribe_returns_error_on_nack() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<PubSubService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");

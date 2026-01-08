@@ -49,7 +49,7 @@
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
 //!     // Find a remote service (waits for SD announcement)
-//!     let proxy = runtime.find::<BrakeService>(InstanceId::Any).available().await?;
+//!     let proxy = runtime.find::<BrakeService>(InstanceId::Any).await?;
 //!
 //!     // Call a method (RPC)
 //!     let method_id = MethodId::new(0x0001).unwrap();
@@ -184,12 +184,11 @@
 //!
 //! The library uses **type-state patterns** to enforce correct usage at compile time:
 //!
-//! - [`ProxyHandle<S, Unavailable>`] → can only call `.available()` to wait for discovery
-//! - [`ProxyHandle<S, Available>`] → can call `.call()`, `.subscribe()`, etc.
+//! - [`ProxyHandle<S>`] → returned by `find()`, ready for `.call()`, `.subscribe()`, etc.
 //! - [`ServiceInstance<Bound>`] → socket is open, but not announced via SD
 //! - [`ServiceInstance<Announced>`] → actively announced, accepting requests
 //!
-//! This prevents runtime errors like "calling a method on an undiscovered service".
+//! This prevents runtime errors like "announcing a service that hasn't bound a socket".
 //!
 //! ### Service Discovery (SD)
 //!
@@ -234,7 +233,7 @@
 //!
 //! ```no_run
 //! use someip_runtime::prelude::*;
-//! use someip_runtime::handle::{ProxyHandle, Available};
+//! use someip_runtime::handle::ProxyHandle;
 //!
 //! struct MyService;
 //! impl Service for MyService {
@@ -243,7 +242,7 @@
 //!     const MINOR_VERSION: u32 = 0;
 //! }
 //!
-//! async fn subscribe_example(proxy: &ProxyHandle<MyService, Available>) -> Result<()> {
+//! async fn subscribe_example(proxy: &ProxyHandle<MyService>) -> Result<()> {
 //!     let eventgroup = EventgroupId::new(0x0001).unwrap();
 //!     let mut events = proxy.subscribe(eventgroup).await?;
 //!
@@ -283,7 +282,7 @@
 //!
 //! ```no_run
 //! use someip_runtime::prelude::*;
-//! use someip_runtime::handle::{ProxyHandle, Available};
+//! use someip_runtime::handle::ProxyHandle;
 //!
 //! struct MyService;
 //! impl Service for MyService {
@@ -292,7 +291,7 @@
 //!     const MINOR_VERSION: u32 = 0;
 //! }
 //!
-//! async fn error_handling_example(proxy: &ProxyHandle<MyService, Available>) -> Result<()> {
+//! async fn error_handling_example(proxy: &ProxyHandle<MyService>) -> Result<()> {
 //!     let method_id = MethodId::new(0x0001).unwrap();
 //!     let payload = b"request";
 //!

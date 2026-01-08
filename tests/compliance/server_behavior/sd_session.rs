@@ -318,7 +318,7 @@ fn sd_separate_multicast_unicast_sessions() {
 
         // Subscribe to trigger unicast SD responses
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let _ = tokio::time::timeout(Duration::from_secs(2), proxy.available()).await;
+        let _ = tokio::time::timeout(Duration::from_secs(2), proxy).await;
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         Ok(())

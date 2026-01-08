@@ -4,8 +4,7 @@ use std::{
 };
 
 use someip_runtime::{
-    Available, EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder,
-    Service,
+    EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder, Service,
 };
 use tracing::Instrument;
 
@@ -78,7 +77,6 @@ fn test_subscribe_drop_unsubscribes_in_time() {
 
         let service = runtime
             .find::<ServiceA>(InstanceId::new(1).unwrap())
-            .available()
             .await
             .unwrap();
 
@@ -167,7 +165,6 @@ fn test_two_subscribers_one_drops() {
 
         let service = runtime
             .find::<ServiceA>(InstanceId::new(1).unwrap())
-            .available()
             .await
             .unwrap();
 
@@ -297,7 +294,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
 
         let service = runtime
             .find::<ServiceA>(InstanceId::new(1).unwrap())
-            .available()
+
             .await
             .unwrap();
 
@@ -383,7 +380,7 @@ fn test_two_subscribers_get_events() {
     });
 
     sim.client("client", async move {
-        async fn subscribe_and_listen(service: ProxyHandle<ServiceA, Available>) {
+        async fn subscribe_and_listen(service: ProxyHandle<ServiceA>) {
             tracing::info!("Starting subscription flow");
             let mut subscription = service
                 .subscribe(EventgroupId::new(1).unwrap())
@@ -411,7 +408,6 @@ fn test_two_subscribers_get_events() {
 
         let service = runtime
             .find::<ServiceA>(InstanceId::new(1).unwrap())
-            .available()
             .await
             .unwrap();
 

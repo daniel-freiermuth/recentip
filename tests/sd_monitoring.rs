@@ -98,7 +98,7 @@ fn monitor_sd_receives_service_available() {
             assert_eq!(service_id, 0x1234, "Service ID should match");
             assert_eq!(instance_id, 0x0001, "Instance ID should match");
         }
-        other => panic!("Expected ServiceAvailable, got {:?}", other),
+        other => panic!("Expected Service, got {:?}", other),
     }
 }
 
@@ -263,7 +263,7 @@ fn monitor_sd_event_metadata_accuracy() {
             // Endpoint should be valid (port > 0)
             assert!(endpoint.port() > 0, "Endpoint port should be valid");
         }
-        other => panic!("Expected ServiceAvailable, got {:?}", other),
+        other => panic!("Expected Service, got {:?}", other),
     }
 }
 
@@ -819,6 +819,6 @@ fn monitor_sd_before_services_exist() {
         SdEvent::ServiceAvailable { service_id, .. } => {
             assert_eq!(service_id, 0x1234);
         }
-        other => panic!("Expected ServiceAvailable, got {:?}", other),
+        other => panic!("Expected Service, got {:?}", other),
     }
 }

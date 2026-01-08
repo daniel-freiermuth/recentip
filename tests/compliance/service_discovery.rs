@@ -102,7 +102,7 @@ fn sd_offer_discovery_works() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
 
         // Discovery works => SD messages are well-formed
-        let result = tokio::time::timeout(Duration::from_secs(5), proxy.available()).await;
+        let result = tokio::time::timeout(Duration::from_secs(5), proxy).await;
         assert!(result.is_ok(), "Service discovery must succeed");
 
         Ok(())
@@ -165,7 +165,7 @@ fn sd_offer_with_specific_instance() {
         // Find specific instance
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0042));
 
-        let available = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let available = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Timeout waiting for specific instance")
             .expect("Service available");
@@ -229,7 +229,7 @@ fn sd_offer_with_version_info() {
 
         let proxy = runtime.find::<VersionedService>(InstanceId::Any);
 
-        let available = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let available = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Timeout")
             .expect("Service available");
@@ -305,7 +305,7 @@ fn sd_stop_offer_on_drop() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
 
         // First, service should be available
-        let _available = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let _available = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should discover service initially");
 
@@ -378,8 +378,8 @@ fn sd_multiple_service_offers() {
         let proxy1 = runtime.find::<TestService>(InstanceId::Any);
         let proxy2 = runtime.find::<VersionedService>(InstanceId::Any);
 
-        let result1 = tokio::time::timeout(Duration::from_secs(5), proxy1.available()).await;
-        let result2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available()).await;
+        let result1 = tokio::time::timeout(Duration::from_secs(5), proxy1).await;
+        let result2 = tokio::time::timeout(Duration::from_secs(5), proxy2).await;
 
         assert!(result1.is_ok(), "TestService should be discovered");
         assert!(result2.is_ok(), "VersionedService should be discovered");
@@ -453,7 +453,7 @@ fn sd_multiple_instances_same_service() {
         // Find ANY instance
         let proxy = runtime.find::<TestService>(InstanceId::Any);
 
-        let available = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let available = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should find at least one instance")
             .expect("Service available");
@@ -507,7 +507,7 @@ fn sd_find_service_discovery() {
         let proxy = runtime.find::<TestService>(InstanceId::Any);
 
         // Wait with long timeout - service will appear later
-        let available = tokio::time::timeout(Duration::from_secs(10), proxy.available())
+        let available = tokio::time::timeout(Duration::from_secs(10), proxy)
             .await
             .expect("Should eventually find service")
             .expect("Service available");
@@ -610,8 +610,8 @@ fn sd_session_id_increments() {
         let proxy1 = runtime.find::<TestService>(InstanceId::Any);
         let proxy2 = runtime.find::<VersionedService>(InstanceId::Any);
 
-        let _ = tokio::time::timeout(Duration::from_secs(5), proxy1.available()).await;
-        let _ = tokio::time::timeout(Duration::from_secs(5), proxy2.available()).await;
+        let _ = tokio::time::timeout(Duration::from_secs(5), proxy1).await;
+        let _ = tokio::time::timeout(Duration::from_secs(5), proxy2).await;
 
         Ok(())
     });
@@ -675,7 +675,7 @@ fn sd_unicast_flag_handling() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let _ = tokio::time::timeout(Duration::from_secs(5), proxy.available()).await;
+        let _ = tokio::time::timeout(Duration::from_secs(5), proxy).await;
 
         Ok(())
     });
@@ -753,7 +753,7 @@ fn sd_discovery_then_rpc() {
 
         // Discover via SD
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery should succeed")
             .expect("Service available");

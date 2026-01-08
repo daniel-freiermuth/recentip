@@ -123,7 +123,7 @@ fn rpc_request_wire_format() {
         // Use public API: find service and wait for availability via SD
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should discover service via SD")
             .expect("Service available");
@@ -377,7 +377,7 @@ fn fire_and_forget_wire_format() {
         // Use public API: find service and wait for availability via SD
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should discover service via SD")
             .expect("Service available");
@@ -686,7 +686,7 @@ fn session_id_increment_on_wire() {
         // Use public API: find service and wait for availability via SD
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should discover service via SD")
             .expect("Service available");

@@ -126,7 +126,7 @@ async fn udp_request_response_real_network() {
 
     // Client discovers and calls service
     let proxy = client_runtime.find::<EchoService>(InstanceId::Id(0x0001));
-    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
         .await
         .expect("Discovery timeout")
         .expect("Service available");
@@ -179,7 +179,7 @@ async fn udp_service_discovery_real_network() {
 
     let proxy = runtime.find::<EchoService>(InstanceId::Id(0x0002));
 
-    let result = tokio::time::timeout(Duration::from_secs(5), proxy.available()).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), proxy).await;
     assert!(result.is_ok(), "Should discover service");
     assert!(result.unwrap().is_ok(), "Service should be available");
 
@@ -232,7 +232,7 @@ async fn tcp_request_response_real_network() {
     let runtime = Runtime::new(config).await.expect("Client runtime");
 
     let proxy = runtime.find::<EchoService>(InstanceId::Id(0x0001));
-    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
         .await
         .expect("Discovery timeout")
         .expect("Service available");
@@ -294,7 +294,7 @@ async fn tcp_magic_cookies_real_network() {
     let runtime = Runtime::new(config).await.expect("Client runtime");
 
     let proxy = runtime.find::<EchoService>(InstanceId::Id(0x0001));
-    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
         .await
         .expect("Discovery timeout")
         .expect("Service available");
@@ -354,7 +354,7 @@ async fn tcp_multiple_requests_real_network() {
     let runtime = Runtime::new(config).await.expect("Client runtime");
 
     let proxy = runtime.find::<EchoService>(InstanceId::Id(0x0001));
-    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
         .await
         .expect("Discovery timeout")
         .expect("Service available");
@@ -451,7 +451,7 @@ async fn udp_events_real_network() {
     let runtime = Runtime::new(config).await.expect("Client runtime");
 
     let proxy = runtime.find::<EchoService>(InstanceId::Id(0x0001));
-    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
         .await
         .expect("Discovery timeout")
         .expect("Service available");
@@ -540,7 +540,7 @@ async fn udp_two_runtimes_same_sd_port() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let proxy = client_runtime.find::<EchoService>(InstanceId::Id(0x0003));
-    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
         .await
         .expect("Discovery timeout")
         .expect("Service available");

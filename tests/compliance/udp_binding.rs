@@ -144,7 +144,7 @@ fn udp_binding_transports_someip_messages() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Timeout waiting for service")
             .expect("Service available");
@@ -221,7 +221,7 @@ fn udp_each_message_has_own_header() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Timeout")
             .expect("Service available");
@@ -340,7 +340,7 @@ fn udp_multiple_messages_format_supported() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Timeout")
             .expect("Service available");
@@ -477,7 +477,7 @@ fn udp_client_receives_multicast_offers() {
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
         // Should discover the service (received via multicast)
-        let result = tokio::time::timeout(Duration::from_secs(5), proxy.available()).await;
+        let result = tokio::time::timeout(Duration::from_secs(5), proxy).await;
 
         assert!(
             result.is_ok(),
@@ -547,7 +547,7 @@ fn udp_multicast_eventgroup_with_initial_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<EventService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Timeout")
             .expect("Service available");
@@ -632,7 +632,7 @@ fn udp_handles_various_payload_sizes() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Timeout")
             .expect("Service available");
@@ -712,7 +712,7 @@ fn default_transport_is_udp() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Timeout")
             .expect("Service available");

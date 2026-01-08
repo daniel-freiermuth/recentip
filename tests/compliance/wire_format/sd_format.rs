@@ -387,7 +387,7 @@ fn subscribe_eventgroup_ttl_on_wire() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should discover service via SD")
             .expect("Service available");
@@ -471,12 +471,12 @@ fn find_service_ttl_on_wire() {
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
-        // Start finding service - calling .available() triggers Command::Find which sends FindService
+        // Start finding service - calling  triggers Command::Find which sends FindService
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
         // Use tokio::select to attempt available() but don't wait forever
         // (service won't be found, but the FindService message will be sent)
-        let _ = tokio::time::timeout(Duration::from_millis(500), proxy.available()).await;
+        let _ = tokio::time::timeout(Duration::from_millis(500), proxy).await;
 
         Ok(())
     });

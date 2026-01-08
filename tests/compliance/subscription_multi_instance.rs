@@ -124,7 +124,7 @@ fn subscribe_to_multiple_instances() {
 
         // Find and subscribe to instance 1
         let proxy1 = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1.available())
+        let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1)
             .await
             .expect("Discovery timeout for instance 1")
             .expect("Instance 1 should be available");
@@ -138,7 +138,7 @@ fn subscribe_to_multiple_instances() {
 
         // Find and subscribe to instance 2
         let proxy2 = runtime.find::<TestService>(InstanceId::Id(0x0002));
-        let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available())
+        let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2)
             .await
             .expect("Discovery timeout for instance 2")
             .expect("Instance 2 should be available");

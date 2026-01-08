@@ -90,7 +90,7 @@ fn no_error_response_for_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -168,7 +168,7 @@ fn no_error_response_for_fire_and_forget() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -302,7 +302,7 @@ fn server_returns_various_error_codes() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -485,7 +485,7 @@ fn error_response_copies_request_header() {
     // Raw socket side - discovers server via SD, then sends request and verifies error
     sim.client("raw_observer", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         // Bind to SD multicast to discover server
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
         sd_socket.join_multicast_v4(
@@ -496,13 +496,13 @@ fn error_response_copies_request_header() {
         // Find server endpoint from SD offer
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
-        
+
         for _ in 0..20 {
             let result = tokio::time::timeout(
                 Duration::from_millis(200),
                 sd_socket.recv_from(&mut buf),
             ).await;
-            
+
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
@@ -528,10 +528,10 @@ fn error_response_copies_request_header() {
         }
 
         let server_addr = server_endpoint.expect("Should find server via SD");
-        
+
         // Now send a request to the discovered endpoint
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
-        
+
         // Send a request
         let mut request = BytesMut::with_capacity(24);
         request.put_u16(0x1234); // Service ID
@@ -673,7 +673,7 @@ fn exception_message_type_when_configured() {
     // Raw socket verifies EXCEPTION message type is used
     sim.client("raw_observer", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         // Discover server via SD
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
         sd_socket.join_multicast_v4(
@@ -683,13 +683,13 @@ fn exception_message_type_when_configured() {
 
         let mut server_endpoint: Option<SocketAddr> = None;
         let mut buf = [0u8; 1500];
-        
+
         for _ in 0..20 {
             let result = tokio::time::timeout(
                 Duration::from_millis(200),
                 sd_socket.recv_from(&mut buf),
             ).await;
- 
+
             if let Ok(Ok((len, from))) = result {
                 if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                     for entry in &sd_msg.entries {
@@ -714,9 +714,9 @@ fn exception_message_type_when_configured() {
         }
 
         let server_addr = server_endpoint.expect("Should find server via SD");
- 
+
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
- 
+
         // Send request to method 0x0001 (configured for EXCEPTION)
         let mut request = BytesMut::with_capacity(24);
         request.put_u16(0x1234); // Service ID

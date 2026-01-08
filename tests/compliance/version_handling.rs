@@ -229,7 +229,7 @@ fn rpc_request_has_protocol_version_0x01() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -435,7 +435,7 @@ fn rpc_request_has_interface_version_at_offset_13() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
 
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");

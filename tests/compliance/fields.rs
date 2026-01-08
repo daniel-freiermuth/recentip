@@ -114,7 +114,7 @@ fn field_getter_empty_request_payload() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
-            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
                 .expect("Service available");
@@ -210,7 +210,7 @@ fn field_getter_returns_current_value() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
-            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
                 .expect("Service available");
@@ -330,7 +330,7 @@ fn field_setter_sends_value_in_request() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
-            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
                 .expect("Service available");
@@ -421,7 +421,7 @@ fn field_setter_gets_response() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
-            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
                 .expect("Service available");
@@ -524,7 +524,7 @@ fn field_notifier_sends_updated_value() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
-            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
                 .expect("Service available");
@@ -686,7 +686,7 @@ fn field_combines_getter_setter_notifier() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
-            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
                 .expect("Service available");
@@ -811,7 +811,7 @@ fn field_setter_can_reject_invalid_value() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<TestService>(InstanceId::Any);
-            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
                 .expect("Service available");

@@ -86,7 +86,7 @@ use crate::SdEvent;
 
 use crate::client;
 use crate::error::{Error, Result};
-use crate::handle::{Available, OfferingHandle, ProxyHandle, Unavailable};
+use crate::handle::{OfferingHandle, ProxyHandle};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::sd::{
     build_find_message, build_offer_message, handle_find_request, handle_offer,
@@ -318,10 +318,72 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 
     /// Find a service by ID and instance.
     ///
-    /// Returns a proxy handle that will become available when the service is discovered.
-    pub fn find<S: Service>(&self, instance: InstanceId) -> ProxyHandle<S, Unavailable> {
+    /// Waits for Service Discovery to locate the service and returns a proxy
+    /// handle that can be used to call methods and subscribe to events.
+    ///
+    /// Returns an error if the runtime shuts down before the service is found,
+    /// or if all find repetitions are exhausted without finding the service.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use someip_runtime::prelude::*;
+    ///
+    /// struct MyService;
+    /// impl Service for MyService {
+    ///     const SERVICE_ID: u16 = 0x1234;
+    ///     const MAJOR_VERSION: u8 = 1;
+    ///     const MINOR_VERSION: u32 = 0;
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<()> {
+    ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+    ///     let proxy = runtime.find::<MyService>(InstanceId::Any).await?;
+    ///     // Proxy is ready to use
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn find<S: Service>(&self, instance: InstanceId) -> Result<ProxyHandle<S>> {
         let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
-        ProxyHandle::new(Arc::clone(&self.inner), service_id, instance)
+        // TODO: should this channel be oneshot?
+        let (notify_tx, mut notify_rx) = mpsc::channel(1);
+
+        // Register find request
+        self.inner
+            .cmd_tx
+            .send(Command::Find {
+                service_id,
+                instance_id: instance,
+                notify: notify_tx,
+            })
+            .await
+            .map_err(|_| Error::RuntimeShutdown)?;
+
+        // Wait for availability notification
+        let (endpoint, transport, discovered_instance_id) = loop {
+            match notify_rx.recv().await {
+                Some(ServiceAvailability::Available {
+                    endpoint,
+                    transport,
+                    instance_id,
+                }) => break (endpoint, transport, instance_id),
+                // TODO: get rid of Unavailable variant?
+                Some(ServiceAvailability::Unavailable) => continue,
+                None => {
+                    // Channel closed - either runtime shut down or find request expired
+                    // (all repetitions exhausted without finding the service)
+                    return Err(Error::NotAvailable);
+                }
+            }
+        };
+
+        Ok(ProxyHandle::new(
+            Arc::clone(&self.inner),
+            service_id,
+            InstanceId::Id(discovered_instance_id),
+            endpoint,
+            transport,
+        ))
     }
 
     /// Offer a service with configurable transport endpoints.
@@ -485,9 +547,9 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         instance: InstanceId,
         endpoint: SocketAddr,
         transport: Transport,
-    ) -> ProxyHandle<S, Available> {
+    ) -> ProxyHandle<S> {
         let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
-        ProxyHandle::new_available(
+        ProxyHandle::new(
             Arc::clone(&self.inner),
             service_id,
             instance,

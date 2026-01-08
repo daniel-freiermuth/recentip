@@ -284,7 +284,7 @@ fn test_bound_service_not_discoverable() {
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
 
             // Service should NOT be discoverable (only bound, not announced)
-            let result = tokio::time::timeout(Duration::from_millis(300), proxy.available()).await;
+            let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
 
             assert!(
                 result.is_err(),
@@ -360,7 +360,7 @@ fn test_announced_service_is_discoverable() {
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
 
             // Service SHOULD be discoverable after announce()
-            let result = tokio::time::timeout(Duration::from_millis(300), proxy.available()).await;
+            let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
 
             assert!(
                 result.is_ok(),
@@ -443,8 +443,7 @@ fn test_service_disappears_after_stop_announcing() {
             // Verify it's still discoverable before server stops announcing
             let proxy_before_stop = runtime.find::<BrakeService>(InstanceId::Any);
             let result_before =
-                tokio::time::timeout(Duration::from_millis(150), proxy_before_stop.available())
-                    .await;
+                tokio::time::timeout(Duration::from_millis(150), proxy_before_stop).await;
             assert!(
                 result_before.is_ok(),
                 "Service should still be available before stop_announcing()"
@@ -457,8 +456,7 @@ fn test_service_disappears_after_stop_announcing() {
             // A fresh proxy should not find the service since StopOfferService was sent
             let proxy_after_stop = runtime.find::<BrakeService>(InstanceId::Any);
             let result_after =
-                tokio::time::timeout(Duration::from_millis(200), proxy_after_stop.available())
-                    .await;
+                tokio::time::timeout(Duration::from_millis(200), proxy_after_stop).await;
 
             assert!(
                 result_after.is_err(),
@@ -611,7 +609,7 @@ fn test_notify_requires_announced_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let available = proxy.available().await.unwrap();
+            let available = proxy.await.unwrap();
 
             let mut subscription = available
                 .subscribe(EventgroupId::new(0x0001).unwrap())
@@ -708,7 +706,7 @@ fn test_has_subscribers_in_announced_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let available = proxy.available().await.unwrap();
+            let available = proxy.await.unwrap();
 
             let _subscription = available
                 .subscribe(EventgroupId::new(0x0001).unwrap())
@@ -848,7 +846,7 @@ fn test_init_failure_prevents_announcement() {
             let proxy = runtime.find::<TemperatureService>(InstanceId::Any);
 
             // Service should never be discoverable
-            let result = tokio::time::timeout(Duration::from_millis(300), proxy.available()).await;
+            let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
 
             assert!(
                 result.is_err(),
@@ -945,7 +943,7 @@ fn test_graceful_shutdown_drains_requests() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let available = proxy.available().await.unwrap();
+            let available = proxy.await.unwrap();
 
             // Make a call that should succeed even during shutdown
             let response = available
@@ -1033,7 +1031,7 @@ fn test_drop_announced_sends_stop_offer() {
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
 
             // Should discover initially
-            let _available = tokio::time::timeout(Duration::from_millis(150), proxy.available())
+            let _available = tokio::time::timeout(Duration::from_millis(150), proxy)
                 .await
                 .expect("Should discover")
                 .unwrap();
@@ -1044,7 +1042,7 @@ fn test_drop_announced_sends_stop_offer() {
             // Service should now be gone (StopOfferService received)
             // Verify by creating a fresh proxy and expecting discovery to fail
             let proxy2 = runtime.find::<BrakeService>(InstanceId::Any);
-            let result = tokio::time::timeout(Duration::from_millis(200), proxy2.available()).await;
+            let result = tokio::time::timeout(Duration::from_millis(200), proxy2).await;
 
             assert!(
                 result.is_err(),
@@ -1117,7 +1115,7 @@ fn test_drop_bound_no_sd_message() {
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
 
             // Should never discover (never announced)
-            let result = tokio::time::timeout(Duration::from_millis(300), proxy.available()).await;
+            let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
 
             assert!(
                 result.is_err(),
@@ -1202,8 +1200,7 @@ fn test_multiple_services_same_runtime() {
 
             // Brake should be discoverable (announced)
             let brake_proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let brake_result =
-                tokio::time::timeout(Duration::from_millis(150), brake_proxy.available()).await;
+            let brake_result = tokio::time::timeout(Duration::from_millis(150), brake_proxy).await;
             assert!(
                 brake_result.is_ok(),
                 "Announced service should be discoverable"
@@ -1211,8 +1208,7 @@ fn test_multiple_services_same_runtime() {
 
             // Temperature should NOT be discoverable (only bound)
             let temp_proxy = runtime.find::<TemperatureService>(InstanceId::Any);
-            let temp_result =
-                tokio::time::timeout(Duration::from_millis(150), temp_proxy.available()).await;
+            let temp_result = tokio::time::timeout(Duration::from_millis(150), temp_proxy).await;
             assert!(
                 temp_result.is_err(),
                 "Bound-only service should not be discoverable"
@@ -1292,14 +1288,12 @@ fn test_multiple_instances_same_service() {
 
             // Instance 0x0001 should be discoverable
             let proxy1 = runtime.find::<BrakeService>(InstanceId::Id(0x0001));
-            let result1 =
-                tokio::time::timeout(Duration::from_millis(150), proxy1.available()).await;
+            let result1 = tokio::time::timeout(Duration::from_millis(150), proxy1).await;
             assert!(result1.is_ok(), "Announced instance should be discoverable");
 
             // Instance 0x0002 should NOT be discoverable
             let proxy2 = runtime.find::<BrakeService>(InstanceId::Id(0x0002));
-            let result2 =
-                tokio::time::timeout(Duration::from_millis(150), proxy2.available()).await;
+            let result2 = tokio::time::timeout(Duration::from_millis(150), proxy2).await;
             assert!(
                 result2.is_err(),
                 "Bound-only instance should not be discoverable"
@@ -1861,7 +1855,7 @@ fn test_re_announce_after_stop() {
 
             // First discovery
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let _available = tokio::time::timeout(Duration::from_millis(250), proxy.available())
+            let _available = tokio::time::timeout(Duration::from_millis(250), proxy)
                 .await
                 .expect("First discovery")
                 .unwrap();
@@ -1873,8 +1867,7 @@ fn test_re_announce_after_stop() {
             // Verify service actually went away (need fresh proxy since available() consumes)
             let proxy_check_gone = runtime.find::<BrakeService>(InstanceId::Any);
             let gone_result =
-                tokio::time::timeout(Duration::from_millis(200), proxy_check_gone.available())
-                    .await;
+                tokio::time::timeout(Duration::from_millis(200), proxy_check_gone).await;
             assert!(
                 gone_result.is_err(),
                 "Service should be unavailable after stop_announcing()"
@@ -1885,11 +1878,10 @@ fn test_re_announce_after_stop() {
 
             // Re-discover after re-announcement (need fresh proxy since available() consumes)
             let proxy2 = runtime.find::<BrakeService>(InstanceId::Any);
-            let _available_again =
-                tokio::time::timeout(Duration::from_millis(500), proxy2.available())
-                    .await
-                    .expect("Should rediscover after re-announce")
-                    .unwrap();
+            let _available_again = tokio::time::timeout(Duration::from_millis(500), proxy2)
+                .await
+                .expect("Should rediscover after re-announce")
+                .unwrap();
 
             flag.store(true, Ordering::SeqCst);
             Ok(())
@@ -2143,7 +2135,7 @@ fn test_concurrent_notify() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let available = proxy.available().await.unwrap();
+            let available = proxy.await.unwrap();
 
             let mut subscription = available
                 .subscribe(EventgroupId::new(0x0001).unwrap())
@@ -2257,7 +2249,7 @@ fn test_notify_survives_subscriber_disconnect() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let available = proxy.available().await.unwrap();
+            let available = proxy.await.unwrap();
 
             let subscription = available
                 .subscribe(EventgroupId::new(0x0001).unwrap())
@@ -2363,7 +2355,7 @@ fn test_max_udp_payload_notify() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let available = proxy.available().await.unwrap();
+            let available = proxy.await.unwrap();
 
             let mut subscription = available
                 .subscribe(EventgroupId::new(0x0001).unwrap())
@@ -2461,7 +2453,7 @@ fn test_large_tcp_rpc_payload() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Id(0x0001));
-            let available = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            let available = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Should discover service")
                 .unwrap();
@@ -2568,7 +2560,7 @@ fn test_response_after_offering_dropped() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Id(0x0001));
-            let available = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+            let available = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Should discover service")
                 .unwrap();
@@ -2670,7 +2662,7 @@ fn test_empty_payload_notify() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let available = proxy.available().await.unwrap();
+            let available = proxy.await.unwrap();
 
             let mut subscription = available
                 .subscribe(EventgroupId::new(0x0001).unwrap())
@@ -2918,7 +2910,7 @@ fn test_next_in_announced_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let available = proxy.available().await.unwrap();
+            let available = proxy.await.unwrap();
 
             let response = available
                 .call(someip_runtime::MethodId::new(0x0001).unwrap(), b"request")
@@ -3016,7 +3008,7 @@ fn test_subscription_events_received() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let proxy = runtime.find::<BrakeService>(InstanceId::Any);
-            let available = proxy.available().await.unwrap();
+            let available = proxy.await.unwrap();
 
             // Subscribe
             let subscription = available

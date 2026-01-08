@@ -118,7 +118,7 @@ fn multiple_clients_call_same_server() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -145,7 +145,7 @@ fn multiple_clients_call_same_server() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -172,7 +172,7 @@ fn multiple_clients_call_same_server() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -258,7 +258,7 @@ fn multiple_clients_subscribe_to_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -290,7 +290,7 @@ fn multiple_clients_subscribe_to_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -321,7 +321,7 @@ fn multiple_clients_subscribe_to_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
@@ -399,7 +399,7 @@ fn sd_reaches_all_participants() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should not time out")
             .expect("Client 1 should discover service");
@@ -413,7 +413,7 @@ fn sd_reaches_all_participants() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should not time out")
             .expect("Client 2 should discover service");
@@ -427,7 +427,7 @@ fn sd_reaches_all_participants() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should not time out")
             .expect("Client 3 should discover service");
@@ -441,7 +441,7 @@ fn sd_reaches_all_participants() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should not time out")
             .expect("Client 4 should discover service");
@@ -455,7 +455,7 @@ fn sd_reaches_all_participants() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let proxy = runtime.find::<TestService>(InstanceId::Any);
-        tokio::time::timeout(Duration::from_secs(5), proxy.available())
+        tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should not time out")
             .expect("Client 5 should discover service");
@@ -508,7 +508,7 @@ fn nodes_with_mixed_client_server_roles() {
 
             // Also require ServiceB
             let proxy_b = runtime.find::<ServiceB>(InstanceId::Any);
-            let proxy_b = tokio::time::timeout(Duration::from_secs(5), proxy_b.available())
+            let proxy_b = tokio::time::timeout(Duration::from_secs(5), proxy_b)
                 .await
                 .expect("Should discover ServiceB")
                 .expect("Service available");
@@ -569,7 +569,7 @@ fn nodes_with_mixed_client_server_roles() {
 
         // Then require ServiceA
         let proxy_a = runtime.find::<ServiceA>(InstanceId::Any);
-        let proxy_a = tokio::time::timeout(Duration::from_secs(5), proxy_a.available())
+        let proxy_a = tokio::time::timeout(Duration::from_secs(5), proxy_a)
             .await
             .expect("Should discover ServiceA")
             .expect("Service available");
@@ -687,7 +687,7 @@ fn multiple_servers_different_instances() {
 
         // Find instance 1
         let proxy1 = runtime.find::<TestService>(InstanceId::Id(0x0001));
-        let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1.available())
+        let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1)
             .await
             .expect("Should discover instance 1")
             .expect("Service available");
@@ -704,7 +704,7 @@ fn multiple_servers_different_instances() {
 
         // Find instance 2
         let proxy2 = runtime.find::<TestService>(InstanceId::Id(0x0002));
-        let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2.available())
+        let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2)
             .await
             .expect("Should discover instance 2")
             .expect("Service available");

@@ -6,9 +6,9 @@
 //!
 //! ## Handle Types Overview
 //!
-//! | Handle | Role | State Pattern |
-//! |--------|------|---------------|
-//! | [`ProxyHandle`] | Client: call methods, subscribe to events | `Unavailable` → `Available` |
+//! | Handle | Role | Notes |
+//! |--------|------|-------|
+//! | [`ProxyHandle`] | Client: call methods, subscribe to events | Created via `Runtime::find()` |
 //! | [`OfferingHandle`] | Server: receive requests, send responses | — |
 //! | [`ServiceInstance`] | Server (advanced): typestate for bind/announce | `Bound` → `Announced` |
 //! | [`Subscription`] | Client: receive events from a subscribed eventgroup | — |
@@ -19,7 +19,6 @@
 //!
 //! ```no_run
 //! use someip_runtime::prelude::*;
-//! use someip_runtime::handle::Available;
 //!
 //! struct MyService;
 //! impl Service for MyService {
@@ -32,17 +31,14 @@
 //! async fn main() -> Result<()> {
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
-//!     // 1. Create a proxy (starts Unavailable)
-//!     let proxy = runtime.find::<MyService>(InstanceId::Any);
+//!     // 1. Find the service (waits for discovery)
+//!     let proxy = runtime.find::<MyService>(InstanceId::Any).await?;
 //!
-//!     // 2. Wait for discovery (transitions to Available)
-//!     let proxy: someip_runtime::handle::ProxyHandle<MyService, Available> = proxy.available().await?;
-//!
-//!     // 3. Call methods (only possible when Available)
+//!     // 2. Call methods
 //!     let method_id = MethodId::new(0x0001).unwrap();
 //!     let response = proxy.call(method_id, b"payload").await?;
 //!
-//!     // 4. Subscribe to events
+//!     // 3. Subscribe to events
 //!     let eventgroup = EventgroupId::new(0x0001).unwrap();
 //!     let mut subscription = proxy.subscribe(eventgroup).await?;
 //!     while let Some(event) = subscription.next().await {
@@ -131,13 +127,10 @@
 //!
 //! This module uses **type-state patterns** to enforce correct API usage at compile time:
 //!
-//! - [`ProxyHandle<S, Unavailable>`] can only call `.available()` or `.is_available()`
-//! - [`ProxyHandle<S, Available>`] can call `.call()`, `.subscribe()`, etc.
 //! - [`ServiceInstance<S, Bound>`] can only call `.announce()` or handle static requests
 //! - [`ServiceInstance<S, Announced>`] can call `.stop_announcing()` or handle SD requests
 //!
 //! This prevents common bugs like:
-//! - Calling a method before the service is discovered
 //! - Announcing a service that hasn't bound to a socket
 //!
 //! ## Thread Safety
@@ -153,14 +146,14 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::{Error, Result};
-use crate::runtime::{Command, RuntimeInner, ServiceAvailability, ServiceRequest};
+use crate::runtime::{Command, RuntimeInner, ServiceRequest};
 use crate::{
     ClientInfo, Event, EventId, EventgroupId, InstanceId, MethodId, Response, ReturnCode, Service,
     ServiceId,
 };
 
 // ============================================================================
-// TYPESTATE MARKERS
+// TYPESTATE MARKERS (FOR ServiceInstance)
 // ============================================================================
 
 /// Type-state marker: service instance is **bound** (listening on socket)
@@ -183,31 +176,16 @@ pub struct Bound;
 #[derive(Debug, Clone)]
 pub struct Announced;
 
+/// Client-side proxy to a remote SOME/IP service.
 // ============================================================================
 // PROXY HANDLE (CLIENT-SIDE)
 // ============================================================================
-
-/// Type-state marker: service **not yet discovered**.
-///
-/// The proxy must transition to [`Available`] via `.available()` before
-/// methods can be called.
-#[derive(Clone)]
-pub struct Unavailable;
-
-/// Type-state marker: service **discovered and ready**.
-///
-/// Contains the service's endpoint address and transport for RPC communication.
-#[derive(Clone)]
-pub struct Available {
-    endpoint: std::net::SocketAddr,
-    transport: crate::config::Transport,
-}
 
 /// Client-side proxy to a remote SOME/IP service.
 ///
 /// # Creating a Proxy
 ///
-/// Use [`Runtime::find`](crate::Runtime::find) to create a proxy:
+/// Use [`Runtime::find`](crate::Runtime::find) to find and connect to a service:
 ///
 /// ```no_run
 /// use someip_runtime::prelude::*;
@@ -222,42 +200,18 @@ pub struct Available {
 /// # #[tokio::main]
 /// # async fn main() -> Result<()> {
 /// let runtime = Runtime::new(RuntimeConfig::default()).await?;
-/// let proxy = runtime.find::<MyService>(InstanceId::Any);
+/// let proxy = runtime.find::<MyService>(InstanceId::Any).await?;
 /// # Ok(())
 /// # }
 /// ```
 ///
-/// # Discovery (Unavailable → Available)
-///
-/// The proxy starts in [`Unavailable`] state. Call `.available()` to wait
-/// for Service Discovery:
-///
-/// ```no_run
-/// use someip_runtime::prelude::*;
-/// use someip_runtime::handle::{ProxyHandle, Unavailable};
-///
-/// struct MyService;
-/// impl Service for MyService {
-///     const SERVICE_ID: u16 = 0x1234;
-///     const MAJOR_VERSION: u8 = 1;
-///     const MINOR_VERSION: u32 = 0;
-/// }
-///
-/// async fn discover(proxy: ProxyHandle<MyService, Unavailable>) -> Result<()> {
-///     let proxy = proxy.available().await?;
-///     // Now `proxy` is `ProxyHandle<MyService, Available>`
-///     Ok(())
-/// }
-/// # fn main() {}
-/// ```
-///
 /// # Calling Methods
 ///
-/// Once available, call methods with `.call()`:
+/// Call methods with `.call()`:
 ///
 /// ```no_run
 /// use someip_runtime::prelude::*;
-/// use someip_runtime::handle::{ProxyHandle, Available};
+/// use someip_runtime::handle::ProxyHandle;
 ///
 /// struct MyService;
 /// impl Service for MyService {
@@ -266,7 +220,7 @@ pub struct Available {
 ///     const MINOR_VERSION: u32 = 0;
 /// }
 ///
-/// async fn call_method(proxy: &ProxyHandle<MyService, Available>) -> Result<()> {
+/// async fn call_method(proxy: &ProxyHandle<MyService>) -> Result<()> {
 ///     let method_id = MethodId::new(0x0001).unwrap();
 ///     let response = proxy.call(method_id, b"request payload").await?;
 ///     if response.return_code == ReturnCode::Ok {
@@ -283,7 +237,7 @@ pub struct Available {
 ///
 /// ```no_run
 /// use someip_runtime::prelude::*;
-/// use someip_runtime::handle::{ProxyHandle, Available};
+/// use someip_runtime::handle::ProxyHandle;
 ///
 /// struct MyService;
 /// impl Service for MyService {
@@ -292,7 +246,7 @@ pub struct Available {
 ///     const MINOR_VERSION: u32 = 0;
 /// }
 ///
-/// async fn subscribe_events(proxy: &ProxyHandle<MyService, Available>) -> Result<()> {
+/// async fn subscribe_events(proxy: &ProxyHandle<MyService>) -> Result<()> {
 ///     let eventgroup = EventgroupId::new(0x0001).unwrap();
 ///     let mut sub = proxy.subscribe(eventgroup).await?;
 ///     while let Some(event) = sub.next().await {
@@ -309,7 +263,7 @@ pub struct Available {
 ///
 /// ```no_run
 /// use someip_runtime::prelude::*;
-/// use someip_runtime::handle::{ProxyHandle, Available};
+/// use someip_runtime::handle::ProxyHandle;
 ///
 /// struct MyService;
 /// impl Service for MyService {
@@ -318,7 +272,7 @@ pub struct Available {
 ///     const MINOR_VERSION: u32 = 0;
 /// }
 ///
-/// async fn clone_example(proxy: ProxyHandle<MyService, Available>) {
+/// async fn clone_example(proxy: ProxyHandle<MyService>) {
 ///     let method = MethodId::new(0x0001).unwrap();
 ///     let proxy2 = proxy.clone();
 ///     tokio::spawn(async move {
@@ -327,45 +281,31 @@ pub struct Available {
 /// }
 /// # fn main() {}
 /// ```
-pub struct ProxyHandle<S: Service, State> {
+pub struct ProxyHandle<S: Service> {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
     instance_id: InstanceId,
-    state: State,
+    endpoint: SocketAddr,
+    transport: crate::config::Transport,
     _phantom: PhantomData<S>,
 }
 
-impl<S: Service, State: Clone> Clone for ProxyHandle<S, State> {
+impl<S: Service> Clone for ProxyHandle<S> {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
             service_id: self.service_id,
             instance_id: self.instance_id,
-            state: self.state.clone(),
+            endpoint: self.endpoint,
+            transport: self.transport,
             _phantom: PhantomData,
         }
     }
 }
 
-impl<S: Service> ProxyHandle<S, Unavailable> {
+impl<S: Service> ProxyHandle<S> {
+    /// Create a new `ProxyHandle` (for static deployments or after discovery).
     pub(crate) fn new(
-        inner: Arc<RuntimeInner>,
-        service_id: ServiceId,
-        instance_id: InstanceId,
-    ) -> Self {
-        Self {
-            inner,
-            service_id,
-            instance_id,
-            state: Unavailable,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<S: Service> ProxyHandle<S, Available> {
-    /// Create a new `ProxyHandle` that is immediately available (for static deployments).
-    pub(crate) fn new_available(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,
@@ -376,77 +316,12 @@ impl<S: Service> ProxyHandle<S, Available> {
             inner,
             service_id,
             instance_id,
-            state: Available {
-                endpoint,
-                transport,
-            },
+            endpoint,
+            transport,
             _phantom: PhantomData,
         }
     }
-}
 
-impl<S: Service> ProxyHandle<S, Unavailable> {
-    /// Wait until the service becomes available.
-    ///
-    /// This registers a find request with the runtime and waits for
-    /// Service Discovery to locate the service.
-    ///
-    /// Returns an error if the runtime shuts down before the service is found.
-    pub async fn available(self) -> Result<ProxyHandle<S, Available>> {
-        let (notify_tx, mut notify_rx) = mpsc::channel(1);
-
-        // Register find request
-        self.inner
-            .cmd_tx
-            .send(Command::Find {
-                service_id: self.service_id,
-                instance_id: self.instance_id,
-                notify: notify_tx,
-            })
-            .await
-            .map_err(|_| Error::RuntimeShutdown)?;
-
-        // Wait for availability notification
-        let (endpoint, transport, discovered_instance_id) = loop {
-            match notify_rx.recv().await {
-                Some(ServiceAvailability::Available {
-                    endpoint,
-                    transport,
-                    instance_id,
-                }) => break (endpoint, transport, instance_id),
-                Some(ServiceAvailability::Unavailable) => continue,
-                None => {
-                    // Channel closed - either runtime shut down or find request expired
-                    // (all repetitions exhausted without finding the service)
-                    return Err(Error::NotAvailable);
-                }
-            }
-        };
-
-        Ok(ProxyHandle {
-            inner: Arc::clone(&self.inner),
-            service_id: self.service_id,
-            instance_id: InstanceId::Id(discovered_instance_id),
-            state: Available {
-                endpoint,
-                transport,
-            },
-            _phantom: PhantomData,
-        })
-    }
-
-    /// Get the service ID
-    pub fn service_id(&self) -> ServiceId {
-        self.service_id
-    }
-
-    /// Get the instance ID
-    pub fn instance_id(&self) -> InstanceId {
-        self.instance_id
-    }
-}
-
-impl<S: Service> ProxyHandle<S, Available> {
     /// Get the transport being used for this proxy.
     ///
     /// Returns the transport (TCP or UDP) that was selected during service discovery.
@@ -459,7 +334,7 @@ impl<S: Service> ProxyHandle<S, Available> {
     /// It may be removed or changed in future versions without notice.
     #[doc(hidden)]
     pub fn transport(&self) -> crate::config::Transport {
-        self.state.transport
+        self.transport
     }
 
     /// Call a method and wait for the response.
@@ -476,7 +351,7 @@ impl<S: Service> ProxyHandle<S, Available> {
     /// For concurrent requests, clone the proxy handle:
     /// ```no_run
     /// use someip_runtime::prelude::*;
-    /// use someip_runtime::handle::{ProxyHandle, Available};
+    /// use someip_runtime::handle::ProxyHandle;
     ///
     /// struct MyService;
     /// impl Service for MyService {
@@ -485,7 +360,7 @@ impl<S: Service> ProxyHandle<S, Available> {
     ///     const MINOR_VERSION: u32 = 0;
     /// }
     ///
-    /// async fn concurrent_calls(proxy: ProxyHandle<MyService, Available>) {
+    /// async fn concurrent_calls(proxy: ProxyHandle<MyService>) {
     ///     let method = MethodId::new(0x0001).unwrap();
     ///     let proxy2 = proxy.clone();
     ///     tokio::spawn(async move {
@@ -505,8 +380,8 @@ impl<S: Service> ProxyHandle<S, Available> {
                 method_id: method.value(),
                 payload: payload_bytes,
                 response: response_tx,
-                target_endpoint: self.state.endpoint,
-                target_transport: self.state.transport,
+                target_endpoint: self.endpoint,
+                target_transport: self.transport,
             })
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
@@ -524,8 +399,8 @@ impl<S: Service> ProxyHandle<S, Available> {
                 service_id: self.service_id,
                 method_id: method.value(),
                 payload: payload_bytes,
-                target_endpoint: self.state.endpoint,
-                target_transport: self.state.transport,
+                target_endpoint: self.endpoint,
+                target_transport: self.transport,
             })
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
@@ -577,11 +452,11 @@ impl<S: Service> ProxyHandle<S, Available> {
 
     /// Get the endpoint address
     pub fn endpoint(&self) -> std::net::SocketAddr {
-        self.state.endpoint
+        self.endpoint
     }
 }
 
-impl<S: Service, State> Drop for ProxyHandle<S, State> {
+impl<S: Service> Drop for ProxyHandle<S> {
     fn drop(&mut self) {
         // Notify runtime to stop finding (best effort)
         let _ = self.inner.cmd_tx.try_send(Command::StopFind {
