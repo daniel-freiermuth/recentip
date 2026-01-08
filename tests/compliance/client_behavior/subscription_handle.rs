@@ -3,7 +3,10 @@ use std::{
     time::Duration,
 };
 
-use someip_runtime::{Available, EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder, Service};
+use someip_runtime::{
+    Available, EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder,
+    Service,
+};
 use tracing::Instrument;
 
 type TurmoilRuntime =
@@ -113,7 +116,6 @@ fn test_subscribe_drop_unsubscribes_in_time() {
 }
 
 #[test_log::test]
-#[ignore]
 fn test_two_subscribers_one_drops() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -191,10 +193,14 @@ fn test_two_subscribers_one_drops() {
             let now = tokio::time::Instant::now();
             while now.elapsed() < Duration::from_secs(15) {
                 let _event = subscription.next().await.unwrap();
-                tracing::info!("Received event in flow 1");
+                tracing::info!("Received event in flow 2");
                 event_count += 1;
             }
-            assert!(event_count > 14, "Did not receive enough events: {}", event_count);
+            assert!(
+                event_count > 14,
+                "Did not receive enough events: {}",
+                event_count
+            );
         };
 
         let _t = tokio::join!(flow1, flow2);
@@ -389,7 +395,11 @@ fn test_two_subscribers_get_events() {
                 tracing::info!("Received event in flow");
                 event_count += 1;
             }
-            assert!(event_count > 12, "Did not receive enough events: {}", event_count);
+            assert!(
+                event_count > 12,
+                "Did not receive enough events: {}",
+                event_count
+            );
         }
 
         let runtime_config = RuntimeConfigBuilder::default()

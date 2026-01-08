@@ -1401,8 +1401,16 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             service_id,
             instance_id,
             eventgroup_id,
+            subscription_id,
         } => {
-            client::handle_unsubscribe(service_id, instance_id, eventgroup_id, state, &mut actions);
+            client::handle_unsubscribe(
+                service_id,
+                instance_id,
+                eventgroup_id,
+                subscription_id,
+                state,
+                &mut actions,
+            );
         }
 
         Command::Notify {

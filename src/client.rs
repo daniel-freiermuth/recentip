@@ -233,96 +233,98 @@ pub fn handle_subscribe(
     instance_id: crate::InstanceId,
     eventgroup_id: u16,
     events: tokio::sync::mpsc::Sender<Event>,
-    response: tokio::sync::oneshot::Sender<crate::error::Result<()>>,
+    response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
     let key = ServiceKey::new(service_id, instance_id);
 
-    if let Some(discovered) = state.discovered.get(&key) {
-        state
-            .subscriptions
-            .entry(key)
-            .or_default()
-            .push(ClientSubscription {
-                eventgroup_id,
-                events_tx: events,
-            });
+    // Generate a unique subscription ID for this subscription handle
+    let subscription_id = state.next_subscription_id();
 
-        // Store pending subscription - will be resolved when ACK/NACK is received
-        // Check if this is the first waiter for this eventgroup - if so, we need to send
-        // the SD Subscribe message. Otherwise, just add to the pending list.
-        let pending_key = PendingSubscriptionKey {
-            service_id: service_id.value(),
-            instance_id: instance_id.value(),
-            eventgroup_id,
-        };
-        let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
-        let is_first_waiter = pending_list.is_empty();
-        pending_list.push(PendingSubscription { response });
-
-        // Only send SD Subscribe message if this is the first waiter
-        if is_first_waiter {
-            let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
-            let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
-                // Server offers no valid transport - fail all pending waiters
-                if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
-                    for pending in pending_list {
-                        let _ = pending.response.send(Err(crate::error::Error::Config(
-                            crate::error::ConfigError::new("Server offers no transport endpoints"),
-                        )));
-                    }
-                }
-                tracing::error!(
-                    "Trying to subscribe to eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no transport endpoints",
-                    eventgroup_id,
-                    service_id.value(),
-                    instance_id.value()
-                );
-                return;
-            };
-
-            // Determine the actual local IP address to put in the endpoint option
-            // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
-            let Some(endpoint_ip) = get_endpoint_ip(state) else {
-                // Fail all pending waiters
-                if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
-                    for pending in pending_list {
-                        let _ = pending.response.send(Err(crate::error::Error::Config(
-                            crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
-                        )));
-                    }
-                }
-                tracing::error!(
-                    "Cannot subscribe to {:04x}:{:04x} eventgroup {:04x}: \
-                     no valid IP address configured. Set RuntimeConfig::advertised_ip",
-                    service_id.value(),
-                    instance_id.value(),
-                    eventgroup_id
-                );
-                return;
-            };
-
-            let endpoint_for_subscribe = SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
-
-            let msg = build_subscribe_message(
-                service_id.value(),
-                instance_id.value(),
-                eventgroup_id,
-                endpoint_for_subscribe,
-                state.client_rpc_endpoint.port(),
-                state.sd_flags(true),
-                state.config.subscribe_ttl,
-                transport,
-            );
-
-            actions.push(Action::SendSd {
-                message: msg,
-                target: discovered.sd_endpoint, // Send to SD socket, not RPC socket
-            });
-        }
-    } else {
+    let Some(discovered) = state.discovered.get(&key) else {
+        tracing::debug!(
+            "Cannot subscribe to {:04x}:{:04x} eventgroup {:04x}: service not discovered",
+            service_id.value(),
+            instance_id.value(),
+            eventgroup_id
+        );
         let _ = response.send(Err(crate::error::Error::ServiceUnavailable));
+        return;
+    };
+    let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
+    let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
+        tracing::debug!(
+            "Trying to subscribe to eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no compatible transport endpoints",
+            eventgroup_id,
+            service_id.value(),
+            instance_id.value()
+        );
+        let _ = response.send(Err(crate::error::Error::Config(
+            crate::error::ConfigError::new("Server offers no compatible transport endpoints"),
+        )));
+        return;
+    };
+    // Determine the actual local IP address to put in the endpoint option
+    // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
+    let Some(endpoint_ip) = get_endpoint_ip(state) else {
+        tracing::error!(
+            "Cannot subscribe to {:04x}:{:04x} eventgroup {:04x}: \
+                no valid IP address configured. Set RuntimeConfig::advertised_ip",
+            service_id.value(),
+            instance_id.value(),
+            eventgroup_id
+        );
+        let _ = response.send(Err(crate::error::Error::Config(
+            crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
+        )));
+        return;
+    };
+
+    state
+        .subscriptions
+        .entry(key)
+        .or_default()
+        .push(ClientSubscription {
+            subscription_id,
+            eventgroup_id,
+            events_tx: events,
+        });
+
+    // Store pending subscription - will be resolved when ACK/NACK is received
+    // Check if this is the first waiter for this eventgroup - if so, we need to send
+    // the SD Subscribe message. Otherwise, just add to the pending list.
+    let pending_key = PendingSubscriptionKey {
+        service_id: service_id.value(),
+        instance_id: instance_id.value(),
+        eventgroup_id,
+    };
+    let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
+    let is_first_waiter = pending_list.is_empty();
+    pending_list.push(PendingSubscription {
+        subscription_id,
+        response,
+    });
+
+    // Only send SD Subscribe message if this is the first waiter
+    if is_first_waiter {
+        let endpoint_for_subscribe = SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
+
+        let msg = build_subscribe_message(
+            service_id.value(),
+            instance_id.value(),
+            eventgroup_id,
+            endpoint_for_subscribe,
+            state.client_rpc_endpoint.port(),
+            state.sd_flags(true),
+            state.config.subscribe_ttl,
+            transport,
+        );
+
+        actions.push(Action::SendSd {
+            message: msg,
+            target: discovered.sd_endpoint, // Send to SD socket, not RPC socket
+        });
     }
 }
 
@@ -331,13 +333,34 @@ pub fn handle_unsubscribe(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     eventgroup_id: u16,
+    subscription_id: u64,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
     let key = ServiceKey::new(service_id, instance_id);
 
+    // Remove only the specific subscription by ID
+    let mut remaining_for_eventgroup = 0;
     if let Some(subs) = state.subscriptions.get_mut(&key) {
-        subs.retain(|s| s.eventgroup_id != eventgroup_id);
+        subs.retain(|s| s.subscription_id != subscription_id);
+        // Count remaining subscriptions for this eventgroup
+        remaining_for_eventgroup = subs
+            .iter()
+            .filter(|s| s.eventgroup_id == eventgroup_id)
+            .count();
+    }
+
+    // Only send SD StopSubscribe if this was the last subscription for this eventgroup
+    if remaining_for_eventgroup > 0 {
+        tracing::debug!(
+            "Subscription {} dropped for {:04x}:{:04x} eventgroup {:04x}, but {} other(s) remain",
+            subscription_id,
+            service_id.value(),
+            instance_id.value(),
+            eventgroup_id,
+            remaining_for_eventgroup
+        );
+        return;
     }
 
     if let Some(discovered) = state.discovered.get(&key) {
@@ -448,10 +471,7 @@ pub fn handle_incoming_notification(
         None => return, // Invalid event ID
     };
 
-    let event = Event {
-        event_id,
-        payload,
-    };
+    let event = Event { event_id, payload };
 
     // Determine which instance this event is from by looking up the 'from' address
     // in discovered services

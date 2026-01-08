@@ -552,13 +552,14 @@ impl<S: Service> ProxyHandle<S, Available> {
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
 
-        response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
+        let subscription_id = response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
 
         Ok(Subscription {
             inner: Arc::clone(&self.inner),
             service_id: self.service_id,
             instance_id: self.instance_id,
             eventgroup,
+            subscription_id,
             events: events_rx,
             _phantom: PhantomData,
         })
@@ -603,6 +604,7 @@ pub struct Subscription<S: Service> {
     service_id: ServiceId,
     instance_id: InstanceId,
     eventgroup: EventgroupId,
+    subscription_id: u64,
     events: mpsc::Receiver<Event>,
     _phantom: PhantomData<S>,
 }
@@ -627,6 +629,7 @@ impl<S: Service> Drop for Subscription<S> {
             service_id: self.service_id,
             instance_id: self.instance_id,
             eventgroup_id: self.eventgroup.value(),
+            subscription_id: self.subscription_id,
         });
     }
 }

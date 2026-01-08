@@ -235,6 +235,7 @@ pub struct FindRequest {
 
 /// Active subscription (client-side)
 pub struct ClientSubscription {
+    pub(crate) subscription_id: u64,
     pub(crate) eventgroup_id: u16,
     pub(crate) events_tx: mpsc::Sender<crate::Event>,
 }
@@ -254,7 +255,8 @@ pub struct PendingSubscriptionKey {
 
 /// Pending subscription waiting for ACK/NACK from server
 pub struct PendingSubscription {
-    pub(crate) response: oneshot::Sender<crate::error::Result<()>>,
+    pub(crate) subscription_id: u64,
+    pub(crate) response: oneshot::Sender<crate::error::Result<u64>>,
 }
 
 // ============================================================================
@@ -323,6 +325,8 @@ pub struct RuntimeState {
     pub(crate) peer_reboot_flags: HashMap<std::net::IpAddr, bool>,
     /// SD event monitors - channels to send all SD events to
     pub(crate) sd_monitors: Vec<mpsc::Sender<crate::SdEvent>>,
+    /// Next subscription ID for client-side subscriptions (unique per handle)
+    next_subscription_id: u64,
 }
 
 impl RuntimeState {
@@ -353,7 +357,16 @@ impl RuntimeState {
             config,
             peer_reboot_flags: HashMap::new(),
             sd_monitors: Vec::new(),
+            next_subscription_id: 1,
         }
+    }
+
+    /// Allocate a unique subscription ID for client-side subscriptions
+    pub(crate) fn next_subscription_id(&mut self) -> u64 {
+        let id = self.next_subscription_id;
+        // The wrapping is a problem in it's own
+        self.next_subscription_id = self.next_subscription_id.wrapping_add(1);
+        id
     }
 
     pub(crate) fn next_session_id(&mut self) -> u16 {

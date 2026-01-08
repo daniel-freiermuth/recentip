@@ -121,13 +121,15 @@ pub enum Command {
         instance_id: InstanceId,
         eventgroup_id: u16,
         events: mpsc::Sender<crate::Event>,
-        response: oneshot::Sender<Result<()>>,
+        /// Returns subscription_id on success for tracking unsubscribe
+        response: oneshot::Sender<Result<u64>>,
     },
     /// Unsubscribe from an eventgroup
     Unsubscribe {
         service_id: ServiceId,
         instance_id: InstanceId,
         eventgroup_id: u16,
+        subscription_id: u64,
     },
     /// Send a notification event (server-side)
     Notify {
