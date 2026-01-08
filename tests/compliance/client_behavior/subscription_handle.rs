@@ -111,7 +111,9 @@ fn test_subscribe_drop_unsubscribes_in_time() {
 
     assert!(
         unsub_delay < delay_expectation,
-        "Unsubscribe delay too high: {:?} > {:?}", unsub_delay, delay_expectation
+        "Unsubscribe delay too high: {:?} > {:?}",
+        unsub_delay,
+        delay_expectation
     );
 }
 
@@ -214,7 +216,7 @@ fn test_two_subscribers_one_drops() {
 }
 
 #[test_log::test]
-#[ignore]
+#[ignore = "Shows a port reuse problem right now"]
 fn test_dangling_subscription_cannot_unsubscribe() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -255,7 +257,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
             }
 
             drop(offering);
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(4)).await;
 
             let mut offering2 = runtime
                 .offer::<ServiceA>(InstanceId::Id(0x0001))
@@ -304,7 +306,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
             .await
             .unwrap();
 
-        while let Some(_) = tokio::time::timeout(Duration::from_secs(2), subscription1.next()).await.expect("This should not timeout. The server sends events") {
+        while let Some(_) = tokio::time::timeout(Duration::from_secs(5), subscription1.next()).await.expect("This should not time out. When the server stops sending events, we should get None as a result of the StopOffer.") {
             tracing::info!("Received event for sub1");
         }
         tracing::info!("Sub1 seems dead");
