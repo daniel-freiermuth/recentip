@@ -23,8 +23,8 @@ At the start of each session, read these files in order:
 1. `TODO.md` - Current focus, implementation status, active tasks. Contains short-term todo-tracking, medium-scale planning, and high-level goals.
 2. `DESIGN.md` - Design decisions and module responsibilities (if diving deep)
 
-Update `TODO.md` at the end of significant work sessions.
+Update `TODO.md` at the end of every work sessions. I.e. update completed tasks, make sure the next tasks are clear.
 
 
 # Knowledge base
-In the folder .notes-to-the-agent, you can keep notes to yourself. It would, e.g. be a good idea to note down the results of expensive researchs or solutions to problems you encountered.
+In the folder .notes-to-the-agent, you can keep notes to yourself. It would, e.g. be a good idea to note down the results of expensive researchs or solutions to problems you encountered. Also you should make yourself familiar with the contents of these files.
