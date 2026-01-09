@@ -22,23 +22,11 @@ macro_rules! covers {
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service definition
-struct TestService;
+const TEST_SERVICE_ID: u16 = 0x1234;
+const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
-
-/// Test service with different version
-struct VersionedService;
-
-impl Service for VersionedService {
-    const SERVICE_ID: u16 = 0x5678;
-    const MAJOR_VERSION: u8 = 2;
-    const MINOR_VERSION: u32 = 3;
-}
+const VERSIONED_SERVICE_ID: u16 = 0x5678;
+const VERSIONED_SERVICE_VERSION: (u8, u32) = (2, 3);
 
 // ============================================================================
 // SD HEADER COMPLIANCE
@@ -78,7 +66,7 @@ fn sd_offer_discovery_works() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -99,7 +87,7 @@ fn sd_offer_discovery_works() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
 
         // Discovery works => SD messages are well-formed
         let result = tokio::time::timeout(Duration::from_secs(5), proxy).await;
@@ -142,7 +130,7 @@ fn sd_offer_with_specific_instance() {
 
             // Offer with specific instance ID
             let _offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0042))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0042)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -163,7 +151,9 @@ fn sd_offer_with_specific_instance() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find specific instance
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0042));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0042));
 
         let available = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -207,7 +197,7 @@ fn sd_offer_with_version_info() {
 
             // Offer versioned service
             let _offering = runtime
-                .offer::<VersionedService>(InstanceId::Id(0x0001))
+                .offer(VERSIONED_SERVICE_ID, InstanceId::Id(0x0001)).version(VERSIONED_SERVICE_VERSION.0, VERSIONED_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -227,7 +217,7 @@ fn sd_offer_with_version_info() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<VersionedService>(InstanceId::Any);
+        let proxy = runtime.find(VERSIONED_SERVICE_ID);
 
         let available = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -235,7 +225,7 @@ fn sd_offer_with_version_info() {
             .expect("Service available");
 
         // Service with correct version discovered
-        assert_eq!(available.service_id(), ServiceId::new(0x5678).unwrap());
+        assert_eq!(available.service_id(), ServiceId::new(VERSIONED_SERVICE_ID).unwrap());
         Ok(())
     });
 
@@ -278,7 +268,7 @@ fn sd_stop_offer_on_drop() {
             // Offer then drop
             {
                 let _offering = runtime
-                    .offer::<TestService>(InstanceId::Id(0x0001))
+                    .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                     .udp()
                     .start()
                     .await
@@ -302,7 +292,7 @@ fn sd_stop_offer_on_drop() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
 
         // First, service should be available
         let _available = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -349,13 +339,13 @@ fn sd_multiple_service_offers() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering1 = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
                 .unwrap();
             let _offering2 = runtime
-                .offer::<VersionedService>(InstanceId::Id(0x0002))
+                .offer(VERSIONED_SERVICE_ID, InstanceId::Id(0x0002)).version(VERSIONED_SERVICE_VERSION.0, VERSIONED_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -375,8 +365,8 @@ fn sd_multiple_service_offers() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy1 = runtime.find::<TestService>(InstanceId::Any);
-        let proxy2 = runtime.find::<VersionedService>(InstanceId::Any);
+        let proxy1 = runtime.find(TEST_SERVICE_ID);
+        let proxy2 = runtime.find(VERSIONED_SERVICE_ID);
 
         let result1 = tokio::time::timeout(Duration::from_secs(5), proxy1).await;
         let result2 = tokio::time::timeout(Duration::from_secs(5), proxy2).await;
@@ -421,14 +411,14 @@ fn sd_multiple_instances_same_service() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering1 = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
                 .unwrap();
 
             let _offering2 = runtime
-                .offer::<TestService>(InstanceId::Id(0x0002))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -451,7 +441,7 @@ fn sd_multiple_instances_same_service() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find ANY instance
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
 
         let available = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -484,7 +474,7 @@ fn sd_multiple_instances_same_service() {
 
 /// feat_req_recentipsd_207: FindService entry for client-initiated discovery
 ///
-/// Client sends FindService, server responds with OfferService.
+/// Client sends Findserver responds with OfferService.
 #[test_log::test]
 fn sd_find_service_discovery() {
     covers!(feat_req_recentipsd_207);
@@ -504,7 +494,7 @@ fn sd_find_service_discovery() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Request service that doesn't exist yet
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
 
         // Wait with long timeout - service will appear later
         let available = tokio::time::timeout(Duration::from_secs(10), proxy)
@@ -528,7 +518,7 @@ fn sd_find_service_discovery() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -578,7 +568,7 @@ fn sd_session_id_increments() {
 
             // Multiple offers to trigger multiple SD messages
             let _offering1 = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -587,7 +577,7 @@ fn sd_session_id_increments() {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
             let _offering2 = runtime
-                .offer::<VersionedService>(InstanceId::Id(0x0002))
+                .offer(VERSIONED_SERVICE_ID, InstanceId::Id(0x0002)).version(VERSIONED_SERVICE_VERSION.0, VERSIONED_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -607,8 +597,8 @@ fn sd_session_id_increments() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy1 = runtime.find::<TestService>(InstanceId::Any);
-        let proxy2 = runtime.find::<VersionedService>(InstanceId::Any);
+        let proxy1 = runtime.find(TEST_SERVICE_ID);
+        let proxy2 = runtime.find(VERSIONED_SERVICE_ID);
 
         let _ = tokio::time::timeout(Duration::from_secs(5), proxy1).await;
         let _ = tokio::time::timeout(Duration::from_secs(5), proxy2).await;
@@ -654,7 +644,7 @@ fn sd_unicast_flag_handling() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -674,7 +664,7 @@ fn sd_unicast_flag_handling() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let _ = tokio::time::timeout(Duration::from_secs(5), proxy).await;
 
         Ok(())
@@ -718,7 +708,7 @@ fn sd_discovery_then_rpc() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -752,7 +742,7 @@ fn sd_discovery_then_rpc() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Discover via SD
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery should succeed")

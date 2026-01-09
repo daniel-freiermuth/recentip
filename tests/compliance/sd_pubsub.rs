@@ -31,14 +31,8 @@ macro_rules! covers {
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service for pub/sub
-struct PubSubService;
-
-impl Service for PubSubService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const PUB_SUB_SERVICE_ID: u16 = 0x1234;
+const PUB_SUB_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // 1. BASIC SUBSCRIPTION FLOW
@@ -65,7 +59,7 @@ fn client_registers_for_events_via_sd() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -81,7 +75,7 @@ fn client_registers_for_events_via_sd() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -125,7 +119,7 @@ fn server_offers_on_startup_to_discover_clients() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
 
         // Wait for service to become available (meaning OfferService was received)
         let result = tokio::time::timeout(Duration::from_secs(10), proxy).await;
@@ -143,7 +137,7 @@ fn server_offers_on_startup_to_discover_clients() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -182,7 +176,7 @@ fn client_responds_to_offer_with_subscribe() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
             let mut offering = runtime
-                .offer::<PubSubService>(InstanceId::Id(0x0001))
+                .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -213,7 +207,7 @@ fn client_responds_to_offer_with_subscribe() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -252,7 +246,7 @@ fn subscribe_resolves_on_ack() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -268,7 +262,7 @@ fn subscribe_resolves_on_ack() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -319,7 +313,7 @@ fn server_tracks_subscription_state() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -349,7 +343,7 @@ fn server_tracks_subscription_state() {
             .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -377,7 +371,7 @@ fn server_tracks_subscription_state() {
             .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -443,7 +437,7 @@ fn client_deregisters_with_stop_subscribe() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
             let mut offering = runtime
-                .offer::<PubSubService>(InstanceId::Id(0x0001))
+                .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -473,7 +467,7 @@ fn client_deregisters_with_stop_subscribe() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -527,7 +521,7 @@ fn server_sends_initial_events_after_ack() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -553,7 +547,7 @@ fn server_sends_initial_events_after_ack() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -597,7 +591,7 @@ fn initial_events_only_on_first_subscribe() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -625,7 +619,7 @@ fn initial_events_only_on_first_subscribe() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -680,7 +674,7 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -705,7 +699,7 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -759,7 +753,7 @@ fn initial_events_for_multiple_eventgroups() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -784,7 +778,7 @@ fn initial_events_for_multiple_eventgroups() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -834,7 +828,7 @@ fn server_deletes_subscription_on_error() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -852,7 +846,7 @@ fn server_deletes_subscription_on_error() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -891,7 +885,7 @@ fn server_handles_link_loss() {
             .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
 
         // Wait for offer
         let result = tokio::time::timeout(Duration::from_secs(10), proxy).await;
@@ -910,7 +904,7 @@ fn server_handles_link_loss() {
 
         // Offer service - this sends OfferService
         let _offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -942,7 +936,7 @@ fn client_resubscribes_on_timeout() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -958,7 +952,7 @@ fn client_resubscribes_on_timeout() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -997,7 +991,7 @@ fn client_subscribes_after_link_up() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -1015,7 +1009,7 @@ fn client_subscribes_after_link_up() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -1059,7 +1053,7 @@ fn client_udp_port_ready_before_subscribe() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -1083,7 +1077,7 @@ fn client_udp_port_ready_before_subscribe() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -1128,7 +1122,7 @@ fn client_tcp_ready_before_subscribe_reliable() {
 
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -1144,7 +1138,7 @@ fn client_tcp_ready_before_subscribe_reliable() {
         config.transport = someip_runtime::Transport::Tcp;
 
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -1189,7 +1183,7 @@ fn subscribe_timer_reset_on_offer() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -1216,7 +1210,7 @@ fn subscribe_timer_reset_on_offer() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -1267,7 +1261,7 @@ fn no_cyclic_subscribe_if_not_configured() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -1290,7 +1284,7 @@ fn no_cyclic_subscribe_if_not_configured() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -1335,7 +1329,7 @@ fn implicit_registration_supported() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -1351,7 +1345,7 @@ fn implicit_registration_supported() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -1402,7 +1396,7 @@ fn pubsub_state_machine_flow() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -1431,7 +1425,7 @@ fn pubsub_state_machine_flow() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // State: Not Subscribed -> Find service
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")

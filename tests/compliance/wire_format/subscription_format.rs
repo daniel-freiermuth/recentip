@@ -96,7 +96,9 @@ fn subscribe_eventgroup_entry_type() {
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should discover service via SD")
@@ -140,7 +142,8 @@ fn subscribe_ack_entry_type() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -284,7 +287,7 @@ fn subscription_max_ttl_doesnt_expire() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -436,7 +439,8 @@ fn subscription_ttl_expiration_stops_events() {
                 .unwrap();
 
         let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -644,7 +648,9 @@ fn stop_subscribe_has_ttl_zero() {
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should discover service via SD")

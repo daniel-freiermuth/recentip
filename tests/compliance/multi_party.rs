@@ -25,29 +25,14 @@ macro_rules! covers {
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service definition
-struct TestService;
-
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const TEST_SERVICE_ID: u16 = 0x1234;
+const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 /// Another service for multi-service tests
-struct ServiceA;
-impl Service for ServiceA {
-    const SERVICE_ID: u16 = 0x1001;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
-
-struct ServiceB;
-impl Service for ServiceB {
-    const SERVICE_ID: u16 = 0x1002;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const SERVICE_A_ID: u16 = 0x1001;
+const SERVICE_A_VERSION: (u8, u32) = (1, 0);
+const SERVICE_B_ID: u16 = 0x1002;
+const SERVICE_B_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // MULTIPLE CLIENTS TO ONE SERVER
@@ -76,7 +61,7 @@ fn multiple_clients_call_same_server() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let mut offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -117,7 +102,7 @@ fn multiple_clients_call_same_server() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -144,7 +129,7 @@ fn multiple_clients_call_same_server() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -171,7 +156,7 @@ fn multiple_clients_call_same_server() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -225,7 +210,7 @@ fn multiple_clients_subscribe_to_events() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -257,7 +242,7 @@ fn multiple_clients_subscribe_to_events() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -289,7 +274,7 @@ fn multiple_clients_subscribe_to_events() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -320,7 +305,7 @@ fn multiple_clients_subscribe_to_events() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -378,7 +363,7 @@ fn sd_reaches_all_participants() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let _offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -398,7 +383,7 @@ fn sd_reaches_all_participants() {
             .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should not time out")
@@ -412,7 +397,7 @@ fn sd_reaches_all_participants() {
             .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should not time out")
@@ -426,7 +411,7 @@ fn sd_reaches_all_participants() {
             .advertised_ip(turmoil::lookup("client3").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should not time out")
@@ -440,7 +425,7 @@ fn sd_reaches_all_participants() {
             .advertised_ip(turmoil::lookup("client4").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should not time out")
@@ -454,7 +439,7 @@ fn sd_reaches_all_participants() {
             .advertised_ip(turmoil::lookup("client5").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should not time out")
@@ -500,14 +485,14 @@ fn nodes_with_mixed_client_server_roles() {
 
             // Offer ServiceA
             let mut offering = runtime
-                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
                 .unwrap();
 
             // Also require ServiceB
-            let proxy_b = runtime.find::<ServiceB>(InstanceId::Any);
+            let proxy_b = runtime.find(SERVICE_B_ID);
             let proxy_b = tokio::time::timeout(Duration::from_secs(5), proxy_b)
                 .await
                 .expect("Should discover ServiceB")
@@ -550,7 +535,7 @@ fn nodes_with_mixed_client_server_roles() {
 
         // Offer ServiceB
         let mut offering = runtime
-            .offer::<ServiceB>(InstanceId::Id(0x0001))
+            .offer(SERVICE_B_ID, InstanceId::Id(0x0001)).version(SERVICE_B_VERSION.0, SERVICE_B_VERSION.1)
             .udp()
             .start()
             .await
@@ -568,7 +553,7 @@ fn nodes_with_mixed_client_server_roles() {
         }
 
         // Then require ServiceA
-        let proxy_a = runtime.find::<ServiceA>(InstanceId::Any);
+        let proxy_a = runtime.find(SERVICE_A_ID);
         let proxy_a = tokio::time::timeout(Duration::from_secs(5), proxy_a)
             .await
             .expect("Should discover ServiceA")
@@ -624,7 +609,7 @@ fn multiple_servers_different_instances() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let mut offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -655,7 +640,7 @@ fn multiple_servers_different_instances() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0002))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -686,7 +671,9 @@ fn multiple_servers_different_instances() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find instance 1
-        let proxy1 = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy1 = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1)
             .await
             .expect("Should discover instance 1")
@@ -703,7 +690,9 @@ fn multiple_servers_different_instances() {
         assert_eq!(response1.payload.as_ref(), b"from_instance_1");
 
         // Find instance 2
-        let proxy2 = runtime.find::<TestService>(InstanceId::Id(0x0002));
+        let proxy2 = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0002));
         let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2)
             .await
             .expect("Should discover instance 2")

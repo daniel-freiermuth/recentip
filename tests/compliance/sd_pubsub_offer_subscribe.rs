@@ -44,14 +44,8 @@ macro_rules! covers {
     };
 }
 
-/// Test service definition for subscription tests
-struct SubscribeTestService;
-
-impl Service for SubscribeTestService {
-    const SERVICE_ID: u16 = 0x2000;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const SUBSCRIBE_TEST_SERVICE_ID: u16 = 0x2000;
+const SUBSCRIBE_TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // HELPER FUNCTIONS: Build raw SD messages
@@ -253,10 +247,10 @@ fn offer_triggers_subscribe_renewal() {
         // Phase 1: Send initial offer and wait for first subscribe
         eprintln!("[raw_server] Sending initial OfferService");
         let offer = build_sd_offer(
-            SubscribeTestService::SERVICE_ID,
+            SUBSCRIBE_TEST_SERVICE_ID,
             0x0001,
-            SubscribeTestService::MAJOR_VERSION,
-            SubscribeTestService::MINOR_VERSION,
+            SUBSCRIBE_TEST_SERVICE_VERSION.0,
+            SUBSCRIBE_TEST_SERVICE_VERSION.1,
             my_ip,
             30509,
             3600,
@@ -352,7 +346,9 @@ fn offer_triggers_subscribe_renewal() {
             Runtime::with_socket_type(config).await.unwrap();
 
         // Find and wait for service
-        let proxy = runtime.find::<SubscribeTestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(SUBSCRIBE_TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should discover service")
@@ -425,10 +421,10 @@ fn no_cyclic_subscribes_strict_631_compliance() {
         let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
         let offer = build_sd_offer(
-            SubscribeTestService::SERVICE_ID,
+            SUBSCRIBE_TEST_SERVICE_ID,
             0x0001,
-            SubscribeTestService::MAJOR_VERSION,
-            SubscribeTestService::MINOR_VERSION,
+            SUBSCRIBE_TEST_SERVICE_VERSION.0,
+            SUBSCRIBE_TEST_SERVICE_VERSION.1,
             my_ip,
             30509,
             5000,
@@ -543,7 +539,9 @@ fn no_cyclic_subscribes_strict_631_compliance() {
 
         eprintln!("[client] Runtime initialized, looking for service...");
 
-        let proxy = runtime.find::<SubscribeTestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(SUBSCRIBE_TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(10), proxy)
             .await
             .expect("Should discover service")
@@ -665,10 +663,10 @@ fn no_subscribe_without_offer() {
         // Phase 2: Send offer and expect subscribe
         eprintln!("[raw_server] Phase 2: Sending OfferService...");
         let offer = build_sd_offer(
-            SubscribeTestService::SERVICE_ID,
+            SUBSCRIBE_TEST_SERVICE_ID,
             0x0001,
-            SubscribeTestService::MAJOR_VERSION,
-            SubscribeTestService::MINOR_VERSION,
+            SUBSCRIBE_TEST_SERVICE_VERSION.0,
+            SUBSCRIBE_TEST_SERVICE_VERSION.1,
             my_ip,
             30509,
             3600,
@@ -713,7 +711,9 @@ fn no_subscribe_without_offer() {
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<SubscribeTestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(SUBSCRIBE_TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         // Wait for service to become available (should only happen after offer)
         let proxy = tokio::time::timeout(Duration::from_secs(10), proxy)
@@ -771,7 +771,7 @@ fn available_returns_error_when_service_not_found() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    // Raw server that never sends OfferService, just counts FindService messages
+    // Raw server that never sends Offerjust counts FindService messages
     sim.client("raw_server", async move {
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
         sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
@@ -813,7 +813,9 @@ fn available_returns_error_when_service_not_found() {
 
         eprintln!("[client] Looking for service that doesn't exist...");
 
-        let proxy = runtime.find::<SubscribeTestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(SUBSCRIBE_TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         // available() should return an error when find request expires
         let result = proxy.await;
@@ -884,10 +886,10 @@ fn max_ttl_subscription_no_renewal_needed() {
 
         // Offer with normal TTL (server side TTL doesn't matter for this test)
         let offer = build_sd_offer(
-            SubscribeTestService::SERVICE_ID,
+            SUBSCRIBE_TEST_SERVICE_ID,
             0x0001,
-            SubscribeTestService::MAJOR_VERSION,
-            SubscribeTestService::MINOR_VERSION,
+            SUBSCRIBE_TEST_SERVICE_VERSION.0,
+            SUBSCRIBE_TEST_SERVICE_VERSION.1,
             my_ip,
             30509,
             3, // Short server TTL to send frequent offers
@@ -1001,7 +1003,9 @@ fn max_ttl_subscription_no_renewal_needed() {
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<SubscribeTestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(SUBSCRIBE_TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(10), proxy)
             .await
             .expect("Should discover service")

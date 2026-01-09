@@ -21,14 +21,8 @@ macro_rules! covers {
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service definition
-struct EventService;
-
-impl Service for EventService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const EVENT_SERVICE_ID: u16 = 0x1234;
+const EVENT_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // SUBSCRIPTION FLOW
@@ -58,7 +52,7 @@ fn subscribe_and_receive_events() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let offering = runtime
-                .offer::<EventService>(InstanceId::Id(0x0001))
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -95,7 +89,7 @@ fn subscribe_and_receive_events() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<EventService>(InstanceId::Any);
+        let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -158,7 +152,7 @@ fn subscribe_receives_ack() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
-                .offer::<EventService>(InstanceId::Id(0x0001))
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -178,7 +172,7 @@ fn subscribe_receives_ack() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<EventService>(InstanceId::Any);
+        let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -228,7 +222,7 @@ fn unsubscribe_on_drop() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let offering = runtime
-                .offer::<EventService>(InstanceId::Id(0x0001))
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -267,7 +261,7 @@ fn unsubscribe_on_drop() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<EventService>(InstanceId::Any);
+        let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -332,7 +326,7 @@ fn subscribe_multiple_eventgroups() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let offering = runtime
-                .offer::<EventService>(InstanceId::Id(0x0001))
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -369,7 +363,7 @@ fn subscribe_multiple_eventgroups() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<EventService>(InstanceId::Any);
+        let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -477,7 +471,7 @@ fn event_id_has_high_bit() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let offering = runtime
-                .offer::<EventService>(InstanceId::Id(0x0001))
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -508,7 +502,7 @@ fn event_id_has_high_bit() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<EventService>(InstanceId::Any);
+        let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -568,7 +562,7 @@ fn mixed_rpc_and_events() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer::<EventService>(InstanceId::Id(0x0001))
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -622,7 +616,7 @@ fn mixed_rpc_and_events() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<EventService>(InstanceId::Any);
+        let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")

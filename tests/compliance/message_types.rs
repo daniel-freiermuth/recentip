@@ -36,13 +36,8 @@ macro_rules! covers {
 // Test Service Definition
 // ============================================================================
 
-struct TestService;
-
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const TEST_SERVICE_ID: u16 = 0x1234;
+const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // Integration Tests (turmoil-based)
@@ -65,7 +60,7 @@ fn request_receives_response_type() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -93,7 +88,9 @@ fn request_receives_response_type() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -132,7 +129,7 @@ fn request_can_receive_error_type() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -160,7 +157,9 @@ fn request_can_receive_error_type() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -203,7 +202,7 @@ fn request_no_return_receives_no_response() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -231,7 +230,9 @@ fn request_no_return_receives_no_response() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -270,7 +271,7 @@ fn server_sends_notification_type() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -298,7 +299,9 @@ fn server_sends_notification_type() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")

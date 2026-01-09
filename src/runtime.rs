@@ -86,7 +86,7 @@ use crate::SdEvent;
 
 use crate::client;
 use crate::error::{Error, Result};
-use crate::handle::{OfferingHandle, ProxyHandle};
+use crate::handle::{FindBuilder, OfferingHandle, ProxyHandle};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::sd::{
     build_find_message, build_offer_message, handle_find_request, handle_offer,
@@ -100,7 +100,7 @@ use crate::wire::{
     validate_protocol_version, Header, MessageType, SdEntry, SdEntryType, SdMessage, SD_METHOD_ID,
     SD_SERVICE_ID,
 };
-use crate::{InstanceId, Service, ServiceId};
+use crate::{InstanceId, ServiceId};
 
 // Re-export configuration types for backward compatibility
 pub use crate::config::{
@@ -316,74 +316,46 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         })
     }
 
-    /// Find a service by ID and instance.
+    /// Find a remote SOME/IP service.
     ///
-    /// Waits for Service Discovery to locate the service and returns a proxy
-    /// handle that can be used to call methods and subscribe to events.
+    /// Returns a [`FindBuilder`] to configure the find criteria, then `.await`
+    /// to discover the first matching service.
     ///
-    /// Returns an error if the runtime shuts down before the service is found,
-    /// or if all find repetitions are exhausted without finding the service.
+    /// # Arguments
+    ///
+    /// - `service_id`: The service ID to find (required)
+    ///
+    /// # Find Criteria (via builder)
+    ///
+    /// - **Instance ID**: Default `Any`, configurable via `.instance()`
+    /// - **Major Version**: Default `Any`, configurable via `.major_version()`
     ///
     /// # Example
+    ///
     /// ```no_run
     /// use someip_runtime::prelude::*;
     ///
-    /// struct MyService;
-    /// impl Service for MyService {
-    ///     const SERVICE_ID: u16 = 0x1234;
-    ///     const MAJOR_VERSION: u8 = 1;
-    ///     const MINOR_VERSION: u32 = 0;
-    /// }
+    /// const MY_SERVICE_ID: u16 = 0x1234;
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
     ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
-    ///     let proxy = runtime.find::<MyService>(InstanceId::Any).await?;
-    ///     // Proxy is ready to use
+    ///
+    ///     // Simple: find any instance
+    ///     let proxy = runtime.find(MY_SERVICE_ID).await?;
+    ///
+    ///     // With criteria: specific instance and version
+    ///     let proxy = runtime.find(MY_SERVICE_ID)
+    ///         .instance(1)
+    ///         .major_version(1)
+    ///         .await?;
+    ///
     ///     Ok(())
     /// }
     /// ```
-    pub async fn find<S: Service>(&self, instance: InstanceId) -> Result<ProxyHandle<S>> {
-        let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
-        // TODO: should this channel be oneshot?
-        let (notify_tx, mut notify_rx) = mpsc::channel(1);
-
-        // Register find request
-        self.inner
-            .cmd_tx
-            .send(Command::Find {
-                service_id,
-                instance_id: instance,
-                notify: notify_tx,
-            })
-            .await
-            .map_err(|_| Error::RuntimeShutdown)?;
-
-        // Wait for availability notification
-        let (endpoint, transport, discovered_instance_id) = loop {
-            match notify_rx.recv().await {
-                Some(ServiceAvailability::Available {
-                    endpoint,
-                    transport,
-                    instance_id,
-                }) => break (endpoint, transport, instance_id),
-                // TODO: get rid of Unavailable variant?
-                Some(ServiceAvailability::Unavailable) => continue,
-                None => {
-                    // Channel closed - either runtime shut down or find request expired
-                    // (all repetitions exhausted without finding the service)
-                    return Err(Error::NotAvailable);
-                }
-            }
-        };
-
-        Ok(ProxyHandle::new(
-            Arc::clone(&self.inner),
-            service_id,
-            InstanceId::Id(discovered_instance_id),
-            endpoint,
-            transport,
-        ))
+    pub fn find(&self, service_id: u16) -> FindBuilder<'_, U, T, L> {
+        let service_id = ServiceId::new(service_id).expect("Invalid service ID");
+        FindBuilder::new(self, service_id)
     }
 
     /// Offer a service with configurable transport endpoints.
@@ -391,30 +363,32 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// Returns an `OfferBuilder` that allows configuring which transports (TCP/UDP)
     /// the service should be offered on, and with which ports.
     ///
+    /// # Arguments
+    ///
+    /// - `service_id`: The service ID to offer (required)
+    /// - `instance`: The instance ID (required)
+    ///
     /// # Example
     /// ```no_run
     /// use someip_runtime::prelude::*;
     ///
-    /// struct MyService;
-    /// impl Service for MyService {
-    ///     const SERVICE_ID: u16 = 0x1234;
-    ///     const MAJOR_VERSION: u8 = 1;
-    ///     const MINOR_VERSION: u32 = 0;
-    /// }
+    /// const MY_SERVICE_ID: u16 = 0x1234;
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
     ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
     ///
     ///     // Offer on both TCP and UDP with custom ports
-    ///     let offering = runtime.offer::<MyService>(InstanceId::Id(1))
+    ///     let offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
+    ///         .version(1, 0)  // major, minor
     ///         .tcp_port(30501)
     ///         .udp_port(30502)
     ///         .start()
     ///         .await?;
     ///
     ///     // Or use defaults from runtime config
-    ///     let offering2 = runtime.offer::<MyService>(InstanceId::Id(2))
+    ///     let offering2 = runtime.offer(MY_SERVICE_ID, InstanceId::Id(2))
+    ///         .version(1, 0)
     ///         .udp()  // Use default UDP port
     ///         .start()
     ///         .await?;
@@ -422,8 +396,13 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///     Ok(())
     /// }
     /// ```
-    pub fn offer<S: Service>(&self, instance: InstanceId) -> OfferBuilder<'_, S, U, T, L> {
-        OfferBuilder::new(self, instance)
+    pub fn offer(
+        &self,
+        service_id: u16,
+        instance: InstanceId,
+    ) -> OfferBuilder<'_, U, T, L> {
+        let service_id = ServiceId::new(service_id).expect("Invalid service ID");
+        OfferBuilder::new(self, service_id, instance)
     }
 
     /// Bind a service instance to a local endpoint without announcing via SD.
@@ -437,23 +416,25 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// - `feat_req_recentipsd_184`: SD is about service state, not location
     /// - `feat_req_recentipsd_444`: Implicit subscriptions are supported
     ///
+    /// # Arguments
+    ///
+    /// - `service_id`: The service ID
+    /// - `instance`: The instance ID
+    /// - `version`: Tuple of (major_version, minor_version)
+    /// - `transport`: UDP or TCP
+    ///
     /// # Example
     /// ```no_run
     /// use someip_runtime::prelude::*;
     /// use someip_runtime::Transport;
     ///
-    /// struct MyService;
-    /// impl Service for MyService {
-    ///     const SERVICE_ID: u16 = 0x1234;
-    ///     const MAJOR_VERSION: u8 = 1;
-    ///     const MINOR_VERSION: u32 = 0;
-    /// }
+    /// const MY_SERVICE_ID: u16 = 0x1234;
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
     ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
     ///
-    ///     let service = runtime.bind::<MyService>(InstanceId::Id(1), Transport::Udp).await?;
+    ///     let service = runtime.bind(MY_SERVICE_ID, InstanceId::Id(1), (1, 0), Transport::Udp).await?;
     ///     // Service is listening, but not announced via SD
     ///     // Can handle static deployments where clients know the address
     ///
@@ -462,12 +443,14 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///     Ok(())
     /// }
     /// ```
-    pub async fn bind<S: Service>(
+    pub async fn bind(
         &self,
+        service_id: u16,
         instance: InstanceId,
+        version: (u8, u32),
         transport: Transport,
-    ) -> Result<crate::handle::ServiceInstance<S, crate::handle::Bound>> {
-        self.bind_with_config::<S>(instance, transport, MethodConfig::default())
+    ) -> Result<crate::handle::ServiceInstance<crate::handle::Bound>> {
+        self.bind_with_config(service_id, instance, version, transport, MethodConfig::default())
             .await
     }
 
@@ -475,13 +458,15 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// See `bind()` for details. This variant allows configuring which methods
     /// use EXCEPTION (0x81) message type for errors.
-    pub async fn bind_with_config<S: Service>(
+    pub async fn bind_with_config(
         &self,
+        service_id: u16,
         instance: InstanceId,
+        version: (u8, u32),
         transport: Transport,
         method_config: MethodConfig,
-    ) -> Result<crate::handle::ServiceInstance<S, crate::handle::Bound>> {
-        let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
+    ) -> Result<crate::handle::ServiceInstance<crate::handle::Bound>> {
+        let service_id = ServiceId::new(service_id).expect("Invalid service ID");
 
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
@@ -490,8 +475,8 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
             .send(Command::Bind {
                 service_id,
                 instance_id: instance,
-                major_version: S::MAJOR_VERSION,
-                minor_version: S::MINOR_VERSION,
+                major_version: version.0,
+                minor_version: version.1,
                 transport,
                 method_config,
                 response: response_tx,
@@ -511,27 +496,30 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 
     /// Find a service by pre-configured address (no Service Discovery).
     ///
-    /// Returns a `ProxyHandle<S, Available>` that is immediately usable
+    /// Returns a [`ProxyHandle`] that is immediately usable
     /// without waiting for SD discovery. Use this for static deployments
     /// where service locations are pre-configured.
+    ///
+    /// # Arguments
+    ///
+    /// - `service_id`: The service ID
+    /// - `instance`: The instance ID
+    /// - `endpoint`: The remote socket address
+    /// - `transport`: UDP or TCP
     ///
     /// # Example
     /// ```no_run
     /// use someip_runtime::prelude::*;
     /// use someip_runtime::Transport;
     ///
-    /// struct MyService;
-    /// impl Service for MyService {
-    ///     const SERVICE_ID: u16 = 0x1234;
-    ///     const MAJOR_VERSION: u8 = 1;
-    ///     const MINOR_VERSION: u32 = 0;
-    /// }
+    /// const MY_SERVICE_ID: u16 = 0x1234;
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
     ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
     ///
-    ///     let proxy = runtime.find_static::<MyService>(
+    ///     let proxy = runtime.find_static(
+    ///         MY_SERVICE_ID,
     ///         InstanceId::Id(1),
     ///         "192.168.1.10:30509".parse().unwrap(),
     ///         Transport::Tcp,
@@ -542,13 +530,14 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///     Ok(())
     /// }
     /// ```
-    pub fn find_static<S: Service>(
+    pub fn find_static(
         &self,
+        service_id: u16,
         instance: InstanceId,
         endpoint: SocketAddr,
         transport: Transport,
-    ) -> ProxyHandle<S> {
-        let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
+    ) -> ProxyHandle {
+        let service_id = ServiceId::new(service_id).expect("Invalid service ID");
         ProxyHandle::new(
             Arc::clone(&self.inner),
             service_id,
@@ -638,17 +627,15 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// use someip_runtime::prelude::*;
     /// use someip_runtime::handle::ServiceEvent;
     ///
-    /// struct MyService;
-    /// impl Service for MyService {
-    ///     const SERVICE_ID: u16 = 0x1234;
-    ///     const MAJOR_VERSION: u8 = 1;
-    ///     const MINOR_VERSION: u32 = 0;
-    /// }
+    /// const MY_SERVICE_ID: u16 = 0x1234;
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
     ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
-    ///     let mut offering = runtime.offer::<MyService>(InstanceId::Id(1)).start().await?;
+    ///     let mut offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
+    ///         .version(1, 0)
+    ///         .start()
+    ///         .await?;
     ///
     ///     // Process one request then shutdown
     ///     if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
@@ -716,6 +703,12 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
             .map_err(|_| Error::RuntimeShutdown)?;
         Ok(rx)
     }
+
+    /// Get a reference to the runtime inner for use by builders.
+    #[doc(hidden)]
+    pub(crate) fn inner(&self) -> &Arc<RuntimeInner> {
+        &self.inner
+    }
 }
 
 // ============================================================================
@@ -731,46 +724,56 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 /// ```no_run
 /// use someip_runtime::prelude::*;
 ///
-/// # struct MyService;
-/// # impl Service for MyService {
-/// #     const SERVICE_ID: u16 = 0x1234;
-/// #     const MAJOR_VERSION: u8 = 1;
-/// #     const MINOR_VERSION: u32 = 0;
-/// # }
+/// const MY_SERVICE_ID: u16 = 0x1234;
 ///
 /// # async fn example(runtime: Runtime) -> Result<()> {
 /// // Offer on both TCP and UDP
-/// let offering = runtime.offer::<MyService>(InstanceId::Id(1))
+/// let offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
+///     .version(1, 0)
 ///     .tcp_port(30501)
 ///     .udp_port(30502)
 ///     .start()
 ///     .await?;
 ///
 /// // Offer on TCP only with default port
-/// let tcp_offering = runtime.offer::<MyService>(InstanceId::Id(2))
+/// let tcp_offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(2))
+///     .version(1, 0)
 ///     .tcp()
 ///     .start()
 ///     .await?;
 /// # Ok(())
 /// # }
 /// ```
-pub struct OfferBuilder<'a, S: Service, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> {
+pub struct OfferBuilder<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> {
     runtime: &'a Runtime<U, T, L>,
+    service_id: ServiceId,
     instance: InstanceId,
+    major_version: u8,
+    minor_version: u32,
     config: crate::config::OfferConfig,
-    _phantom: std::marker::PhantomData<S>,
 }
 
-impl<'a, S: Service, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>
-    OfferBuilder<'a, S, U, T, L>
+impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>
+    OfferBuilder<'a, U, T, L>
 {
-    fn new(runtime: &'a Runtime<U, T, L>, instance: InstanceId) -> Self {
+    fn new(runtime: &'a Runtime<U, T, L>, service_id: ServiceId, instance: InstanceId) -> Self {
         Self {
             runtime,
+            service_id,
             instance,
+            major_version: 0,
+            minor_version: 0,
             config: crate::config::OfferConfig::new(),
-            _phantom: std::marker::PhantomData,
         }
+    }
+
+    /// Set the major and minor version for the service offering.
+    ///
+    /// This is required for proper SD announcements.
+    pub fn version(mut self, major: u8, minor: u32) -> Self {
+        self.major_version = major;
+        self.minor_version = minor;
+        self
     }
 
     /// Enable TCP transport with the default RPC port (30491).
@@ -807,7 +810,7 @@ impl<'a, S: Service, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>
     ///
     /// If no transports are configured, falls back to the runtime's default
     /// transport configuration for backward compatibility.
-    pub async fn start(mut self) -> Result<OfferingHandle<S>> {
+    pub async fn start(mut self) -> Result<OfferingHandle> {
         // Fallback to runtime config if no transport specified
         if !self.config.has_transport() {
             match self.runtime.inner.config.preferred_transport {
@@ -816,17 +819,16 @@ impl<'a, S: Service, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>
             }
         }
 
-        let service_id = ServiceId::new(S::SERVICE_ID).expect("Invalid service ID");
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.runtime
             .inner
             .cmd_tx
             .send(Command::Offer {
-                service_id,
+                service_id: self.service_id,
                 instance_id: self.instance,
-                major_version: S::MAJOR_VERSION,
-                minor_version: S::MINOR_VERSION,
+                major_version: self.major_version,
+                minor_version: self.minor_version,
                 offer_config: self.config,
                 response: response_tx,
             })
@@ -837,7 +839,7 @@ impl<'a, S: Service, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>
 
         Ok(OfferingHandle::new(
             Arc::clone(&self.runtime.inner),
-            service_id,
+            self.service_id,
             self.instance,
             requests_rx,
         ))

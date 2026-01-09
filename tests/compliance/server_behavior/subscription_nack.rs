@@ -9,7 +9,7 @@
 //! # Requirements Covered
 //! - feat_req_recentipsd_1137: SubscribeEventgroupNack for invalid subscribes
 
-use super::helpers::{build_sd_subscribe_with_udp_endpoint, covers, parse_sd_message, TestService};
+use super::helpers::{build_sd_subscribe_with_udp_endpoint, covers, parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION};
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
 use std::net::SocketAddr;
@@ -33,7 +33,8 @@ fn subscribe_to_unknown_service_id_should_nack() {
             Runtime::with_socket_type(Default::default()).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -221,7 +222,8 @@ fn subscribe_to_unknown_instance_id_should_nack() {
             Runtime::with_socket_type(Default::default()).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -421,7 +423,8 @@ fn subscribe_to_unknown_eventgroup_should_nack() {
             Runtime::with_socket_type(Default::default()).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -613,7 +616,8 @@ fn subscribe_to_wrong_major_version_should_nack() {
             Runtime::with_socket_type(Default::default()).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await

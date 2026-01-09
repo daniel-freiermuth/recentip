@@ -11,14 +11,9 @@ use std::time::Duration;
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service definition
-struct TestService;
-
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x5555;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+// Wire values for TestService
+const TEST_SERVICE_ID: u16 = 0x5555;
+const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // MULTI-INSTANCE SUBSCRIPTION TESTS
@@ -53,7 +48,8 @@ fn subscribe_to_multiple_instances() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -87,7 +83,8 @@ fn subscribe_to_multiple_instances() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0002))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -123,7 +120,9 @@ fn subscribe_to_multiple_instances() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find and subscribe to instance 1
-        let proxy1 = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy1 = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy1 = tokio::time::timeout(Duration::from_secs(5), proxy1)
             .await
             .expect("Discovery timeout for instance 1")
@@ -137,7 +136,9 @@ fn subscribe_to_multiple_instances() {
                 .expect("Subscribe to instance 1 should succeed");
 
         // Find and subscribe to instance 2
-        let proxy2 = runtime.find::<TestService>(InstanceId::Id(0x0002));
+        let proxy2 = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0002));
         let proxy2 = tokio::time::timeout(Duration::from_secs(5), proxy2)
             .await
             .expect("Discovery timeout for instance 2")

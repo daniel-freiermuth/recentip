@@ -28,14 +28,8 @@ macro_rules! covers {
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service definition
-struct EventService;
-
-impl Service for EventService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const EVENT_SERVICE_ID: u16 = 0x1234;
+const EVENT_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 /// Helper to parse a SOME/IP header from raw bytes
 fn parse_header(data: &[u8]) -> Option<Header> {
@@ -148,7 +142,7 @@ fn event_transports_value_data() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<EventService>(InstanceId::Id(0x0001))
+            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -178,7 +172,7 @@ fn event_transports_value_data() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<EventService>(InstanceId::Any);
+        let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -236,7 +230,7 @@ fn events_not_sent_to_non_subscribers() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<EventService>(InstanceId::Id(0x0001))
+            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -362,7 +356,7 @@ fn unsubscribe_stops_event_delivery() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<EventService>(InstanceId::Id(0x0001))
+            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -400,7 +394,7 @@ fn unsubscribe_stops_event_delivery() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<EventService>(InstanceId::Any);
+        let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -458,7 +452,7 @@ fn event_uses_notification_message_type_on_wire() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<EventService>(InstanceId::Id(0x0001))
+            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -487,7 +481,7 @@ fn event_uses_notification_message_type_on_wire() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<EventService>(InstanceId::Any);
+        let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")

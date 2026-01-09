@@ -4,7 +4,6 @@
 //! parse responses, and set up test infrastructure.
 
 use bytes::Bytes;
-use someip_runtime::prelude::*;
 use someip_runtime::wire::{Header, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
 
 /// Macro for documenting which spec requirements a test covers
@@ -15,14 +14,8 @@ macro_rules! covers {
 }
 pub(crate) use covers;
 
-/// Test service definition
-pub struct TestService;
-
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+// Wire values for TestService
+pub const TEST_SERVICE_ID: u16 = 0x1234;
 
 /// Helper to parse a SOME/IP header from raw bytes
 pub fn parse_header(data: &[u8]) -> Option<Header> {

@@ -40,14 +40,8 @@ macro_rules! covers {
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service for TCP pub/sub
-struct TcpPubSubService;
-
-impl Service for TcpPubSubService {
-    const SERVICE_ID: u16 = 0x2345;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const TCP_PUB_SUB_SERVICE_ID: u16 = 0x2345;
+const TCP_PUB_SUB_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // 1. BASIC TCP SUBSCRIPTION AND EVENT DELIVERY
@@ -77,7 +71,7 @@ fn tcp_basic_subscribe_and_receive_events() {
 
         // Offer service via TCP only
         let offering = runtime
-            .offer::<TcpPubSubService>(InstanceId::Id(0x0001))
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -115,7 +109,7 @@ fn tcp_basic_subscribe_and_receive_events() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TcpPubSubService>(InstanceId::Any);
+        let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -180,7 +174,7 @@ fn tcp_multiple_subscribers_receive_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<TcpPubSubService>(InstanceId::Id(0x0001))
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -218,7 +212,7 @@ fn tcp_multiple_subscribers_receive_events() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TcpPubSubService>(InstanceId::Any);
+        let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -250,7 +244,7 @@ fn tcp_multiple_subscribers_receive_events() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TcpPubSubService>(InstanceId::Any);
+        let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -318,7 +312,7 @@ fn tcp_large_payload_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<TcpPubSubService>(InstanceId::Id(0x0001))
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -355,7 +349,7 @@ fn tcp_large_payload_events() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TcpPubSubService>(InstanceId::Any);
+        let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -426,7 +420,7 @@ fn tcp_different_eventgroups() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<TcpPubSubService>(InstanceId::Id(0x0001))
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -474,7 +468,7 @@ fn tcp_different_eventgroups() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TcpPubSubService>(InstanceId::Any);
+        let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -507,7 +501,7 @@ fn tcp_different_eventgroups() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TcpPubSubService>(InstanceId::Any);
+        let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -575,7 +569,7 @@ fn dual_stack_service_client_prefers_tcp() {
 
         // Offer service via both TCP and UDP
         let offering = runtime
-            .offer::<TcpPubSubService>(InstanceId::Id(0x0001))
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .udp()
             .start()
@@ -612,7 +606,7 @@ fn dual_stack_service_client_prefers_tcp() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TcpPubSubService>(InstanceId::Any);
+        let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -663,7 +657,7 @@ fn dual_stack_service_client_prefers_udp() {
 
         // Offer service via both TCP and UDP
         let offering = runtime
-            .offer::<TcpPubSubService>(InstanceId::Id(0x0001))
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .udp()
             .start()
@@ -700,7 +694,7 @@ fn dual_stack_service_client_prefers_udp() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TcpPubSubService>(InstanceId::Any);
+        let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -758,7 +752,7 @@ fn tcp_only_server_udp_preferring_client() {
 
         // Offer service via TCP only
         let offering = runtime
-            .offer::<TcpPubSubService>(InstanceId::Id(0x0001))
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -793,7 +787,7 @@ fn tcp_only_server_udp_preferring_client() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TcpPubSubService>(InstanceId::Any);
+        let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")

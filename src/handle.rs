@@ -20,19 +20,14 @@
 //! ```no_run
 //! use someip_runtime::prelude::*;
 //!
-//! struct MyService;
-//! impl Service for MyService {
-//!     const SERVICE_ID: u16 = 0x1234;
-//!     const MAJOR_VERSION: u8 = 1;
-//!     const MINOR_VERSION: u32 = 0;
-//! }
+//! const MY_SERVICE_ID: u16 = 0x1234;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
 //!     // 1. Find the service (waits for discovery)
-//!     let proxy = runtime.find::<MyService>(InstanceId::Any).await?;
+//!     let proxy = runtime.find(MY_SERVICE_ID).await?;
 //!
 //!     // 2. Call methods
 //!     let method_id = MethodId::new(0x0001).unwrap();
@@ -54,19 +49,18 @@
 //! use someip_runtime::prelude::*;
 //! use someip_runtime::handle::ServiceEvent;
 //!
-//! struct MyService;
-//! impl Service for MyService {
-//!     const SERVICE_ID: u16 = 0x1234;
-//!     const MAJOR_VERSION: u8 = 1;
-//!     const MINOR_VERSION: u32 = 0;
-//! }
+//! const MY_SERVICE_ID: u16 = 0x1234;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
 //!     // 1. Offer a service
-//!     let mut offering = runtime.offer::<MyService>(InstanceId::Id(1)).start().await?;
+//!     let mut offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
+//!         .version(1, 0)
+//!         .udp()
+//!         .start()
+//!         .await?;
 //!
 //!     // 2. Handle incoming events
 //!     while let Some(event) = offering.next().await {
@@ -93,30 +87,27 @@
 //! use someip_runtime::handle::{ServiceInstance, Bound, Announced};
 //! use someip_runtime::Transport;
 //!
-//! struct MyService;
-//! impl Service for MyService {
-//!     const SERVICE_ID: u16 = 0x1234;
-//!     const MAJOR_VERSION: u8 = 1;
-//!     const MINOR_VERSION: u32 = 0;
-//! }
+//! const MY_SERVICE_ID: u16 = 0x1234;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
 //!     // 1. Bind (opens socket, but no SD announcement)
-//!     let instance: ServiceInstance<_, Bound> = runtime.bind::<MyService>(
+//!     let instance: ServiceInstance<Bound> = runtime.bind(
+//!         MY_SERVICE_ID,
 //!         InstanceId::Id(1),
+//!         (1, 0),  // version
 //!         Transport::Udp,
 //!     ).await?;
 //!
 //!     // 2. Start announcing (transitions to Announced)
-//!     let instance: ServiceInstance<_, Announced> = instance.announce().await?;
+//!     let instance: ServiceInstance<Announced> = instance.announce().await?;
 //!
 //!     // 3. Now handle requests...
 //!
 //!     // 4. Stop announcing (transitions back to Bound)
-//!     let instance: ServiceInstance<_, Bound> = instance.stop_announcing().await?;
+//!     let instance: ServiceInstance<Bound> = instance.stop_announcing().await?;
 //!
 //!     // Socket stays open, can re-announce later
 //!     Ok(())
@@ -127,8 +118,8 @@
 //!
 //! This module uses **type-state patterns** to enforce correct API usage at compile time:
 //!
-//! - [`ServiceInstance<S, Bound>`] can only call `.announce()` or handle static requests
-//! - [`ServiceInstance<S, Announced>`] can call `.stop_announcing()` or handle SD requests
+//! - [`ServiceInstance<Bound>`] can only call `.announce()` or handle static requests
+//! - [`ServiceInstance<Announced>`] can call `.stop_announcing()` or handle SD requests
 //!
 //! This prevents common bugs like:
 //! - Announcing a service that hasn't bound to a socket
@@ -146,10 +137,10 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::{Error, Result};
-use crate::runtime::{Command, RuntimeInner, ServiceRequest};
+use crate::runtime::{Command, RuntimeInner, ServiceAvailability, ServiceRequest};
 use crate::{
-    ClientInfo, Event, EventId, EventgroupId, InstanceId, MethodId, Response, ReturnCode, Service,
-    ServiceId,
+    ClientInfo, Event, EventId, EventgroupId, InstanceId, MajorVersion, MethodId, Response,
+    ReturnCode, ServiceId,
 };
 
 // ============================================================================
@@ -176,7 +167,163 @@ pub struct Bound;
 #[derive(Debug, Clone)]
 pub struct Announced;
 
-/// Client-side proxy to a remote SOME/IP service.
+// ============================================================================
+// FIND BUILDER (CLIENT-SIDE)
+// ============================================================================
+
+/// Builder for finding a remote SOME/IP service.
+///
+/// Created via [`Runtime::find()`](crate::Runtime::find). Configure the find
+/// criteria, then `.await` to discover the service. Returns the **first**
+/// matching OfferService announcement.
+///
+/// # Find Criteria
+///
+/// Per SOME/IP-SD spec, find requests can use wildcards:
+/// - **Service ID**: Always exact (required)
+/// - **Instance ID**: Exact or `Any` (default: `Any`)
+/// - **Major Version**: Exact or `Any` (default: `Any`)
+/// - **Minor Version**: Always `Any` on wire (per spec recommendation)
+///
+/// # Example
+///
+/// ```no_run
+/// use someip_runtime::prelude::*;
+///
+/// const BRAKE_SERVICE_ID: u16 = 0x1234;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<()> {
+///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+///
+///     // Find any instance of the service with any major version
+///     let proxy = runtime.find(BRAKE_SERVICE_ID).await?;
+///
+///     // Or with specific criteria:
+///     let proxy = runtime.find(BRAKE_SERVICE_ID)
+///         .instance(InstanceId::Id(1))
+///         .major_version(1)
+///         .await?;
+///
+///     Ok(())
+/// }
+/// ```
+pub struct FindBuilder<'a, U, T, L>
+where
+    U: crate::net::UdpSocket,
+    T: crate::net::TcpStream,
+    L: crate::net::TcpListener<Stream = T>,
+{
+    runtime: &'a crate::Runtime<U, T, L>,
+    service_id: ServiceId,
+    instance_id: InstanceId,
+    major_version: MajorVersion,
+}
+
+impl<'a, U, T, L> FindBuilder<'a, U, T, L>
+where
+    U: crate::net::UdpSocket,
+    T: crate::net::TcpStream,
+    L: crate::net::TcpListener<Stream = T>,
+{
+    /// Create a new find builder with default criteria.
+    ///
+    /// Defaults:
+    /// - Instance: `Any`
+    /// - Major version: `Any`
+    pub(crate) fn new(runtime: &'a crate::Runtime<U, T, L>, service_id: ServiceId) -> Self {
+        Self {
+            runtime,
+            service_id,
+            instance_id: InstanceId::Any,
+            major_version: MajorVersion::Any,
+        }
+    }
+
+    /// Set the instance ID to find.
+    ///
+    /// Default: `InstanceId::Any` (matches any instance)
+    pub fn instance(mut self, instance: impl Into<InstanceId>) -> Self {
+        self.instance_id = instance.into();
+        self
+    }
+
+    /// Set the major version requirement.
+    ///
+    /// Default: `MajorVersion::Any` (matches any version)
+    pub fn major_version(mut self, version: impl Into<MajorVersion>) -> Self {
+        self.major_version = version.into();
+        self
+    }
+
+    /// Execute the find request and wait for the first matching service.
+    ///
+    /// Sends a FindService SD message and waits for a matching OfferService.
+    /// Returns the first discovered service that matches the criteria.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::NotAvailable`] - No matching service found (all find repetitions exhausted)
+    /// - [`Error::RuntimeShutdown`] - Runtime was shut down during discovery
+    pub async fn await_discovery(self) -> Result<ProxyHandle> {
+        // TODO maybe oneshot channel would be better?
+        let (notify_tx, mut notify_rx) = mpsc::channel(1);
+
+        // Register find request with the runtime
+        self.runtime
+            .inner()
+            .cmd_tx
+            .send(Command::Find {
+                service_id: self.service_id,
+                instance_id: self.instance_id,
+                notify: notify_tx,
+            })
+            .await
+            .map_err(|_| Error::RuntimeShutdown)?;
+
+        // Wait for availability notification
+        let (endpoint, transport, discovered_instance_id) = loop {
+            match notify_rx.recv().await {
+                Some(ServiceAvailability::Available {
+                    endpoint,
+                    transport,
+                    instance_id,
+                }) => break (endpoint, transport, instance_id),
+                // TODO: maybe get rid of the Unavailable variant?
+                Some(ServiceAvailability::Unavailable) => continue,
+                None => {
+                    // Channel closed - either runtime shut down or find request expired
+                    return Err(Error::NotAvailable);
+                }
+            }
+        };
+
+        Ok(ProxyHandle::new(
+            Arc::clone(self.runtime.inner()),
+            self.service_id,
+            InstanceId::Id(discovered_instance_id),
+            endpoint,
+            transport,
+        ))
+    }
+}
+
+/// Implement `IntoFuture` so the builder can be directly `.await`ed.
+impl<'a, U, T, L> std::future::IntoFuture for FindBuilder<'a, U, T, L>
+where
+    U: crate::net::UdpSocket + 'a,
+    T: crate::net::TcpStream + Sync + 'a,
+    L: crate::net::TcpListener<Stream = T> + 'a,
+{
+    type Output = Result<ProxyHandle>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.await_discovery())
+    }
+}
+
 // ============================================================================
 // PROXY HANDLE (CLIENT-SIDE)
 // ============================================================================
@@ -190,17 +337,12 @@ pub struct Announced;
 /// ```no_run
 /// use someip_runtime::prelude::*;
 ///
-/// struct MyService;
-/// impl Service for MyService {
-///     const SERVICE_ID: u16 = 0x1234;
-///     const MAJOR_VERSION: u8 = 1;
-///     const MINOR_VERSION: u32 = 0;
-/// }
+/// const MY_SERVICE_ID: u16 = 0x1234;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<()> {
 /// let runtime = Runtime::new(RuntimeConfig::default()).await?;
-/// let proxy = runtime.find::<MyService>(InstanceId::Any).await?;
+/// let proxy = runtime.find(MY_SERVICE_ID).await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -213,14 +355,7 @@ pub struct Announced;
 /// use someip_runtime::prelude::*;
 /// use someip_runtime::handle::ProxyHandle;
 ///
-/// struct MyService;
-/// impl Service for MyService {
-///     const SERVICE_ID: u16 = 0x1234;
-///     const MAJOR_VERSION: u8 = 1;
-///     const MINOR_VERSION: u32 = 0;
-/// }
-///
-/// async fn call_method(proxy: &ProxyHandle<MyService>) -> Result<()> {
+/// async fn call_method(proxy: &ProxyHandle) -> Result<()> {
 ///     let method_id = MethodId::new(0x0001).unwrap();
 ///     let response = proxy.call(method_id, b"request payload").await?;
 ///     if response.return_code == ReturnCode::Ok {
@@ -239,14 +374,7 @@ pub struct Announced;
 /// use someip_runtime::prelude::*;
 /// use someip_runtime::handle::ProxyHandle;
 ///
-/// struct MyService;
-/// impl Service for MyService {
-///     const SERVICE_ID: u16 = 0x1234;
-///     const MAJOR_VERSION: u8 = 1;
-///     const MINOR_VERSION: u32 = 0;
-/// }
-///
-/// async fn subscribe_events(proxy: &ProxyHandle<MyService>) -> Result<()> {
+/// async fn subscribe_events(proxy: &ProxyHandle) -> Result<()> {
 ///     let eventgroup = EventgroupId::new(0x0001).unwrap();
 ///     let mut sub = proxy.subscribe(eventgroup).await?;
 ///     while let Some(event) = sub.next().await {
@@ -265,14 +393,7 @@ pub struct Announced;
 /// use someip_runtime::prelude::*;
 /// use someip_runtime::handle::ProxyHandle;
 ///
-/// struct MyService;
-/// impl Service for MyService {
-///     const SERVICE_ID: u16 = 0x1234;
-///     const MAJOR_VERSION: u8 = 1;
-///     const MINOR_VERSION: u32 = 0;
-/// }
-///
-/// async fn clone_example(proxy: ProxyHandle<MyService>) {
+/// async fn clone_example(proxy: ProxyHandle) {
 ///     let method = MethodId::new(0x0001).unwrap();
 ///     let proxy2 = proxy.clone();
 ///     tokio::spawn(async move {
@@ -281,16 +402,15 @@ pub struct Announced;
 /// }
 /// # fn main() {}
 /// ```
-pub struct ProxyHandle<S: Service> {
+pub struct ProxyHandle {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
     instance_id: InstanceId,
     endpoint: SocketAddr,
     transport: crate::config::Transport,
-    _phantom: PhantomData<S>,
 }
 
-impl<S: Service> Clone for ProxyHandle<S> {
+impl Clone for ProxyHandle {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
@@ -298,12 +418,11 @@ impl<S: Service> Clone for ProxyHandle<S> {
             instance_id: self.instance_id,
             endpoint: self.endpoint,
             transport: self.transport,
-            _phantom: PhantomData,
         }
     }
 }
 
-impl<S: Service> ProxyHandle<S> {
+impl ProxyHandle {
     /// Create a new `ProxyHandle` (for static deployments or after discovery).
     pub(crate) fn new(
         inner: Arc<RuntimeInner>,
@@ -318,7 +437,6 @@ impl<S: Service> ProxyHandle<S> {
             instance_id,
             endpoint,
             transport,
-            _phantom: PhantomData,
         }
     }
 
@@ -353,14 +471,7 @@ impl<S: Service> ProxyHandle<S> {
     /// use someip_runtime::prelude::*;
     /// use someip_runtime::handle::ProxyHandle;
     ///
-    /// struct MyService;
-    /// impl Service for MyService {
-    ///     const SERVICE_ID: u16 = 0x1234;
-    ///     const MAJOR_VERSION: u8 = 1;
-    ///     const MINOR_VERSION: u32 = 0;
-    /// }
-    ///
-    /// async fn concurrent_calls(proxy: ProxyHandle<MyService>) {
+    /// async fn concurrent_calls(proxy: ProxyHandle) {
     ///     let method = MethodId::new(0x0001).unwrap();
     ///     let proxy2 = proxy.clone();
     ///     tokio::spawn(async move {
@@ -411,7 +522,7 @@ impl<S: Service> ProxyHandle<S> {
     /// Subscribe to an eventgroup.
     ///
     /// Returns a subscription that can be used to receive events.
-    pub async fn subscribe(&self, eventgroup: EventgroupId) -> Result<Subscription<S>> {
+    pub async fn subscribe(&self, eventgroup: EventgroupId) -> Result<Subscription> {
         let (events_tx, events_rx) = mpsc::channel(64);
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -436,7 +547,6 @@ impl<S: Service> ProxyHandle<S> {
             eventgroup,
             subscription_id,
             events: events_rx,
-            _phantom: PhantomData,
         })
     }
 
@@ -456,7 +566,7 @@ impl<S: Service> ProxyHandle<S> {
     }
 }
 
-impl<S: Service> Drop for ProxyHandle<S> {
+impl Drop for ProxyHandle {
     fn drop(&mut self) {
         // Notify runtime to stop finding (best effort)
         let _ = self.inner.cmd_tx.try_send(Command::StopFind {
@@ -474,17 +584,16 @@ impl<S: Service> Drop for ProxyHandle<S> {
 ///
 /// Events are received via the `next()` method. The subscription is
 /// automatically stopped when dropped.
-pub struct Subscription<S: Service> {
+pub struct Subscription {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
     instance_id: InstanceId,
     eventgroup: EventgroupId,
     subscription_id: u64,
     events: mpsc::Receiver<Event>,
-    _phantom: PhantomData<S>,
 }
 
-impl<S: Service> Subscription<S> {
+impl Subscription {
     /// Receive the next event.
     ///
     /// Returns `None` if the subscription has ended.
@@ -498,7 +607,7 @@ impl<S: Service> Subscription<S> {
     }
 }
 
-impl<S: Service> Drop for Subscription<S> {
+impl Drop for Subscription {
     fn drop(&mut self) {
         let _ = self.inner.cmd_tx.try_send(Command::Unsubscribe {
             service_id: self.service_id,
@@ -543,17 +652,16 @@ impl StaticEventListener {
 
 /// Handle for an offered service.
 ///
-/// Use `runtime.offer::<MyService>(instance)` to create an offering.
+/// Use `runtime.offer(service_id, instance)` to create an offering.
 /// Receive requests via `next()` and send events via `notify()`.
-pub struct OfferingHandle<S: Service> {
+pub struct OfferingHandle {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
     instance_id: InstanceId,
     requests: mpsc::Receiver<ServiceRequest>,
-    _phantom: PhantomData<S>,
 }
 
-impl<S: Service> OfferingHandle<S> {
+impl OfferingHandle {
     pub(crate) fn new(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
@@ -565,7 +673,6 @@ impl<S: Service> OfferingHandle<S> {
             service_id,
             instance_id,
             requests,
-            _phantom: PhantomData,
         }
     }
 
@@ -703,7 +810,7 @@ impl<S: Service> OfferingHandle<S> {
     }
 }
 
-impl<S: Service> Drop for OfferingHandle<S> {
+impl Drop for OfferingHandle {
     fn drop(&mut self) {
         let _ = self.inner.cmd_tx.try_send(Command::StopOffer {
             service_id: self.service_id,
@@ -829,11 +936,11 @@ impl Drop for SubscribeAck {
 ///                         │
 ///                    announce()
 ///                         ↓
-///                   ServiceInstance<S, Announced>
+///                   ServiceInstance<Announced>
 ///                         │
 ///                   stop_announcing()
 ///                         ↓
-///                   ServiceInstance<S, Bound>
+///                   ServiceInstance<Bound>
 /// ```
 ///
 /// # State-Specific Operations
@@ -842,7 +949,7 @@ impl Drop for SubscribeAck {
 ///   and notify static subscribers
 /// - **Announced state**: Can receive RPC, receive dynamic subscriptions, and notify
 ///   all subscribers (static + dynamic)
-pub struct ServiceInstance<S: Service, State> {
+pub struct ServiceInstance<State> {
     /// Inner runtime handle - wrapped in Option for state transitions
     inner: Option<Arc<RuntimeInner>>,
     service_id: ServiceId,
@@ -851,10 +958,10 @@ pub struct ServiceInstance<S: Service, State> {
     requests: Option<mpsc::Receiver<ServiceRequest>>,
     /// Static subscribers (pre-configured, independent of SD)
     static_subscribers: HashMap<SocketAddr, Vec<EventgroupId>>,
-    _phantom: PhantomData<(S, State)>,
+    _phantom: PhantomData<State>,
 }
 
-impl<S: Service> ServiceInstance<S, Bound> {
+impl ServiceInstance<Bound> {
     pub(crate) fn new(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
@@ -876,8 +983,8 @@ impl<S: Service> ServiceInstance<S, Bound> {
     /// Sends an `OfferService` message and starts cyclic offer announcements.
     /// After this, clients can discover the service via SD.
     ///
-    /// Consumes `self` and returns `ServiceInstance<S, Announced>`.
-    pub async fn announce(mut self) -> Result<ServiceInstance<S, Announced>> {
+    /// Consumes `self` and returns `ServiceInstance<Announced>`.
+    pub async fn announce(mut self) -> Result<ServiceInstance<Announced>> {
         let inner = self.inner.take().expect("inner should be Some");
         let requests = self.requests.take().expect("requests should be Some");
 
@@ -979,14 +1086,14 @@ impl<S: Service> ServiceInstance<S, Bound> {
     }
 }
 
-impl<S: Service> ServiceInstance<S, Announced> {
+impl ServiceInstance<Announced> {
     /// Stop announcing this service instance via Service Discovery.
     ///
     /// Sends a `StopOfferService` message. The socket remains open for
     /// draining existing connections.
     ///
-    /// Consumes `self` and returns `ServiceInstance<S, Bound>`.
-    pub async fn stop_announcing(mut self) -> Result<ServiceInstance<S, Bound>> {
+    /// Consumes `self` and returns `ServiceInstance<Bound>`.
+    pub async fn stop_announcing(mut self) -> Result<ServiceInstance<Bound>> {
         let inner = self.inner.take().expect("inner should be Some");
         let requests = self.requests.take().expect("requests should be Some");
 
@@ -1148,7 +1255,7 @@ impl<S: Service> ServiceInstance<S, Announced> {
     }
 }
 
-impl<S: Service, State> Drop for ServiceInstance<S, State> {
+impl<State> Drop for ServiceInstance<State> {
     fn drop(&mut self) {
         // Only send StopOffer if inner is still Some (not taken during state transition)
         if let Some(inner) = &self.inner {

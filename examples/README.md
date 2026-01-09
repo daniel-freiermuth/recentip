@@ -87,18 +87,14 @@ You should see the monitor detect the service within a few seconds:
 
 ### Adding More Services to Monitor
 
-Edit `service_monitor.rs` and add new service type definitions:
+Edit `service_monitor.rs` and add new service ID constants:
 
 ```rust
-struct MyCustomService;
-impl Service for MyCustomService {
-    const SERVICE_ID: u16 = 0xABCD;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const MY_CUSTOM_SERVICE_ID: u16 = 0xABCD;
+const MY_CUSTOM_VERSION: (u8, u32) = (1, 0);
 
-// Then add to the monitoring macro:
-spawn_monitor!(MyCustomService);
+// Then add to the monitoring:
+let proxy = runtime.find(MY_CUSTOM_SERVICE_ID).await?;
 ```
 
 ### Changing Service Configuration
@@ -106,15 +102,14 @@ spawn_monitor!(MyCustomService);
 Edit `simple_service.rs` to change the service ID or instance:
 
 ```rust
-struct ExampleService;
-impl Service for ExampleService {
-    const SERVICE_ID: u16 = 0x5555;  // Change this
-    const MAJOR_VERSION: u8 = 2;
-    const MINOR_VERSION: u32 = 1;
-}
+const EXAMPLE_SERVICE_ID: u16 = 0x5555;
+const EXAMPLE_VERSION: (u8, u32) = (2, 1);
 
 // And change the instance when offering:
-let mut offering = runtime.offer::<ExampleService>(InstanceId::Id(42)).await?;
+let mut offering = runtime.offer(EXAMPLE_SERVICE_ID, InstanceId::Id(42))
+    .version(EXAMPLE_VERSION.0, EXAMPLE_VERSION.1)
+    .start()
+    .await?;
 ```
 
 ## Network Configuration

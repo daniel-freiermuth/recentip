@@ -13,10 +13,9 @@
 //! - feat_req_recentipsd_758: UDP endpoint used for source port of events
 //! - feat_req_recentipsd_767: TCP connection before subscribe
 
-use super::helpers::{
+use super::helpers::{TEST_SERVICE_ID,
     build_response, build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers,
-    parse_header, parse_sd_message, TestService,
-};
+    parse_header, parse_sd_message};
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::{Runtime, RuntimeConfig};
 use std::net::SocketAddr;
@@ -144,7 +143,9 @@ fn client_rpc_must_not_use_sd_port() {
             Runtime::with_socket_type(config).await.unwrap();
 
         // Use public API: find service and wait for availability via SD
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -354,7 +355,9 @@ fn tcp_connection_established_before_subscribe_767() {
             turmoil::net::TcpListener,
         > = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")

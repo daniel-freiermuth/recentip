@@ -4,19 +4,16 @@ use std::{
 };
 
 use someip_runtime::{
-    EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder, Service,
+    EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder,
 };
 use tracing::Instrument;
 
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-struct ServiceA;
-impl Service for ServiceA {
-    const SERVICE_ID: u16 = 0x5674;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+// Wire values for ServiceA
+const SERVICE_A_ID: u16 = 0x5674;
+const SERVICE_A_VERSION: (u8, u32) = (1, 0);
 
 #[test_log::test]
 #[ignore = "documenting a known problem"]
@@ -37,7 +34,8 @@ fn test_subscribe_drop_unsubscribes_in_time() {
 
             // Offer instance 1
             let mut offering = runtime
-                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -76,7 +74,8 @@ fn test_subscribe_drop_unsubscribes_in_time() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
 
         let service = runtime
-            .find::<ServiceA>(InstanceId::new(1).unwrap())
+            .find(SERVICE_A_ID)
+            .instance(InstanceId::Id(1))
             .await
             .unwrap();
 
@@ -128,7 +127,8 @@ fn test_two_subscribers_one_drops() {
 
             // Offer instance 1
             let mut offering = runtime
-                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -164,7 +164,8 @@ fn test_two_subscribers_one_drops() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
 
         let service = runtime
-            .find::<ServiceA>(InstanceId::new(1).unwrap())
+            .find(SERVICE_A_ID)
+            .instance(InstanceId::Id(1))
             .await
             .unwrap();
 
@@ -226,7 +227,8 @@ fn test_dangling_subscription_cannot_unsubscribe() {
 
             // Offer instance 1
             let mut offering = runtime
-                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -257,7 +259,8 @@ fn test_dangling_subscription_cannot_unsubscribe() {
             tokio::time::sleep(Duration::from_secs(4)).await;
 
             let mut offering2 = runtime
-                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -293,7 +296,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
 
         let service = runtime
-            .find::<ServiceA>(InstanceId::new(1).unwrap())
+            .find(SERVICE_A_ID).instance(InstanceId::Id(1))
 
             .await
             .unwrap();
@@ -350,7 +353,8 @@ fn test_two_subscribers_get_events() {
 
             // Offer instance 1
             let mut offering = runtime
-                .offer::<ServiceA>(InstanceId::Id(0x0001))
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -380,7 +384,7 @@ fn test_two_subscribers_get_events() {
     });
 
     sim.client("client", async move {
-        async fn subscribe_and_listen(service: ProxyHandle<ServiceA>) {
+        async fn subscribe_and_listen(service: ProxyHandle) {
             tracing::info!("Starting subscription flow");
             let mut subscription = service
                 .subscribe(EventgroupId::new(1).unwrap())
@@ -407,7 +411,8 @@ fn test_two_subscribers_get_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
 
         let service = runtime
-            .find::<ServiceA>(InstanceId::new(1).unwrap())
+            .find(SERVICE_A_ID)
+            .instance(InstanceId::Id(1))
             .await
             .unwrap();
 

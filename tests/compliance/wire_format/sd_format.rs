@@ -39,7 +39,8 @@ fn sd_offer_wire_format() {
 
         // Offer a service - this sends SD Offer messages
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -124,7 +125,8 @@ fn sd_uses_port_30490() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -186,7 +188,8 @@ fn sd_offer_entry_type_wire_format() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -257,7 +260,8 @@ fn offer_service_ttl_on_wire() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -386,7 +390,9 @@ fn subscribe_eventgroup_ttl_on_wire() {
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Should discover service via SD")
@@ -472,7 +478,9 @@ fn find_service_ttl_on_wire() {
             Runtime::with_socket_type(config).await.unwrap();
 
         // Start finding service - calling  triggers Command::Find which sends FindService
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         // Use tokio::select to attempt available() but don't wait forever
         // (service won't be found, but the FindService message will be sent)
@@ -501,7 +509,8 @@ fn subscribe_ack_echoes_client_ttl_123() {
             Runtime::with_socket_type(Default::default()).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -616,7 +625,8 @@ fn subscribe_ack_echoes_client_ttl_1000_000() {
             Runtime::with_socket_type(Default::default()).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -731,7 +741,8 @@ fn subscribe_ack_echoes_client_ttl_1() {
             Runtime::with_socket_type(Default::default()).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await

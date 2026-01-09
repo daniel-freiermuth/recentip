@@ -13,7 +13,7 @@
 
 use super::helpers::{
     build_sd_subscribe_with_tcp_endpoint, build_sd_subscribe_with_udp_endpoint, covers,
-    parse_sd_message, TestService,
+    parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION,
 };
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::Runtime;
@@ -42,7 +42,8 @@ fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
             Runtime::with_socket_type(Default::default()).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp() // UDP only!
             .start()
             .await
@@ -177,7 +178,8 @@ fn subscribe_udp_endpoint_to_tcp_only_server_should_nack() {
         > = Runtime::with_socket_type(Default::default()).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .tcp() // TCP only!
             .start()
             .await

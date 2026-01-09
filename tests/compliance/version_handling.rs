@@ -31,14 +31,8 @@ macro_rules! covers {
     };
 }
 
-/// Test service definition
-struct TestService;
-
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const TEST_SERVICE_ID: u16 = 0x1234;
+const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
@@ -227,7 +221,9 @@ fn rpc_request_has_protocol_version_0x01() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -266,7 +262,7 @@ fn server_ignores_wrong_protocol_version() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -433,7 +429,9 @@ fn rpc_request_has_interface_version_at_offset_13() {
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -468,7 +466,7 @@ fn sd_offer_contains_major_version() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -497,7 +495,7 @@ fn sd_offer_contains_major_version() {
                             // Check major version in SD entry
                             assert_eq!(
                                 entry.major_version,
-                                TestService::MAJOR_VERSION,
+                                TEST_SERVICE_VERSION.0,
                                 "SD offer should contain service major version"
                             );
                             found_offer = true;
@@ -534,7 +532,7 @@ fn response_preserves_interface_version() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await

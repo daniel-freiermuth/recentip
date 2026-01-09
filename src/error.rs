@@ -23,16 +23,9 @@
 //!
 //! ```no_run
 //! use someip_runtime::prelude::*;
-//! use someip_runtime::handle::{ProxyHandle, Available};
+//! use someip_runtime::handle::ProxyHandle;
 //!
-//! struct MyService;
-//! impl Service for MyService {
-//!     const SERVICE_ID: u16 = 0x1234;
-//!     const MAJOR_VERSION: u8 = 1;
-//!     const MINOR_VERSION: u32 = 0;
-//! }
-//!
-//! async fn call_with_error_handling(proxy: &ProxyHandle<MyService, Available>) -> Result<()> {
+//! async fn call_with_error_handling(proxy: &ProxyHandle) -> Result<()> {
 //!     let method = MethodId::new(0x0001).unwrap();
 //!     let payload = b"request";
 //!

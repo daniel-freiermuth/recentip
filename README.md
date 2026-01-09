@@ -30,19 +30,15 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 ## Quick Start
 
-### Define a Service
+### Service Identifiers
 
-Services are defined by implementing the `Service` trait (typically generated from FIDL/Franca IDL):
+Services are identified by ID and version constants (typically generated from FIDL/Franca IDL):
 
 ```rust
 use someip_runtime::prelude::*;
 
-struct BrakeService;
-impl Service for BrakeService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const BRAKE_SERVICE_ID: u16 = 0x1234;
+const BRAKE_VERSION: (u8, u32) = (1, 0); // (major, minor)
 ```
 
 ### Client: Find and Call a Service
@@ -56,8 +52,7 @@ async fn main() -> Result<()> {
     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 
     // Find a remote service (waits for SD announcement)
-    let proxy = runtime.find::<BrakeService>(InstanceId::Any)
-        .available().await?;
+    let proxy = runtime.find(BRAKE_SERVICE_ID).await?;
 
     // Call a method (RPC)
     let method_id = MethodId::new(0x0001).unwrap();
@@ -82,7 +77,10 @@ async fn main() -> Result<()> {
     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 
     // Offer a service (announces via SD)
-    let mut offering = runtime.offer::<BrakeService>(InstanceId::Id(0x0001)).await?;
+    let mut offering = runtime.offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001))
+        .version(BRAKE_VERSION.0, BRAKE_VERSION.1)
+        .start()
+        .await?;
 
     // Handle incoming requests
     while let Some(event) = offering.next().await {
@@ -122,9 +120,9 @@ let runtime = Runtime::new(config).await?;
 | Type | Role | Pattern |
 |------|------|---------|
 | `Runtime` | Central coordinator, owns sockets | — |
-| `ProxyHandle<S, State>` | Client proxy to remote service | `Unavailable` → `Available` |
-| `OfferingHandle<S>` | Server handle for offered service | — |
-| `ServiceInstance<S, State>` | Advanced server with bind/announce control | `Bound` → `Announced` |
+| `ProxyHandle` | Client proxy to remote service | — |
+| `OfferingHandle` | Server handle for offered service | — |
+| `ServiceInstance<State>` | Advanced server with bind/announce control | `Bound` → `Announced` |
 | `Subscription` | Receive events from eventgroup | — |
 | `Responder` | Reply to incoming RPC request | Consumed on reply |
 
@@ -144,14 +142,16 @@ For systems without Service Discovery (pre-configured addresses):
 
 ```rust
 // Client: connect directly to known address
-let proxy = runtime.find_static::<BrakeService>(
+let proxy = runtime.find_static(
+    BRAKE_SERVICE_ID,
     InstanceId::Id(1),
     "192.168.1.10:30509".parse().unwrap(),
+    Transport::Tcp,  // explicit transport selection
 );
 // Immediately usable, no SD wait
 
 // Server: bind without announcing
-let service = runtime.bind::<BrakeService>(InstanceId::Id(1)).await?;
+let service = runtime.bind(BRAKE_SERVICE_ID, InstanceId::Id(1), BRAKE_VERSION, Transport::Udp).await?;
 // Add static subscribers manually
 service.add_static_subscriber("192.168.1.20:30502", &[eventgroup]);
 ```

@@ -121,7 +121,9 @@ fn rpc_request_wire_format() {
             Runtime::with_socket_type(config).await.unwrap();
 
         // Use public API: find service and wait for availability via SD
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -161,7 +163,8 @@ fn rpc_response_wire_format() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -375,7 +378,9 @@ fn fire_and_forget_wire_format() {
             Runtime::with_socket_type(config).await.unwrap();
 
         // Use public API: find service and wait for availability via SD
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -416,7 +421,8 @@ fn fire_and_forget_received_wire_format() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -523,7 +529,8 @@ fn header_size_and_endianness_on_wire() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -684,7 +691,9 @@ fn session_id_increment_on_wire() {
             Runtime::with_socket_type(config).await.unwrap();
 
         // Use public API: find service and wait for availability via SD
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await

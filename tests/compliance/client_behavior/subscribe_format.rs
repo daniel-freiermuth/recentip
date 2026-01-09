@@ -11,10 +11,9 @@
 //! - feat_req_recentipsd_631: Subscriptions triggered by OfferService entries
 //! - feat_req_recentip_324: Client adapts to available transport
 
-use super::helpers::{
+use super::helpers::{TEST_SERVICE_ID,
     build_sd_offer, build_sd_offer_dual_stack, build_sd_offer_tcp_only, build_sd_subscribe_ack,
-    covers, parse_sd_message, TestService,
-};
+    covers, parse_sd_message};
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::{Runtime, RuntimeConfig};
 use std::net::SocketAddr;
@@ -140,7 +139,9 @@ fn subscribe_format_udp_only_cyclic_offers() {
             Runtime::with_socket_type(config).await.unwrap();
 
         // Discover and subscribe
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -272,7 +273,9 @@ fn subscribe_format_tcp_only_cyclic_offers() {
             turmoil::net::TcpListener,
         > = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -396,7 +399,9 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
         let runtime: Runtime<turmoil::net::UdpSocket> =
             Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -518,7 +523,9 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
             turmoil::net::TcpListener,
         > = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -650,7 +657,9 @@ fn subscribe_format_client_adapts_to_available_transport() {
             turmoil::net::TcpListener,
         > = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")

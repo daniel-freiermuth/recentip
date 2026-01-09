@@ -12,7 +12,7 @@
 //!
 //! ## Features
 //!
-//! - **Type-safe API**: Compile-time guarantees via the [`Service`] trait and type-state patterns
+//! - **Type-safe API**: Compile-time guarantees via type-state patterns
 //! - **Async/await**: Native tokio integration with zero-cost futures
 //! - **Service Discovery**: Automatic discovery via multicast SD protocol
 //! - **RPC**: Request/response and fire-and-forget method calls
@@ -35,13 +35,7 @@
 //! ```no_run
 //! use someip_runtime::prelude::*;
 //!
-//! // Define your service (typically generated from IDL)
-//! struct BrakeService;
-//! impl Service for BrakeService {
-//!     const SERVICE_ID: u16 = 0x1234;
-//!     const MAJOR_VERSION: u8 = 1;
-//!     const MINOR_VERSION: u32 = 0;
-//! }
+//! const BRAKE_SERVICE_ID: u16 = 0x1234;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
@@ -49,7 +43,7 @@
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
 //!     // Find a remote service (waits for SD announcement)
-//!     let proxy = runtime.find::<BrakeService>(InstanceId::Any).await?;
+//!     let proxy = runtime.find(BRAKE_SERVICE_ID).await?;
 //!
 //!     // Call a method (RPC)
 //!     let method_id = MethodId::new(0x0001).unwrap();
@@ -66,19 +60,18 @@
 //! use someip_runtime::prelude::*;
 //! use someip_runtime::handle::ServiceEvent;
 //!
-//! struct BrakeService;
-//! impl Service for BrakeService {
-//!     const SERVICE_ID: u16 = 0x1234;
-//!     const MAJOR_VERSION: u8 = 1;
-//!     const MINOR_VERSION: u32 = 0;
-//! }
+//! const BRAKE_SERVICE_ID: u16 = 0x1234;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
 //!
 //!     // Offer a service (announces via SD)
-//!     let mut offering = runtime.offer::<BrakeService>(InstanceId::Id(0x0001)).start().await?;
+//!     let mut offering = runtime.offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001))
+//!         .version(1, 0)
+//!         .udp()
+//!         .start()
+//!         .await?;
 //!
 //!     // Handle incoming requests
 //!     while let Some(event) = offering.next().await {
@@ -184,7 +177,7 @@
 //!
 //! The library uses **type-state patterns** to enforce correct usage at compile time:
 //!
-//! - [`ProxyHandle<S>`] → returned by `find()`, ready for `.call()`, `.subscribe()`, etc.
+//! - [`ProxyHandle`] → returned by `find()`, ready for `.call()`, `.subscribe()`, etc.
 //! - [`ServiceInstance<Bound>`] → socket is open, but not announced via SD
 //! - [`ServiceInstance<Announced>`] → actively announced, accepting requests
 //!
@@ -235,14 +228,7 @@
 //! use someip_runtime::prelude::*;
 //! use someip_runtime::handle::ProxyHandle;
 //!
-//! struct MyService;
-//! impl Service for MyService {
-//!     const SERVICE_ID: u16 = 0x1234;
-//!     const MAJOR_VERSION: u8 = 1;
-//!     const MINOR_VERSION: u32 = 0;
-//! }
-//!
-//! async fn subscribe_example(proxy: &ProxyHandle<MyService>) -> Result<()> {
+//! async fn subscribe_example(proxy: &ProxyHandle) -> Result<()> {
 //!     let eventgroup = EventgroupId::new(0x0001).unwrap();
 //!     let mut events = proxy.subscribe(eventgroup).await?;
 //!
@@ -260,14 +246,7 @@
 //! use someip_runtime::prelude::*;
 //! use someip_runtime::handle::OfferingHandle;
 //!
-//! struct MyService;
-//! impl Service for MyService {
-//!     const SERVICE_ID: u16 = 0x1234;
-//!     const MAJOR_VERSION: u8 = 1;
-//!     const MINOR_VERSION: u32 = 0;
-//! }
-//!
-//! async fn publish_example(offering: &OfferingHandle<MyService>) -> Result<()> {
+//! async fn publish_example(offering: &OfferingHandle) -> Result<()> {
 //!     let eventgroup = EventgroupId::new(0x0001).unwrap();
 //!     let event_id = EventId::new(0x8001).unwrap();
 //!
@@ -284,14 +263,7 @@
 //! use someip_runtime::prelude::*;
 //! use someip_runtime::handle::ProxyHandle;
 //!
-//! struct MyService;
-//! impl Service for MyService {
-//!     const SERVICE_ID: u16 = 0x1234;
-//!     const MAJOR_VERSION: u8 = 1;
-//!     const MINOR_VERSION: u32 = 0;
-//! }
-//!
-//! async fn error_handling_example(proxy: &ProxyHandle<MyService>) -> Result<()> {
+//! async fn error_handling_example(proxy: &ProxyHandle) -> Result<()> {
 //!     let method_id = MethodId::new(0x0001).unwrap();
 //!     let payload = b"request";
 //!
@@ -465,6 +437,15 @@ impl InstanceId {
     }
 }
 
+impl From<u16> for InstanceId {
+    fn from(id: u16) -> Self {
+        match id {
+            0xFFFF => Self::Any,
+            id => Self::Id(id),
+        }
+    }
+}
+
 /// Method identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MethodId(u16);
@@ -521,17 +502,48 @@ impl EventgroupId {
     }
 }
 
-/// Major version of a service interface
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct MajorVersion(u8);
+/// Major version of a service interface - can be exact or wildcard (Any)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MajorVersion {
+    /// Match any major version (0xFF wildcard in SD FindService)
+    Any,
+    /// Specific major version (0x00-0xFE)
+    Exact(u8),
+}
 
 impl MajorVersion {
+    /// Create a specific major version
     pub fn new(version: u8) -> Self {
-        Self(version)
+        if version == 0xFF {
+            Self::Any
+        } else {
+            Self::Exact(version)
+        }
     }
 
+    /// Get the raw value (0xFF for Any)
     pub fn value(&self) -> u8 {
-        self.0
+        match self {
+            Self::Any => 0xFF,
+            Self::Exact(v) => *v,
+        }
+    }
+
+    /// Check if this is a wildcard
+    pub fn is_any(&self) -> bool {
+        matches!(self, Self::Any)
+    }
+}
+
+impl Default for MajorVersion {
+    fn default() -> Self {
+        Self::Any
+    }
+}
+
+impl From<u8> for MajorVersion {
+    fn from(v: u8) -> Self {
+        Self::new(v)
     }
 }
 
@@ -568,20 +580,6 @@ pub enum ReturnCode {
     WrongInterfaceVersion = 0x08,
     MalformedMessage = 0x09,
     WrongMessageType = 0x0A,
-}
-
-// ============================================================================
-// SERVICE TRAIT
-// ============================================================================
-
-/// Trait for service definitions (implemented by generated code)
-pub trait Service {
-    /// The service ID
-    const SERVICE_ID: u16;
-    /// Major version
-    const MAJOR_VERSION: u8;
-    /// Minor version  
-    const MINOR_VERSION: u32;
 }
 
 // ============================================================================
@@ -632,6 +630,6 @@ pub struct ClientInfo {
 pub mod prelude {
     pub use crate::{
         Error, Event, EventId, EventgroupId, InstanceId, MajorVersion, MethodConfig, MethodId,
-        MinorVersion, Response, Result, ReturnCode, Runtime, RuntimeConfig, Service, ServiceId,
+        MinorVersion, Response, Result, ReturnCode, Runtime, RuntimeConfig, ServiceId,
     };
 }

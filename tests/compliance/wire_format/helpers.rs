@@ -19,14 +19,9 @@ macro_rules! covers {
 }
 pub(crate) use covers;
 
-/// Test service definition
-pub struct TestService;
-
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+// Wire values for TestService
+pub const TEST_SERVICE_ID: u16 = 0x1234;
+pub const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // PARSER FUNCTIONS

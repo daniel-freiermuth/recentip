@@ -18,7 +18,7 @@ use std::time::Duration;
 use someip_runtime::{
     handle::ServiceEvent,
     runtime::{Runtime, RuntimeConfig},
-    EventId, EventgroupId, InstanceId, MethodId, Service, ServiceId, Transport,
+    EventId, EventgroupId, InstanceId, MethodId, ServiceId, Transport,
 };
 
 /// Type alias for turmoil-based runtime
@@ -29,21 +29,11 @@ type TurmoilRuntime =
 // TEST SERVICE DEFINITIONS
 // ============================================================================
 
-struct BrakeService;
+const BRAKE_SERVICE_ID: u16 = 0x1234;
+const BRAKE_SERVICE_VERSION: (u8, u32) = (1, 0);
 
-impl Service for BrakeService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
-
-struct TemperatureService;
-
-impl Service for TemperatureService {
-    const SERVICE_ID: u16 = 0x5678;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const TEMPERATURE_SERVICE_ID: u16 = 0x5678;
+const TEMPERATURE_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // TYPESTATE TRANSITION TESTS
@@ -69,7 +59,7 @@ fn test_bind_returns_bound_instance() {
 
             // bind() should return ServiceInstance<_, Bound>
             let _service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -112,7 +102,7 @@ fn test_announce_transitions_to_announced() {
 
             // Phase 1: Bind (not yet announced)
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -156,7 +146,7 @@ fn test_stop_announcing_transitions_to_bound() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -204,7 +194,7 @@ fn test_full_lifecycle() {
 
             // Bind
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -259,7 +249,7 @@ fn test_bound_service_not_discoverable() {
 
             // Only bind, don't announce
             let _service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -281,7 +271,7 @@ fn test_bound_service_not_discoverable() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
 
             // Service should NOT be discoverable (only bound, not announced)
             let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
@@ -332,7 +322,7 @@ fn test_announced_service_is_discoverable() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -357,7 +347,7 @@ fn test_announced_service_is_discoverable() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
 
             // Service SHOULD be discoverable after announce()
             let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
@@ -408,7 +398,7 @@ fn test_service_disappears_after_stop_announcing() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -438,10 +428,10 @@ fn test_service_disappears_after_stop_announcing() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let _proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let _proxy = runtime.find(BRAKE_SERVICE_ID);
 
             // Verify it's still discoverable before server stops announcing
-            let proxy_before_stop = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy_before_stop = runtime.find(BRAKE_SERVICE_ID);
             let result_before =
                 tokio::time::timeout(Duration::from_millis(150), proxy_before_stop).await;
             assert!(
@@ -454,7 +444,7 @@ fn test_service_disappears_after_stop_announcing() {
 
             // Service should now be unavailable - verify by trying to discover again
             // A fresh proxy should not find the service since StopOfferService was sent
-            let proxy_after_stop = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy_after_stop = runtime.find(BRAKE_SERVICE_ID);
             let result_after =
                 tokio::time::timeout(Duration::from_millis(200), proxy_after_stop).await;
 
@@ -506,7 +496,7 @@ fn test_notify_static_without_announce() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind::<TemperatureService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(TEMPERATURE_SERVICE_ID, InstanceId::Id(0x0001), TEMPERATURE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -569,7 +559,7 @@ fn test_notify_requires_announced_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -608,7 +598,7 @@ fn test_notify_requires_announced_state() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
             let available = proxy.await.unwrap();
 
             let mut subscription = available
@@ -665,7 +655,7 @@ fn test_has_subscribers_in_announced_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -705,7 +695,7 @@ fn test_has_subscribers_in_announced_state() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
             let available = proxy.await.unwrap();
 
             let _subscription = available
@@ -760,7 +750,7 @@ fn test_initialization_before_announce() {
 
             // Phase 1: Bind
             let service = runtime
-                .bind::<TemperatureService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(TEMPERATURE_SERVICE_ID, InstanceId::Id(0x0001), TEMPERATURE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -811,7 +801,7 @@ fn test_init_failure_prevents_announcement() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<TemperatureService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(TEMPERATURE_SERVICE_ID, InstanceId::Id(0x0001), TEMPERATURE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -843,7 +833,7 @@ fn test_init_failure_prevents_announcement() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<TemperatureService>(InstanceId::Any);
+            let proxy = runtime.find(TEMPERATURE_SERVICE_ID);
 
             // Service should never be discoverable
             let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
@@ -898,7 +888,7 @@ fn test_graceful_shutdown_drains_requests() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -942,7 +932,7 @@ fn test_graceful_shutdown_drains_requests() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
             let available = proxy.await.unwrap();
 
             // Make a call that should succeed even during shutdown
@@ -1000,7 +990,7 @@ fn test_drop_announced_sends_stop_offer() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -1028,7 +1018,7 @@ fn test_drop_announced_sends_stop_offer() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
 
             // Should discover initially
             let _available = tokio::time::timeout(Duration::from_millis(150), proxy)
@@ -1041,7 +1031,7 @@ fn test_drop_announced_sends_stop_offer() {
 
             // Service should now be gone (StopOfferService received)
             // Verify by creating a fresh proxy and expecting discovery to fail
-            let proxy2 = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy2 = runtime.find(BRAKE_SERVICE_ID);
             let result = tokio::time::timeout(Duration::from_millis(200), proxy2).await;
 
             assert!(
@@ -1091,10 +1081,10 @@ fn test_drop_bound_no_sd_message() {
 
             {
                 let _service = runtime
-                    .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                    .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                     .await
                     .unwrap();
-                // Dropped without announce - no OfferService, no StopOfferService
+                // Dropped without announce - no Offerno StopOfferService
             }
 
             flag.store(true, Ordering::SeqCst);
@@ -1112,7 +1102,7 @@ fn test_drop_bound_no_sd_message() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
 
             // Should never discover (never announced)
             let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
@@ -1168,12 +1158,12 @@ fn test_multiple_services_same_runtime() {
 
             // Bind multiple different services
             let brake = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
             let _temp = runtime
-                .bind::<TemperatureService>(InstanceId::Id(0x0002), Transport::Udp)
+                .bind(TEMPERATURE_SERVICE_ID, InstanceId::Id(0x0002), TEMPERATURE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -1199,7 +1189,7 @@ fn test_multiple_services_same_runtime() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Brake should be discoverable (announced)
-            let brake_proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let brake_proxy = runtime.find(BRAKE_SERVICE_ID);
             let brake_result = tokio::time::timeout(Duration::from_millis(150), brake_proxy).await;
             assert!(
                 brake_result.is_ok(),
@@ -1207,7 +1197,7 @@ fn test_multiple_services_same_runtime() {
             );
 
             // Temperature should NOT be discoverable (only bound)
-            let temp_proxy = runtime.find::<TemperatureService>(InstanceId::Any);
+            let temp_proxy = runtime.find(TEMPERATURE_SERVICE_ID);
             let temp_result = tokio::time::timeout(Duration::from_millis(150), temp_proxy).await;
             assert!(
                 temp_result.is_err(),
@@ -1256,12 +1246,12 @@ fn test_multiple_instances_same_service() {
 
             // Same service type, different instances
             let instance1 = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
             let _instance2 = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0002), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0002), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -1287,12 +1277,16 @@ fn test_multiple_instances_same_service() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // Instance 0x0001 should be discoverable
-            let proxy1 = runtime.find::<BrakeService>(InstanceId::Id(0x0001));
+            let proxy1 = runtime
+                .find(BRAKE_SERVICE_ID)
+                .instance(InstanceId::Id(0x0001));
             let result1 = tokio::time::timeout(Duration::from_millis(150), proxy1).await;
             assert!(result1.is_ok(), "Announced instance should be discoverable");
 
             // Instance 0x0002 should NOT be discoverable
-            let proxy2 = runtime.find::<BrakeService>(InstanceId::Id(0x0002));
+            let proxy2 = runtime
+                .find(BRAKE_SERVICE_ID)
+                .instance(InstanceId::Id(0x0002));
             let result2 = tokio::time::timeout(Duration::from_millis(150), proxy2).await;
             assert!(
                 result2.is_err(),
@@ -1342,13 +1336,13 @@ fn test_double_bind_same_instance_fails() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _first = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
             // Second bind of same service+instance should fail
             let second = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await;
 
             assert!(second.is_err(), "Cannot bind same service+instance twice");
@@ -1394,7 +1388,7 @@ fn test_rpc_in_bound_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -1431,7 +1425,8 @@ fn test_rpc_in_bound_state() {
 
             // Client with pre-configured address (static deployment)
             let server_ip = turmoil::lookup("server");
-            let proxy = runtime.find_static::<BrakeService>(
+            let proxy = runtime.find_static(
+                BRAKE_SERVICE_ID,
                 InstanceId::Id(0x0001),
                 std::net::SocketAddr::new(server_ip, 30491),
                 Transport::Udp,
@@ -1488,7 +1483,7 @@ fn test_notify_no_subscribers_succeeds() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -1548,7 +1543,7 @@ fn test_notify_static_no_subscribers_succeeds() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -1614,7 +1609,7 @@ fn test_static_subscribers_preserved_after_announce() {
             // Listen for static events on port 30502
             let mut listener = runtime
                 .listen_static(
-                    ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
+                    ServiceId::new(BRAKE_SERVICE_ID).unwrap(),
                     InstanceId::Id(0x0001),
                     EventgroupId::new(0x0001).unwrap(),
                     30502,
@@ -1646,7 +1641,7 @@ fn test_static_subscribers_preserved_after_announce() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -1717,7 +1712,7 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
             // Listen for static events on port 30502
             let mut listener = runtime
                 .listen_static(
-                    ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
+                    ServiceId::new(BRAKE_SERVICE_ID).unwrap(),
                     InstanceId::Id(0x0001),
                     EventgroupId::new(0x0001).unwrap(),
                     30502,
@@ -1749,7 +1744,7 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -1822,7 +1817,7 @@ fn test_re_announce_after_stop() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -1854,7 +1849,7 @@ fn test_re_announce_after_stop() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             // First discovery
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
             let _available = tokio::time::timeout(Duration::from_millis(250), proxy)
                 .await
                 .expect("First discovery")
@@ -1865,7 +1860,7 @@ fn test_re_announce_after_stop() {
             tokio::time::sleep(Duration::from_millis(400)).await;
 
             // Verify service actually went away (need fresh proxy since available() consumes)
-            let proxy_check_gone = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy_check_gone = runtime.find(BRAKE_SERVICE_ID);
             let gone_result =
                 tokio::time::timeout(Duration::from_millis(200), proxy_check_gone).await;
             assert!(
@@ -1877,7 +1872,7 @@ fn test_re_announce_after_stop() {
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Re-discover after re-announcement (need fresh proxy since available() consumes)
-            let proxy2 = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy2 = runtime.find(BRAKE_SERVICE_ID);
             let _available_again = tokio::time::timeout(Duration::from_millis(500), proxy2)
                 .await
                 .expect("Should rediscover after re-announce")
@@ -1932,7 +1927,7 @@ fn test_static_subscriber_eventgroup_filtering() {
 
             let mut listener = runtime
                 .listen_static(
-                    ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
+                    ServiceId::new(BRAKE_SERVICE_ID).unwrap(),
                     InstanceId::Id(0x0001),
                     EventgroupId::new(0x0001).unwrap(),
                     30501,
@@ -1972,7 +1967,7 @@ fn test_static_subscriber_eventgroup_filtering() {
 
             let mut listener = runtime
                 .listen_static(
-                    ServiceId::new(BrakeService::SERVICE_ID).unwrap(),
+                    ServiceId::new(BRAKE_SERVICE_ID).unwrap(),
                     InstanceId::Id(0x0001),
                     EventgroupId::new(0x0002).unwrap(),
                     30502,
@@ -2012,7 +2007,7 @@ fn test_static_subscriber_eventgroup_filtering() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -2095,7 +2090,7 @@ fn test_concurrent_notify() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -2134,7 +2129,7 @@ fn test_concurrent_notify() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
             let available = proxy.await.unwrap();
 
             let mut subscription = available
@@ -2197,7 +2192,7 @@ fn test_notify_survives_subscriber_disconnect() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -2248,7 +2243,7 @@ fn test_notify_survives_subscriber_disconnect() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
             let available = proxy.await.unwrap();
 
             let subscription = available
@@ -2315,7 +2310,7 @@ fn test_max_udp_payload_notify() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -2354,7 +2349,7 @@ fn test_max_udp_payload_notify() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
             let available = proxy.await.unwrap();
 
             let mut subscription = available
@@ -2417,7 +2412,7 @@ fn test_large_tcp_rpc_payload() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer::<BrakeService>(InstanceId::Id(0x0001))
+                .offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001)).version(BRAKE_SERVICE_VERSION.0, BRAKE_SERVICE_VERSION.1)
                 .tcp()
                 .start()
                 .await
@@ -2452,7 +2447,9 @@ fn test_large_tcp_rpc_payload() {
             };
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Id(0x0001));
+            let proxy = runtime
+                .find(BRAKE_SERVICE_ID)
+                .instance(InstanceId::Id(0x0001));
             let available = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Should discover service")
@@ -2521,7 +2518,7 @@ fn test_response_after_offering_dropped() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer::<BrakeService>(InstanceId::Id(0x0001))
+                .offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001)).version(BRAKE_SERVICE_VERSION.0, BRAKE_SERVICE_VERSION.1)
                 .tcp()
                 .start()
                 .await
@@ -2559,7 +2556,9 @@ fn test_response_after_offering_dropped() {
             };
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Id(0x0001));
+            let proxy = runtime
+                .find(BRAKE_SERVICE_ID)
+                .instance(InstanceId::Id(0x0001));
             let available = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Should discover service")
@@ -2625,7 +2624,7 @@ fn test_empty_payload_notify() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -2661,7 +2660,7 @@ fn test_empty_payload_notify() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
             let available = proxy.await.unwrap();
 
             let mut subscription = available
@@ -2730,7 +2729,7 @@ fn test_rapid_state_transitions() {
 
             for i in 0..5 {
                 let service = runtime
-                    .bind::<BrakeService>(InstanceId::Id((i + 1) as u16), Transport::Udp)
+                    .bind(BRAKE_SERVICE_ID, InstanceId::Id((i + 1) as u16), BRAKE_SERVICE_VERSION, Transport::Udp)
                     .await
                     .unwrap();
 
@@ -2784,7 +2783,7 @@ fn test_next_in_bound_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -2819,7 +2818,8 @@ fn test_next_in_bound_state() {
 
             // Static client (pre-configured address)
             let server_ip = turmoil::lookup("server");
-            let proxy = runtime.find_static::<BrakeService>(
+            let proxy = runtime.find_static(
+                BRAKE_SERVICE_ID,
                 InstanceId::Id(0x0001),
                 std::net::SocketAddr::new(server_ip, 30491),
                 Transport::Udp,
@@ -2873,7 +2873,7 @@ fn test_next_in_announced_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -2909,7 +2909,7 @@ fn test_next_in_announced_state() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
             let available = proxy.await.unwrap();
 
             let response = available
@@ -2964,7 +2964,7 @@ fn test_subscription_events_received() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind::<BrakeService>(InstanceId::Id(0x0001), Transport::Udp)
+                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
                 .await
                 .unwrap();
 
@@ -3007,7 +3007,7 @@ fn test_subscription_events_received() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<BrakeService>(InstanceId::Any);
+            let proxy = runtime.find(BRAKE_SERVICE_ID);
             let available = proxy.await.unwrap();
 
             // Subscribe

@@ -13,7 +13,7 @@
 //! - feat_req_recentipsd_765: Per-peer session tracking
 //! - feat_req_recentip_649: Session ID must start at 1
 
-use super::helpers::{covers, parse_sd_flags, parse_sd_message, TestService};
+use super::helpers::{covers, parse_sd_flags, parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION};
 use someip_runtime::prelude::*;
 use someip_runtime::runtime::{Runtime, RuntimeConfig};
 use std::time::Duration;
@@ -54,7 +54,8 @@ fn sd_reboot_flag_set_after_startup() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -146,7 +147,8 @@ fn sd_session_starts_at_one() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -224,7 +226,8 @@ fn sd_reboot_flag_clears_after_wraparound() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -297,7 +300,8 @@ fn sd_separate_multicast_unicast_sessions() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -317,7 +321,7 @@ fn sd_separate_multicast_unicast_sessions() {
             Runtime::with_socket_type(config).await.unwrap();
 
         // Subscribe to trigger unicast SD responses
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let _ = tokio::time::timeout(Duration::from_secs(2), proxy).await;
 
         tokio::time::sleep(Duration::from_millis(300)).await;

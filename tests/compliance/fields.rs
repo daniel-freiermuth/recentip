@@ -26,14 +26,8 @@ macro_rules! covers {
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service definition
-struct TestService;
-
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const TEST_SERVICE_ID: u16 = 0x1234;
+const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // Field Getter Tests
@@ -66,7 +60,7 @@ fn field_getter_empty_request_payload() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -113,7 +107,7 @@ fn field_getter_empty_request_payload() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
@@ -174,7 +168,7 @@ fn field_getter_returns_current_value() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -209,7 +203,7 @@ fn field_getter_returns_current_value() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
@@ -279,7 +273,7 @@ fn field_setter_sends_value_in_request() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -329,7 +323,7 @@ fn field_setter_sends_value_in_request() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
@@ -390,7 +384,7 @@ fn field_setter_gets_response() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -420,7 +414,7 @@ fn field_setter_gets_response() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
@@ -489,7 +483,7 @@ fn field_notifier_sends_updated_value() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -523,7 +517,7 @@ fn field_notifier_sends_updated_value() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
@@ -605,7 +599,7 @@ fn field_combines_getter_setter_notifier() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -685,7 +679,7 @@ fn field_combines_getter_setter_notifier() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")
@@ -771,7 +765,7 @@ fn field_setter_can_reject_invalid_value() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -810,7 +804,7 @@ fn field_setter_can_reject_invalid_value() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-            let proxy = runtime.find::<TestService>(InstanceId::Any);
+            let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
                 .await
                 .expect("Discovery timeout")

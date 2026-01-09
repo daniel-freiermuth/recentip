@@ -15,23 +15,13 @@ use std::time::Duration;
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service definition
-struct TestService;
+// Wire values for TestService
+const TEST_SERVICE_ID: u16 = 0x1234;
+const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
-
-/// Another test service with different IDs
-struct AnotherService;
-
-impl Service for AnotherService {
-    const SERVICE_ID: u16 = 0x5678;
-    const MAJOR_VERSION: u8 = 2;
-    const MINOR_VERSION: u32 = 3;
-}
+// Wire values for AnotherService
+const ANOTHER_SERVICE_ID: u16 = 0x5678;
+const ANOTHER_SERVICE_VERSION: (u8, u32) = (2, 3);
 
 // ============================================================================
 // BASIC SD EVENT MONITORING
@@ -54,7 +44,8 @@ fn monitor_sd_receives_service_available() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -98,7 +89,7 @@ fn monitor_sd_receives_service_available() {
             assert_eq!(service_id, 0x1234, "Service ID should match");
             assert_eq!(instance_id, 0x0001, "Instance ID should match");
         }
-        other => panic!("Expected Service, got {:?}", other),
+        other => panic!("Expected got {:?}", other),
     }
 }
 
@@ -123,7 +114,8 @@ fn monitor_sd_receives_service_unavailable() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -204,7 +196,8 @@ fn monitor_sd_event_metadata_accuracy() {
 
         // Offer with specific instance ID
         let _offering = runtime
-            .offer::<AnotherService>(InstanceId::Id(0x0042))
+            .offer(ANOTHER_SERVICE_ID, InstanceId::Id(0x0042))
+            .version(ANOTHER_SERVICE_VERSION.0, ANOTHER_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -263,7 +256,7 @@ fn monitor_sd_event_metadata_accuracy() {
             // Endpoint should be valid (port > 0)
             assert!(endpoint.port() > 0, "Endpoint port should be valid");
         }
-        other => panic!("Expected Service, got {:?}", other),
+        other => panic!("Expected got {:?}", other),
     }
 }
 
@@ -293,7 +286,8 @@ fn monitor_sd_multiple_monitors_receive_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -390,7 +384,8 @@ fn monitor_sd_multiple_monitors_same_runtime() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -493,7 +488,8 @@ fn monitor_sd_multiple_services() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -510,7 +506,8 @@ fn monitor_sd_multiple_services() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<AnotherService>(InstanceId::Id(0x0002))
+            .offer(ANOTHER_SERVICE_ID, InstanceId::Id(0x0002))
+            .version(ANOTHER_SERVICE_VERSION.0, ANOTHER_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -606,7 +603,8 @@ fn monitor_sd_receives_service_expired() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -706,7 +704,8 @@ fn monitor_sd_dropped_receiver_cleanup() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -797,7 +796,8 @@ fn monitor_sd_before_services_exist() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -819,6 +819,6 @@ fn monitor_sd_before_services_exist() {
         SdEvent::ServiceAvailable { service_id, .. } => {
             assert_eq!(service_id, 0x1234);
         }
-        other => panic!("Expected Service, got {:?}", other),
+        other => panic!("Expected got {:?}", other),
     }
 }

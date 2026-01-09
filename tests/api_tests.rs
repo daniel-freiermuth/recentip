@@ -3,7 +3,7 @@
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::runtime::Runtime;
 use someip_runtime::{
-    EventId, EventgroupId, InstanceId, MethodId, RuntimeConfig, Service, ServiceId,
+    EventId, EventgroupId, InstanceId, MethodId, RuntimeConfig, ServiceId,
 };
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -12,23 +12,16 @@ use std::time::Duration;
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service definition
-struct TestService;
+// Wire values for TestService
+const TEST_SERVICE_ID: u16 = 0x1234;
+const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+// Wire values for TestServiceNew (same service ID, different version)
+const TEST_SERVICE_NEW_VERSION: (u8, u32) = (2, 0);
 
-/// Another test service
-struct AnotherService;
-
-impl Service for AnotherService {
-    const SERVICE_ID: u16 = 0x5678;
-    const MAJOR_VERSION: u8 = 2;
-    const MINOR_VERSION: u32 = 1;
-}
+// Wire values for AnotherService
+const ANOTHER_SERVICE_ID: u16 = 0x5678;
+const ANOTHER_SERVICE_VERSION: (u8, u32) = (2, 1);
 
 #[test_log::test]
 fn test_runtime_creation() {
@@ -58,7 +51,7 @@ fn test_find_service() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Try to find a service that doesn't exist - should fail
-        let result = runtime.find::<TestService>(InstanceId::Any).await;
+        let result = runtime.find(TEST_SERVICE_ID).await;
 
         // Should fail since no server is offering this service
         assert!(result.is_err());
@@ -81,7 +74,7 @@ fn test_offer_service() {
 
         // Offer a service
         let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await;
@@ -143,7 +136,7 @@ fn test_service_discovery_offer_find() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -165,7 +158,7 @@ fn test_service_discovery_offer_find() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
 
         // Wait for discovery (with timeout)
         let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
@@ -199,13 +192,13 @@ fn test_multiple_services() {
 
         // Offer two different services
         let _offering1 = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
             .unwrap();
         let _offering2 = runtime
-            .offer::<AnotherService>(InstanceId::Id(0x0002))
+            .offer(ANOTHER_SERVICE_ID, InstanceId::Id(0x0002)).version(ANOTHER_SERVICE_VERSION.0, ANOTHER_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -224,8 +217,8 @@ fn test_multiple_services() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find both services
-        let proxy1 = runtime.find::<TestService>(InstanceId::Any);
-        let proxy2 = runtime.find::<AnotherService>(InstanceId::Any);
+        let proxy1 = runtime.find(TEST_SERVICE_ID);
+        let proxy2 = runtime.find(ANOTHER_SERVICE_ID);
 
         // Wait for both to be discovered
         let result1 = tokio::time::timeout(Duration::from_millis(300), proxy1).await;
@@ -253,7 +246,7 @@ fn test_specific_instance_id() {
 
         // Offer instance 0x0001
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -272,7 +265,9 @@ fn test_specific_instance_id() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find specific instance
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         let result = tokio::time::timeout(Duration::from_millis(300), proxy).await;
 
@@ -300,7 +295,7 @@ fn test_offering_handle_drop() {
 
         {
             let _offering = runtime
-                .offer::<TestService>(InstanceId::Id(0x0001))
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -332,7 +327,7 @@ fn test_method_call_rpc() {
 
         // Offer the service
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -369,7 +364,9 @@ fn test_method_call_rpc() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find the service
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         // Wait for service to become available
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -395,13 +392,8 @@ fn test_method_call_rpc() {
     sim.run().unwrap();
 }
 
-struct PubSubService;
-
-impl Service for PubSubService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const PUBSUB_SERVICE_ID: u16 = 0x1234;
+const PUBSUB_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 /// Library auto-renewal test: Events continue beyond initial TTL.
 #[test_log::test]
@@ -419,7 +411,7 @@ fn library_auto_renews_subscription() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer::<PubSubService>(InstanceId::Id(0x0001))
+            .offer(PUBSUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUBSUB_SERVICE_VERSION.0, PUBSUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -449,7 +441,7 @@ fn library_auto_renews_subscription() {
             .build();
 
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-        let proxy = runtime.find::<PubSubService>(InstanceId::Any);
+        let proxy = runtime.find(PUBSUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -513,7 +505,7 @@ fn test_event_subscription() {
 
         // Offer the service
         let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -552,7 +544,9 @@ fn test_event_subscription() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         // Find the service
-        let proxy = runtime.find::<TestService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
 
         // Wait for service to become available
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -655,7 +649,9 @@ fn subscribe_returns_error_on_nack() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<PubSubService>(InstanceId::Id(0x0001));
+        let proxy = runtime
+            .find(PUBSUB_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001));
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")

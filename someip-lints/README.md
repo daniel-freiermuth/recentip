@@ -23,7 +23,7 @@ Bad:
 ```rust
 async fn bad_example() {
     let runtime = Runtime::new(config).await?;
-    let proxy = runtime.find::<MyService>().await?;
+    let proxy = runtime.find(MY_SERVICE_ID).await?;
     // BAD: runtime dropped without shutdown()
 }
 ```
@@ -32,7 +32,7 @@ Good:
 ```rust
 async fn good_example() {
     let runtime = Runtime::new(config).await?;
-    let proxy = runtime.find::<MyService>().await?;
+    let proxy = runtime.find(MY_SERVICE_ID).await?;
     runtime.shutdown().await;  // GOOD: explicit shutdown
 }
 ```

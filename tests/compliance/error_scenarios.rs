@@ -26,14 +26,8 @@ macro_rules! covers {
 type TurmoilRuntime =
     Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
-/// Test service definition
-struct TestService;
-
-impl Service for TestService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const TEST_SERVICE_ID: u16 = 0x1234;
+const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
 // No Error Response for Events/Fire&Forget Tests
@@ -59,7 +53,7 @@ fn no_error_response_for_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -89,7 +83,7 @@ fn no_error_response_for_events() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -136,7 +130,7 @@ fn no_error_response_for_fire_and_forget() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -167,7 +161,7 @@ fn no_error_response_for_fire_and_forget() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -246,7 +240,7 @@ fn server_returns_various_error_codes() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -301,7 +295,7 @@ fn server_returns_various_error_codes() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy = runtime.find::<TestService>(InstanceId::Any);
+        let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
@@ -436,13 +430,6 @@ fn error_response_copies_request_header() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    struct TestService;
-    impl Service for TestService {
-        const SERVICE_ID: u16 = 0x1234;
-        const MAJOR_VERSION: u8 = 1;
-        const MINOR_VERSION: u32 = 0;
-    }
-
     covers!(feat_req_recentip_655);
 
     let mut sim = turmoil::Builder::new()
@@ -458,7 +445,7 @@ fn error_response_copies_request_header() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -620,13 +607,6 @@ fn exception_message_type_when_configured() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    struct TestService;
-    impl Service for TestService {
-        const SERVICE_ID: u16 = 0x1234;
-        const MAJOR_VERSION: u8 = 1;
-        const MINOR_VERSION: u32 = 0;
-    }
-
     covers!(feat_req_recentip_106);
 
     let mut sim = turmoil::Builder::new()
@@ -645,7 +625,7 @@ fn exception_message_type_when_configured() {
         let method_config = MethodConfig::new().use_exception_for(0x0001);
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .method_config(method_config)
             .udp()
             .start()
@@ -777,13 +757,6 @@ fn mixed_exception_config_per_method() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    struct TestService;
-    impl Service for TestService {
-        const SERVICE_ID: u16 = 0x1234;
-        const MAJOR_VERSION: u8 = 1;
-        const MINOR_VERSION: u32 = 0;
-    }
-
     covers!(feat_req_recentip_106, feat_req_recentip_726);
 
     let mut sim = turmoil::Builder::new()
@@ -802,7 +775,7 @@ fn mixed_exception_config_per_method() {
         let method_config = MethodConfig::new().use_exception_for(0x0001);
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .method_config(method_config)
             .udp()
             .start()
@@ -959,13 +932,6 @@ fn internal_unknown_service_error_uses_response() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    struct TestService;
-    impl Service for TestService {
-        const SERVICE_ID: u16 = 0x1234;
-        const MAJOR_VERSION: u8 = 1;
-        const MINOR_VERSION: u32 = 0;
-    }
-
     covers!(feat_req_recentip_726);
 
     let mut sim = turmoil::Builder::new()
@@ -981,7 +947,7 @@ fn internal_unknown_service_error_uses_response() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -1093,13 +1059,6 @@ fn messages_with_short_length_ignored() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    struct TestService;
-    impl Service for TestService {
-        const SERVICE_ID: u16 = 0x1234;
-        const MAJOR_VERSION: u8 = 1;
-        const MINOR_VERSION: u32 = 0;
-    }
-
     covers!(feat_req_recentip_798);
 
     let mut sim = turmoil::Builder::new()
@@ -1115,7 +1074,7 @@ fn messages_with_short_length_ignored() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -1214,13 +1173,6 @@ fn uses_known_protocol_version() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    struct TestService;
-    impl Service for TestService {
-        const SERVICE_ID: u16 = 0x1234;
-        const MAJOR_VERSION: u8 = 1;
-        const MINOR_VERSION: u32 = 0;
-    }
-
     covers!(feat_req_recentip_703);
 
     let mut sim = turmoil::Builder::new()
@@ -1236,7 +1188,7 @@ fn uses_known_protocol_version() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -1381,13 +1333,6 @@ fn wrong_protocol_version_returns_error() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    struct TestService;
-    impl Service for TestService {
-        const SERVICE_ID: u16 = 0x1234;
-        const MAJOR_VERSION: u8 = 1;
-        const MINOR_VERSION: u32 = 0;
-    }
-
     covers!(feat_req_recentip_703, feat_req_recentip_818);
 
     let mut sim = turmoil::Builder::new()
@@ -1403,7 +1348,7 @@ fn wrong_protocol_version_returns_error() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer::<TestService>(InstanceId::Id(0x0001))
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await

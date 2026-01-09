@@ -19,12 +19,8 @@ use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
 
 /// Example service definition
-struct ExampleService;
-impl Service for ExampleService {
-    const SERVICE_ID: u16 = 0x1234;
-    const MAJOR_VERSION: u8 = 1;
-    const MINOR_VERSION: u32 = 0;
-}
+const EXAMPLE_SERVICE_ID: u16 = 0x1234;
+const EXAMPLE_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -41,7 +37,7 @@ async fn main() -> Result<()> {
     println!();
     println!(
         "Starting service 0x{:04X} instance 1...",
-        ExampleService::SERVICE_ID
+        EXAMPLE_SERVICE_ID
     );
 
     // Create runtime
@@ -50,7 +46,8 @@ async fn main() -> Result<()> {
 
     // Offer the service on UDP
     let mut offering = runtime
-        .offer::<ExampleService>(InstanceId::Id(1))
+        .offer(EXAMPLE_SERVICE_ID, InstanceId::Id(1))
+        .version(EXAMPLE_SERVICE_VERSION.0, EXAMPLE_SERVICE_VERSION.1)
         .udp()
         .start()
         .await?;
