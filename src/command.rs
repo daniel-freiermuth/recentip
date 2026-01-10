@@ -225,7 +225,6 @@ pub enum ServiceAvailability {
         instance_id: u16,
         major_version: u8,
     },
-    Unavailable,
 }
 
 /// Service request (for offerings)

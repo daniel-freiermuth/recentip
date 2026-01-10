@@ -314,11 +314,6 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
             entry.major_version
         );
 
-        actions.push(Action::NotifyFound {
-            key,
-            availability: ServiceAvailability::Unavailable,
-        });
-
         // Close any client subscriptions for this service
         // When the service goes away, subscription channels should close
         // so that subscription.next() returns None

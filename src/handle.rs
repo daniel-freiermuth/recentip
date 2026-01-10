@@ -291,8 +291,6 @@ where
                     instance_id,
                     major_version,
                 }) => break (endpoint, transport, instance_id, major_version),
-                // TODO: maybe get rid of the Unavailable variant?
-                Some(ServiceAvailability::Unavailable) => continue,
                 None => {
                     // Channel closed - either runtime shut down or find request expired
                     return Err(Error::NotAvailable);

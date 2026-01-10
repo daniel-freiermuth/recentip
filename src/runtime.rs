@@ -1669,11 +1669,6 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
 
     for key in expired_discovered {
         if state.discovered.remove(&key).is_some() {
-            actions.push(Action::NotifyFound {
-                key,
-                availability: ServiceAvailability::Unavailable,
-            });
-
             // Emit SD event to monitors
             actions.push(Action::EmitSdEvent {
                 event: crate::SdEvent::ServiceExpired {
