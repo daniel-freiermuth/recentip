@@ -217,7 +217,6 @@ fn test_two_subscribers_one_drops() {
 }
 
 #[test_log::test]
-#[ignore = "Shows a port reuse problem right now"]
 fn test_dangling_subscription_cannot_unsubscribe() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -314,7 +313,10 @@ fn test_dangling_subscription_cannot_unsubscribe() {
         }
         tracing::info!("Sub1 seems dead");
 
-        // What's the semantics here? The service went offline? Actually, this API design might be a bit weird.
+        // Wait for the server to re-offer the service before trying to subscribe again
+        // The server has a 4-second delay between dropping the offering and re-offering
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
         let mut subscription2 = service
             .subscribe(EventgroupId::new(1).unwrap())
             .await

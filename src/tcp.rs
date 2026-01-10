@@ -440,15 +440,27 @@ impl<T: TcpStream> TcpServer<T> {
                         }
                     }
 
-                    // Route responses to the appropriate client connection
-                    Some(send_msg) = send_rx.recv() => {
-                        let senders = client_senders_for_responses.lock().await;
-                        if let Some(sender) = senders.get(&send_msg.to) {
-                            if sender.send(send_msg.data).await.is_err() {
-                                tracing::warn!("Failed to send response to {}: connection closed", send_msg.to);
+                    // Route responses to the appropriate client connection - exit when channel closes
+                    msg = send_rx.recv() => {
+                        match msg {
+                            Some(send_msg) => {
+                                let senders = client_senders_for_responses.lock().await;
+                                if let Some(sender) = senders.get(&send_msg.to) {
+                                    if sender.send(send_msg.data).await.is_err() {
+                                        tracing::warn!("Failed to send response to {}: connection closed", send_msg.to);
+                                    }
+                                } else {
+                                    tracing::warn!("No TCP connection for peer {}", send_msg.to);
+                                }
                             }
-                        } else {
-                            tracing::warn!("No TCP connection for peer {}", send_msg.to);
+                            None => {
+                                // Sender was dropped (service stopped offering) - exit
+                                tracing::debug!(
+                                    "TCP server for service {:04x}:{:04x} shutting down - sender dropped",
+                                    service_id, instance_id
+                                );
+                                break;
+                            }
                         }
                     }
                 }

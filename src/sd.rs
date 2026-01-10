@@ -319,6 +319,11 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
             availability: ServiceAvailability::Unavailable,
         });
 
+        // Close any client subscriptions for this service
+        // When the service goes away, subscription channels should close
+        // so that subscription.next() returns None
+        state.subscriptions.remove(&key);
+
         // Emit SD event to monitors
         actions.push(Action::EmitSdEvent {
             event: crate::SdEvent::ServiceUnavailable {
