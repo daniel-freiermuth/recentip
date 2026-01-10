@@ -428,11 +428,7 @@ async fn udp_events_real_network() {
 
         loop {
             match offering.next().await {
-                Some(ServiceEvent::Subscribe {
-                    eventgroup, ack, ..
-                }) => {
-                    ack.accept().await.expect("Ack");
-
+                Some(ServiceEvent::Subscribe { eventgroup, .. }) => {
                     let event_id = EventId::new(0x8001).unwrap();
                     for i in 0..3 {
                         let event_data = format!("event{}", i);

@@ -80,10 +80,7 @@
 //!                 // Process request and send response
 //!                 responder.reply(b"OK").await?;
 //!             }
-//!             ServiceEvent::Subscribe { eventgroup, ack, .. } => {
-//!                 // Accept subscription
-//!                 ack.accept().await?;
-//!             }
+//!             ServiceEvent::Subscribe { eventgroup, .. } => { }
 //!             _ => {}
 //!         }
 //!     }

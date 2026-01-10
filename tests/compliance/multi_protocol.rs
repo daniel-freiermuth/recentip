@@ -287,9 +287,8 @@ fn mixed_transport_event_delivery() {
             if let Ok(Some(event)) =
                 tokio::time::timeout(Duration::from_millis(100), tcp_offering.next()).await
             {
-                if let ServiceEvent::Subscribe { ack, .. } = event {
+                if let ServiceEvent::Subscribe { .. } = event {
                     eprintln!("[tcp_server] TCP subscription received");
-                    ack.accept().await.unwrap();
                     subscribed = true;
                 }
             }
@@ -340,9 +339,8 @@ fn mixed_transport_event_delivery() {
             if let Ok(Some(event)) =
                 tokio::time::timeout(Duration::from_millis(100), udp_offering.next()).await
             {
-                if let ServiceEvent::Subscribe { ack, .. } = event {
+                if let ServiceEvent::Subscribe { .. } = event {
                     eprintln!("[udp_server] UDP subscription received");
-                    ack.accept().await.unwrap();
                     subscribed = true;
                 }
             }
@@ -1241,9 +1239,8 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
             if let Ok(Some(event)) =
                 tokio::time::timeout(Duration::from_millis(100), offering.next()).await
             {
-                if let ServiceEvent::Subscribe { ack, .. } = event {
+                if let ServiceEvent::Subscribe { .. } = event {
                     eprintln!("[server] Subscription received, accepting");
-                    ack.accept().await.unwrap();
                     subscribed = true;
                 }
             }
@@ -1529,9 +1526,8 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
             if let Ok(Some(event)) =
                 tokio::time::timeout(Duration::from_millis(100), offering.next()).await
             {
-                if let ServiceEvent::Subscribe { ack, .. } = event {
+                if let ServiceEvent::Subscribe { .. } = event {
                     eprintln!("[server] Subscription received, accepting");
-                    ack.accept().await.unwrap();
                     subscribed = true;
                 }
             }
@@ -1881,11 +1877,10 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
                 if let Ok(Some(event)) =
                     tokio::time::timeout(Duration::from_millis(100), offering.next()).await
                 {
-                    if let ServiceEvent::Subscribe { ack, .. } = event {
+                    if let ServiceEvent::Subscribe { .. } = event {
                         // In a real scenario, we'd introspect the transport here
                         // For now, we accept all subscriptions
                         eprintln!("[server] Subscription received, accepting");
-                        ack.accept().await.unwrap();
 
                         // Assume alternating subscriptions for demonstration
                         if !tcp_subscribed {

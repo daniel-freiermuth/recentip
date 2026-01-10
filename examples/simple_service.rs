@@ -74,13 +74,8 @@ async fn main() -> Result<()> {
                     ServiceEvent::FireForget { method, payload, .. } => {
                         println!("← Received fire-and-forget 0x{:04X} with {} bytes", method.value(), payload.len());
                     }
-                    ServiceEvent::Subscribe { eventgroup, ack, .. } => {
+                    ServiceEvent::Subscribe { eventgroup, .. } => {
                         println!("← Subscription request for eventgroup 0x{:04X}", eventgroup.value());
-                        if let Err(e) = ack.accept().await {
-                            eprintln!("  Error accepting subscription: {}", e);
-                        } else {
-                            println!("→ Subscription accepted");
-                        }
                     }
                     ServiceEvent::Unsubscribe { eventgroup, .. } => {
                         println!("← Unsubscribe request for eventgroup 0x{:04X}", eventgroup.value());

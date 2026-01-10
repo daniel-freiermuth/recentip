@@ -155,9 +155,7 @@ fn subscribe_ack_entry_type() {
             .ok()
             .flatten()
         {
-            if let ServiceEvent::Subscribe { ack, .. } = event {
-                ack.accept().await.unwrap();
-            }
+            if let ServiceEvent::Subscribe { .. } = event {}
         }
 
         tokio::time::sleep(Duration::from_millis(500)).await;

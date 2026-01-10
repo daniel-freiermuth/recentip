@@ -52,7 +52,8 @@ fn test_subscribe_drop_unsubscribes_in_time() {
                 let target = tokio::time::Instant::now() + Duration::from_secs(1);
                 let mut remaining = target - tokio::time::Instant::now();
                 while remaining.as_secs_f32() > 0.0 {
-                    if let Ok(Some(event)) = tokio::time::timeout(remaining, offering.next()).await {
+                    if let Ok(Some(event)) = tokio::time::timeout(remaining, offering.next()).await
+                    {
                         match event {
                             someip_runtime::ServiceEvent::Unsubscribe { .. } => {
                                 received_unsub

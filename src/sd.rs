@@ -479,14 +479,12 @@ pub fn handle_subscribe_request(
             return;
         };
 
-        let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
         let _ = offered
             .requests_tx
             .try_send(crate::command::ServiceRequest::Subscribe {
                 eventgroup_id: entry.eventgroup_id,
                 client: client_endpoint,
                 transport,
-                response: response_tx,
             });
 
         // Track the subscriber - use the endpoint from the option for event delivery

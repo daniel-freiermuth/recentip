@@ -68,9 +68,7 @@
 //!             ServiceEvent::Call { method, payload, responder, .. } => {
 //!                 responder.reply(b"response").await?;
 //!             }
-//!             ServiceEvent::Subscribe { ack, .. } => {
-//!                 ack.accept().await?;
-//!             }
+//!             ServiceEvent::Subscribe { .. } => {  }
 //!             _ => {}
 //!         }
 //!     }
@@ -747,7 +745,6 @@ impl OfferingHandle {
                     eventgroup_id,
                     client,
                     transport,
-                    response,
                 } => {
                     let Some(eventgroup) = EventgroupId::new(eventgroup_id) else {
                         tracing::error!(
@@ -761,9 +758,6 @@ impl OfferingHandle {
                         client: ClientInfo {
                             address: client,
                             transport,
-                        },
-                        ack: SubscribeAck {
-                            response: Some(response),
                         },
                     });
                 }
@@ -858,7 +852,6 @@ pub enum ServiceEvent {
     Subscribe {
         eventgroup: EventgroupId,
         client: ClientInfo,
-        ack: SubscribeAck,
     },
     /// A client unsubscribed
     Unsubscribe {
@@ -898,38 +891,6 @@ impl Drop for Responder {
         if self.response.is_some() {
             tracing::warn!("Responder dropped without sending response");
             // In debug mode we could panic, but we chose zero-panic
-        }
-    }
-}
-
-/// Acknowledgment for subscribe requests - must be used to accept or reject.
-#[derive(Debug)]
-pub struct SubscribeAck {
-    response: Option<oneshot::Sender<Result<bool>>>,
-}
-
-impl SubscribeAck {
-    /// Accept the subscription.
-    pub async fn accept(mut self) -> Result<()> {
-        if let Some(tx) = self.response.take() {
-            let _ = tx.send(Ok(true));
-        }
-        Ok(())
-    }
-
-    /// Reject the subscription.
-    pub async fn reject(mut self) -> Result<()> {
-        if let Some(tx) = self.response.take() {
-            let _ = tx.send(Ok(false));
-        }
-        Ok(())
-    }
-}
-
-impl Drop for SubscribeAck {
-    fn drop(&mut self) {
-        if self.response.is_some() {
-            tracing::warn!("SubscribeAck dropped without accepting or rejecting");
         }
     }
 }
@@ -1311,7 +1272,6 @@ async fn receive_service_event(
                 eventgroup_id,
                 client,
                 transport,
-                response,
             } => {
                 let Some(eventgroup) = EventgroupId::new(eventgroup_id) else {
                     tracing::error!(
@@ -1325,9 +1285,6 @@ async fn receive_service_event(
                     client: ClientInfo {
                         address: client,
                         transport,
-                    },
-                    ack: SubscribeAck {
-                        response: Some(response),
                     },
                 });
             }
