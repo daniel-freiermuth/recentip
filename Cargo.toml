@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Type-safe SOME/IP protocol implementation for tokio"
 license = "GPL-3.0-only"
-repository = "https://github.com/example/someip-runtime"
+repository = "https://github.com/daniel-freiermuth/recentip"
 keywords = ["someip", "automotive", "rpc", "async", "tokio"]
 categories = ["asynchronous", "network-programming"]
 
