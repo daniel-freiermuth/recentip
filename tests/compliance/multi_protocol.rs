@@ -248,7 +248,6 @@ fn client_talks_to_tcp_and_udp_services() {
 /// is not yet fully implemented. TCP RPC calls work correctly (see other tests),
 /// but the event delivery path for TCP subscriptions needs additional work.
 #[test_log::test]
-#[ignore = "TCP pub/sub event delivery not yet implemented"]
 fn mixed_transport_event_delivery() {
     let tcp_events = Arc::new(AtomicUsize::new(0));
     let udp_events = Arc::new(AtomicUsize::new(0));
@@ -1488,7 +1487,6 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
 /// NOTE: This test is currently ignored because TCP pub/sub event delivery
 /// is not yet fully implemented. The RPC equivalent test passes (client_prefers_udp_but_connects_to_tcp_only_service).
 #[test_log::test]
-#[ignore = "TCP pub/sub event delivery not yet implemented"]
 fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
     covers!(feat_req_recentip_324);
 

@@ -64,6 +64,8 @@ use super::state::{
     PendingSubscriptionKey, RuntimeState, ServiceKey,
 };
 use crate::config::{Transport, DEFAULT_FIND_REPETITIONS};
+use crate::net::TcpStream;
+use crate::tcp::TcpConnectionPool;
 use crate::wire::Header;
 use crate::{Event, EventId, Response, ReturnCode};
 
@@ -224,8 +226,18 @@ pub fn handle_fire_and_forget(
     });
 }
 
-/// Handle `Command::Subscribe`
-pub fn handle_subscribe(
+/// Handle `Command::Subscribe` with async TCP connection support
+///
+/// This is the async version of `handle_subscribe` that supports establishing
+/// a TCP connection before subscribing, as required by `feat_req_recentipsd_767`:
+///
+/// > "The client shall open a TCP connection to the server and should be ready
+/// > to receive message on that connection before sending the SubscribeEventgroup entry"
+///
+/// For UDP subscriptions, this behaves identically to the sync version.
+/// For TCP subscriptions, it first establishes a TCP connection to the server,
+/// then uses that connection's local address in the subscribe message.
+pub async fn handle_subscribe_command<T: TcpStream>(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     major_version: u8,
@@ -233,8 +245,8 @@ pub fn handle_subscribe(
     events: tokio::sync::mpsc::Sender<Event>,
     response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     state: &mut RuntimeState,
-    actions: &mut Vec<Action>,
-) {
+    tcp_pool: &TcpConnectionPool<T>,
+) -> Option<Vec<Action>> {
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Generate a unique subscription ID for this subscription handle
@@ -249,10 +261,11 @@ pub fn handle_subscribe(
             eventgroup_id
         );
         let _ = response.send(Err(crate::error::Error::ServiceUnavailable));
-        return;
+        return None;
     };
-    let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
-    let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
+
+    let prefer_tcp = state.config.preferred_transport == Transport::Tcp;
+    let Some((_method_endpoint, transport)) = discovered.method_endpoint(prefer_tcp) else {
         tracing::debug!(
             "Trying to subscribe to eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no compatible transport endpoints",
             eventgroup_id,
@@ -262,23 +275,68 @@ pub fn handle_subscribe(
         let _ = response.send(Err(crate::error::Error::Config(
             crate::error::ConfigError::new("Server offers no compatible transport endpoints"),
         )));
-        return;
+        return None;
     };
-    // Determine the actual local IP address to put in the endpoint option
-    // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
-    let Some(endpoint_ip) = get_endpoint_ip(state) else {
-        tracing::error!(
-            "Cannot subscribe to {:04x}:{:04x} eventgroup {:04x}: \
-                no valid IP address configured. Set RuntimeConfig::advertised_ip",
-            service_id.value(),
-            instance_id.value(),
-            eventgroup_id
-        );
-        let _ = response.send(Err(crate::error::Error::Config(
-            crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
-        )));
-        return;
+
+    // For TCP subscriptions, establish connection BEFORE subscribing (feat_req_recentipsd_767)
+    // Use the actual TCP connection's local address in the subscribe message
+    let endpoint_for_subscribe = if transport == Transport::Tcp {
+        // Get the server's TCP RPC endpoint
+        let Some(tcp_endpoint) = discovered.tcp_endpoint else {
+            tracing::error!(
+                "TCP transport selected but no TCP endpoint for {:04x}:{:04x}",
+                service_id.value(),
+                instance_id.value()
+            );
+            let _ = response.send(Err(crate::error::Error::Config(
+                crate::error::ConfigError::new("TCP transport selected but no TCP endpoint"),
+            )));
+            return None;
+        };
+
+        // Establish TCP connection (or get existing connection's local address)
+        match tcp_pool.ensure_connected(tcp_endpoint).await {
+            Ok(local_addr) => {
+                tracing::debug!(
+                    "TCP connection established to {} (local addr: {}) for subscription to {:04x}:{:04x} eventgroup {:04x}",
+                    tcp_endpoint,
+                    local_addr,
+                    service_id.value(),
+                    instance_id.value(),
+                    eventgroup_id
+                );
+                local_addr
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to establish TCP connection to {} for subscription: {}",
+                    tcp_endpoint,
+                    e
+                );
+                let _ = response.send(Err(crate::error::Error::Io(e)));
+                return None;
+            }
+        }
+    } else {
+        // UDP: use our UDP RPC endpoint
+        let Some(endpoint_ip) = get_endpoint_ip(state) else {
+            tracing::error!(
+                "Cannot subscribe to {:04x}:{:04x} eventgroup {:04x}: \
+                    no valid IP address configured. Set RuntimeConfig::advertised_ip",
+                service_id.value(),
+                instance_id.value(),
+                eventgroup_id
+            );
+            let _ = response.send(Err(crate::error::Error::Config(
+                crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
+            )));
+            return None;
+        };
+        SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port())
     };
+
+    // Need to re-borrow discovered after the await
+    let sd_endpoint = state.discovered.get(&key).unwrap().sd_endpoint;
 
     state
         .subscriptions
@@ -291,8 +349,6 @@ pub fn handle_subscribe(
         });
 
     // Store pending subscription - will be resolved when ACK/NACK is received
-    // Check if this is the first waiter for this eventgroup - if so, we need to send
-    // the SD Subscribe message. Otherwise, just add to the pending list.
     let pending_key = PendingSubscriptionKey {
         service_id: service_id.value(),
         instance_id: instance_id.value(),
@@ -309,13 +365,14 @@ pub fn handle_subscribe(
     // Only send SD Subscribe message if this is the first waiter
     if is_first_waiter {
         tracing::debug!(
-            "Subscribing to {:04x}:{:04x} v{} eventgroup {:04x}",
+            "Subscribing to {:04x}:{:04x} v{} eventgroup {:04x} via {:?} (endpoint: {})",
             service_id.value(),
             instance_id.value(),
             major_version,
-            eventgroup_id
+            eventgroup_id,
+            transport,
+            endpoint_for_subscribe
         );
-        let endpoint_for_subscribe = SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
 
         let msg = build_subscribe_message(
             service_id.value(),
@@ -323,16 +380,20 @@ pub fn handle_subscribe(
             major_version,
             eventgroup_id,
             endpoint_for_subscribe,
-            state.client_rpc_endpoint.port(),
+            endpoint_for_subscribe.port(),
             state.sd_flags(true),
             state.config.subscribe_ttl,
             transport,
         );
 
+        let mut actions = Vec::new();
         actions.push(Action::SendSd {
             message: msg,
-            target: discovered.sd_endpoint, // Send to SD socket, not RPC socket
+            target: sd_endpoint,
         });
+        Some(actions)
+    } else {
+        None
     }
 }
 

@@ -92,8 +92,8 @@ pub struct TcpConnectionPool<T: TcpStream> {
 
 /// Handle to track a TCP connection
 struct TcpConnectionHandle {
-    // The task is spawned and runs independently
-    // We just track that a connection exists
+    /// The local address of this connection (what the peer sees us as)
+    local_addr: SocketAddr,
 }
 
 impl<T: TcpStream> Clone for TcpConnectionPool<T> {
@@ -146,6 +146,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         // Need to establish new connection
         tracing::debug!("Establishing TCP connection to {}", target);
         let stream = T::connect(target).await?;
+        let local_addr = stream.local_addr()?;
 
         // Create channel for sending data to this connection
         let (send_tx, send_rx) = mpsc::channel::<Vec<u8>>(32);
@@ -157,7 +158,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         }
         {
             let mut connections = self.connections.lock().await;
-            connections.insert(target, TcpConnectionHandle {});
+            connections.insert(target, TcpConnectionHandle { local_addr });
         }
 
         // Spawn connection handler task
@@ -186,6 +187,72 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Connection task closed"))?;
 
         Ok(())
+    }
+
+    /// Ensure a connection exists to a peer and return our local address on that connection.
+    ///
+    /// This is used for TCP pub/sub: the client must connect to the server BEFORE
+    /// subscribing (per `feat_req_recentipsd_767`), and must advertise the correct
+    /// endpoint (our local address on the TCP connection) so the server can send
+    /// events back on the same connection.
+    pub async fn ensure_connected(&self, target: SocketAddr) -> io::Result<SocketAddr> {
+        // Check if we already have a connection
+        {
+            let connections = self.connections.lock().await;
+            if let Some(handle) = connections.get(&target) {
+                return Ok(handle.local_addr);
+            }
+        }
+
+        // Establish new connection
+        tracing::debug!(
+            "Establishing TCP connection to {} for subscription (feat_req_recentipsd_767)",
+            target
+        );
+        let stream = T::connect(target).await?;
+        let local_addr = stream.local_addr()?;
+
+        // Create channel for sending data to this connection
+        let (send_tx, send_rx) = mpsc::channel::<Vec<u8>>(32);
+
+        // Store the sender and connection handle
+        {
+            let mut senders = self.senders.lock().await;
+            senders.insert(target, send_tx);
+        }
+        {
+            let mut connections = self.connections.lock().await;
+            connections.insert(target, TcpConnectionHandle { local_addr });
+        }
+
+        // Spawn connection handler task
+        let msg_tx = self.msg_tx.clone();
+        let senders = Arc::clone(&self.senders);
+        let connections = Arc::clone(&self.connections);
+        let magic_cookies = self.magic_cookies;
+
+        tokio::spawn(async move {
+            handle_client_tcp_connection(
+                stream,
+                target,
+                msg_tx,
+                send_rx,
+                senders,
+                connections,
+                magic_cookies,
+            )
+            .await;
+        });
+
+        Ok(local_addr)
+    }
+
+    /// Get the local address for an existing connection to a peer.
+    ///
+    /// Returns `None` if no connection exists.
+    pub async fn get_local_addr(&self, target: &SocketAddr) -> Option<SocketAddr> {
+        let connections = self.connections.lock().await;
+        connections.get(target).map(|h| h.local_addr)
     }
 
     /// Check if we have an active connection to a peer

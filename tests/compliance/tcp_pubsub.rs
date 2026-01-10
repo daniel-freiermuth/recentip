@@ -52,7 +52,6 @@ const TCP_PUB_SUB_SERVICE_VERSION: (u8, u32) = (1, 0);
 /// [feat_req_recentipsd_767] Client opens TCP connection before SubscribeEventgroup.
 /// [feat_req_recentipsd_786] SubscribeEventgroup can reference TCP endpoint option.
 #[test_log::test]
-#[ignore = "TCP pub/sub event delivery not yet implemented"]
 fn tcp_basic_subscribe_and_receive_events() {
     covers!(feat_req_recentipsd_767, feat_req_recentipsd_786);
 
@@ -155,7 +154,6 @@ fn tcp_basic_subscribe_and_receive_events() {
 ///
 /// [feat_req_recentipsd_432] Server tracks subscription state per client.
 #[test_log::test]
-#[ignore = "TCP pub/sub event delivery not yet implemented"]
 fn tcp_multiple_subscribers_receive_events() {
     covers!(feat_req_recentipsd_432);
 
@@ -296,7 +294,6 @@ fn tcp_multiple_subscribers_receive_events() {
 /// UDP is typically limited to ~1400 bytes without SOME/IP-TP.
 /// TCP should handle much larger payloads seamlessly.
 #[test_log::test]
-#[ignore = "TCP pub/sub event delivery not yet implemented"]
 fn tcp_large_payload_events() {
     let events_received = Arc::new(AtomicUsize::new(0));
     let payload_sizes_received = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -405,7 +402,6 @@ fn tcp_large_payload_events() {
 ///
 /// [feat_req_recentipsd_432] Server tracks subscription state for each eventgroup.
 #[test_log::test]
-#[ignore = "TCP pub/sub event delivery not yet implemented"]
 fn tcp_different_eventgroups() {
     let eg1_events = Arc::new(AtomicUsize::new(0));
     let eg2_events = Arc::new(AtomicUsize::new(0));
@@ -554,7 +550,6 @@ fn tcp_different_eventgroups() {
 ///
 /// [feat_req_recentipsd_786] SubscribeEventgroup can reference UDP and/or TCP endpoint.
 #[test_log::test]
-#[ignore = "TCP pub/sub event delivery not yet implemented"]
 fn dual_stack_service_client_prefers_tcp() {
     covers!(feat_req_recentipsd_786);
 
@@ -741,7 +736,6 @@ fn dual_stack_service_client_prefers_udp() {
 ///
 /// The client should adapt to the available transport.
 #[test_log::test]
-#[ignore = "TCP pub/sub event delivery not yet implemented"]
 fn tcp_only_server_udp_preferring_client() {
     let events_received = Arc::new(AtomicUsize::new(0));
     let events_clone = Arc::clone(&events_received);

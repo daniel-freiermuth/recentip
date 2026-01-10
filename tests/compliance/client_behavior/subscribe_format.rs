@@ -201,6 +201,22 @@ fn subscribe_format_tcp_only_cyclic_offers() {
             let my_ip: std::net::Ipv4Addr =
                 turmoil::lookup("wire_server").to_string().parse().unwrap();
 
+            // Start TCP listener on advertised port (required for client to connect before subscribing)
+            let tcp_listener = turmoil::net::TcpListener::bind("0.0.0.0:30509").await?;
+            tokio::spawn(async move {
+                loop {
+                    if let Ok((stream, peer)) = tcp_listener.accept().await {
+                        eprintln!("[wire_server] Accepted TCP connection from {}", peer);
+                        // Keep connection alive by holding the stream
+                        tokio::spawn(async move {
+                            let _stream = stream;
+                            // Hold connection open for the test duration
+                            tokio::time::sleep(Duration::from_secs(30)).await;
+                        });
+                    }
+                }
+            });
+
             let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
             sd_socket
                 .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
@@ -448,6 +464,23 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
         async move {
             let my_ip: std::net::Ipv4Addr =
                 turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+            // Start TCP listener on advertised TCP port (30510 for dual-stack)
+            // Required for client to connect before subscribing per feat_req_recentipsd_767
+            let tcp_listener = turmoil::net::TcpListener::bind("0.0.0.0:30510").await?;
+            tokio::spawn(async move {
+                loop {
+                    if let Ok((stream, peer)) = tcp_listener.accept().await {
+                        eprintln!("[wire_server] Accepted TCP connection from {}", peer);
+                        // Keep connection alive by holding the stream
+                        tokio::spawn(async move {
+                            let _stream = stream;
+                            // Hold connection open for the test duration
+                            tokio::time::sleep(Duration::from_secs(30)).await;
+                        });
+                    }
+                }
+            });
 
             let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
             sd_socket

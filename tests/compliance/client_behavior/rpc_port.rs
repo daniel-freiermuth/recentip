@@ -192,11 +192,7 @@ fn client_rpc_must_not_use_sd_port() {
 ///
 /// This is critical for reliable event delivery - the server needs the TCP connection
 /// ready to send events as soon as it ACKs the subscription.
-///
-/// Currently IGNORED: The client does not yet establish TCP connection before subscribing.
-/// This documents a known compliance gap that needs to be implemented.
 #[test_log::test]
-#[ignore = "TCP connection before subscribe not yet implemented (feat_req_recentipsd_767)"]
 fn tcp_connection_established_before_subscribe_767() {
     covers!(feat_req_recentipsd_767);
 

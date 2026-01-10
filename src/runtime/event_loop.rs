@@ -236,6 +236,17 @@ pub(crate) async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stre
                             &mut state
                         ).await;
                     }
+                    // Special handling for Subscribe - needs async TCP connection for TCP pub/sub (feat_req_recentipsd_767)
+                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_id, events, response }) => {
+                        if let Some(actions) = client::handle_subscribe_command(
+                            service_id, instance_id, major_version, eventgroup_id, events, response,
+                            &mut state, &tcp_pool
+                        ).await {
+                            for action in actions {
+                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                            }
+                        }
+                    }
                     Some(cmd) => {
                         if let Some(actions) = handle_command(cmd, &mut state) {
                             for action in actions {
@@ -646,25 +657,8 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             );
         }
 
-        Command::Subscribe {
-            service_id,
-            instance_id,
-            major_version,
-            eventgroup_id,
-            events,
-            response,
-        } => {
-            client::handle_subscribe(
-                service_id,
-                instance_id,
-                major_version,
-                eventgroup_id,
-                events,
-                response,
-                state,
-                &mut actions,
-            );
-        }
+        // Subscribe is handled separately in runtime_task for async TCP connection
+        Command::Subscribe { .. } => {}
 
         Command::Unsubscribe {
             service_id,
