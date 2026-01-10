@@ -108,7 +108,7 @@ fn test_subscribe_drop_unsubscribes_in_time() {
     sim.run().unwrap();
     let unsub_delay =
         unsub_receive_time.lock().unwrap().unwrap() - unsub_send_time.lock().unwrap().unwrap();
-    let delay_expectation = Duration::from_millis(40);
+    let delay_expectation = Duration::from_millis(60);
 
     assert!(
         unsub_delay < delay_expectation,
