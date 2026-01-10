@@ -1530,15 +1530,6 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             server::handle_stop_announcing(service_id, instance_id, response, state, &mut actions);
         }
 
-        Command::HasSubscribers {
-            service_id,
-            instance_id,
-            eventgroup_id,
-            response,
-        } => {
-            server::handle_has_subscribers(service_id, instance_id, eventgroup_id, response, state);
-        }
-
         Command::MonitorSd { events } => {
             state.sd_monitors.push(events);
         }

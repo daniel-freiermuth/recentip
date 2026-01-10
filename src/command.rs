@@ -24,7 +24,6 @@
 //! | Offering | `Offer`, `Bind`, `StartAnnouncing`, `StopAnnouncing` | Server lifecycle |
 //! | RPC | `Call`, `FireAndForget` | Client method invocation |
 //! | Pub/Sub | `Subscribe`, `Unsubscribe`, `Notify` | Event subscription |
-//! | Query | `HasSubscribers` | Check subscription state |
 //!
 //! ## Response Pattern
 //!
@@ -171,13 +170,6 @@ pub enum Command {
         service_id: ServiceId,
         instance_id: InstanceId,
         response: oneshot::Sender<Result<()>>,
-    },
-    /// Query if there are subscribers for an eventgroup
-    HasSubscribers {
-        service_id: ServiceId,
-        instance_id: InstanceId,
-        eventgroup_id: u16,
-        response: oneshot::Sender<bool>,
     },
     /// Listen for static events (pre-configured, no SD)
     ListenStatic {

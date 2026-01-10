@@ -1150,46 +1150,6 @@ impl ServiceInstance<Announced> {
         Ok(())
     }
 
-    /// Check if there are any subscribers for an eventgroup.
-    ///
-    /// Returns `true` if there are dynamic subscribers (from SD) or
-    /// static subscribers for the given eventgroup.
-    pub async fn has_subscribers(&self, eventgroup: EventgroupId) -> bool {
-        // Check static subscribers first
-        let has_static = self
-            .static_subscribers
-            .values()
-            .any(|groups| groups.contains(&eventgroup));
-
-        if has_static {
-            return true;
-        }
-
-        // Query runtime for dynamic subscribers
-        let inner = match self.inner.as_ref() {
-            Some(inner) => inner,
-            None => return false,
-        };
-
-        let (response_tx, response_rx) = oneshot::channel();
-
-        if inner
-            .cmd_tx
-            .send(Command::HasSubscribers {
-                service_id: self.service_id,
-                instance_id: self.instance_id,
-                eventgroup_id: eventgroup.value(),
-                response: response_tx,
-            })
-            .await
-            .is_err()
-        {
-            return false;
-        }
-
-        response_rx.await.unwrap_or(false)
-    }
-
     /// Send a notification ONLY to static subscribers.
     ///
     /// Useful when you want to notify pre-configured subscribers

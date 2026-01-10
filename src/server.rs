@@ -560,26 +560,6 @@ pub fn handle_stop_announcing(
     }
 }
 
-/// Handle `Command::HasSubscribers`
-pub fn handle_has_subscribers(
-    service_id: ServiceId,
-    instance_id: InstanceId,
-    eventgroup_id: u16,
-    response: oneshot::Sender<bool>,
-    state: &RuntimeState,
-) {
-    let sub_key = SubscriberKey {
-        service_id: service_id.value(),
-        instance_id: instance_id.value(),
-        eventgroup_id,
-    };
-    let has_subscribers = state
-        .server_subscribers
-        .get(&sub_key)
-        .is_some_and(|v| !v.is_empty());
-    let _ = response.send(has_subscribers);
-}
-
 // ============================================================================
 // INCOMING MESSAGE HANDLERS (SERVER-SIDE)
 // ============================================================================

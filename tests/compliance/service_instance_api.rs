@@ -634,98 +634,6 @@ fn test_notify_requires_announced_state() {
     );
 }
 
-/// Test: has_subscribers() only available in Announced state
-#[test_log::test]
-fn test_has_subscribers_in_announced_state() {
-    let server_ran = Arc::new(AtomicBool::new(false));
-    let client_ran = Arc::new(AtomicBool::new(false));
-    let server_ran_clone = server_ran.clone();
-    let client_ran_clone = client_ran.clone();
-
-    let mut sim = turmoil::Builder::new()
-        .simulation_duration(Duration::from_secs(10))
-        .build();
-
-    sim.host("server", move || {
-        let flag = server_ran_clone.clone();
-        async move {
-            let config = RuntimeConfig::builder()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-                .build();
-            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-
-            let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
-                .await
-                .unwrap();
-
-            // service.has_subscribers(...).await should NOT compile - method only on Announced
-
-            let announced = service.announce().await.unwrap();
-
-            // Initially no subscribers
-            assert!(
-                !announced
-                    .has_subscribers(EventgroupId::new(0x0001).unwrap())
-                    .await
-            );
-
-            // Wait for client to subscribe
-            tokio::time::sleep(Duration::from_millis(300)).await;
-
-            // Now should have subscribers
-            assert!(
-                announced
-                    .has_subscribers(EventgroupId::new(0x0001).unwrap())
-                    .await
-            );
-
-            flag.store(true, Ordering::SeqCst);
-            Ok(())
-        }
-    });
-
-    sim.host("client", move || {
-        let flag = client_ran_clone.clone();
-        async move {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-
-            let config = RuntimeConfig::builder()
-                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-                .build();
-            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
-
-            let proxy = runtime.find(BRAKE_SERVICE_ID);
-            let available = proxy.await.unwrap();
-
-            let _subscription = available
-                .subscribe(EventgroupId::new(0x0001).unwrap())
-                .await
-                .unwrap();
-
-            // Keep subscription alive
-            tokio::time::sleep(Duration::from_millis(500)).await;
-
-            flag.store(true, Ordering::SeqCst);
-            Ok(())
-        }
-    });
-
-    sim.client("driver", async {
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        Ok(())
-    });
-    sim.run().unwrap();
-    assert!(
-        server_ran.load(Ordering::SeqCst),
-        "Server async block did not run"
-    );
-    assert!(
-        client_ran.load(Ordering::SeqCst),
-        "Client async block did not run"
-    );
-}
-
 // ============================================================================
 // INITIALIZATION BEFORE ANNOUNCEMENT TESTS
 // ============================================================================
@@ -1502,11 +1410,6 @@ fn test_notify_no_subscribers_succeeds() {
                 result.is_ok(),
                 "notify() should succeed even with no subscribers"
             );
-            assert!(
-                !announced
-                    .has_subscribers(EventgroupId::new(0x0001).unwrap())
-                    .await
-            );
 
             flag.store(true, Ordering::SeqCst);
             Ok(())
@@ -2200,11 +2103,6 @@ fn test_notify_survives_subscriber_disconnect() {
 
             // Wait for subscriber - needs enough time for discovery + subscription
             tokio::time::sleep(Duration::from_millis(500)).await;
-            assert!(
-                announced
-                    .has_subscribers(EventgroupId::new(0x0001).unwrap())
-                    .await
-            );
 
             // Subscriber will disconnect during this sleep
             tokio::time::sleep(Duration::from_millis(500)).await;
@@ -2222,11 +2120,6 @@ fn test_notify_survives_subscriber_disconnect() {
             assert!(result.is_ok());
 
             // has_subscribers should now be false
-            assert!(
-                !announced
-                    .has_subscribers(EventgroupId::new(0x0001).unwrap())
-                    .await
-            );
 
             flag.store(true, Ordering::SeqCst);
             Ok(())
