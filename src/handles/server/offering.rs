@@ -1,4 +1,4 @@
-//! OfferingHandle for server-side service offerings
+//! `OfferingHandle` for server-side service offerings
 
 use std::sync::Arc;
 

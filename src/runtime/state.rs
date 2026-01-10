@@ -79,9 +79,9 @@ impl ServiceKey {
     }
 
     /// Check if this key matches another key (supports wildcards on both sides)
-    /// - instance_id 0xFFFF matches any instance
-    /// - major_version 0xFF matches any version
-    pub(crate) fn matches(&self, other: &ServiceKey) -> bool {
+    /// - `instance_id` 0xFFFF matches any instance
+    /// - `major_version` 0xFF matches any version
+    pub(crate) fn matches(&self, other: &Self) -> bool {
         self.service_id == other.service_id
             && (self.instance_id == 0xFFFF
                 || self.instance_id == other.instance_id

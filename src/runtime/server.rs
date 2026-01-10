@@ -822,19 +822,16 @@ pub async fn spawn_rpc_socket_task<U: UdpSocket>(
 
                 // Send outgoing RPC messages - exit when channel closes
                 msg = send_rx.recv() => {
-                    match msg {
-                        Some(send_msg) => {
-                            if let Err(e) = rpc_socket.send_to(&send_msg.data, send_msg.to).await {
-                                tracing::error!("Error sending on RPC socket for service {}/{}: {}",
-                                    service_id, instance_id, e);
-                            }
+                    if let Some(send_msg) = msg {
+                        if let Err(e) = rpc_socket.send_to(&send_msg.data, send_msg.to).await {
+                            tracing::error!("Error sending on RPC socket for service {}/{}: {}",
+                                service_id, instance_id, e);
                         }
-                        None => {
-                            // Sender was dropped (service stopped offering) - exit
-                            tracing::debug!("RPC socket task for service {}/{} shutting down - sender dropped",
-                                service_id, instance_id);
-                            break;
-                        }
+                    } else {
+                        // Sender was dropped (service stopped offering) - exit
+                        tracing::debug!("RPC socket task for service {}/{} shutting down - sender dropped",
+                            service_id, instance_id);
+                        break;
                     }
                 }
             }

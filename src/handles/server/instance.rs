@@ -1,4 +1,4 @@
-//! ServiceInstance with typestate-based lifecycle management
+//! `ServiceInstance` with typestate-based lifecycle management
 
 use std::collections::HashMap;
 use std::marker::PhantomData;

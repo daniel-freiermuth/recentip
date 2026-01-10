@@ -1,4 +1,4 @@
-//! ProxyHandle for calling methods on remote SOME/IP services
+//! `ProxyHandle` for calling methods on remote SOME/IP services
 
 use std::net::SocketAddr;
 use std::sync::Arc;

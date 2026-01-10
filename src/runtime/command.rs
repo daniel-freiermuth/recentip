@@ -124,7 +124,7 @@ pub enum Command {
         major_version: u8,
         eventgroup_id: u16,
         events: mpsc::Sender<crate::Event>,
-        /// Returns subscription_id on success for tracking unsubscribe
+        /// Returns `subscription_id` on success for tracking unsubscribe
         response: oneshot::Sender<Result<u64>>,
     },
     /// Unsubscribe from an eventgroup

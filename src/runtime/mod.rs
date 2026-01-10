@@ -6,7 +6,7 @@
 //! ## Module Structure
 //!
 //! - [`command`]: Command enum for handle→runtime communication
-//! - [`state`]: RuntimeState and internal data structures
+//! - [`state`]: `RuntimeState` and internal data structures
 //! - [`client`]: Client-side handlers (find, call, subscribe)
 //! - [`server`]: Server-side handlers (offer, notify, respond)
 //! - [`sd`]: Service Discovery message handlers and builders
@@ -21,4 +21,4 @@ pub mod state;
 
 // Re-export commonly used types for internal use
 pub use command::SdEvent;
-pub(crate) use command::{Command, ServiceAvailability, ServiceRequest};
+pub use command::{Command, ServiceAvailability, ServiceRequest};

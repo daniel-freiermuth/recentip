@@ -1,4 +1,4 @@
-//! FindBuilder for discovering SOME/IP services
+//! `FindBuilder` for discovering SOME/IP services
 
 use std::sync::Arc;
 
@@ -15,7 +15,7 @@ use super::ProxyHandle;
 ///
 /// Created via [`Runtime::find()`](crate::Runtime::find). Configure the find
 /// criteria, then `.await` to discover the service. Returns the **first**
-/// matching OfferService announcement.
+/// matching `OfferService` announcement.
 ///
 /// # Find Criteria
 ///
@@ -98,7 +98,7 @@ where
 
     /// Execute the find request and wait for the first matching service.
     ///
-    /// Sends a FindService SD message and waits for a matching OfferService.
+    /// Sends a `FindService` SD message and waits for a matching `OfferService`.
     /// Returns the first discovered service that matches the criteria.
     ///
     /// # Errors

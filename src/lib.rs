@@ -521,7 +521,7 @@ impl EventgroupId {
 /// Major version of a service interface - can be exact or wildcard (Any)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MajorVersion {
-    /// Match any major version (0xFF wildcard in SD FindService)
+    /// Match any major version (0xFF wildcard in SD `FindService`)
     Any,
     /// Specific major version (0x00-0xFE)
     Exact(u8),

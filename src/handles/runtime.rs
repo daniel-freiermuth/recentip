@@ -353,7 +353,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// - `service_id`: The service ID
     /// - `instance`: The instance ID
-    /// - `version`: Tuple of (major_version, minor_version)
+    /// - `version`: Tuple of (`major_version`, `minor_version`)
     /// - `transport`: UDP or TCP
     ///
     /// # Example

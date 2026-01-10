@@ -1,4 +1,4 @@
-//! Responder and ServiceEvent types for server-side handling
+//! Responder and `ServiceEvent` types for server-side handling
 
 use tokio::sync::oneshot;
 

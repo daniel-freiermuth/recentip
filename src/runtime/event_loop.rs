@@ -44,7 +44,7 @@ use crate::wire::{
 // ============================================================================
 
 /// The main runtime task
-pub(crate) async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
+pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
     sd_socket: U,
     config: RuntimeConfig,
     mut cmd_rx: mpsc::Receiver<Command>,
