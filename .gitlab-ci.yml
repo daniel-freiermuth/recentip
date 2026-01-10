@@ -49,7 +49,7 @@ clippy:
   extends: .rust-base
   stage: check
   script:
-    - cargo clippy --all-targets --all-features
+    - cargo clippy --lib --all-targets --all-features
   allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
