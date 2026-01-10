@@ -605,7 +605,6 @@ fn subscribe_to_unknown_eventgroup_should_nack() {
 /// Server offers service with major version 1, client tries to subscribe with
 /// major version 99. Server MUST respond with NACK.
 #[test_log::test]
-#[ignore = "known missing implementation"]
 fn subscribe_to_wrong_major_version_should_nack() {
     covers!(feat_req_recentipsd_1137);
 
