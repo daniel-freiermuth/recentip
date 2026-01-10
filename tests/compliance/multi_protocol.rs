@@ -29,7 +29,7 @@
 
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::Runtime;
+use someip_runtime::Runtime;
 use someip_runtime::Transport;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

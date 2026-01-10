@@ -16,7 +16,7 @@ use super::helpers::{
     parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION,
 };
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::Runtime;
+use someip_runtime::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 

@@ -16,7 +16,7 @@
 
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::Runtime;
+use someip_runtime::Runtime;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 

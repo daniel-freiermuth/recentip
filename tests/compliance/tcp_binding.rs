@@ -22,7 +22,7 @@
 use bytes::Bytes;
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::{Runtime, RuntimeConfig, Transport};
+use someip_runtime::{Runtime, RuntimeConfig, Transport};
 use someip_runtime::wire::Header;
 use std::time::Duration;
 

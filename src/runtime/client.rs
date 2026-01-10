@@ -57,13 +57,13 @@ use std::time::Duration;
 use bytes::Bytes;
 use tokio::time::Instant;
 
-use crate::command::ServiceAvailability;
-use crate::config::{Transport, DEFAULT_FIND_REPETITIONS};
-use crate::sd::{build_find_message, build_subscribe_message, build_unsubscribe_message, Action};
-use crate::state::{
+use super::command::ServiceAvailability;
+use super::sd::{build_find_message, build_subscribe_message, build_unsubscribe_message, Action};
+use super::state::{
     CallKey, ClientSubscription, FindRequest, PendingCall, PendingSubscription,
     PendingSubscriptionKey, RuntimeState, ServiceKey,
 };
+use crate::config::{Transport, DEFAULT_FIND_REPETITIONS};
 use crate::wire::Header;
 use crate::{Event, EventId, Response, ReturnCode};
 

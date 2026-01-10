@@ -17,7 +17,7 @@ use super::helpers::{
     covers, parse_sd_flags, parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION,
 };
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::{Runtime, RuntimeConfig};
+use someip_runtime::{Runtime, RuntimeConfig};
 use std::time::Duration;
 
 // ============================================================================

@@ -58,15 +58,15 @@ use bytes::{Bytes, BytesMut};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
-use crate::command::ServiceRequest;
-use crate::config::{MethodConfig, RuntimeConfig, Transport};
-use crate::error::{Error, Result};
-use crate::net::{TcpListener, TcpStream, UdpSocket};
-use crate::sd::{build_offer_message, build_stop_offer_message, Action};
-use crate::state::{
+use super::command::ServiceRequest;
+use super::sd::{build_offer_message, build_stop_offer_message, Action};
+use super::state::{
     OfferedService, PendingServerResponse, RpcMessage, RpcSendMessage, RpcTransportSender,
     RuntimeState, ServiceKey, SubscriberKey,
 };
+use crate::config::{MethodConfig, RuntimeConfig, Transport};
+use crate::error::{Error, Result};
+use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::tcp::{TcpMessage, TcpServer};
 use crate::wire::{Header, MessageType, PROTOCOL_VERSION};
 use crate::{InstanceId, ServiceId};

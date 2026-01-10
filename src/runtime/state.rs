@@ -46,7 +46,7 @@ use std::net::SocketAddr;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
-use crate::command::ServiceRequest;
+use super::command::ServiceRequest;
 use crate::config::{MethodConfig, RuntimeConfig};
 use crate::error::Result;
 use crate::tcp::TcpSendMessage;
@@ -241,7 +241,7 @@ impl DiscoveredService {
 
 /// Tracked find request
 pub struct FindRequest {
-    pub(crate) notify: mpsc::Sender<crate::command::ServiceAvailability>,
+    pub(crate) notify: mpsc::Sender<super::command::ServiceAvailability>,
     pub(crate) repetitions_left: u32,
     pub(crate) last_find: Instant,
 }

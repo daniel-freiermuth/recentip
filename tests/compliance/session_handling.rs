@@ -12,7 +12,7 @@
 
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::Runtime;
+use someip_runtime::Runtime;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers

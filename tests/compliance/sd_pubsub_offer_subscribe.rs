@@ -29,7 +29,7 @@
 
 use bytes::Bytes;
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::Runtime;
+use someip_runtime::Runtime;
 use someip_runtime::wire::{Header, SdEntryType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};

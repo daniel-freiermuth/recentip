@@ -16,9 +16,8 @@ use std::time::Duration;
 
 // Import only from the public API
 use someip_runtime::{
-    handle::ServiceEvent,
-    runtime::{Runtime, RuntimeConfig},
-    EventId, EventgroupId, InstanceId, MethodId, ServiceId, Transport,
+    handle::ServiceEvent, EventId, EventgroupId, InstanceId, MethodId, Runtime, RuntimeConfig,
+    ServiceId, Transport,
 };
 
 /// Type alias for turmoil-based runtime
@@ -2449,8 +2448,8 @@ fn test_large_tcp_rpc_payload() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = someip_runtime::runtime::RuntimeConfig {
-                preferred_transport: someip_runtime::runtime::Transport::Tcp,
+            let config = someip_runtime::RuntimeConfig {
+                preferred_transport: someip_runtime::Transport::Tcp,
                 ..Default::default()
             };
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -2486,8 +2485,8 @@ fn test_large_tcp_rpc_payload() {
         async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
-            let config = someip_runtime::runtime::RuntimeConfig {
-                preferred_transport: someip_runtime::runtime::Transport::Tcp,
+            let config = someip_runtime::RuntimeConfig {
+                preferred_transport: someip_runtime::Transport::Tcp,
                 ..Default::default()
             };
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -2556,8 +2555,8 @@ fn test_response_after_offering_dropped() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = someip_runtime::runtime::RuntimeConfig {
-                preferred_transport: someip_runtime::runtime::Transport::Tcp,
+            let config = someip_runtime::RuntimeConfig {
+                preferred_transport: someip_runtime::Transport::Tcp,
                 ..Default::default()
             };
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -2596,8 +2595,8 @@ fn test_response_after_offering_dropped() {
         async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
-            let config = someip_runtime::runtime::RuntimeConfig {
-                preferred_transport: someip_runtime::runtime::Transport::Tcp,
+            let config = someip_runtime::RuntimeConfig {
+                preferred_transport: someip_runtime::Transport::Tcp,
                 ..Default::default()
             };
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();

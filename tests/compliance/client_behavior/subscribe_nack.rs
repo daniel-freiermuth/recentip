@@ -12,7 +12,7 @@
 
 use super::helpers::{build_sd_offer, build_sd_subscribe_ack, covers, parse_sd_message};
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::{Runtime, RuntimeConfig};
+use someip_runtime::{Runtime, RuntimeConfig};
 use someip_runtime::wire::{L4Protocol, SdOption};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

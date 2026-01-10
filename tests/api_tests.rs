@@ -1,7 +1,7 @@
 //! Basic API tests using turmoil for network simulation.
 
 use someip_runtime::handle::ServiceEvent;
-use someip_runtime::runtime::Runtime;
+use someip_runtime::Runtime;
 use someip_runtime::{EventId, EventgroupId, InstanceId, MethodId, RuntimeConfig, ServiceId};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};

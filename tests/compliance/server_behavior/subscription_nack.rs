@@ -14,7 +14,7 @@ use super::helpers::{
     TEST_SERVICE_VERSION,
 };
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::Runtime;
+use someip_runtime::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 

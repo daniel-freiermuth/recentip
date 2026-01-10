@@ -12,7 +12,7 @@
 
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::Runtime;
+use someip_runtime::Runtime;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -428,7 +428,7 @@ fn error_response_copies_request_header() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::handle::ServiceEvent;
     use someip_runtime::prelude::*;
-    use someip_runtime::runtime::{Runtime, RuntimeConfig};
+    use someip_runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::MessageType;
     use std::net::SocketAddr;
     use std::time::Duration;
@@ -606,7 +606,7 @@ fn exception_message_type_when_configured() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::handle::ServiceEvent;
     use someip_runtime::prelude::*;
-    use someip_runtime::runtime::{Runtime, RuntimeConfig};
+    use someip_runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::MessageType;
     use std::net::SocketAddr;
     use std::time::Duration;
@@ -757,7 +757,7 @@ fn mixed_exception_config_per_method() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::handle::ServiceEvent;
     use someip_runtime::prelude::*;
-    use someip_runtime::runtime::{Runtime, RuntimeConfig};
+    use someip_runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::MessageType;
     use std::net::SocketAddr;
     use std::time::Duration;
@@ -933,7 +933,7 @@ fn mixed_exception_config_per_method() {
 fn internal_unknown_service_error_uses_response() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::prelude::*;
-    use someip_runtime::runtime::{Runtime, RuntimeConfig};
+    use someip_runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::MessageType;
     use std::net::SocketAddr;
     use std::time::Duration;
@@ -1062,7 +1062,7 @@ fn internal_unknown_service_error_uses_response() {
 fn messages_with_short_length_ignored() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::prelude::*;
-    use someip_runtime::runtime::{Runtime, RuntimeConfig};
+    use someip_runtime::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -1176,7 +1176,7 @@ fn messages_with_short_length_ignored() {
 #[test_log::test]
 fn uses_known_protocol_version() {
     use someip_runtime::prelude::*;
-    use someip_runtime::runtime::{Runtime, RuntimeConfig};
+    use someip_runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::Header;
     use std::net::SocketAddr;
     use std::time::Duration;
@@ -1337,7 +1337,7 @@ fn uses_known_protocol_version() {
 fn wrong_protocol_version_returns_error() {
     use bytes::{BufMut, BytesMut};
     use someip_runtime::prelude::*;
-    use someip_runtime::runtime::{Runtime, RuntimeConfig};
+    use someip_runtime::{Runtime, RuntimeConfig};
     use someip_runtime::wire::MessageType;
     use std::net::SocketAddr;
     use std::time::Duration;

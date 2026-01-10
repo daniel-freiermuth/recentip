@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
-use someip_runtime::runtime::Runtime;
+use someip_runtime::Runtime;
 
 #[cfg(feature = "turmoil")]
 type TurmoilRuntime =

@@ -60,12 +60,12 @@ use std::time::Duration;
 use bytes::Bytes;
 use tokio::time::Instant;
 
-use crate::command::ServiceAvailability;
-use crate::config::{Transport, SD_TTL_INFINITE};
-use crate::state::{
+use super::command::ServiceAvailability;
+use super::state::{
     DiscoveredService, OfferedService, PendingServerResponse, PendingSubscriptionKey, RuntimeState,
     ServerSubscription, ServiceKey, SubscriberKey,
 };
+use crate::config::{Transport, SD_TTL_INFINITE};
 use crate::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
 
 // ============================================================================
@@ -481,7 +481,7 @@ pub fn handle_subscribe_request(
 
         let _ = offered
             .requests_tx
-            .try_send(crate::command::ServiceRequest::Subscribe {
+            .try_send(super::command::ServiceRequest::Subscribe {
                 eventgroup_id: entry.eventgroup_id,
                 client: client_endpoint,
                 transport,
@@ -660,7 +660,7 @@ pub fn handle_unsubscribe_request(
 
         let _ = offered
             .requests_tx
-            .try_send(crate::command::ServiceRequest::Unsubscribe {
+            .try_send(super::command::ServiceRequest::Unsubscribe {
                 eventgroup_id: entry.eventgroup_id,
                 client: client_endpoint,
                 transport,

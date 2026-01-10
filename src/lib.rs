@@ -338,42 +338,53 @@
 //!
 //! ## Adding a New Feature
 //!
-//! 1. Add command variant to `command.rs` if handle→runtime communication needed
-//! 2. Add state to `state.rs` if persistent tracking required
-//! 3. Add handler to `client.rs` or `server.rs` depending on role
+//! 1. Add command variant to `runtime/command.rs` if handle→runtime communication needed
+//! 2. Add state to `runtime/state.rs` if persistent tracking required
+//! 3. Add handler to `runtime/client.rs` or `runtime/server.rs` depending on role
 //! 4. Update `runtime.rs` event loop to dispatch the new command
-//! 5. Add public API to `handle.rs`
+//! 5. Add public API to `handles/`
 //! 6. Write compliance tests in `tests/compliance/`
 
 use std::net::SocketAddr;
 
 pub mod net;
 
-// Internal modules for runtime implementation
-mod client;
-mod command;
-mod sd;
-mod server;
-mod state;
+// Internal modules for runtime implementation (moved to runtime/)
+pub(crate) mod runtime;
 
 // Public modules
 pub mod config;
 pub mod error;
-pub mod handle;
-pub mod runtime;
+pub mod handles;
 pub mod tcp;
 
 /// Wire format parsing for SOME/IP headers and messages.
 /// Exposed for testing and interoperability verification.
 pub mod wire;
 
-pub use config::{MethodConfig, RuntimeConfig, RuntimeConfigBuilder, Transport};
+// Re-export Runtime and config types from handles module
+pub use handles::{Runtime, RuntimeConfig, OfferBuilder};
+
+pub use config::{MethodConfig, RuntimeConfigBuilder, Transport};
 pub use error::*;
-pub use handle::*;
-pub use runtime::Runtime;
+
+// Re-export handle types (explicit to avoid shadowing with internal runtime module)
+pub use handles::{
+    // Client-side handles
+    FindBuilder, ProxyHandle, Subscription, StaticEventListener,
+    // Server-side handles
+    OfferingHandle, Responder, ServiceEvent, ServiceInstance, Announced, Bound,
+};
 
 // Re-export SD event types for monitoring API
-pub use command::SdEvent;
+pub use runtime::SdEvent;
+
+// Backward compatibility: re-export handle module
+#[doc(hidden)]
+pub mod handle {
+    //! Backward compatibility re-exports from handles module
+    pub use crate::handles::*;
+}
 
 // ============================================================================
 // PROTOCOL IDENTIFIERS
