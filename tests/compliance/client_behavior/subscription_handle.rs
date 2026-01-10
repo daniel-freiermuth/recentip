@@ -16,7 +16,6 @@ const SERVICE_A_ID: u16 = 0x5674;
 const SERVICE_A_VERSION: (u8, u32) = (1, 0);
 
 #[test_log::test]
-#[ignore = "documenting a known problem"]
 fn test_subscribe_drop_unsubscribes_in_time() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -42,7 +41,6 @@ fn test_subscribe_drop_unsubscribes_in_time() {
                 .unwrap();
 
             loop {
-                tokio::time::sleep(Duration::from_secs(1)).await;
                 offering
                     .notify(
                         EventgroupId::new(1).unwrap(),
@@ -51,16 +49,21 @@ fn test_subscribe_drop_unsubscribes_in_time() {
                     )
                     .await
                     .unwrap();
-                if let Some(event) = offering.next().await {
-                    match event {
-                        someip_runtime::ServiceEvent::Unsubscribe { .. } => {
-                            received_unsub
-                                .lock()
-                                .unwrap()
-                                .replace(tokio::time::Instant::now());
+                let target = tokio::time::Instant::now() + Duration::from_secs(1);
+                let mut remaining = target - tokio::time::Instant::now();
+                while remaining.as_secs_f32() > 0.0 {
+                    if let Ok(Some(event)) = tokio::time::timeout(remaining, offering.next()).await {
+                        match event {
+                            someip_runtime::ServiceEvent::Unsubscribe { .. } => {
+                                received_unsub
+                                    .lock()
+                                    .unwrap()
+                                    .replace(tokio::time::Instant::now());
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
+                    remaining = target - tokio::time::Instant::now();
                 }
             }
         }
@@ -104,7 +107,7 @@ fn test_subscribe_drop_unsubscribes_in_time() {
     sim.run().unwrap();
     let unsub_delay =
         unsub_receive_time.lock().unwrap().unwrap() - unsub_send_time.lock().unwrap().unwrap();
-    let delay_expectation = Duration::from_millis(50);
+    let delay_expectation = Duration::from_millis(40);
 
     assert!(
         unsub_delay < delay_expectation,
