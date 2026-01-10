@@ -1,22 +1,25 @@
-# someip-runtime
+# RecentIP
+
+> Warning! This is an alpha stage toy project for exploration.
+The goal is to create a solid, easy-to-use and performant middleware implementation that is easily and fearlessly maintainable.
 
 [![Crate](https://img.shields.io/crates/v/someip-runtime.svg)](https://crates.io/crates/someip-runtime)
 [![Docs](https://docs.rs/someip-runtime/badge.svg)](https://docs.rs/someip-runtime)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
-A **type-safe, async SOME/IP protocol implementation** for [tokio](https://tokio.rs).
+An opinionated **type-safe, async, lock-free, no-unsafe, no-panic SOME/IP protocol implementation** backed by [tokio](https://tokio.rs).
 
 SOME/IP (Scalable service-Oriented MiddlewarE over IP) is the standard middleware protocol for automotive Ethernet communication, enabling service-oriented communication between ECUs in modern vehicles.
 
 ## Features
 
-- **Type-safe API** — Compile-time guarantees via the `Service` trait and type-state patterns
+- **Type-safe API** — Compile-time guarantees via type-state patterns
 - **Async/await** — Native tokio integration with zero-cost futures
 - **Service Discovery** — Automatic discovery via multicast SD protocol
 - **RPC** — Request/response and fire-and-forget method calls
 - **Pub/Sub** — Event subscriptions with eventgroup management
 - **Dual transport** — UDP (default) and TCP with Magic Cookie support
-- **Spec compliance** — 269 tests covering SOME/IP specification requirements
+- **Spec compliance** — tests covering SOME/IP specification requirements
 
 ## Installation
 
@@ -29,17 +32,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
 ## Quick Start
-
-### Service Identifiers
-
-Services are identified by ID and version constants (typically generated from FIDL/Franca IDL):
-
-```rust
-use someip_runtime::prelude::*;
-
-const BRAKE_SERVICE_ID: u16 = 0x1234;
-const BRAKE_VERSION: (u8, u32) = (1, 0); // (major, minor)
-```
 
 ### Client: Find and Call a Service
 
@@ -100,6 +92,9 @@ async fn main() -> Result<()> {
 }
 ```
 
+## Examples
+Check the `examples` folder for examples.
+
 ## Configuration
 
 ```rust
@@ -158,14 +153,29 @@ service.add_static_subscriber("192.168.1.20:30502", &[eventgroup]);
 
 ## Testing
 
-The library uses [turmoil](https://docs.rs/turmoil) for deterministic network simulation:
+The library comes with several test suites:
+
+- unit tests in each module
+- compliance tests in `tests/compliance` certifying compliance with the SOME/IP specs backed
+- a few real network tests. most other tests are backed by turmoil
+- API behavior tests
+- (in planning) vsomeip compat tests certying compatibility to vsomeip
+- (in planning) docker tests for exotic setups (e.g. multi-homed with separate networks on the same multicast)
+- (in planning) multi-platform tests
+
+The library uses [turmoil](https://docs.rs/turmoil) for deterministic network simulation.
+Tests should be executed using nextest as it is configured to honor a subset of tests that needs to be executed sequentially.
+We aim for 100% code coverage.
 
 ```bash
-# Run all tests
-cargo nextest run --features turmoil
+# Run most tests (~10s)
+cargo nextest run
+
+# Run all tests (~40s)
+cargo nextest run --features slow-tests
 
 # Run with coverage
-cargo tarpaulin --features turmoil
+cargo llvm-cov nextest --features slow-tests
 
 # Doc tests only
 cargo test --doc
@@ -187,13 +197,9 @@ The `RUNTIME_MUST_SHUTDOWN` lint warns when a `Runtime` might be dropped without
 
 ## Specification Compliance
 
-This implementation targets compliance with the SOME/IP specification. Test coverage is tracked in `spec-data/coverage.json` with compliance tests in `tests/compliance/`.
-
-Key compliance areas:
-- Wire format (16-byte header, session ID wrapping)
-- Service Discovery (offer, find, subscribe entries)
-- Transport Protocol (UDP, TCP with Magic Cookies)
-- Error handling (return codes, EXCEPTION message type)
+This implementation targets compliance with the SOME/IP specification.
+Test coverage is tracked in `spec-data/coverage.json` with compliance tests in `tests/compliance/`.
+We aim for 100% coverage of the open SOME/IP 2025-12 specs.
 
 ## Architecture
 
@@ -223,12 +229,9 @@ This project is licensed under the [GPL-3.0 License](LICENSE).
 
 ## Contributing
 
-Contributions are welcome! Please see the main repository's contributing guidelines.
+Contributions are welcome!
 
-When adding features:
-1. Add command variant to `command.rs` if handle→runtime communication needed
-2. Add state to `state.rs` if persistent tracking required  
-3. Add handler to `client.rs` or `server.rs` depending on role
-4. Wire up in `runtime.rs` event loop
-5. Add public API to `handle.rs`
-6. Write compliance tests in `tests/compliance/`
+Make sure the following is fulfilled when filing a MR:
+1. Write integration tests in `tests/`. Annotate if this is covering a spec.
+2. Hack away.
+3. Review test coverage of touched pieces of code.
