@@ -167,6 +167,7 @@ pub fn handle_offer(
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
+        major_version: entry.major_version,
     };
 
     let ttl_duration = Duration::from_secs(u64::from(entry.ttl));
@@ -188,7 +189,6 @@ pub fn handle_offer(
             udp_endpoint,
             tcp_endpoint,
             sd_endpoint: from, // Store the SD source for Subscribe messages
-            major_version: entry.major_version,
             minor_version: entry.minor_version,
             ttl_expires: Instant::now() + ttl_duration,
         },
@@ -201,6 +201,7 @@ pub fn handle_offer(
                 endpoint: effective_endpoint,
                 transport: effective_transport,
                 instance_id: entry.instance_id,
+                major_version: entry.major_version,
             },
         });
 
@@ -223,13 +224,10 @@ pub fn handle_offer(
     // but SHALL be triggered by OfferService entries."
 
     // Check if we have any subscriptions for this service first
-    if let Some(subscriptions) = state.subscriptions.get(&key) {
-        if subscriptions.is_empty() {
-            // No subscriptions to renew
-            return;
-        }
-    } else {
-        // No subscriptions at all
+    let Some(subscriptions) = state.subscriptions.get(&key) else {
+        return;
+    };
+    if subscriptions.is_empty() {
         return;
     }
 
@@ -271,9 +269,10 @@ pub fn handle_offer(
             }
 
             tracing::debug!(
-                "Offer-triggered subscription renewal for {:04x}:{:04x} eventgroup {:04x} via {:?}",
+                "Offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroup {:04x} via {:?}",
                 entry.service_id,
                 entry.instance_id,
+                entry.major_version,
                 sub.eventgroup_id,
                 effective_transport
             );
@@ -282,6 +281,7 @@ pub fn handle_offer(
             let msg = build_subscribe_message(
                 entry.service_id,
                 entry.instance_id,
+                entry.major_version,  // Use version from key/entry
                 sub.eventgroup_id,
                 endpoint_for_subscribe,
                 client_rpc_port,
@@ -303,13 +303,15 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
+        major_version: entry.major_version,
     };
 
     if state.discovered.remove(&key).is_some() {
         tracing::debug!(
-            "Service {:04x}:{:04x} stopped offering",
+            "Service {:04x}:{:04x} v{} stopped offering",
             entry.service_id,
-            entry.instance_id
+            entry.instance_id,
+            entry.major_version
         );
 
         actions.push(Action::NotifyFound {
@@ -372,6 +374,7 @@ pub fn handle_subscribe_request(
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
+        major_version: entry.major_version,
     };
 
     // Get client's endpoint options from the SD message
@@ -597,6 +600,7 @@ pub fn handle_unsubscribe_request(
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
+        major_version: entry.major_version,
     };
 
     if let Some(offered) = state.offered.get(&key) {
@@ -698,6 +702,7 @@ pub fn handle_subscribe_ack(entry: &SdEntry, state: &mut RuntimeState) {
     let pending_key = PendingSubscriptionKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
+        major_version: entry.major_version,
         eventgroup_id: entry.eventgroup_id,
     };
     if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
@@ -712,12 +717,14 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
     let key = ServiceKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
+        major_version: entry.major_version,
     };
 
     tracing::debug!(
-        "Subscription rejected for {:04x}:{:04x} eventgroup {:04x}",
+        "Subscription rejected for {:04x}:{:04x} v{} eventgroup {:04x}",
         entry.service_id,
         entry.instance_id,
+        entry.major_version,
         entry.eventgroup_id
     );
 
@@ -725,6 +732,7 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
     let pending_key = PendingSubscriptionKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
+        major_version: entry.major_version,
         eventgroup_id: entry.eventgroup_id,
     };
     if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
@@ -823,13 +831,19 @@ pub fn build_stop_offer_message(
 }
 
 /// Build a `FindService` SD message
-pub fn build_find_message(service_id: u16, instance_id: u16, sd_flags: u8, ttl: u32) -> SdMessage {
+pub fn build_find_message(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    sd_flags: u8,
+    ttl: u32,
+) -> SdMessage {
     let mut msg = SdMessage::new(sd_flags);
     msg.add_entry(SdEntry::find_service(
         service_id,
         instance_id,
-        0xFF,
-        0xFFFFFFFF,
+        major_version,
+        0xFFFFFFFF, // Minor version is always ANY on wire per spec
         ttl,
     ));
     msg
@@ -839,6 +853,7 @@ pub fn build_find_message(service_id: u16, instance_id: u16, sd_flags: u8, ttl: 
 pub fn build_subscribe_message(
     service_id: u16,
     instance_id: u16,
+    major_version: u8,
     eventgroup_id: u16,
     local_endpoint: SocketAddr,
     client_rpc_port: u16,
@@ -861,7 +876,7 @@ pub fn build_subscribe_message(
         protocol,
     });
     let mut entry =
-        SdEntry::subscribe_eventgroup(service_id, instance_id, 0xFF, eventgroup_id, ttl, 0);
+        SdEntry::subscribe_eventgroup(service_id, instance_id, major_version, eventgroup_id, ttl, 0);
     entry.index_1st_option = opt_idx;
     entry.num_options_1 = 1;
     msg.add_entry(entry);
@@ -872,6 +887,7 @@ pub fn build_subscribe_message(
 pub fn build_unsubscribe_message(
     service_id: u16,
     instance_id: u16,
+    major_version: u8,
     eventgroup_id: u16,
     local_endpoint: SocketAddr,
     client_rpc_port: u16,
@@ -896,7 +912,7 @@ pub fn build_unsubscribe_message(
     let mut entry = SdEntry::subscribe_eventgroup(
         service_id,
         instance_id,
-        0xFF,
+        major_version,
         eventgroup_id,
         0, // TTL=0 indicates unsubscribe
         0,

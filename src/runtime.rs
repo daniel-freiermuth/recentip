@@ -490,6 +490,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
             Arc::clone(&self.inner),
             service_id,
             instance,
+            version.0,
             requests_rx,
         ))
     }
@@ -504,6 +505,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// - `service_id`: The service ID
     /// - `instance`: The instance ID
+    /// - `major_version`: The major version of the service
     /// - `endpoint`: The remote socket address
     /// - `transport`: UDP or TCP
     ///
@@ -513,6 +515,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// use someip_runtime::Transport;
     ///
     /// const MY_SERVICE_ID: u16 = 0x1234;
+    /// const MY_SERVICE_MAJOR: u8 = 1;
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
@@ -521,6 +524,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///     let proxy = runtime.find_static(
     ///         MY_SERVICE_ID,
     ///         InstanceId::Id(1),
+    ///         MY_SERVICE_MAJOR,
     ///         "192.168.1.10:30509".parse().unwrap(),
     ///         Transport::Tcp,
     ///     );
@@ -534,6 +538,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         &self,
         service_id: u16,
         instance: InstanceId,
+        major_version: u8,
         endpoint: SocketAddr,
         transport: Transport,
     ) -> ProxyHandle {
@@ -542,6 +547,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
             Arc::clone(&self.inner),
             service_id,
             instance,
+            major_version,
             endpoint,
             transport,
         )
@@ -841,6 +847,7 @@ impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>
             Arc::clone(&self.runtime.inner),
             self.service_id,
             self.instance,
+            self.major_version,
             requests_rx,
         ))
     }
@@ -1121,7 +1128,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
         Action::NotifyFound { key, availability } => {
             // Find all matching find requests and notify them
             for (req_key, request) in &state.find_requests {
-                if req_key.matches(key.service_id, key.instance_id) {
+                if req_key.matches(&key) {
                     let _ = request.notify.try_send(availability.clone());
                 }
             }
@@ -1386,23 +1393,33 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         Command::Find {
             service_id,
             instance_id,
+            major_version,
             notify,
         } => {
-            client::handle_find(service_id, instance_id, notify, state, &mut actions);
+            client::handle_find(
+                service_id,
+                instance_id,
+                major_version,
+                notify,
+                state,
+                &mut actions,
+            );
         }
 
         Command::StopFind {
             service_id,
             instance_id,
+            major_version,
         } => {
-            client::handle_stop_find(service_id, instance_id, state);
+            client::handle_stop_find(service_id, instance_id, major_version, state);
         }
 
         Command::StopOffer {
             service_id,
             instance_id,
+            major_version,
         } => {
-            server::handle_stop_offer(service_id, instance_id, state, &mut actions);
+            server::handle_stop_offer(service_id, instance_id, major_version, state, &mut actions);
         }
 
         Command::Call {
@@ -1446,6 +1463,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         Command::Subscribe {
             service_id,
             instance_id,
+            major_version,
             eventgroup_id,
             events,
             response,
@@ -1453,6 +1471,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             client::handle_subscribe(
                 service_id,
                 instance_id,
+                major_version,
                 eventgroup_id,
                 events,
                 response,
@@ -1464,12 +1483,14 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         Command::Unsubscribe {
             service_id,
             instance_id,
+            major_version,
             eventgroup_id,
             subscription_id,
         } => {
             client::handle_unsubscribe(
                 service_id,
                 instance_id,
+                major_version,
                 eventgroup_id,
                 subscription_id,
                 state,
@@ -1480,6 +1501,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         Command::Notify {
             service_id,
             instance_id,
+            major_version,
             eventgroup_id,
             event_id,
             payload,
@@ -1487,6 +1509,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             server::handle_notify(
                 service_id,
                 instance_id,
+                major_version,
                 eventgroup_id,
                 event_id,
                 payload,
@@ -1498,6 +1521,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         Command::NotifyStatic {
             service_id,
             instance_id,
+            major_version,
             eventgroup_id: _,
             event_id,
             payload,
@@ -1506,6 +1530,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             server::handle_notify_static(
                 service_id,
                 instance_id,
+                major_version,
                 event_id,
                 payload,
                 targets,
@@ -1517,17 +1542,19 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         Command::StartAnnouncing {
             service_id,
             instance_id,
+            major_version,
             response,
         } => {
-            server::handle_start_announcing(service_id, instance_id, response, state, &mut actions);
+            server::handle_start_announcing(service_id, instance_id, major_version, response, state, &mut actions);
         }
 
         Command::StopAnnouncing {
             service_id,
             instance_id,
+            major_version,
             response,
         } => {
-            server::handle_stop_announcing(service_id, instance_id, response, state, &mut actions);
+            server::handle_stop_announcing(service_id, instance_id, major_version, response, state, &mut actions);
         }
 
         Command::MonitorSd { events } => {
@@ -1597,7 +1624,13 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
             find_req.last_find = now;
             find_req.repetitions_left -= 1;
 
-            let msg = build_find_message(key.service_id, key.instance_id, sd_flags, find_ttl);
+            let msg = build_find_message(
+                key.service_id,
+                key.instance_id,
+                key.major_version,
+                sd_flags,
+                find_ttl,
+            );
 
             actions.push(Action::SendSd {
                 message: msg,

@@ -1336,6 +1336,7 @@ fn test_rpc_in_bound_state() {
             let proxy = runtime.find_static(
                 BRAKE_SERVICE_ID,
                 InstanceId::Id(0x0001),
+                BRAKE_SERVICE_VERSION.0,
                 std::net::SocketAddr::new(server_ip, 30491),
                 Transport::Udp,
             );
@@ -2714,6 +2715,7 @@ fn test_next_in_bound_state() {
             let proxy = runtime.find_static(
                 BRAKE_SERVICE_ID,
                 InstanceId::Id(0x0001),
+                BRAKE_SERVICE_VERSION.0,
                 std::net::SocketAddr::new(server_ip, 30491),
                 Transport::Udp,
             );

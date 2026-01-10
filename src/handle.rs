@@ -276,19 +276,21 @@ where
             .send(Command::Find {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
+                major_version: self.major_version,
                 notify: notify_tx,
             })
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
 
         // Wait for availability notification
-        let (endpoint, transport, discovered_instance_id) = loop {
+        let (endpoint, transport, discovered_instance_id, major_version) = loop {
             match notify_rx.recv().await {
                 Some(ServiceAvailability::Available {
                     endpoint,
                     transport,
                     instance_id,
-                }) => break (endpoint, transport, instance_id),
+                    major_version,
+                }) => break (endpoint, transport, instance_id, major_version),
                 // TODO: maybe get rid of the Unavailable variant?
                 Some(ServiceAvailability::Unavailable) => continue,
                 None => {
@@ -302,6 +304,7 @@ where
             Arc::clone(self.runtime.inner()),
             self.service_id,
             InstanceId::Id(discovered_instance_id),
+            major_version,
             endpoint,
             transport,
         ))
@@ -406,6 +409,7 @@ pub struct ProxyHandle {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
     instance_id: InstanceId,
+    major_version: u8,
     endpoint: SocketAddr,
     transport: crate::config::Transport,
 }
@@ -416,6 +420,7 @@ impl Clone for ProxyHandle {
             inner: Arc::clone(&self.inner),
             service_id: self.service_id,
             instance_id: self.instance_id,
+            major_version: self.major_version,
             endpoint: self.endpoint,
             transport: self.transport,
         }
@@ -428,6 +433,7 @@ impl ProxyHandle {
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: u8,
         endpoint: SocketAddr,
         transport: crate::config::Transport,
     ) -> Self {
@@ -435,6 +441,7 @@ impl ProxyHandle {
             inner,
             service_id,
             instance_id,
+            major_version,
             endpoint,
             transport,
         }
@@ -531,6 +538,7 @@ impl ProxyHandle {
             .send(Command::Subscribe {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
+                major_version: self.major_version,
                 eventgroup_id: eventgroup.value(),
                 events: events_tx,
                 response: response_tx,
@@ -544,6 +552,7 @@ impl ProxyHandle {
             inner: Arc::clone(&self.inner),
             service_id: self.service_id,
             instance_id: self.instance_id,
+            major_version: self.major_version,
             eventgroup,
             subscription_id,
             events: events_rx,
@@ -572,6 +581,7 @@ impl Drop for ProxyHandle {
         let _ = self.inner.cmd_tx.try_send(Command::StopFind {
             service_id: self.service_id,
             instance_id: self.instance_id,
+            major_version: MajorVersion::new(self.major_version),
         });
     }
 }
@@ -588,6 +598,7 @@ pub struct Subscription {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
     instance_id: InstanceId,
+    major_version: u8,
     eventgroup: EventgroupId,
     subscription_id: u64,
     events: mpsc::Receiver<Event>,
@@ -612,6 +623,7 @@ impl Drop for Subscription {
         let _ = self.inner.cmd_tx.try_send(Command::Unsubscribe {
             service_id: self.service_id,
             instance_id: self.instance_id,
+            major_version: self.major_version,
             eventgroup_id: self.eventgroup.value(),
             subscription_id: self.subscription_id,
         });
@@ -658,6 +670,7 @@ pub struct OfferingHandle {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
     instance_id: InstanceId,
+    major_version: u8,
     requests: mpsc::Receiver<ServiceRequest>,
 }
 
@@ -666,12 +679,14 @@ impl OfferingHandle {
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: u8,
         requests: mpsc::Receiver<ServiceRequest>,
     ) -> Self {
         Self {
             inner,
             service_id,
             instance_id,
+            major_version,
             requests,
         }
     }
@@ -790,6 +805,7 @@ impl OfferingHandle {
             .send(Command::Notify {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
+                major_version: self.major_version,
                 eventgroup_id: eventgroup.value(),
                 event_id: event_id.value(),
                 payload: bytes::Bytes::copy_from_slice(payload),
@@ -815,6 +831,7 @@ impl Drop for OfferingHandle {
         let _ = self.inner.cmd_tx.try_send(Command::StopOffer {
             service_id: self.service_id,
             instance_id: self.instance_id,
+            major_version: self.major_version,
         });
     }
 }
@@ -954,6 +971,7 @@ pub struct ServiceInstance<State> {
     inner: Option<Arc<RuntimeInner>>,
     service_id: ServiceId,
     instance_id: InstanceId,
+    major_version: u8,
     /// Requests channel - wrapped in Option for state transitions  
     requests: Option<mpsc::Receiver<ServiceRequest>>,
     /// Static subscribers (pre-configured, independent of SD)
@@ -966,12 +984,14 @@ impl ServiceInstance<Bound> {
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: u8,
         requests: mpsc::Receiver<ServiceRequest>,
     ) -> Self {
         Self {
             inner: Some(inner),
             service_id,
             instance_id,
+            major_version,
             requests: Some(requests),
             static_subscribers: HashMap::new(),
             _phantom: PhantomData,
@@ -995,6 +1015,7 @@ impl ServiceInstance<Bound> {
             .send(Command::StartAnnouncing {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
+                major_version: self.major_version,
                 response: response_tx,
             })
             .await
@@ -1007,6 +1028,7 @@ impl ServiceInstance<Bound> {
             inner: Some(inner),
             service_id: self.service_id,
             instance_id: self.instance_id,
+            major_version: self.major_version,
             requests: Some(requests),
             static_subscribers: std::mem::take(&mut self.static_subscribers),
             _phantom: PhantomData,
@@ -1053,6 +1075,7 @@ impl ServiceInstance<Bound> {
             .send(Command::NotifyStatic {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
+                major_version: self.major_version,
                 eventgroup_id: eventgroup.value(),
                 event_id: event_id.value(),
                 payload: bytes::Bytes::copy_from_slice(payload),
@@ -1104,6 +1127,7 @@ impl ServiceInstance<Announced> {
             .send(Command::StopAnnouncing {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
+                major_version: self.major_version,
                 response: response_tx,
             })
             .await
@@ -1116,6 +1140,7 @@ impl ServiceInstance<Announced> {
             inner: Some(inner),
             service_id: self.service_id,
             instance_id: self.instance_id,
+            major_version: self.major_version,
             requests: Some(requests),
             static_subscribers: std::mem::take(&mut self.static_subscribers),
             _phantom: PhantomData,
@@ -1140,6 +1165,7 @@ impl ServiceInstance<Announced> {
             .send(Command::Notify {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
+                major_version: self.major_version,
                 eventgroup_id: eventgroup.value(),
                 event_id: event_id.value(),
                 payload: bytes::Bytes::copy_from_slice(payload),
@@ -1181,6 +1207,7 @@ impl ServiceInstance<Announced> {
             .send(Command::NotifyStatic {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
+                major_version: self.major_version,
                 eventgroup_id: eventgroup.value(),
                 event_id: event_id.value(),
                 payload: bytes::Bytes::copy_from_slice(payload),
@@ -1222,6 +1249,7 @@ impl<State> Drop for ServiceInstance<State> {
             let _ = inner.cmd_tx.try_send(Command::StopOffer {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
+                major_version: self.major_version,
             });
         }
     }

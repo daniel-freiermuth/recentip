@@ -63,7 +63,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::config::MethodConfig;
 use crate::error::Result;
-use crate::{InstanceId, ServiceId};
+use crate::{InstanceId, MajorVersion, ServiceId};
 
 /// Commands sent from handles to the runtime task
 pub enum Command {
@@ -71,12 +71,14 @@ pub enum Command {
     Find {
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: MajorVersion,
         notify: mpsc::Sender<ServiceAvailability>,
     },
     /// Stop finding a service
     StopFind {
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: MajorVersion,
     },
     /// Offer a service
     Offer {
@@ -92,6 +94,7 @@ pub enum Command {
     StopOffer {
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: u8,
     },
     /// Call a method
     Call {
@@ -118,6 +121,7 @@ pub enum Command {
     Subscribe {
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: u8,
         eventgroup_id: u16,
         events: mpsc::Sender<crate::Event>,
         /// Returns subscription_id on success for tracking unsubscribe
@@ -127,6 +131,7 @@ pub enum Command {
     Unsubscribe {
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: u8,
         eventgroup_id: u16,
         subscription_id: u64,
     },
@@ -134,6 +139,7 @@ pub enum Command {
     Notify {
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: u8,
         eventgroup_id: u16,
         event_id: u16,
         payload: Bytes,
@@ -143,6 +149,7 @@ pub enum Command {
     NotifyStatic {
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: u8,
         #[allow(dead_code)]
         eventgroup_id: u16,
         event_id: u16,
@@ -163,12 +170,14 @@ pub enum Command {
     StartAnnouncing {
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: u8,
         response: oneshot::Sender<Result<()>>,
     },
     /// Stop announcing a service (keeps socket open)
     StopAnnouncing {
         service_id: ServiceId,
         instance_id: InstanceId,
+        major_version: u8,
         response: oneshot::Sender<Result<()>>,
     },
     /// Listen for static events (pre-configured, no SD)
@@ -214,6 +223,7 @@ pub enum ServiceAvailability {
         endpoint: SocketAddr,
         transport: crate::config::Transport,
         instance_id: u16,
+        major_version: u8,
     },
     Unavailable,
 }

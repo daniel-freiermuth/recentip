@@ -16,7 +16,7 @@
 //! | Type | Purpose |
 //! |------|---------|
 //! | [`RuntimeState`] | Top-level state container |
-//! | [`ServiceKey`] | Identifies a service+instance pair |
+//! | [`ServiceKey`] | Identifies a service+instance+version tuple |
 //! | [`OfferedService`] | State for a service we're offering |
 //! | [`DiscoveredService`] | State for a service we've discovered |
 //! | [`PendingCall`] | Tracks an outstanding RPC call |
@@ -58,25 +58,37 @@ use crate::{InstanceId, ServiceId};
 // ============================================================================
 
 /// Key for service identification
+///
+/// Per SOME/IP-SD spec, a service is uniquely identified by the tuple
+/// `(service_id, instance_id, major_version)`. Different major versions
+/// of the same service are considered different services.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ServiceKey {
     pub(crate) service_id: u16,
     pub(crate) instance_id: u16,
+    pub(crate) major_version: u8,
 }
 
 impl ServiceKey {
-    pub(crate) fn new(service_id: ServiceId, instance_id: InstanceId) -> Self {
+    pub(crate) fn new(service_id: ServiceId, instance_id: InstanceId, major_version: u8) -> Self {
         Self {
             service_id: service_id.value(),
             instance_id: instance_id.value(),
+            major_version,
         }
     }
 
-    pub(crate) fn matches(&self, service_id: u16, instance_id: u16) -> bool {
-        self.service_id == service_id
+    /// Check if this key matches another key (supports wildcards on both sides)
+    /// - instance_id 0xFFFF matches any instance
+    /// - major_version 0xFF matches any version
+    pub(crate) fn matches(&self, other: &ServiceKey) -> bool {
+        self.service_id == other.service_id
             && (self.instance_id == 0xFFFF
-                || self.instance_id == instance_id
-                || instance_id == 0xFFFF)
+                || self.instance_id == other.instance_id
+                || other.instance_id == 0xFFFF)
+            && (self.major_version == 0xFF
+                || self.major_version == other.major_version
+                || other.major_version == 0xFF)
     }
 }
 
@@ -184,6 +196,8 @@ pub struct OfferedService {
 // ============================================================================
 
 /// Discovered remote service
+///
+/// Note: `major_version` is part of `DiscoveredServiceKey`, not stored here.
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // Fields used for version matching in future
 pub struct DiscoveredService {
@@ -193,7 +207,6 @@ pub struct DiscoveredService {
     pub(crate) tcp_endpoint: Option<SocketAddr>,
     /// SD endpoint for sending SD messages (`SubscribeEventgroup`, etc.)
     pub(crate) sd_endpoint: SocketAddr,
-    pub(crate) major_version: u8,
     pub(crate) minor_version: u32,
     pub(crate) ttl_expires: Instant,
 }
@@ -250,6 +263,7 @@ pub struct PendingCall {
 pub struct PendingSubscriptionKey {
     pub(crate) service_id: u16,
     pub(crate) instance_id: u16,
+    pub(crate) major_version: u8,
     pub(crate) eventgroup_id: u16,
 }
 

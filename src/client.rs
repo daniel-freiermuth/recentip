@@ -90,38 +90,31 @@ fn get_endpoint_ip(state: &RuntimeState) -> Option<std::net::IpAddr> {
 pub fn handle_find(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
+    major_version: crate::MajorVersion,
     notify: tokio::sync::mpsc::Sender<ServiceAvailability>,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let key = ServiceKey::new(service_id, instance_id);
+    let key = ServiceKey::new(service_id, instance_id, major_version.value());
     let prefer_tcp = state.config.preferred_transport == Transport::Tcp;
 
     // Check if we already have a matching discovered service
-    // Use wildcard-aware matching: if instance_id is Any (0xFFFF), match any instance
-    let found = if instance_id == crate::InstanceId::Any {
-        // Find any service with matching service_id
-        state
-            .discovered
-            .iter()
-            .find(|(k, _)| k.service_id == service_id.value())
-            .and_then(|(k, v)| {
-                v.method_endpoint(prefer_tcp)
-                    .map(|(ep, tr)| (k.instance_id, ep, tr))
-            })
-    } else {
-        // Exact match
-        state.discovered.get(&key).and_then(|v| {
+    // Use wildcard-aware matching via DiscoveredServiceKey::matches()
+    let found = state
+        .discovered
+        .iter()
+        .find(|(k, _v)| k.matches(&key))
+        .and_then(|(k, v)| {
             v.method_endpoint(prefer_tcp)
-                .map(|(ep, tr)| (key.instance_id, ep, tr))
-        })
-    };
+                .map(|(ep, tr)| (k.instance_id, k.major_version, ep, tr))
+        });
 
-    if let Some((discovered_instance_id, endpoint, transport)) = found {
+    if let Some((discovered_instance_id, discovered_major_version, endpoint, transport)) = found {
         let _ = notify.try_send(ServiceAvailability::Available {
             endpoint,
             transport,
             instance_id: discovered_instance_id,
+            major_version: discovered_major_version,
         });
     } else {
         state.find_requests.insert(
@@ -136,6 +129,7 @@ pub fn handle_find(
         let msg = build_find_message(
             service_id.value(),
             instance_id.value(),
+            major_version.value(),
             state.sd_flags(true),
             state.config.find_ttl,
         );
@@ -151,10 +145,13 @@ pub fn handle_find(
 pub fn handle_stop_find(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
+    major_version: crate::MajorVersion,
     state: &mut RuntimeState,
 ) {
-    let key = ServiceKey::new(service_id, instance_id);
+    let key = ServiceKey::new(service_id, instance_id, major_version.value());
     state.find_requests.remove(&key);
+    // TODO: here we probably should only remove our interest. There might be another find
+    //       but if we're the last one, we need to do the cleanup
 }
 
 /// Handle `Command::Call`
@@ -231,22 +228,24 @@ pub fn handle_fire_and_forget(
 pub fn handle_subscribe(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
+    major_version: u8,
     eventgroup_id: u16,
     events: tokio::sync::mpsc::Sender<Event>,
     response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let key = ServiceKey::new(service_id, instance_id);
+    let key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Generate a unique subscription ID for this subscription handle
     let subscription_id = state.next_subscription_id();
 
     let Some(discovered) = state.discovered.get(&key) else {
         tracing::debug!(
-            "Cannot subscribe to {:04x}:{:04x} eventgroup {:04x}: service not discovered",
+            "Cannot subscribe to {:04x}:{:04x} v{} eventgroup {:04x}: service not discovered",
             service_id.value(),
             instance_id.value(),
+            major_version,
             eventgroup_id
         );
         let _ = response.send(Err(crate::error::Error::ServiceUnavailable));
@@ -297,6 +296,7 @@ pub fn handle_subscribe(
     let pending_key = PendingSubscriptionKey {
         service_id: service_id.value(),
         instance_id: instance_id.value(),
+        major_version,
         eventgroup_id,
     };
     let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
@@ -308,11 +308,19 @@ pub fn handle_subscribe(
 
     // Only send SD Subscribe message if this is the first waiter
     if is_first_waiter {
+        tracing::debug!(
+            "Subscribing to {:04x}:{:04x} v{} eventgroup {:04x}",
+            service_id.value(),
+            instance_id.value(),
+            major_version,
+            eventgroup_id
+        );
         let endpoint_for_subscribe = SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
 
         let msg = build_subscribe_message(
             service_id.value(),
             instance_id.value(),
+            major_version,
             eventgroup_id,
             endpoint_for_subscribe,
             state.client_rpc_endpoint.port(),
@@ -332,31 +340,44 @@ pub fn handle_subscribe(
 pub fn handle_unsubscribe(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
+    major_version: u8,
     eventgroup_id: u16,
     subscription_id: u64,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let key = ServiceKey::new(service_id, instance_id);
+    let key = ServiceKey::new(service_id, instance_id, major_version);
 
-    // Remove only the specific subscription by ID
-    let mut remaining_for_eventgroup = 0;
-    if let Some(subs) = state.subscriptions.get_mut(&key) {
-        subs.retain(|s| s.subscription_id != subscription_id);
-        // Count remaining subscriptions for this eventgroup
-        remaining_for_eventgroup = subs
-            .iter()
-            .filter(|s| s.eventgroup_id == eventgroup_id)
-            .count();
-    }
+    // Check if we have subscriptions for this key
+    let Some(subs) = state.subscriptions.get_mut(&key) else {
+        tracing::warn!(
+            "Unsubscribe for unknown service sub_id {} on {:04x}:{:04x} v{} eventgroup {:04x}",
+            subscription_id,
+            service_id.value(),
+            instance_id.value(),
+            major_version,
+            eventgroup_id
+        );
+        return;
+    };
+
+    // Remove the specific subscription by ID
+    subs.retain(|s| s.subscription_id != subscription_id);
+    
+    // Count remaining subscriptions for this eventgroup
+    let remaining_for_eventgroup = subs
+        .iter()
+        .filter(|s| s.eventgroup_id == eventgroup_id)
+        .count();
 
     // Only send SD StopSubscribe if this was the last subscription for this eventgroup
     if remaining_for_eventgroup > 0 {
         tracing::debug!(
-            "Subscription {} dropped for {:04x}:{:04x} eventgroup {:04x}, but {} other(s) remain",
+            "Subscription {} dropped for {:04x}:{:04x} v{} eventgroup {:04x}, but {} other(s) remain",
             subscription_id,
             service_id.value(),
             instance_id.value(),
+            major_version,
             eventgroup_id,
             remaining_for_eventgroup
         );
@@ -375,6 +396,14 @@ pub fn handle_unsubscribe(
             );
             return;
         };
+
+        tracing::info!(
+            "Unsubscribing from {:04x}:{:04x} v{} eventgroup {:04x}",
+            service_id.value(),
+            instance_id.value(),
+            major_version,
+            eventgroup_id
+        );
 
         // Determine the actual local IP address to put in the endpoint option
         // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
@@ -395,6 +424,7 @@ pub fn handle_unsubscribe(
         let msg = build_unsubscribe_message(
             service_id.value(),
             instance_id.value(),
+            major_version,
             eventgroup_id,
             endpoint_for_unsubscribe,
             state.client_rpc_endpoint.port(),
@@ -473,32 +503,28 @@ pub fn handle_incoming_notification(
 
     let event = Event { event_id, payload };
 
-    // Determine which instance this event is from by looking up the 'from' address
+    // Determine which service instance this event is from by looking up the 'from' address
     // in discovered services
-    let instance_id_filter: Option<u16> = state
+    let Some(key): Option<ServiceKey> = state
         .discovered
         .iter()
         .find(|(key, disc)| {
             key.service_id == header.service_id
                 && (disc.udp_endpoint == Some(from) || disc.tcp_endpoint == Some(from))
         })
-        .map(|(key, _)| key.instance_id);
+        .map(|(key, _)| *key)
+        else {
+            tracing::warn!(
+                "Received event {:04x} from unknown service {:04x} at {}",
+                header.method_id,
+                header.service_id,
+                from
+            );
+            return;
+        };
 
-    // Find subscriptions for this service/eventgroup (dynamic via SD)
-    for (key, subs) in &state.subscriptions {
-        // Match service_id from header
-        if key.service_id != header.service_id {
-            continue;
-        }
-
-        // If we determined an instance_id, filter by it to prevent cross-instance delivery
-        // If we couldn't determine it, deliver to all subscriptions (backward compatible)
-        if let Some(inst_id) = instance_id_filter {
-            if key.instance_id != inst_id {
-                continue;
-            }
-        }
-
+    // Find subscriptions for this service (dynamic via SD)
+    if let Some(subs) = state.subscriptions.get(&key) {
         for sub in subs {
             let _ = sub.events_tx.try_send(event.clone());
         }

@@ -88,7 +88,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     rpc_tx: &mpsc::Sender<RpcMessage>,
     tcp_rpc_tx: &mpsc::Sender<TcpMessage>,
 ) -> Option<Vec<Action>> {
-    let key = ServiceKey::new(service_id, instance_id);
+    let key = ServiceKey::new(service_id, instance_id, major_version);
     let mut actions = Vec::new();
 
     // Create channel for service requests
@@ -115,6 +115,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
                     rpc_socket,
                     service_id.value(),
                     instance_id.value(),
+                    major_version,
                     rpc_tx.clone(),
                 )
                 .await;
@@ -222,7 +223,7 @@ pub async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stre
     rpc_tx: &mpsc::Sender<RpcMessage>,
     tcp_rpc_tx: &mpsc::Sender<TcpMessage>,
 ) {
-    let key = ServiceKey::new(service_id, instance_id);
+    let key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Check if already bound
     if state.offered.contains_key(&key) {
@@ -247,6 +248,7 @@ pub async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stre
                         rpc_socket,
                         service_id.value(),
                         instance_id.value(),
+                        major_version,
                         rpc_tx.clone(),
                     )
                     .await;
@@ -398,10 +400,11 @@ pub async fn handle_listen_static_command<U: UdpSocket>(
 pub fn handle_stop_offer(
     service_id: ServiceId,
     instance_id: InstanceId,
+    major_version: u8,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let key = ServiceKey::new(service_id, instance_id);
+    let key = ServiceKey::new(service_id, instance_id, major_version);
 
     if let Some(offered) = state.offered.remove(&key) {
         let msg = build_stop_offer_message(&key, &offered, state.sd_flags(false));
@@ -417,13 +420,14 @@ pub fn handle_stop_offer(
 pub fn handle_notify(
     service_id: ServiceId,
     instance_id: InstanceId,
+    major_version: u8,
     eventgroup_id: u16,
     event_id: u16,
     payload: Bytes,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let service_key = ServiceKey::new(service_id, instance_id);
+    let service_key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Find all subscribers for this eventgroup
     let sub_key = SubscriberKey {
@@ -465,13 +469,14 @@ pub fn handle_notify(
 pub fn handle_notify_static(
     service_id: ServiceId,
     instance_id: InstanceId,
+    major_version: u8,
     event_id: u16,
     payload: Bytes,
     targets: Vec<SocketAddr>,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let service_key = ServiceKey::new(service_id, instance_id);
+    let service_key = ServiceKey::new(service_id, instance_id, major_version);
 
     if state.offered.contains_key(&service_key) {
         let notification_data = build_notification(
@@ -499,11 +504,12 @@ pub fn handle_notify_static(
 pub fn handle_start_announcing(
     service_id: ServiceId,
     instance_id: InstanceId,
+    major_version: u8,
     response: oneshot::Sender<Result<()>>,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let key = ServiceKey::new(service_id, instance_id);
+    let key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Capture values before mutable borrow
     let sd_flags = state.sd_flags(true);
@@ -533,11 +539,12 @@ pub fn handle_start_announcing(
 pub fn handle_stop_announcing(
     service_id: ServiceId,
     instance_id: InstanceId,
+    major_version: u8,
     response: oneshot::Sender<Result<()>>,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let key = ServiceKey::new(service_id, instance_id);
+    let key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Capture values before mutable borrow
     let sd_flags = state.sd_flags(false);
@@ -775,6 +782,7 @@ pub async fn spawn_rpc_socket_task<U: UdpSocket>(
     rpc_socket: U,
     service_id: u16,
     instance_id: u16,
+    major_version: u8,
     rpc_tx_to_runtime: mpsc::Sender<RpcMessage>,
 ) -> (SocketAddr, mpsc::Sender<RpcSendMessage>) {
     let local_endpoint = rpc_socket
@@ -785,6 +793,7 @@ pub async fn spawn_rpc_socket_task<U: UdpSocket>(
     let service_key = ServiceKey {
         service_id,
         instance_id,
+        major_version,
     };
 
     tokio::spawn(async move {

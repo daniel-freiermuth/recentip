@@ -9,9 +9,11 @@
 //!
 //! # Modules
 //! - `subscribe_format` - Subscribe message format verification
+//! - `subscribe_nack` - Subscribe NACK handling
 //! - `rpc_port` - SD vs RPC port separation, TCP connection timing
 
 mod helpers;
 pub mod rpc_port;
 pub mod subscribe_format;
+pub mod subscribe_nack;
 pub mod subscription_handle;
