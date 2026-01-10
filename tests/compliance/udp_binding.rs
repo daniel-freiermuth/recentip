@@ -14,8 +14,8 @@
 use bytes::Bytes;
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
-use someip_runtime::{Runtime, RuntimeConfig};
 use someip_runtime::wire::{Header, SD_SERVICE_ID};
+use someip_runtime::{Runtime, RuntimeConfig};
 use std::net::SocketAddr;
 use std::time::Duration;
 

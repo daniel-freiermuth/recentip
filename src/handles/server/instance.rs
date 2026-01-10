@@ -8,8 +8,8 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::{Error, Result};
-use crate::runtime::{Command, ServiceRequest};
 use crate::handles::runtime::RuntimeInner;
+use crate::runtime::{Command, ServiceRequest};
 use crate::{ClientInfo, EventId, EventgroupId, InstanceId, MethodId, ServiceId};
 
 use super::{Responder, ServiceEvent};

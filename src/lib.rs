@@ -363,17 +363,25 @@ pub mod tcp;
 pub mod wire;
 
 // Re-export Runtime and config types from handles module
-pub use handles::{Runtime, RuntimeConfig, OfferBuilder};
+pub use handles::{OfferBuilder, Runtime, RuntimeConfig};
 
 pub use config::{MethodConfig, RuntimeConfigBuilder, Transport};
 pub use error::*;
 
 // Re-export handle types (explicit to avoid shadowing with internal runtime module)
 pub use handles::{
+    Announced,
+    Bound,
     // Client-side handles
-    FindBuilder, ProxyHandle, Subscription, StaticEventListener,
+    FindBuilder,
     // Server-side handles
-    OfferingHandle, Responder, ServiceEvent, ServiceInstance, Announced, Bound,
+    OfferingHandle,
+    ProxyHandle,
+    Responder,
+    ServiceEvent,
+    ServiceInstance,
+    StaticEventListener,
+    Subscription,
 };
 
 // Re-export SD event types for monitoring API

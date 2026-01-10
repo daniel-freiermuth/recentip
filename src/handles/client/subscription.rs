@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::runtime::Command;
 use crate::handles::runtime::RuntimeInner;
+use crate::runtime::Command;
 use crate::{Event, EventgroupId, InstanceId, ServiceId};
 
 /// Active subscription to an eventgroup.

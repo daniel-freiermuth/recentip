@@ -16,11 +16,11 @@
 use bytes::Bytes;
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
 use someip_runtime::wire::{
     Header, SdMessage, INTERFACE_VERSION_OFFSET, PROTOCOL_VERSION, PROTOCOL_VERSION_OFFSET,
     SD_METHOD_ID, SD_SERVICE_ID,
 };
+use someip_runtime::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 

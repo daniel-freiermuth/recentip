@@ -13,8 +13,8 @@
 use bytes::Bytes;
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
 use someip_runtime::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
+use someip_runtime::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 

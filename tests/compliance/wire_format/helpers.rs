@@ -6,8 +6,8 @@
 use bytes::Bytes;
 pub use someip_runtime::handle::ServiceEvent;
 pub use someip_runtime::prelude::*;
-pub use someip_runtime::{Runtime, RuntimeConfig};
 pub use someip_runtime::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
+pub use someip_runtime::{Runtime, RuntimeConfig};
 pub use std::net::SocketAddr;
 pub use std::time::Duration;
 

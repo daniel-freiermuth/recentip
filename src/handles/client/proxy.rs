@@ -6,8 +6,8 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::{Error, Result};
-use crate::runtime::Command;
 use crate::handles::runtime::RuntimeInner;
+use crate::runtime::Command;
 use crate::{EventgroupId, InstanceId, MajorVersion, MethodId, Response, ServiceId};
 
 use super::Subscription;

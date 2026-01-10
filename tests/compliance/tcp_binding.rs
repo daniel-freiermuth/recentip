@@ -22,8 +22,8 @@
 use bytes::Bytes;
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::prelude::*;
-use someip_runtime::{Runtime, RuntimeConfig, Transport};
 use someip_runtime::wire::Header;
+use someip_runtime::{Runtime, RuntimeConfig, Transport};
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers

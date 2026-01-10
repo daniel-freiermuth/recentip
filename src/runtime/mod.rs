@@ -20,5 +20,5 @@ pub mod server;
 pub mod state;
 
 // Re-export commonly used types for internal use
-pub(crate) use command::{Command, ServiceAvailability, ServiceRequest};
 pub use command::SdEvent;
+pub(crate) use command::{Command, ServiceAvailability, ServiceRequest};
