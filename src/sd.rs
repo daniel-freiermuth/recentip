@@ -281,7 +281,7 @@ pub fn handle_offer(
             let msg = build_subscribe_message(
                 entry.service_id,
                 entry.instance_id,
-                entry.major_version,  // Use version from key/entry
+                entry.major_version, // Use version from key/entry
                 sub.eventgroup_id,
                 endpoint_for_subscribe,
                 client_rpc_port,
@@ -875,8 +875,14 @@ pub fn build_subscribe_message(
         port: client_rpc_port,
         protocol,
     });
-    let mut entry =
-        SdEntry::subscribe_eventgroup(service_id, instance_id, major_version, eventgroup_id, ttl, 0);
+    let mut entry = SdEntry::subscribe_eventgroup(
+        service_id,
+        instance_id,
+        major_version,
+        eventgroup_id,
+        ttl,
+        0,
+    );
     entry.index_1st_option = opt_idx;
     entry.num_options_1 = 1;
     msg.add_entry(entry);

@@ -60,19 +60,22 @@ fn multiple_instances_have_different_ids() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let _offering1 = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0001)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
                 .unwrap();
             let _offering2 = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0002)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0002))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
                 .unwrap();
             let _offering3 = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0003)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0003))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -153,7 +156,8 @@ fn messages_dispatched_to_correct_instance() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let mut offering1 = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0001)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -184,7 +188,8 @@ fn messages_dispatched_to_correct_instance() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering2 = runtime
-            .offer(SERVICE_A_ID, InstanceId::Id(0x0002)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+            .offer(SERVICE_A_ID, InstanceId::Id(0x0002))
+            .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
             .udp()
             .start()
             .await
@@ -286,7 +291,8 @@ fn two_instances_same_host() {
 
             // Offer instance 1
             let mut offering1 = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0001)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -294,7 +300,8 @@ fn two_instances_same_host() {
 
             // Offer instance 2 on the SAME runtime/host
             let mut offering2 = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0002)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0002))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -417,13 +424,15 @@ fn different_services_have_different_service_ids() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let _offering_a = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0001)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
                 .unwrap();
             let _offering_b = runtime
-                .offer(SERVICE_B_ID, InstanceId::Id(0x0001)).version(SERVICE_B_VERSION.0, SERVICE_B_VERSION.1)
+                .offer(SERVICE_B_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_B_VERSION.0, SERVICE_B_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -490,13 +499,15 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let mut offering_a = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0001)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
                 .unwrap();
             let mut offering_b = runtime
-                .offer(SERVICE_B_ID, InstanceId::Id(0x0001)).version(SERVICE_B_VERSION.0, SERVICE_B_VERSION.1)
+                .offer(SERVICE_B_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_B_VERSION.0, SERVICE_B_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -609,7 +620,8 @@ fn client_can_request_any_instance() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let _offering = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x002A)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1) // 42 in hex
+                .offer(SERVICE_A_ID, InstanceId::Id(0x002A))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1) // 42 in hex
                 .udp()
                 .start()
                 .await
@@ -668,13 +680,15 @@ fn client_can_request_specific_instance() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let _offering1 = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0001)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
                 .unwrap();
             let _offering2 = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0002)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0002))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -733,7 +747,8 @@ fn nonexistent_instance_not_found() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let _offering = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0001)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await

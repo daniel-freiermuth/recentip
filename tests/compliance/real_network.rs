@@ -14,8 +14,7 @@
 //! network testing with simulated separate hosts.
 
 use someip_runtime::{
-    EventId, EventgroupId, InstanceId, MethodId, Runtime, RuntimeConfig, ServiceEvent,
-    Transport,
+    EventId, EventgroupId, InstanceId, MethodId, Runtime, RuntimeConfig, ServiceEvent, Transport,
 };
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
@@ -93,7 +92,8 @@ async fn udp_request_response_real_network() {
     let server_runtime = Runtime::new(server_config).await.expect("Server runtime");
 
     let mut offering = server_runtime
-        .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001)).version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
+        .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001))
+        .version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
         .udp()
         .start()
         .await
@@ -157,7 +157,8 @@ async fn udp_service_discovery_real_network() {
         let runtime = Runtime::new(config).await.expect("Server runtime");
 
         let _offering = runtime
-            .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0002)).version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
+            .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0002))
+            .version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -203,7 +204,8 @@ async fn tcp_request_response_real_network() {
         let runtime = Runtime::new(config).await.expect("Server runtime");
 
         let mut offering = runtime
-            .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001)).version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
+            .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -267,7 +269,8 @@ async fn tcp_magic_cookies_real_network() {
         let runtime = Runtime::new(config).await.expect("Server runtime");
 
         let mut offering = runtime
-            .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001)).version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
+            .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -327,7 +330,8 @@ async fn tcp_multiple_requests_real_network() {
         let runtime = Runtime::new(config).await.expect("Server runtime");
 
         let mut offering = runtime
-            .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001)).version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
+            .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -412,7 +416,8 @@ async fn udp_events_real_network() {
         let runtime = Runtime::new(config).await.expect("Server runtime");
 
         let mut offering = runtime
-            .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001)).version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
+            .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -524,7 +529,8 @@ async fn udp_two_runtimes_same_sd_port() {
 
     let server_runtime = Runtime::new(server_config).await.expect("Server runtime");
     let mut offering = server_runtime
-        .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0003)).version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
+        .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0003))
+        .version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
         .udp()
         .start()
         .await

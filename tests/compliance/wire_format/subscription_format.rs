@@ -287,7 +287,8 @@ fn subscription_max_ttl_doesnt_expire() {
             Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await

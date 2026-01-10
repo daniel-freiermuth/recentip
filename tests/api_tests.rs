@@ -2,9 +2,7 @@
 
 use someip_runtime::handle::ServiceEvent;
 use someip_runtime::runtime::Runtime;
-use someip_runtime::{
-    EventId, EventgroupId, InstanceId, MethodId, RuntimeConfig, ServiceId,
-};
+use someip_runtime::{EventId, EventgroupId, InstanceId, MethodId, RuntimeConfig, ServiceId};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -75,7 +73,8 @@ fn test_offer_service() {
 
         // Offer a service
         let offering = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await;
@@ -137,7 +136,8 @@ fn test_service_discovery_offer_find() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let _offering = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -193,13 +193,15 @@ fn test_multiple_services() {
 
         // Offer two different services
         let _offering1 = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
             .unwrap();
         let _offering2 = runtime
-            .offer(ANOTHER_SERVICE_ID, InstanceId::Id(0x0002)).version(ANOTHER_SERVICE_VERSION.0, ANOTHER_SERVICE_VERSION.1)
+            .offer(ANOTHER_SERVICE_ID, InstanceId::Id(0x0002))
+            .version(ANOTHER_SERVICE_VERSION.0, ANOTHER_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -247,7 +249,8 @@ fn test_specific_instance_id() {
 
         // Offer instance 0x0001
         let _offering = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -296,7 +299,8 @@ fn test_offering_handle_drop() {
 
         {
             let _offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -328,7 +332,8 @@ fn test_method_call_rpc() {
 
         // Offer the service
         let mut offering = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -412,7 +417,8 @@ fn library_auto_renews_subscription() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer(PUBSUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUBSUB_SERVICE_VERSION.0, PUBSUB_SERVICE_VERSION.1)
+            .offer(PUBSUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(PUBSUB_SERVICE_VERSION.0, PUBSUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -506,7 +512,8 @@ fn test_event_subscription() {
 
         // Offer the service
         let offering = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -684,116 +691,115 @@ fn test_many_version_subscribe_to_one() {
 
     let sub_arrived_clone = Arc::clone(&sub_arrived);
     sim.host("host", move || {
-        let flag_clone = sub_arrived_clone.clone(); async move {
-        let config = RuntimeConfig::builder()
-            .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let flag_clone = sub_arrived_clone.clone();
+        async move {
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
+                .build();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        // Macro to create an offering that panics on Subscribe
-        macro_rules! unexpected_offering {
-            ($runtime:expr, $version:expr) => {{
-                let mut offering = $runtime
-                    .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
-                    .version($version, TEST_SERVICE_VERSION.1)
-                    .start()
-                    .await
-                    .unwrap();
-                async move {
-                    while let Some(event) = offering.next().await {
-                        match event {
-                            ServiceEvent::Subscribe { .. } => {
-                                panic!(
-                                    "Unexpected Subscribe for TestService v{}",
-                                    $version
-                                );
+            // Macro to create an offering that panics on Subscribe
+            macro_rules! unexpected_offering {
+                ($runtime:expr, $version:expr) => {{
+                    let mut offering = $runtime
+                        .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                        .version($version, TEST_SERVICE_VERSION.1)
+                        .start()
+                        .await
+                        .unwrap();
+                    async move {
+                        while let Some(event) = offering.next().await {
+                            match event {
+                                ServiceEvent::Subscribe { .. } => {
+                                    panic!("Unexpected Subscribe for TestService v{}", $version);
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
-                }
-            }};
-        }
-
-        let mut offering = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(27, TEST_SERVICE_VERSION.1)
-            .udp()
-            .start()
-            .await
-            .unwrap();
-        let expected_offering = async {
-            while let Some(event) = offering.next().await {
-                match event {
-                    ServiceEvent::Subscribe { .. } => {
-                        tracing::info!("Handled expected Subscribe for TestService v27");
-                        flag_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-                    }
-                    _ => {}
-                }
+                }};
             }
-        };
-        tokio::join!(
-            unexpected_offering!(runtime, 1),
-            unexpected_offering!(runtime, 2),
-            unexpected_offering!(runtime, 3),
-            unexpected_offering!(runtime, 4),
-            unexpected_offering!(runtime, 5),
-            unexpected_offering!(runtime, 6),
-            unexpected_offering!(runtime, 7),
-            unexpected_offering!(runtime, 8),
-            unexpected_offering!(runtime, 9),
-            unexpected_offering!(runtime, 10),
-            unexpected_offering!(runtime, 11),
-            unexpected_offering!(runtime, 12),
-            unexpected_offering!(runtime, 13),
-            unexpected_offering!(runtime, 14),
-            unexpected_offering!(runtime, 15),
-            unexpected_offering!(runtime, 16),
-            unexpected_offering!(runtime, 17),
-            unexpected_offering!(runtime, 18),
-            unexpected_offering!(runtime, 19),
-            unexpected_offering!(runtime, 20),
-            unexpected_offering!(runtime, 21),
-            unexpected_offering!(runtime, 22),
-            unexpected_offering!(runtime, 23),
-            unexpected_offering!(runtime, 24),
-            unexpected_offering!(runtime, 25),
-            unexpected_offering!(runtime, 26),
-            expected_offering,
-            unexpected_offering!(runtime, 28),
-            unexpected_offering!(runtime, 29),
-            unexpected_offering!(runtime, 30),
-            unexpected_offering!(runtime, 31),
-            unexpected_offering!(runtime, 32),
-            unexpected_offering!(runtime, 33),
-            unexpected_offering!(runtime, 34),
-            unexpected_offering!(runtime, 35),
-            unexpected_offering!(runtime, 36),
-            unexpected_offering!(runtime, 37),
-            unexpected_offering!(runtime, 38),
-            unexpected_offering!(runtime, 39),
-            unexpected_offering!(runtime, 40),
-            unexpected_offering!(runtime, 41),
-            unexpected_offering!(runtime, 42),
-            unexpected_offering!(runtime, 43),
-            unexpected_offering!(runtime, 44),
-            unexpected_offering!(runtime, 45),
-            unexpected_offering!(runtime, 46),
-            unexpected_offering!(runtime, 47),
-            unexpected_offering!(runtime, 48),
-            unexpected_offering!(runtime, 49),
-            unexpected_offering!(runtime, 50),
-            unexpected_offering!(runtime, 51),
-            unexpected_offering!(runtime, 52),
-            unexpected_offering!(runtime, 53),
-            unexpected_offering!(runtime, 54),
-            unexpected_offering!(runtime, 55),
-            unexpected_offering!(runtime, 56),
-        );
 
-        Ok(())
+            let mut offering = runtime
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(27, TEST_SERVICE_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+            let expected_offering = async {
+                while let Some(event) = offering.next().await {
+                    match event {
+                        ServiceEvent::Subscribe { .. } => {
+                            tracing::info!("Handled expected Subscribe for TestService v27");
+                            flag_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                        _ => {}
+                    }
+                }
+            };
+            tokio::join!(
+                unexpected_offering!(runtime, 1),
+                unexpected_offering!(runtime, 2),
+                unexpected_offering!(runtime, 3),
+                unexpected_offering!(runtime, 4),
+                unexpected_offering!(runtime, 5),
+                unexpected_offering!(runtime, 6),
+                unexpected_offering!(runtime, 7),
+                unexpected_offering!(runtime, 8),
+                unexpected_offering!(runtime, 9),
+                unexpected_offering!(runtime, 10),
+                unexpected_offering!(runtime, 11),
+                unexpected_offering!(runtime, 12),
+                unexpected_offering!(runtime, 13),
+                unexpected_offering!(runtime, 14),
+                unexpected_offering!(runtime, 15),
+                unexpected_offering!(runtime, 16),
+                unexpected_offering!(runtime, 17),
+                unexpected_offering!(runtime, 18),
+                unexpected_offering!(runtime, 19),
+                unexpected_offering!(runtime, 20),
+                unexpected_offering!(runtime, 21),
+                unexpected_offering!(runtime, 22),
+                unexpected_offering!(runtime, 23),
+                unexpected_offering!(runtime, 24),
+                unexpected_offering!(runtime, 25),
+                unexpected_offering!(runtime, 26),
+                expected_offering,
+                unexpected_offering!(runtime, 28),
+                unexpected_offering!(runtime, 29),
+                unexpected_offering!(runtime, 30),
+                unexpected_offering!(runtime, 31),
+                unexpected_offering!(runtime, 32),
+                unexpected_offering!(runtime, 33),
+                unexpected_offering!(runtime, 34),
+                unexpected_offering!(runtime, 35),
+                unexpected_offering!(runtime, 36),
+                unexpected_offering!(runtime, 37),
+                unexpected_offering!(runtime, 38),
+                unexpected_offering!(runtime, 39),
+                unexpected_offering!(runtime, 40),
+                unexpected_offering!(runtime, 41),
+                unexpected_offering!(runtime, 42),
+                unexpected_offering!(runtime, 43),
+                unexpected_offering!(runtime, 44),
+                unexpected_offering!(runtime, 45),
+                unexpected_offering!(runtime, 46),
+                unexpected_offering!(runtime, 47),
+                unexpected_offering!(runtime, 48),
+                unexpected_offering!(runtime, 49),
+                unexpected_offering!(runtime, 50),
+                unexpected_offering!(runtime, 51),
+                unexpected_offering!(runtime, 52),
+                unexpected_offering!(runtime, 53),
+                unexpected_offering!(runtime, 54),
+                unexpected_offering!(runtime, 55),
+                unexpected_offering!(runtime, 56),
+            );
 
-    }});
+            Ok(())
+        }
+    });
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -803,9 +809,7 @@ fn test_many_version_subscribe_to_one() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let proxy_v1 = runtime
-            .find(TEST_SERVICE_ID)
-            .major_version(27);
+        let proxy_v1 = runtime.find(TEST_SERVICE_ID).major_version(27);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy_v1)
             .await
             .expect("Discovery timeout")
@@ -831,12 +835,12 @@ fn test_many_version_subscribe_to_one() {
 fn test_multiple_versions_subscribe_both_data() {
     // TODO: intended to show that pending subscriptions is broken, but it works
     let mut sim = turmoil::Builder::new()
-    .simulation_duration(Duration::from_secs(30))
-    .min_message_latency(Duration::from_millis(500))
-    .max_message_latency(Duration::from_millis(800))
-    .build();
+        .simulation_duration(Duration::from_secs(30))
+        .min_message_latency(Duration::from_millis(500))
+        .max_message_latency(Duration::from_millis(800))
+        .build();
 
-    sim.host("host", move || { async move {
+    sim.host("host", move || async move {
         let config = RuntimeConfig::builder()
             .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
             .build();
@@ -845,37 +849,82 @@ fn test_multiple_versions_subscribe_both_data() {
         let offering1 = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(1, TEST_SERVICE_VERSION.1)
-            .start() .await .unwrap();
+            .start()
+            .await
+            .unwrap();
 
         let offering2 = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(2, TEST_SERVICE_NEW_VERSION.1)
-            .start() .await .unwrap();
+            .start()
+            .await
+            .unwrap();
 
         let mut offering3 = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(3, TEST_SERVICE_NEW_VERSION.1)
-            .start() .await .unwrap();
+            .start()
+            .await
+            .unwrap();
 
         let offering4 = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(4, TEST_SERVICE_NEW_VERSION.1)
-            .start() .await .unwrap();
+            .start()
+            .await
+            .unwrap();
 
         let offering5 = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(5, TEST_SERVICE_NEW_VERSION.1)
-            .start() .await .unwrap();
+            .start()
+            .await
+            .unwrap();
 
         loop {
-            offering1.notify(EventgroupId::new(1).unwrap(), EventId::new(0x8001).unwrap(), "1".as_bytes()).await.unwrap();
-            offering2.notify(EventgroupId::new(1).unwrap(), EventId::new(0x8002).unwrap(), "2".as_bytes()).await.unwrap();
-            offering3.notify(EventgroupId::new(1).unwrap(), EventId::new(0x8003).unwrap(), "3".as_bytes()).await.unwrap();
-            offering4.notify(EventgroupId::new(1).unwrap(), EventId::new(0x8004).unwrap(), "4".as_bytes()).await.unwrap();
-            offering5.notify(EventgroupId::new(1).unwrap(), EventId::new(0x8005).unwrap(), "5".as_bytes()).await.unwrap();
+            offering1
+                .notify(
+                    EventgroupId::new(1).unwrap(),
+                    EventId::new(0x8001).unwrap(),
+                    "1".as_bytes(),
+                )
+                .await
+                .unwrap();
+            offering2
+                .notify(
+                    EventgroupId::new(1).unwrap(),
+                    EventId::new(0x8002).unwrap(),
+                    "2".as_bytes(),
+                )
+                .await
+                .unwrap();
+            offering3
+                .notify(
+                    EventgroupId::new(1).unwrap(),
+                    EventId::new(0x8003).unwrap(),
+                    "3".as_bytes(),
+                )
+                .await
+                .unwrap();
+            offering4
+                .notify(
+                    EventgroupId::new(1).unwrap(),
+                    EventId::new(0x8004).unwrap(),
+                    "4".as_bytes(),
+                )
+                .await
+                .unwrap();
+            offering5
+                .notify(
+                    EventgroupId::new(1).unwrap(),
+                    EventId::new(0x8005).unwrap(),
+                    "5".as_bytes(),
+                )
+                .await
+                .unwrap();
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
-    }});
+    });
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -888,45 +937,80 @@ fn test_multiple_versions_subscribe_both_data() {
         let mut proxy_v1 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(1)
-            .await.unwrap();
+            .await
+            .unwrap();
         let async1 = proxy_v1.subscribe(EventgroupId::new(1).unwrap());
 
         let mut proxy_v2 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(2)
-            .await.unwrap();
+            .await
+            .unwrap();
         let async2 = proxy_v2.subscribe(EventgroupId::new(1).unwrap());
 
         let mut proxy_v3 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(3)
-            .await.unwrap();
+            .await
+            .unwrap();
         let async3 = proxy_v3.subscribe(EventgroupId::new(1).unwrap());
 
         let mut proxy_v4 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(4)
-            .await.unwrap();
+            .await
+            .unwrap();
         let async4 = proxy_v4.subscribe(EventgroupId::new(1).unwrap());
 
         let mut proxy_v5 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(5)
-            .await.unwrap();
+            .await
+            .unwrap();
         let async5 = proxy_v5.subscribe(EventgroupId::new(1).unwrap());
 
-        let (sub1, sub2, sub3, sub4, sub5) =tokio::join!(async1, async2, async3, async4, async5);
+        let (sub1, sub2, sub3, sub4, sub5) = tokio::join!(async1, async2, async3, async4, async5);
         let mut sub1 = sub1.expect("Sub 1 shuld have succeeded");
         let mut sub2 = sub2.expect("Sub 2 shuld have succeeded");
         let mut sub3 = sub3.expect("Sub 3 shuld have succeeded");
         let mut sub4 = sub4.expect("Sub 4 shuld have succeeded");
         let mut sub5 = sub5.expect("Sub 5 shuld have succeeded");
 
-        assert_eq!(sub1.next().await.expect("Should receive event on sub 1").payload, "1".as_bytes());
-        assert_eq!(sub2.next().await.expect("Should receive event on sub 2").payload, "2".as_bytes());
-        assert_eq!(sub3.next().await.expect("Should receive event on sub 3").payload, "3".as_bytes());
-        assert_eq!(sub4.next().await.expect("Should receive event on sub 4").payload, "4".as_bytes());
-        assert_eq!(sub5.next().await.expect("Should receive event on sub 5").payload, "5".as_bytes());
+        assert_eq!(
+            sub1.next()
+                .await
+                .expect("Should receive event on sub 1")
+                .payload,
+            "1".as_bytes()
+        );
+        assert_eq!(
+            sub2.next()
+                .await
+                .expect("Should receive event on sub 2")
+                .payload,
+            "2".as_bytes()
+        );
+        assert_eq!(
+            sub3.next()
+                .await
+                .expect("Should receive event on sub 3")
+                .payload,
+            "3".as_bytes()
+        );
+        assert_eq!(
+            sub4.next()
+                .await
+                .expect("Should receive event on sub 4")
+                .payload,
+            "4".as_bytes()
+        );
+        assert_eq!(
+            sub5.next()
+                .await
+                .expect("Should receive event on sub 5")
+                .payload,
+            "5".as_bytes()
+        );
         Ok(())
     });
 
@@ -936,61 +1020,113 @@ fn test_multiple_versions_subscribe_both_data() {
 #[test_log::test]
 fn test_multiple_versions_subscribed_one_dropped() {
     let mut sim = turmoil::Builder::new()
-    .simulation_duration(Duration::from_secs(30))
-    .build();
+        .simulation_duration(Duration::from_secs(30))
+        .build();
 
     let sub_arrived = Arc::new(AtomicBool::new(false));
     let sub_arrived_clone = Arc::clone(&sub_arrived);
 
-    sim.host("host", move || { let flag=sub_arrived_clone.clone(); async move {
-        let config = RuntimeConfig::builder()
-            .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+    sim.host("host", move || {
+        let flag = sub_arrived_clone.clone();
+        async move {
+            let config = RuntimeConfig::builder()
+                .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
+                .build();
+            let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
-        let offering1 = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
-            .version(1, TEST_SERVICE_VERSION.1)
-            .start() .await .unwrap();
+            let offering1 = runtime
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(1, TEST_SERVICE_VERSION.1)
+                .start()
+                .await
+                .unwrap();
 
-        let offering2 = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
-            .version(2, TEST_SERVICE_NEW_VERSION.1)
-            .start() .await .unwrap();
+            let offering2 = runtime
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(2, TEST_SERVICE_NEW_VERSION.1)
+                .start()
+                .await
+                .unwrap();
 
-        let mut offering3 = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
-            .version(3, TEST_SERVICE_NEW_VERSION.1)
-            .start() .await .unwrap();
+            let mut offering3 = runtime
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(3, TEST_SERVICE_NEW_VERSION.1)
+                .start()
+                .await
+                .unwrap();
 
-        let offering4 = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
-            .version(4, TEST_SERVICE_NEW_VERSION.1)
-            .start() .await .unwrap();
+            let offering4 = runtime
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(4, TEST_SERVICE_NEW_VERSION.1)
+                .start()
+                .await
+                .unwrap();
 
-        let offering5 = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
-            .version(5, TEST_SERVICE_NEW_VERSION.1)
-            .start() .await .unwrap();
+            let offering5 = runtime
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(5, TEST_SERVICE_NEW_VERSION.1)
+                .start()
+                .await
+                .unwrap();
 
-        loop {
-            offering1.notify(EventgroupId::new(1).unwrap(), EventId::new(0x8001).unwrap(), "1".as_bytes()).await.unwrap();
-            offering2.notify(EventgroupId::new(1).unwrap(), EventId::new(0x8002).unwrap(), "2".as_bytes()).await.unwrap();
-            offering3.notify(EventgroupId::new(1).unwrap(), EventId::new(0x8003).unwrap(), "3".as_bytes()).await.unwrap();
-            offering4.notify(EventgroupId::new(1).unwrap(), EventId::new(0x8004).unwrap(), "4".as_bytes()).await.unwrap();
-            offering5.notify(EventgroupId::new(1).unwrap(), EventId::new(0x8005).unwrap(), "5".as_bytes()).await.unwrap();
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            if let Ok(Some(e)) = tokio::time::timeout(Duration::from_millis(50), offering3.next()).await {
-                match e {
-                    ServiceEvent::Unsubscribe { .. } => {
-                        tracing::info!("Received Unsubscribe for v3 offering, stopping notifications");
-                        flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            loop {
+                offering1
+                    .notify(
+                        EventgroupId::new(1).unwrap(),
+                        EventId::new(0x8001).unwrap(),
+                        "1".as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+                offering2
+                    .notify(
+                        EventgroupId::new(1).unwrap(),
+                        EventId::new(0x8002).unwrap(),
+                        "2".as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+                offering3
+                    .notify(
+                        EventgroupId::new(1).unwrap(),
+                        EventId::new(0x8003).unwrap(),
+                        "3".as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+                offering4
+                    .notify(
+                        EventgroupId::new(1).unwrap(),
+                        EventId::new(0x8004).unwrap(),
+                        "4".as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+                offering5
+                    .notify(
+                        EventgroupId::new(1).unwrap(),
+                        EventId::new(0x8005).unwrap(),
+                        "5".as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                if let Ok(Some(e)) =
+                    tokio::time::timeout(Duration::from_millis(50), offering3.next()).await
+                {
+                    match e {
+                        ServiceEvent::Unsubscribe { .. } => {
+                            tracing::info!(
+                                "Received Unsubscribe for v3 offering, stopping notifications"
+                            );
+                            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
         }
-    }});
+    });
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -1003,8 +1139,12 @@ fn test_multiple_versions_subscribed_one_dropped() {
         let mut proxy_v1 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(1)
-            .instance(InstanceId::Id(0x0001)).await.unwrap()
-            .subscribe(EventgroupId::new(1).unwrap()).await.unwrap();
+            .instance(InstanceId::Id(0x0001))
+            .await
+            .unwrap()
+            .subscribe(EventgroupId::new(1).unwrap())
+            .await
+            .unwrap();
         let async1 = async {
             let mut received = 0;
             let now = tokio::time::Instant::now();
@@ -1013,7 +1153,10 @@ fn test_multiple_versions_subscribed_one_dropped() {
                 received += 1;
                 let payload_str = String::from_utf8_lossy(&event.payload);
                 assert_eq!(payload_str, "1");
-                tracing::info!("Received v1 event: {:?}", String::from_utf8_lossy(&event.payload));
+                tracing::info!(
+                    "Received v1 event: {:?}",
+                    String::from_utf8_lossy(&event.payload)
+                );
             }
             assert!(received > 13, "Should have received v1 events");
         };
@@ -1021,8 +1164,12 @@ fn test_multiple_versions_subscribed_one_dropped() {
         let mut proxy_v2 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(2)
-            .instance(InstanceId::Id(0x0001)).await.unwrap()
-            .subscribe(EventgroupId::new(1).unwrap()).await.unwrap();
+            .instance(InstanceId::Id(0x0001))
+            .await
+            .unwrap()
+            .subscribe(EventgroupId::new(1).unwrap())
+            .await
+            .unwrap();
         let async2 = async {
             let mut received = 0;
             let now = tokio::time::Instant::now();
@@ -1031,7 +1178,10 @@ fn test_multiple_versions_subscribed_one_dropped() {
                 received += 1;
                 let payload_str = String::from_utf8_lossy(&event.payload);
                 assert_eq!(payload_str, "2");
-                tracing::info!("Received v2 event: {:?}", String::from_utf8_lossy(&event.payload));
+                tracing::info!(
+                    "Received v2 event: {:?}",
+                    String::from_utf8_lossy(&event.payload)
+                );
             }
             assert!(received > 13, "Should have received v2 events");
         };
@@ -1039,8 +1189,12 @@ fn test_multiple_versions_subscribed_one_dropped() {
         let mut proxy_v3 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(3)
-            .instance(InstanceId::Id(0x0001)).await.unwrap()
-            .subscribe(EventgroupId::new(1).unwrap()).await.unwrap();
+            .instance(InstanceId::Id(0x0001))
+            .await
+            .unwrap()
+            .subscribe(EventgroupId::new(1).unwrap())
+            .await
+            .unwrap();
         let async3 = async {
             let _event = proxy_v3.next().await.unwrap();
             tracing::info!("Received first v3 event");
@@ -1052,8 +1206,12 @@ fn test_multiple_versions_subscribed_one_dropped() {
         let mut proxy_v4 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(4)
-            .instance(InstanceId::Id(0x0001)).await.unwrap()
-            .subscribe(EventgroupId::new(1).unwrap()).await.unwrap();
+            .instance(InstanceId::Id(0x0001))
+            .await
+            .unwrap()
+            .subscribe(EventgroupId::new(1).unwrap())
+            .await
+            .unwrap();
         let async4 = async {
             let mut received = 0;
             let now = tokio::time::Instant::now();
@@ -1062,7 +1220,10 @@ fn test_multiple_versions_subscribed_one_dropped() {
                 received += 1;
                 let payload_str = String::from_utf8_lossy(&event.payload);
                 assert_eq!(payload_str, "4");
-                tracing::info!("Received v4 event: {:?}", String::from_utf8_lossy(&event.payload));
+                tracing::info!(
+                    "Received v4 event: {:?}",
+                    String::from_utf8_lossy(&event.payload)
+                );
             }
             assert!(received > 13, "Should have received v4 events");
         };
@@ -1070,8 +1231,12 @@ fn test_multiple_versions_subscribed_one_dropped() {
         let mut proxy_v5 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(5)
-            .instance(InstanceId::Id(0x0001)).await.unwrap()
-            .subscribe(EventgroupId::new(1).unwrap()).await.unwrap();
+            .instance(InstanceId::Id(0x0001))
+            .await
+            .unwrap()
+            .subscribe(EventgroupId::new(1).unwrap())
+            .await
+            .unwrap();
         let async5 = async {
             let mut received = 0;
             let now = tokio::time::Instant::now();
@@ -1080,7 +1245,10 @@ fn test_multiple_versions_subscribed_one_dropped() {
                 received += 1;
                 let payload_str = String::from_utf8_lossy(&event.payload);
                 assert_eq!(payload_str, "5");
-                tracing::info!("Received v5 event: {:?}", String::from_utf8_lossy(&event.payload));
+                tracing::info!(
+                    "Received v5 event: {:?}",
+                    String::from_utf8_lossy(&event.payload)
+                );
             }
             assert!(received > 13, "Should have received v5 events");
         };
@@ -1113,7 +1281,8 @@ fn test_finds_late() {
         tokio::time::sleep(Duration::from_secs(3)).await;
 
         let mut offering1 = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(1, TEST_SERVICE_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, TEST_SERVICE_VERSION.1)
             .start()
             .await
             .unwrap();
@@ -1139,7 +1308,8 @@ fn test_finds_late() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         runtime
-            .find(TEST_SERVICE_ID).major_version(1)
+            .find(TEST_SERVICE_ID)
+            .major_version(1)
             .instance(InstanceId::Id(0x0001))
             .await
             .expect("Service v1 available");
@@ -1341,13 +1511,15 @@ fn test_find_two_versions_late() {
         tokio::time::sleep(Duration::from_secs(3)).await;
 
         let mut offering1 = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(1, TEST_SERVICE_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, TEST_SERVICE_VERSION.1)
             .start()
             .await
             .unwrap();
 
         let mut offering2 = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(2, TEST_SERVICE_NEW_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(2, TEST_SERVICE_NEW_VERSION.1)
             .start()
             .await
             .unwrap();
@@ -1383,17 +1555,16 @@ fn test_find_two_versions_late() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let proxy_v1 = runtime
-            .find(TEST_SERVICE_ID).major_version(1)
+            .find(TEST_SERVICE_ID)
+            .major_version(1)
             .instance(InstanceId::Id(0x0001));
 
         let proxy_v2 = runtime
-            .find(TEST_SERVICE_ID).major_version(2)
+            .find(TEST_SERVICE_ID)
+            .major_version(2)
             .instance(InstanceId::Id(0x0001));
 
-        let (found_1, found_2) = tokio::join!(
-            proxy_v1,
-            proxy_v2,
-        );
+        let (found_1, found_2) = tokio::join!(proxy_v1, proxy_v2,);
 
         found_1.expect("Service v1 available");
         found_2.expect("Service v2 available");
@@ -1477,7 +1648,8 @@ fn test_two_concurrent_versions() {
             .expect("Service v1 available");
 
         let proxy_v2 = runtime
-            .find(TEST_SERVICE_ID).major_version(2)
+            .find(TEST_SERVICE_ID)
+            .major_version(2)
             .instance(InstanceId::Id(0x0001));
         let proxy_v2 = tokio::time::timeout(Duration::from_secs(5), proxy_v2)
             .await
@@ -1487,20 +1659,20 @@ fn test_two_concurrent_versions() {
         // Call method on v1
         let method = MethodId::new(0x0042).unwrap();
         let payload = b"hello v1";
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy_v1.call(method, payload),
-        )
-        .await
-        .expect("Timeout waiting for response")
-        .expect("Call should succeed");
+        let response = tokio::time::timeout(Duration::from_secs(5), proxy_v1.call(method, payload))
+            .await
+            .expect("Timeout waiting for response")
+            .expect("Call should succeed");
 
         assert_eq!(response.payload[0], 0x42);
         assert_eq!(&response.payload[1..], b"hello v1");
 
         // Fire-and-forget on v2
         let method_ff = MethodId::new(0x0050).unwrap();
-        proxy_v2.fire_and_forget(method_ff, b"hello v2").await.unwrap();
+        proxy_v2
+            .fire_and_forget(method_ff, b"hello v2")
+            .await
+            .unwrap();
 
         Ok(())
     });

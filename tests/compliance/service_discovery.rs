@@ -66,7 +66,8 @@ fn sd_offer_discovery_works() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -130,7 +131,8 @@ fn sd_offer_with_specific_instance() {
 
             // Offer with specific instance ID
             let _offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0042)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0042))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -197,7 +199,8 @@ fn sd_offer_with_version_info() {
 
             // Offer versioned service
             let _offering = runtime
-                .offer(VERSIONED_SERVICE_ID, InstanceId::Id(0x0001)).version(VERSIONED_SERVICE_VERSION.0, VERSIONED_SERVICE_VERSION.1)
+                .offer(VERSIONED_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(VERSIONED_SERVICE_VERSION.0, VERSIONED_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -225,7 +228,10 @@ fn sd_offer_with_version_info() {
             .expect("Service available");
 
         // Service with correct version discovered
-        assert_eq!(available.service_id(), ServiceId::new(VERSIONED_SERVICE_ID).unwrap());
+        assert_eq!(
+            available.service_id(),
+            ServiceId::new(VERSIONED_SERVICE_ID).unwrap()
+        );
         Ok(())
     });
 
@@ -268,7 +274,8 @@ fn sd_stop_offer_on_drop() {
             // Offer then drop
             {
                 let _offering = runtime
-                    .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                    .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                    .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                     .udp()
                     .start()
                     .await
@@ -339,13 +346,15 @@ fn sd_multiple_service_offers() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering1 = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
                 .unwrap();
             let _offering2 = runtime
-                .offer(VERSIONED_SERVICE_ID, InstanceId::Id(0x0002)).version(VERSIONED_SERVICE_VERSION.0, VERSIONED_SERVICE_VERSION.1)
+                .offer(VERSIONED_SERVICE_ID, InstanceId::Id(0x0002))
+                .version(VERSIONED_SERVICE_VERSION.0, VERSIONED_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -411,14 +420,16 @@ fn sd_multiple_instances_same_service() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering1 = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
                 .unwrap();
 
             let _offering2 = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -518,7 +529,8 @@ fn sd_find_service_discovery() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -568,7 +580,8 @@ fn sd_session_id_increments() {
 
             // Multiple offers to trigger multiple SD messages
             let _offering1 = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -577,7 +590,8 @@ fn sd_session_id_increments() {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
             let _offering2 = runtime
-                .offer(VERSIONED_SERVICE_ID, InstanceId::Id(0x0002)).version(VERSIONED_SERVICE_VERSION.0, VERSIONED_SERVICE_VERSION.1)
+                .offer(VERSIONED_SERVICE_ID, InstanceId::Id(0x0002))
+                .version(VERSIONED_SERVICE_VERSION.0, VERSIONED_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -644,7 +658,8 @@ fn sd_unicast_flag_handling() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -708,7 +723,8 @@ fn sd_discovery_then_rpc() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await

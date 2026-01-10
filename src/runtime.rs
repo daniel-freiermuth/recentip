@@ -396,11 +396,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///     Ok(())
     /// }
     /// ```
-    pub fn offer(
-        &self,
-        service_id: u16,
-        instance: InstanceId,
-    ) -> OfferBuilder<'_, U, T, L> {
+    pub fn offer(&self, service_id: u16, instance: InstanceId) -> OfferBuilder<'_, U, T, L> {
         let service_id = ServiceId::new(service_id).expect("Invalid service ID");
         OfferBuilder::new(self, service_id, instance)
     }
@@ -450,8 +446,14 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
         version: (u8, u32),
         transport: Transport,
     ) -> Result<crate::handle::ServiceInstance<crate::handle::Bound>> {
-        self.bind_with_config(service_id, instance, version, transport, MethodConfig::default())
-            .await
+        self.bind_with_config(
+            service_id,
+            instance,
+            version,
+            transport,
+            MethodConfig::default(),
+        )
+        .await
     }
 
     /// Bind a service instance with custom method configuration.
@@ -759,9 +761,7 @@ pub struct OfferBuilder<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = 
     config: crate::config::OfferConfig,
 }
 
-impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>
-    OfferBuilder<'a, U, T, L>
-{
+impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a, U, T, L> {
     fn new(runtime: &'a Runtime<U, T, L>, service_id: ServiceId, instance: InstanceId) -> Self {
         Self {
             runtime,
@@ -1545,7 +1545,14 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             major_version,
             response,
         } => {
-            server::handle_start_announcing(service_id, instance_id, major_version, response, state, &mut actions);
+            server::handle_start_announcing(
+                service_id,
+                instance_id,
+                major_version,
+                response,
+                state,
+                &mut actions,
+            );
         }
 
         Command::StopAnnouncing {
@@ -1554,7 +1561,14 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             major_version,
             response,
         } => {
-            server::handle_stop_announcing(service_id, instance_id, major_version, response, state, &mut actions);
+            server::handle_stop_announcing(
+                service_id,
+                instance_id,
+                major_version,
+                response,
+                state,
+                &mut actions,
+            );
         }
 
         Command::MonitorSd { events } => {

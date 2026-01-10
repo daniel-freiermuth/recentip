@@ -56,13 +56,21 @@ fn build_event_notification(
 }
 
 /// Extract the first IPv4 UDP endpoint from an SD entry's options
-fn extract_client_udp_endpoint(entry: &someip_runtime::wire::SdEntry, options: &[SdOption]) -> Option<(Ipv4Addr, u16)> {
+fn extract_client_udp_endpoint(
+    entry: &someip_runtime::wire::SdEntry,
+    options: &[SdOption],
+) -> Option<(Ipv4Addr, u16)> {
     // Calculate the option indices for this entry
     let start_idx = entry.index_1st_option as usize;
     let end_idx = start_idx + entry.num_options_1 as usize;
-    
+
     for idx in start_idx..end_idx {
-        if let Some(SdOption::Ipv4Endpoint { addr, port, protocol: L4Protocol::Udp }) = options.get(idx) {
+        if let Some(SdOption::Ipv4Endpoint {
+            addr,
+            port,
+            protocol: L4Protocol::Udp,
+        }) = options.get(idx)
+        {
             return Some((*addr, *port));
         }
     }
@@ -75,8 +83,8 @@ fn subscribe_nack_then_ack() {
 
     const SERVICE_ID: u16 = 0x1234;
     const INSTANCE_ID: u16 = 0x0001;
-    const VERSION_ACK: u8 = 1;   // This version will be ACKed
-    const VERSION_NACK: u8 = 2;  // This version will be NACKed
+    const VERSION_ACK: u8 = 1; // This version will be ACKed
+    const VERSION_NACK: u8 = 2; // This version will be NACKed
     const EVENTGROUP_ID: u16 = 0x0001;
     const EVENT_ID: u16 = 0x8001;
 
@@ -250,20 +258,22 @@ fn subscribe_nack_then_ack() {
         // Subscribe to v1 - should succeed
         let eventgroup = EventgroupId::new(EVENTGROUP_ID).unwrap();
         let async1 = async {
-            let mut subscription_v1 = tokio::time::timeout(Duration::from_secs(5), proxy_v1.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout for v1")
-                .expect("Subscribe should succeed for v1");
-            
+            let mut subscription_v1 =
+                tokio::time::timeout(Duration::from_secs(5), proxy_v1.subscribe(eventgroup))
+                    .await
+                    .expect("Subscribe timeout for v1")
+                    .expect("Subscribe should succeed for v1");
+
             eprintln!("[client] v1 subscription succeeded (expected)");
             v1_sub_clone.store(true, Ordering::SeqCst);
             subscription_v1
         };
         let async2 = async {
             // Subscribe to v2 - should fail with NACK
-            let result_v2 = tokio::time::timeout(Duration::from_secs(5), proxy_v2.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout for v2");
+            let result_v2 =
+                tokio::time::timeout(Duration::from_secs(5), proxy_v2.subscribe(eventgroup))
+                    .await
+                    .expect("Subscribe timeout for v2");
 
             match result_v2 {
                 Ok(_subscription) => {
@@ -280,8 +290,15 @@ fn subscribe_nack_then_ack() {
         // Wait for event from v1 subscription
         match tokio::time::timeout(Duration::from_secs(5), subscription_v1.next()).await {
             Ok(Some(event)) => {
-                eprintln!("[client] Received v1 event: {:?}", String::from_utf8_lossy(&event.payload));
-                assert_eq!(event.payload.as_ref(), b"v1_event_data", "Event payload should match");
+                eprintln!(
+                    "[client] Received v1 event: {:?}",
+                    String::from_utf8_lossy(&event.payload)
+                );
+                assert_eq!(
+                    event.payload.as_ref(),
+                    b"v1_event_data",
+                    "Event payload should match"
+                );
                 v1_event_clone.store(true, Ordering::SeqCst);
             }
             Ok(None) => {
@@ -291,7 +308,6 @@ fn subscribe_nack_then_ack() {
                 panic!("[client] Timeout waiting for v1 event");
             }
         }
-
 
         Ok(())
     });
@@ -331,8 +347,8 @@ fn subscribe_ack_then_nack() {
 
     const SERVICE_ID: u16 = 0x1234;
     const INSTANCE_ID: u16 = 0x0001;
-    const VERSION_ACK: u8 = 1;   // This version will be ACKed
-    const VERSION_NACK: u8 = 2;  // This version will be NACKed
+    const VERSION_ACK: u8 = 1; // This version will be ACKed
+    const VERSION_NACK: u8 = 2; // This version will be NACKed
     const EVENTGROUP_ID: u16 = 0x0001;
     const EVENT_ID: u16 = 0x8001;
 
@@ -404,8 +420,8 @@ fn subscribe_ack_then_nack() {
 
                                 if entry.major_version == VERSION_ACK {
                                     // Extract client endpoint from subscribe options
-                                    if let Some((client_ip, client_port)) = 
-                                        extract_client_udp_endpoint(entry, &sd_msg.options) 
+                                    if let Some((client_ip, client_port)) =
+                                        extract_client_udp_endpoint(entry, &sd_msg.options)
                                     {
                                         v1_client_endpoint = Some(SocketAddr::from((client_ip, client_port)));
                                         eprintln!("[wire_server] v1 client endpoint: {:?}", v1_client_endpoint);
@@ -506,11 +522,12 @@ fn subscribe_ack_then_nack() {
         // Subscribe to v1 - should succeed
         let eventgroup = EventgroupId::new(EVENTGROUP_ID).unwrap();
         let async1 = async {
-            let mut subscription_v1 = tokio::time::timeout(Duration::from_secs(5), proxy_v1.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout for v1")
-                .expect("Subscribe should succeed for v1");
-            
+            let mut subscription_v1 =
+                tokio::time::timeout(Duration::from_secs(5), proxy_v1.subscribe(eventgroup))
+                    .await
+                    .expect("Subscribe timeout for v1")
+                    .expect("Subscribe should succeed for v1");
+
             eprintln!("[client] v1 subscription succeeded (expected)");
             v1_sub_clone.store(true, Ordering::SeqCst);
             subscription_v1
@@ -518,9 +535,10 @@ fn subscribe_ack_then_nack() {
 
         let async2 = async {
             // Subscribe to v2 - should fail with NACK
-            let result_v2 = tokio::time::timeout(Duration::from_secs(5), proxy_v2.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout for v2");
+            let result_v2 =
+                tokio::time::timeout(Duration::from_secs(5), proxy_v2.subscribe(eventgroup))
+                    .await
+                    .expect("Subscribe timeout for v2");
 
             match result_v2 {
                 Ok(_subscription) => {
@@ -538,8 +556,15 @@ fn subscribe_ack_then_nack() {
         // Wait for event from v1 subscription
         match tokio::time::timeout(Duration::from_secs(5), subscription_v1.next()).await {
             Ok(Some(event)) => {
-                eprintln!("[client] Received v1 event: {:?}", String::from_utf8_lossy(&event.payload));
-                assert_eq!(event.payload.as_ref(), b"v1_event_data", "Event payload should match");
+                eprintln!(
+                    "[client] Received v1 event: {:?}",
+                    String::from_utf8_lossy(&event.payload)
+                );
+                assert_eq!(
+                    event.payload.as_ref(),
+                    b"v1_event_data",
+                    "Event payload should match"
+                );
                 v1_event_clone.store(true, Ordering::SeqCst);
             }
             Ok(None) => {
@@ -549,7 +574,6 @@ fn subscribe_ack_then_nack() {
                 panic!("[client] Timeout waiting for v1 event");
             }
         }
-
 
         Ok(())
     });
@@ -598,8 +622,8 @@ fn subscribe_ack_and_nack_different_services() {
 
     const SERVICE_ID: u16 = 0x1234;
     const INSTANCE_ID: u16 = 0x0001;
-    const VERSION_ACK: u8 = 1;   // This version will be ACKed
-    const VERSION_NACK: u8 = 2;  // This version will be NACKed
+    const VERSION_ACK: u8 = 1; // This version will be ACKed
+    const VERSION_NACK: u8 = 2; // This version will be NACKed
     const EVENTGROUP_ID: u16 = 0x0001;
     const EVENT_ID: u16 = 0x8001;
 
@@ -668,8 +692,8 @@ fn subscribe_ack_and_nack_different_services() {
 
                                 if entry.major_version == VERSION_ACK {
                                     // Extract client endpoint from subscribe options
-                                    if let Some((client_ip, client_port)) = 
-                                        extract_client_udp_endpoint(entry, &sd_msg.options) 
+                                    if let Some((client_ip, client_port)) =
+                                        extract_client_udp_endpoint(entry, &sd_msg.options)
                                     {
                                         v1_client_endpoint = Some(SocketAddr::from((client_ip, client_port)));
                                         eprintln!("[wire_server] v1 client endpoint: {:?}", v1_client_endpoint);
@@ -765,19 +789,27 @@ fn subscribe_ack_and_nack_different_services() {
 
         // Subscribe to v1 - should succeed
         let eventgroup = EventgroupId::new(EVENTGROUP_ID).unwrap();
-        let mut subscription_v1 = tokio::time::timeout(Duration::from_secs(5), proxy_v1.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout for v1")
-            .expect("Subscribe should succeed for v1");
-        
+        let mut subscription_v1 =
+            tokio::time::timeout(Duration::from_secs(5), proxy_v1.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout for v1")
+                .expect("Subscribe should succeed for v1");
+
         eprintln!("[client] v1 subscription succeeded (expected)");
         v1_sub_clone.store(true, Ordering::SeqCst);
 
         // Wait for event from v1 subscription
         match tokio::time::timeout(Duration::from_secs(5), subscription_v1.next()).await {
             Ok(Some(event)) => {
-                eprintln!("[client] Received v1 event: {:?}", String::from_utf8_lossy(&event.payload));
-                assert_eq!(event.payload.as_ref(), b"v1_event_data", "Event payload should match");
+                eprintln!(
+                    "[client] Received v1 event: {:?}",
+                    String::from_utf8_lossy(&event.payload)
+                );
+                assert_eq!(
+                    event.payload.as_ref(),
+                    b"v1_event_data",
+                    "Event payload should match"
+                );
                 v1_event_clone.store(true, Ordering::SeqCst);
             }
             Ok(None) => {
@@ -789,9 +821,10 @@ fn subscribe_ack_and_nack_different_services() {
         }
 
         // Subscribe to v2 - should fail with NACK
-        let result_v2 = tokio::time::timeout(Duration::from_secs(5), proxy_v2.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout for v2");
+        let result_v2 =
+            tokio::time::timeout(Duration::from_secs(5), proxy_v2.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout for v2");
 
         match result_v2 {
             Ok(_subscription) => {
@@ -806,8 +839,15 @@ fn subscribe_ack_and_nack_different_services() {
         // Wait for event from v1 subscription
         match tokio::time::timeout(Duration::from_secs(5), subscription_v1.next()).await {
             Ok(Some(event)) => {
-                eprintln!("[client] Received v1 event: {:?}", String::from_utf8_lossy(&event.payload));
-                assert_eq!(event.payload.as_ref(), b"v1_event_data", "Event payload should match");
+                eprintln!(
+                    "[client] Received v1 event: {:?}",
+                    String::from_utf8_lossy(&event.payload)
+                );
+                assert_eq!(
+                    event.payload.as_ref(),
+                    b"v1_event_data",
+                    "Event payload should match"
+                );
                 v1_event_clone.store(true, Ordering::SeqCst);
             }
             Ok(None) => {
@@ -817,7 +857,6 @@ fn subscribe_ack_and_nack_different_services() {
                 panic!("[client] Timeout waiting for v1 event");
             }
         }
-
 
         Ok(())
     });
@@ -894,7 +933,15 @@ fn events_received_after_subscribe_ack() {
             let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
 
             // Build offer
-            let offer = build_sd_offer(SERVICE_ID, INSTANCE_ID, MAJOR_VERSION, 0, my_ip, 30509, 3600);
+            let offer = build_sd_offer(
+                SERVICE_ID,
+                INSTANCE_ID,
+                MAJOR_VERSION,
+                0,
+                my_ip,
+                30509,
+                3600,
+            );
 
             let mut buf = [0u8; 1500];
             let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
@@ -911,11 +958,9 @@ fn events_received_after_subscribe_ack() {
                 }
 
                 // Check for incoming SD messages
-                if let Ok(Ok((len, from))) = tokio::time::timeout(
-                    Duration::from_millis(100),
-                    sd_socket.recv_from(&mut buf),
-                )
-                .await
+                if let Ok(Ok((len, from))) =
+                    tokio::time::timeout(Duration::from_millis(100), sd_socket.recv_from(&mut buf))
+                        .await
                 {
                     if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
                         for entry in &sd_msg.entries {
@@ -927,11 +972,15 @@ fn events_received_after_subscribe_ack() {
                                 );
 
                                 // Extract client's endpoint from the subscribe entry options
-                                if let Some((client_ip, client_port)) = 
-                                    extract_client_udp_endpoint(entry, &sd_msg.options) 
+                                if let Some((client_ip, client_port)) =
+                                    extract_client_udp_endpoint(entry, &sd_msg.options)
                                 {
-                                    client_endpoint = Some(SocketAddr::from((client_ip, client_port)));
-                                    eprintln!("[wire_server] Client endpoint: {:?}", client_endpoint);
+                                    client_endpoint =
+                                        Some(SocketAddr::from((client_ip, client_port)));
+                                    eprintln!(
+                                        "[wire_server] Client endpoint: {:?}",
+                                        client_endpoint
+                                    );
                                 }
 
                                 // ACK the subscription
@@ -1000,10 +1049,11 @@ fn events_received_after_subscribe_ack() {
 
         // Subscribe
         let eventgroup = EventgroupId::new(EVENTGROUP_ID).unwrap();
-        let mut subscription = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout")
-            .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
         eprintln!("[client] Subscription established");
 
         // Receive events

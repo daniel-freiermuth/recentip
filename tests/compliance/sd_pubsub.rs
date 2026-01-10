@@ -59,7 +59,8 @@ fn client_registers_for_events_via_sd() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -137,7 +138,8 @@ fn server_offers_on_startup_to_discover_clients() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -176,7 +178,8 @@ fn client_responds_to_offer_with_subscribe() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
             let mut offering = runtime
-                .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
+                .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -246,7 +249,8 @@ fn subscribe_resolves_on_ack() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let _offering = runtime
-            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -313,7 +317,8 @@ fn server_tracks_subscription_state() {
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
         let offering = runtime
-            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -437,7 +442,8 @@ fn client_deregisters_with_stop_subscribe() {
                 .build();
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
             let mut offering = runtime
-                .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
+                .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await

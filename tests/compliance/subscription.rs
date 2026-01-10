@@ -52,7 +52,8 @@ fn subscribe_and_receive_events() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let offering = runtime
-                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -152,7 +153,8 @@ fn subscribe_receives_ack() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _offering = runtime
-                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -222,7 +224,8 @@ fn unsubscribe_on_drop() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let offering = runtime
-                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -326,7 +329,8 @@ fn subscribe_multiple_eventgroups() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let offering = runtime
-                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -471,7 +475,8 @@ fn event_id_has_high_bit() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let offering = runtime
-                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -562,7 +567,8 @@ fn mixed_rpc_and_events() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await

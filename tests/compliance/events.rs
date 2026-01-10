@@ -142,7 +142,8 @@ fn event_transports_value_data() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -230,7 +231,8 @@ fn events_not_sent_to_non_subscribers() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -356,7 +358,8 @@ fn unsubscribe_stops_event_delivery() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -452,7 +455,8 @@ fn event_uses_notification_message_type_on_wire() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001)).version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
             .udp()
             .start()
             .await

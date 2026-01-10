@@ -363,7 +363,7 @@ pub fn handle_unsubscribe(
 
     // Remove the specific subscription by ID
     subs.retain(|s| s.subscription_id != subscription_id);
-    
+
     // Count remaining subscriptions for this eventgroup
     let remaining_for_eventgroup = subs
         .iter()
@@ -513,15 +513,15 @@ pub fn handle_incoming_notification(
                 && (disc.udp_endpoint == Some(from) || disc.tcp_endpoint == Some(from))
         })
         .map(|(key, _)| *key)
-        else {
-            tracing::warn!(
-                "Received event {:04x} from unknown service {:04x} at {}",
-                header.method_id,
-                header.service_id,
-                from
-            );
-            return;
-        };
+    else {
+        tracing::warn!(
+            "Received event {:04x} from unknown service {:04x} at {}",
+            header.method_id,
+            header.service_id,
+            from
+        );
+        return;
+    };
 
     // Find subscriptions for this service (dynamic via SD)
     if let Some(subs) = state.subscriptions.get(&key) {

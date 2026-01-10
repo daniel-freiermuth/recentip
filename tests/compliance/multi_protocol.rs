@@ -100,7 +100,8 @@ fn client_talks_to_tcp_and_udp_services() {
             let tcp_runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
             let mut tcp_offering = tcp_runtime
-                .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+                .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
                 .tcp()
                 .start()
                 .await
@@ -132,7 +133,8 @@ fn client_talks_to_tcp_and_udp_services() {
             let udp_runtime: TurmoilRuntime = Runtime::with_socket_type(udp_config).await.unwrap();
 
             let mut udp_offering = udp_runtime
-                .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001)).version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
+                .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -266,7 +268,8 @@ fn mixed_transport_event_delivery() {
         let tcp_runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
         let mut tcp_offering = tcp_runtime
-            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -318,7 +321,8 @@ fn mixed_transport_event_delivery() {
         let udp_runtime: TurmoilRuntime = Runtime::with_socket_type(udp_config).await.unwrap();
 
         let mut udp_offering = udp_runtime
-            .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001)).version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
+            .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -484,7 +488,8 @@ fn client_uses_advertised_transport() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -514,7 +519,8 @@ fn client_uses_advertised_transport() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001)).version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
+            .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -635,7 +641,8 @@ fn concurrent_calls_different_transports() {
             let tcp_runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
             let mut tcp_offering = tcp_runtime
-                .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+                .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
                 .tcp()
                 .start()
                 .await
@@ -665,7 +672,8 @@ fn concurrent_calls_different_transports() {
             let udp_runtime: TurmoilRuntime = Runtime::with_socket_type(udp_config).await.unwrap();
 
             let mut udp_offering = udp_runtime
-                .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001)).version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
+                .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -781,7 +789,8 @@ fn udp_client_calls_tcp_server() {
         let tcp_runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
         let mut offering = tcp_runtime
-            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -878,7 +887,8 @@ fn tcp_client_calls_tcp_server() {
         let tcp_runtime: TurmoilRuntime = Runtime::with_socket_type(tcp_config).await.unwrap();
 
         let mut offering = tcp_runtime
-            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
             .udp()
             .start()
             .await
@@ -989,7 +999,8 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
             .tcp() // TCP only, no UDP
             .start()
             .await
@@ -1100,7 +1111,8 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001)).version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
+            .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
             .udp() // UDP only, no TCP
             .start()
             .await
@@ -1210,7 +1222,8 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001)).version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
+            .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
             .udp() // UDP only
             .start()
             .await
@@ -1351,7 +1364,8 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001)).version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
+            .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(UDP_SERVICE_VERSION.0, UDP_SERVICE_VERSION.1)
             .udp() // UDP only, no TCP
             .start()
             .await
@@ -1496,7 +1510,8 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
             .tcp() // TCP only, no UDP
             .start()
             .await
@@ -1649,7 +1664,8 @@ fn preferred_transport_respected_when_both_available() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+                .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
                 .tcp()
                 .udp() // Dual-stack: both TCP and UDP
                 .start()
@@ -1843,7 +1859,8 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+                .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
                 .tcp()
                 .udp() // Dual-stack: both TCP and UDP
                 .start()
@@ -2010,7 +2027,8 @@ fn handle_call_ignores_preferred_transport_for_dual_stack() {
 
         // Dual-stack offer - advertises BOTH TCP and UDP endpoints
         let mut offering = runtime
-            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
+            .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_SERVICE_VERSION.0, TCP_SERVICE_VERSION.1)
             .tcp()
             .udp()
             .start()

@@ -71,7 +71,8 @@ fn tcp_basic_subscribe_and_receive_events() {
 
         // Offer service via TCP only
         let offering = runtime
-            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -174,7 +175,8 @@ fn tcp_multiple_subscribers_receive_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -312,7 +314,8 @@ fn tcp_large_payload_events() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -420,7 +423,8 @@ fn tcp_different_eventgroups() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let offering = runtime
-            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await
@@ -569,7 +573,8 @@ fn dual_stack_service_client_prefers_tcp() {
 
         // Offer service via both TCP and UDP
         let offering = runtime
-            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .udp()
             .start()
@@ -657,7 +662,8 @@ fn dual_stack_service_client_prefers_udp() {
 
         // Offer service via both TCP and UDP
         let offering = runtime
-            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .udp()
             .start()
@@ -752,7 +758,8 @@ fn tcp_only_server_udp_preferring_client() {
 
         // Offer service via TCP only
         let offering = runtime
-            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
             .tcp()
             .start()
             .await

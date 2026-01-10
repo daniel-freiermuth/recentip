@@ -61,7 +61,8 @@ fn multiple_clients_call_same_server() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let mut offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -210,7 +211,8 @@ fn multiple_clients_subscribe_to_events() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -363,7 +365,8 @@ fn sd_reaches_all_participants() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let _offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -485,7 +488,8 @@ fn nodes_with_mixed_client_server_roles() {
 
             // Offer ServiceA
             let mut offering = runtime
-                .offer(SERVICE_A_ID, InstanceId::Id(0x0001)).version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
+                .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
+                .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -535,7 +539,8 @@ fn nodes_with_mixed_client_server_roles() {
 
         // Offer ServiceB
         let mut offering = runtime
-            .offer(SERVICE_B_ID, InstanceId::Id(0x0001)).version(SERVICE_B_VERSION.0, SERVICE_B_VERSION.1)
+            .offer(SERVICE_B_ID, InstanceId::Id(0x0001))
+            .version(SERVICE_B_VERSION.0, SERVICE_B_VERSION.1)
             .udp()
             .start()
             .await
@@ -609,7 +614,8 @@ fn multiple_servers_different_instances() {
                 Runtime::with_socket_type(Default::default()).await.unwrap();
 
             let mut offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
                 .udp()
                 .start()
                 .await
@@ -640,7 +646,8 @@ fn multiple_servers_different_instances() {
         let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
         let mut offering = runtime
-            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002)).version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
             .start()
             .await

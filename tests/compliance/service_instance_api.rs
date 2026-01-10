@@ -59,7 +59,12 @@ fn test_bind_returns_bound_instance() {
 
             // bind() should return ServiceInstance<_, Bound>
             let _service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -102,7 +107,12 @@ fn test_announce_transitions_to_announced() {
 
             // Phase 1: Bind (not yet announced)
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -146,7 +156,12 @@ fn test_stop_announcing_transitions_to_bound() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -194,7 +209,12 @@ fn test_full_lifecycle() {
 
             // Bind
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -249,7 +269,12 @@ fn test_bound_service_not_discoverable() {
 
             // Only bind, don't announce
             let _service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -322,7 +347,12 @@ fn test_announced_service_is_discoverable() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -398,7 +428,12 @@ fn test_service_disappears_after_stop_announcing() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -496,7 +531,12 @@ fn test_notify_static_without_announce() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind(TEMPERATURE_SERVICE_ID, InstanceId::Id(0x0001), TEMPERATURE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    TEMPERATURE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    TEMPERATURE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -559,7 +599,12 @@ fn test_notify_requires_announced_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -658,7 +703,12 @@ fn test_initialization_before_announce() {
 
             // Phase 1: Bind
             let service = runtime
-                .bind(TEMPERATURE_SERVICE_ID, InstanceId::Id(0x0001), TEMPERATURE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    TEMPERATURE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    TEMPERATURE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -709,7 +759,12 @@ fn test_init_failure_prevents_announcement() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(TEMPERATURE_SERVICE_ID, InstanceId::Id(0x0001), TEMPERATURE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    TEMPERATURE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    TEMPERATURE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -796,7 +851,12 @@ fn test_graceful_shutdown_drains_requests() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -898,7 +958,12 @@ fn test_drop_announced_sends_stop_offer() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -989,7 +1054,12 @@ fn test_drop_bound_no_sd_message() {
 
             {
                 let _service = runtime
-                    .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                    .bind(
+                        BRAKE_SERVICE_ID,
+                        InstanceId::Id(0x0001),
+                        BRAKE_SERVICE_VERSION,
+                        Transport::Udp,
+                    )
                     .await
                     .unwrap();
                 // Dropped without announce - no Offerno StopOfferService
@@ -1066,12 +1136,22 @@ fn test_multiple_services_same_runtime() {
 
             // Bind multiple different services
             let brake = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
             let _temp = runtime
-                .bind(TEMPERATURE_SERVICE_ID, InstanceId::Id(0x0002), TEMPERATURE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    TEMPERATURE_SERVICE_ID,
+                    InstanceId::Id(0x0002),
+                    TEMPERATURE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -1154,12 +1234,22 @@ fn test_multiple_instances_same_service() {
 
             // Same service type, different instances
             let instance1 = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
             let _instance2 = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0002), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0002),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -1244,13 +1334,23 @@ fn test_double_bind_same_instance_fails() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let _first = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
             // Second bind of same service+instance should fail
             let second = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await;
 
             assert!(second.is_err(), "Cannot bind same service+instance twice");
@@ -1296,7 +1396,12 @@ fn test_rpc_in_bound_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -1392,7 +1497,12 @@ fn test_notify_no_subscribers_succeeds() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -1447,7 +1557,12 @@ fn test_notify_static_no_subscribers_succeeds() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -1545,7 +1660,12 @@ fn test_static_subscribers_preserved_after_announce() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -1648,7 +1768,12 @@ fn test_static_subscribers_preserved_after_stop_announcing() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -1721,7 +1846,12 @@ fn test_re_announce_after_stop() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -1911,7 +2041,12 @@ fn test_static_subscriber_eventgroup_filtering() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -1994,7 +2129,12 @@ fn test_concurrent_notify() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -2096,7 +2236,12 @@ fn test_notify_survives_subscriber_disconnect() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -2204,7 +2349,12 @@ fn test_max_udp_payload_notify() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -2306,7 +2456,8 @@ fn test_large_tcp_rpc_payload() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001)).version(BRAKE_SERVICE_VERSION.0, BRAKE_SERVICE_VERSION.1)
+                .offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(BRAKE_SERVICE_VERSION.0, BRAKE_SERVICE_VERSION.1)
                 .tcp()
                 .start()
                 .await
@@ -2412,7 +2563,8 @@ fn test_response_after_offering_dropped() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut offering = runtime
-                .offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001)).version(BRAKE_SERVICE_VERSION.0, BRAKE_SERVICE_VERSION.1)
+                .offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(BRAKE_SERVICE_VERSION.0, BRAKE_SERVICE_VERSION.1)
                 .tcp()
                 .start()
                 .await
@@ -2518,7 +2670,12 @@ fn test_empty_payload_notify() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -2623,7 +2780,12 @@ fn test_rapid_state_transitions() {
 
             for i in 0..5 {
                 let service = runtime
-                    .bind(BRAKE_SERVICE_ID, InstanceId::Id((i + 1) as u16), BRAKE_SERVICE_VERSION, Transport::Udp)
+                    .bind(
+                        BRAKE_SERVICE_ID,
+                        InstanceId::Id((i + 1) as u16),
+                        BRAKE_SERVICE_VERSION,
+                        Transport::Udp,
+                    )
                     .await
                     .unwrap();
 
@@ -2677,7 +2839,12 @@ fn test_next_in_bound_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let mut service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -2768,7 +2935,12 @@ fn test_next_in_announced_state() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
@@ -2859,7 +3031,12 @@ fn test_subscription_events_received() {
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
 
             let service = runtime
-                .bind(BRAKE_SERVICE_ID, InstanceId::Id(0x0001), BRAKE_SERVICE_VERSION, Transport::Udp)
+                .bind(
+                    BRAKE_SERVICE_ID,
+                    InstanceId::Id(0x0001),
+                    BRAKE_SERVICE_VERSION,
+                    Transport::Udp,
+                )
                 .await
                 .unwrap();
 
