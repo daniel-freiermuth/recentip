@@ -666,6 +666,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "recentip"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "clap",
+ "futures",
+ "proptest",
+ "socket2 0.5.10",
+ "test-log",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "turmoil",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -789,23 +806,6 @@ checksum = "17129e116933cf371d018bb80ae557e889637989d8638274fb25622827b03881"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "someip-runtime"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "chrono",
- "clap",
- "futures",
- "proptest",
- "socket2 0.5.10",
- "test-log",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "turmoil",
 ]
 
 [[package]]

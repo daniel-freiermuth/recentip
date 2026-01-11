@@ -1,13 +1,13 @@
 # RecentIP
 
 > Warning! This is an alpha stage toy project for exploration.
-The goal is to create a solid, easy-to-use and performant middleware implementation that is easily and fearlessly maintainable.
+The goal is to create a solid, easy-to-use and performant middleware implementation that is easily and fearlessly maintainable. One of the side-results is a comprehensive documentation.
 
 [![Crate](https://img.shields.io/crates/v/someip-runtime.svg)](https://crates.io/crates/someip-runtime)
 [![Docs](https://docs.rs/someip-runtime/badge.svg)](https://docs.rs/someip-runtime)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
-An opinionated **type-safe, async, lock-free, no-unsafe, no-panic SOME/IP protocol implementation** backed by [tokio](https://tokio.rs).
+An opinionated **type-safe, async, lock-free, no-unsafe, no-panic, boring SOME/IP protocol implementation** backed by [tokio](https://tokio.rs).
 
 SOME/IP (Scalable service-Oriented MiddlewarE over IP) is the standard middleware protocol for automotive Ethernet communication, enabling service-oriented communication between ECUs in modern vehicles.
 
@@ -27,8 +27,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-someip-runtime = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+recentip = "0.1"
 ```
 
 ## Quick Start
@@ -150,6 +149,16 @@ let service = runtime.bind(BRAKE_SERVICE_ID, InstanceId::Id(1), BRAKE_VERSION, T
 // Add static subscribers manually
 service.add_static_subscriber("192.168.1.20:30502", &[eventgroup]);
 ```
+
+## SMIP integration
+I haven't looked into this yet, but https://github.com/thoughtworks/smip looks
+like it would be great on top of this lib. https://rocket.rs/ -like annotations
+for SOME/IP.
+
+## Other Rust Some/IP libs
+- SummR https://github.com/eclipse-sommr seems dead or never kicked off?
+- https://crates.io/crates/someip-rs fresh and new. Sync IO, no SD. Blocking
+  on calls.
 
 ## Testing
 
