@@ -473,7 +473,7 @@ impl MethodId {
 }
 
 /// Event identifier (high bit must be set: 0x8000-0xFFFE)
-/// 
+///
 /// also see: [`Event`] and [`EventgroupId`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EventId(u16);
@@ -494,7 +494,7 @@ impl EventId {
 }
 
 /// Eventgroup identifier
-/// 
+///
 /// also see: [`Event`] and [`EventId`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EventgroupId(u16);
@@ -599,9 +599,9 @@ pub enum ReturnCode {
 
 /// Specific event received from a subscription (aka Notify message or
 /// Notification)
-/// 
+///
 /// An `Event` contains the type of event (`event_id`) and payload data.
-/// 
+///
 /// Events are organized into eventgroups identified by [`EventgroupId`].
 /// [`EventId`]s and [`EventgroupId`]s are in N:M relationship - an eventgroup
 /// is a collection of [`EventId`]s subscribed to together and [`EvendtId`]s

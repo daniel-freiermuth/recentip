@@ -255,18 +255,18 @@ pub struct RuntimeConfigBuilder {
 
 impl RuntimeConfigBuilder {
     /// The Service Discovery (SD) bind address and port
-    /// 
+    ///
     /// This will be used for SD multicast traffic. Thus the port needs to
     /// match the multicast port to work correctly.
-    /// 
+    ///
     /// If no other address for unicast is specified with `sd_unicast`(not yet
     /// implemented), this address will also be used for unicast SD traffic.
-    /// 
+    ///
     /// We recommend binding to `0.0.0.0` (`Ipv4Addr::UNSPECIFIED`) as this is
     /// the portable stable solution to receive multicast (in particular
     /// loopback multicast) on POSIX system. If you have a modern Linux system
     /// it might as well work to bind to the specific interface address.
-    /// 
+    ///
     /// Example:
     /// ```no_run
     /// use recentip::prelude::*;
@@ -279,7 +279,7 @@ impl RuntimeConfigBuilder {
     ///     )))
     ///     .build();
     /// ```
-    /// 
+    ///
     /// Default: `0.0.0.0:30490`
     pub fn bind_addr(mut self, addr: SocketAddr) -> Self {
         self.config.bind_addr = addr;
@@ -291,7 +291,7 @@ impl RuntimeConfigBuilder {
     /// When binding the SD socket to `0.0.0.0`, recentIP doesn't know how
     /// other servers can reach it. Thus we need to explicitly set the
     /// advertised IP address. Must be a valid, non-unspecified address.
-    /// 
+    ///
     /// Must be set if binding to `0.0.0.0` and no `sd_unicast` option
     /// supplied.
     ///
@@ -310,9 +310,9 @@ impl RuntimeConfigBuilder {
     }
 
     /// The multicast address and port to subscribe to for Service Discovery
-    /// 
+    ///
     /// The port should match the port part of `bind_addr` to work correctly.
-    /// 
+    ///
     /// Default: `239.255.0.1:30490`
     pub fn sd_multicast(mut self, addr: SocketAddr) -> Self {
         self.config.sd_multicast = addr;
@@ -320,7 +320,7 @@ impl RuntimeConfigBuilder {
     }
 
     /// Set the TTL for `OfferService` entries (in seconds)
-    /// 
+    ///
     /// Default: 3600 seconds
     pub fn offer_ttl(mut self, ttl: u32) -> Self {
         self.config.offer_ttl = ttl;
@@ -328,10 +328,10 @@ impl RuntimeConfigBuilder {
     }
 
     /// Set the TTL for `FindService` entries (in seconds)
-    /// 
+    ///
     /// So far, this option is pretty irrelevant as clients don't, but the
     /// behavior might change in the future.
-    /// 
+    ///
     /// Default: 3600 seconds
     pub fn find_ttl(mut self, ttl: u32) -> Self {
         self.config.find_ttl = ttl;
@@ -339,13 +339,13 @@ impl RuntimeConfigBuilder {
     }
 
     /// Set the minimal TTL for `SubscribeEventgroup` entries (in seconds)
-    /// 
+    ///
     /// This is a peculiar option. Intuitively, it sounds reasonable to set
     /// this to the desired subscription duration. However, it turns out that
     /// this duration is hardly known in reality. Typical values range thus
     /// rather low (slightly higher than the other side's cyclic offer delay)
     /// to very high (carrying the notion of a "long-lived" subscription).
-    /// 
+    ///
     /// The key insight here is that the value does not really matter as
     /// subscriptions need to be renewed upon every incomming offer anyway.
     /// Thus it is important for uninterrupted subscriptions that this value is
@@ -353,7 +353,7 @@ impl RuntimeConfigBuilder {
     /// that is unfortunately unknown to the client. RecentIP thus subscribes
     /// with TTL=max(configured_min_sub_ttl, remote_offer_ttl) and hopes that
     /// the other implementations do the same.
-    /// 
+    ///
     /// So the subscription TTL rather carries beliefs about the
     /// • expected network latency fluctuations
     /// • expected offer -> resubscribe latency fluctuations
@@ -361,17 +361,17 @@ impl RuntimeConfigBuilder {
     ///   offer delay)
     /// Then the subscription TTL offer a means to auto-cleanup stale
     /// subscriptions.
-    /// 
+    ///
     /// **Special Value**: Setting this to `SD_TTL_INFINITE` (0xFFFFFF) means
     /// that the subscription should never expire. The protocol then also skips
     /// offer renewals and relies on unsubscribe message to clean up
     /// subscriptions.
-    /// 
+    ///
     /// **In the end**, this setting is a question of detecting stale
     /// subscriptions and thus carries beliefs about the network and SOME/IP
     /// participant reliability. For events delivered via TCP, there is no
     /// point in setting a finite subscription TTL.
-    /// 
+    ///
     /// Default: 3600 seconds
     pub fn subscribe_ttl(mut self, ttl: u32) -> Self {
         self.config.subscribe_ttl = ttl;
@@ -386,7 +386,7 @@ impl RuntimeConfigBuilder {
 
     /// Set interval between cyclic offers (in milliseconds). This must be
     /// strictly less than `offer_ttl`.
-    /// 
+    ///
     /// Default: 1000 ms
     pub fn cyclic_offer_delay(mut self, delay_ms: u64) -> Self {
         self.config.cyclic_offer_delay = delay_ms;
