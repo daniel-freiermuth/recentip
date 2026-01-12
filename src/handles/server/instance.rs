@@ -268,7 +268,7 @@ impl ServiceInstance<Announced> {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
                 major_version: self.major_version,
-                eventgroup_id: eventgroup.value(),
+                eventgroup_ids: vec![eventgroup.value()],
                 event_id: event_id.value(),
                 payload: bytes::Bytes::copy_from_slice(payload),
             })

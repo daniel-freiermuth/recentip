@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::error::{Error, Result};
 use crate::handles::runtime::RuntimeInner;
+use crate::handles::server::event::EventBuilder;
 use crate::runtime::{Command, ServiceRequest};
 use crate::{ClientInfo, EventId, EventgroupId, InstanceId, MethodId, ServiceId};
 
@@ -138,26 +138,34 @@ impl OfferingHandle {
         }
     }
 
-    /// Send a notification event to all subscribers of an eventgroup.
-    pub async fn notify(
-        &self,
-        eventgroup: EventgroupId,
-        event_id: EventId,
-        payload: &[u8],
-    ) -> Result<()> {
-        self.inner
-            .cmd_tx
-            .send(Command::Notify {
-                service_id: self.service_id,
-                instance_id: self.instance_id,
-                major_version: self.major_version,
-                eventgroup_id: eventgroup.value(),
-                event_id: event_id.value(),
-                payload: bytes::Bytes::copy_from_slice(payload),
-            })
-            .await
-            .map_err(|_| Error::RuntimeShutdown)?;
-        Ok(())
+    /// Create an event that can send notifications to subscribers.
+    ///
+    /// Events declare which eventgroups they belong to via the builder.
+    /// When `notify()` is called on the returned [`EventHandle`], the
+    /// notification is sent to subscribers of all configured eventgroups.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use someip_runtime::prelude::*;
+    /// # async fn example(offering: OfferingHandle) -> Result<()> {
+    /// let temperature = offering
+    ///     .event(EventId::new(0x8001).unwrap())
+    ///     .eventgroup(EventgroupId::new(0x0001).unwrap())
+    ///     .create()?;
+    ///
+    /// temperature.notify(b"42.5").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn event(&self, event_id: EventId) -> EventBuilder {
+        EventBuilder::new(
+            self.inner.clone(),
+            self.service_id,
+            self.instance_id,
+            self.major_version,
+            event_id,
+        )
     }
 
     /// Get the service ID

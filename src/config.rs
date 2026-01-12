@@ -166,7 +166,7 @@ pub const DEFAULT_FIND_REPETITIONS: u32 = 3;
 /// Transport protocol for RPC communication.
 ///
 /// Service Discovery always uses UDP multicast regardless of this setting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Transport {
     /// UDP transport (default).
     ///

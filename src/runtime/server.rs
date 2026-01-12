@@ -421,7 +421,7 @@ pub fn handle_notify(
     service_id: ServiceId,
     instance_id: InstanceId,
     major_version: u8,
-    eventgroup_id: u16,
+    eventgroup_ids: &[u16],
     event_id: u16,
     payload: Bytes,
     state: &mut RuntimeState,
@@ -429,19 +429,26 @@ pub fn handle_notify(
 ) {
     let service_key = ServiceKey::new(service_id, instance_id, major_version);
 
-    // Find all subscribers for this eventgroup
-    let sub_key = SubscriberKey {
-        service_id: service_id.value(),
-        instance_id: instance_id.value(),
-        eventgroup_id,
-    };
+    // Collect all unique subscribers across all eventgroups
+    // Use a set to avoid sending duplicates if a client is subscribed to multiple eventgroups
+    let mut seen_subscribers = std::collections::HashSet::new();
+    let mut subscribers: Vec<(SocketAddr, crate::config::Transport)> = Vec::new();
 
-    // Clone subscribers to avoid borrow conflict with next_session_id
-    let subscribers: Vec<(SocketAddr, crate::config::Transport)> = state
-        .server_subscribers
-        .get(&sub_key)
-        .map(|subs| subs.iter().map(|s| (s.endpoint, s.transport)).collect())
-        .unwrap_or_default();
+    for &eventgroup_id in eventgroup_ids {
+        let sub_key = SubscriberKey {
+            service_id: service_id.value(),
+            instance_id: instance_id.value(),
+            eventgroup_id,
+        };
+
+        if let Some(subs) = state.server_subscribers.get(&sub_key) {
+            for s in subs {
+                if seen_subscribers.insert((s.endpoint, s.transport)) {
+                    subscribers.push((s.endpoint, s.transport));
+                }
+            }
+        }
+    }
 
     if !subscribers.is_empty() {
         // Build notification message

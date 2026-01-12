@@ -133,4 +133,7 @@ pub mod server;
 // Re-export all public types for convenient access
 pub use client::{FindBuilder, ProxyHandle, StaticEventListener, Subscription};
 pub use runtime::{OfferBuilder, Runtime, RuntimeConfig};
-pub use server::{Announced, Bound, OfferingHandle, Responder, ServiceEvent, ServiceInstance};
+pub use server::{
+    Announced, Bound, EventBuilder, EventHandle, OfferingHandle, Responder, ServiceEvent,
+    ServiceInstance,
+};

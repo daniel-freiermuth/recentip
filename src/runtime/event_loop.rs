@@ -682,7 +682,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             service_id,
             instance_id,
             major_version,
-            eventgroup_id,
+            eventgroup_ids,
             event_id,
             payload,
         } => {
@@ -690,7 +690,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
                 service_id,
                 instance_id,
                 major_version,
-                eventgroup_id,
+                &eventgroup_ids,
                 event_id,
                 payload,
                 state,

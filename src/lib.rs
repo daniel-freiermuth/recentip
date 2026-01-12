@@ -241,14 +241,16 @@
 //!
 //! ```no_run
 //! use recentip::prelude::*;
-//! use recentip::handle::OfferingHandle;
 //!
 //! async fn publish_example(offering: &OfferingHandle) -> Result<()> {
-//!     let eventgroup = EventgroupId::new(0x0001).unwrap();
-//!     let event_id = EventId::new(0x8001).unwrap();
+//!     // Create an event handle that belongs to eventgroup 0x0001
+//!     let temperature = offering
+//!         .event(EventId::new(0x8001).unwrap())
+//!         .eventgroup(EventgroupId::new(0x0001).unwrap())
+//!         .create()?;
 //!
-//!     // Send notification to all subscribers
-//!     offering.notify(eventgroup, event_id, b"payload").await?;
+//!     // Send notification to all subscribers of this event's eventgroups
+//!     temperature.notify(b"42.5").await?;
 //!     Ok(())
 //! }
 //! # fn main() {}
@@ -375,6 +377,8 @@ pub use handles::{
     // Client-side handles
     FindBuilder,
     // Server-side handles
+    EventBuilder,
+    EventHandle,
     OfferingHandle,
     ProxyHandle,
     Responder,
@@ -648,7 +652,8 @@ pub struct ClientInfo {
 
 pub mod prelude {
     pub use crate::{
-        Error, Event, EventId, EventgroupId, InstanceId, MajorVersion, MethodConfig, MethodId,
-        MinorVersion, Response, Result, ReturnCode, Runtime, RuntimeConfig, ServiceId,
+        Error, Event, EventBuilder, EventHandle, EventId, EventgroupId, InstanceId, MajorVersion,
+        MethodConfig, MethodId, MinorVersion, OfferingHandle, Response, Result, ReturnCode,
+        Runtime, RuntimeConfig, ServiceId,
     };
 }

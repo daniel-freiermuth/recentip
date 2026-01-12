@@ -140,7 +140,8 @@ pub enum Command {
         service_id: ServiceId,
         instance_id: InstanceId,
         major_version: u8,
-        eventgroup_id: u16,
+        /// Target eventgroups (the event may belong to multiple)
+        eventgroup_ids: Vec<u16>,
         event_id: u16,
         payload: Bytes,
     },
