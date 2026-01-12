@@ -3,8 +3,8 @@
 > Warning! This is an alpha stage toy project for exploration.
 The goal is to create a solid, easy-to-use and performant middleware implementation that is easily and fearlessly maintainable. One of the side-results is a comprehensive documentation.
 
-[![Crate](https://img.shields.io/crates/v/someip-runtime.svg)](https://crates.io/crates/someip-runtime)
-[![Docs](https://docs.rs/someip-runtime/badge.svg)](https://docs.rs/someip-runtime)
+[![Crate](https://img.shields.io/crates/v/recentip.svg)](https://crates.io/crates/recentip)
+[![Docs](https://docs.rs/recentip/badge.svg)](https://docs.rs/recentip)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 An opinionated **type-safe, async, lock-free, no-unsafe, no-panic, boring SOME/IP protocol implementation** backed by [tokio](https://tokio.rs).
@@ -35,12 +35,12 @@ recentip = "0.1"
 ### Client: Find and Call a Service
 
 ```rust
-use someip_runtime::prelude::*;
+use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Create the runtime
-    let runtime = Runtime::new(RuntimeConfig::default()).await?;
+    let runtime = Runtime::new(RuntimeConfig::default()).await?;;
 
     // Find a remote service (waits for SD announcement)
     let proxy = runtime.find(BRAKE_SERVICE_ID).await?;
@@ -60,8 +60,8 @@ async fn main() -> Result<()> {
 ### Server: Offer a Service
 
 ```rust
-use someip_runtime::prelude::*;
-use someip_runtime::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::handle::ServiceEvent;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -80,9 +80,9 @@ async fn main() -> Result<()> {
                 // Process request and send response
                 responder.reply(b"OK").await?;
             }
-            ServiceEvent::Subscribe { eventgroup, ack, .. } => {
-                // Accept subscription
-                ack.accept().await?;
+            ServiceEvent::Subscribe { eventgroup, client } => {
+                // Subscriptions are auto-accepted
+                println!("Client {:?} subscribed to {:?}", client, eventgroup);
             }
             _ => {}
         }
@@ -97,13 +97,12 @@ Check the `examples` folder for examples.
 ## Configuration
 
 ```rust
-use someip_runtime::{RuntimeConfig, Transport};
+use recentip::{RuntimeConfig, Transport};
 
 let config = RuntimeConfig::builder()
-    .transport(Transport::Tcp)      // Use TCP instead of UDP
-    .magic_cookies(true)            // Enable Magic Cookies for debugging
-    .sd_port(30490)                 // SD multicast port (default)
-    .ttl(3)                         // Service TTL in seconds
+    .preferred_transport(Transport::Tcp)  // Prefer TCP when service offers both
+    .magic_cookies(true)                  // Enable Magic Cookies for debugging
+    .offer_ttl(3)                         // Service offer TTL in seconds
     .build();
 
 let runtime = Runtime::new(config).await?;
@@ -129,26 +128,6 @@ let runtime = Runtime::new(config).await?;
 | `MethodId` | 0x0000–0x7FFF | Bit 15 = 0 for methods |
 | `EventId` | 0x8000–0xFFFE | Bit 15 = 1 for events |
 | `EventgroupId` | 0x0001–0xFFFE | Groups related events |
-
-## Static Deployments
-
-For systems without Service Discovery (pre-configured addresses):
-
-```rust
-// Client: connect directly to known address
-let proxy = runtime.find_static(
-    BRAKE_SERVICE_ID,
-    InstanceId::Id(1),
-    "192.168.1.10:30509".parse().unwrap(),
-    Transport::Tcp,  // explicit transport selection
-);
-// Immediately usable, no SD wait
-
-// Server: bind without announcing
-let service = runtime.bind(BRAKE_SERVICE_ID, InstanceId::Id(1), BRAKE_VERSION, Transport::Udp).await?;
-// Add static subscribers manually
-service.add_static_subscriber("192.168.1.20:30502", &[eventgroup]);
-```
 
 ## SMIP integration
 I haven't looked into this yet, but https://github.com/thoughtworks/smip looks
@@ -231,6 +210,11 @@ We aim for 100% coverage of the open SOME/IP 2025-12 specs.
     │ UDP:30490   │                │ UDP/TCP     │
     └─────────────┘                └─────────────┘
 ```
+
+## Not yet implemented
+- SOME/IP-TP
+- static configurations
+- configuration handling
 
 ## License
 
