@@ -29,7 +29,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     // Production (default) - uses tokio sockets internally
-//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+//!     let runtime = recentip::configure().start().await?;
 //!
 //!     // For testing with turmoil, see tests/compliance/ for examples
 //!     // using SomeIp::<turmoil types>::with_socket_type()

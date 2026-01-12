@@ -132,12 +132,12 @@ fn subscribe_format_udp_only_cyclic_offers() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .subscribe_ttl(5) // Short TTL so we can see renewals
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         // Discover and subscribe
         let proxy = runtime
@@ -279,16 +279,13 @@ fn subscribe_format_tcp_only_cyclic_offers() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .preferred_transport(recentip::Transport::Tcp)
             .subscribe_ttl(5)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<
-            turmoil::net::UdpSocket,
-            turmoil::net::TcpStream,
-            turmoil::net::TcpListener,
-        > = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -408,13 +405,13 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Default config prefers UDP
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .preferred_transport(recentip::Transport::Udp)
             .subscribe_ttl(5)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -546,16 +543,13 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .preferred_transport(recentip::Transport::Tcp)
             .subscribe_ttl(5)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<
-            turmoil::net::UdpSocket,
-            turmoil::net::TcpStream,
-            turmoil::net::TcpListener,
-        > = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -679,17 +673,13 @@ fn subscribe_format_client_adapts_to_available_transport() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .preferred_transport(recentip::Transport::Tcp) // Prefers TCP!
             .subscribe_ttl(5)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        // Use full runtime type to support TCP preference
-        let runtime: Runtime<
-            turmoil::net::UdpSocket,
-            turmoil::net::TcpStream,
-            turmoil::net::TcpListener,
-        > = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)

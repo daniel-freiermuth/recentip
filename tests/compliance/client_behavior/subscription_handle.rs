@@ -6,9 +6,6 @@ use std::{
 use recentip::{EventId, EventgroupId, InstanceId, OfferedService, Runtime, RuntimeConfig};
 use tracing::Instrument;
 
-type TurmoilRuntime =
-    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
-
 // Wire values for ServiceA
 const SERVICE_A_ID: u16 = 0x5674;
 const SERVICE_A_VERSION: (u8, u32) = (1, 0);
@@ -26,8 +23,7 @@ fn test_subscribe_drop_unsubscribes_in_time() {
     sim.host("server", move || {
         let received_unsub = unsub_receive_time_clone.clone();
         async move {
-            let runtime: TurmoilRuntime =
-                Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime = recentip::configure().start_turmoil().await.unwrap();
 
             // Offer instance 1
             let mut offering = runtime
@@ -70,10 +66,11 @@ fn test_subscribe_drop_unsubscribes_in_time() {
 
     let unsub_send_time_clone = unsub_send_time.clone();
     sim.client("client", async move {
-        let runtime_config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let service = runtime
             .find(SERVICE_A_ID)
@@ -124,8 +121,7 @@ fn test_two_subscribers_one_drops() {
 
     sim.host("server", move || {
         async move {
-            let runtime: TurmoilRuntime =
-                Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime = recentip::configure().start_turmoil().await.unwrap();
 
             // Offer instance 1
             let mut offering = runtime
@@ -160,10 +156,11 @@ fn test_two_subscribers_one_drops() {
     });
 
     sim.client("client", async move {
-        let runtime_config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let service = runtime
             .find(SERVICE_A_ID)
@@ -223,8 +220,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
 
     sim.host("server", move || {
         async move {
-            let runtime: TurmoilRuntime =
-                Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime = recentip::configure().start_turmoil().await.unwrap();
 
             // Offer instance 1
             let mut offering = runtime
@@ -291,10 +287,9 @@ fn test_dangling_subscription_cannot_unsubscribe() {
     });
 
     sim.client("client", async move {
-        let runtime_config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
+            .start_turmoil().await.unwrap();
 
         let service = runtime
             .find(SERVICE_A_ID).instance(InstanceId::Id(1))
@@ -352,8 +347,7 @@ fn test_two_subscribers_get_events() {
 
     sim.host("server", move || {
         async move {
-            let runtime: TurmoilRuntime =
-                Runtime::with_socket_type(Default::default()).await.unwrap();
+            let runtime = recentip::configure().start_turmoil().await.unwrap();
 
             // Offer instance 1
             let mut offering = runtime
@@ -409,10 +403,11 @@ fn test_two_subscribers_get_events() {
             );
         }
 
-        let runtime_config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let service = runtime
             .find(SERVICE_A_ID)

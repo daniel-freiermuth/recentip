@@ -25,8 +25,6 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime =
-    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 const EVENT_SERVICE_ID: u16 = 0x1234;
 const EVENT_SERVICE_VERSION: (u8, u32) = (1, 0);
@@ -136,10 +134,11 @@ fn event_transports_value_data() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let offering = runtime
             .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
@@ -171,10 +170,11 @@ fn event_transports_value_data() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -228,10 +228,11 @@ fn events_not_sent_to_non_subscribers() {
 
     // Server offers service and sends events
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let offering = runtime
             .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
@@ -360,10 +361,11 @@ fn unsubscribe_stops_event_delivery() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let offering = runtime
             .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
@@ -403,10 +405,11 @@ fn unsubscribe_stops_event_delivery() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -460,10 +463,11 @@ fn event_uses_notification_message_type_on_wire() {
 
     // Server sends events
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let offering = runtime
             .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
@@ -494,10 +498,11 @@ fn event_uses_notification_message_type_on_wire() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)

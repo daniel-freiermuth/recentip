@@ -11,7 +11,7 @@
 //!
 //! # async fn example() -> recentip::Result<()> {
 //! let config = RuntimeConfig::default();
-//! let runtime = SomeIp::new(config).await?;
+//! let runtime = recentip::configure().start().await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -241,7 +241,10 @@ impl Default for RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    /// Create a new builder
+    /// Create a builder for `RuntimeConfig`.
+    ///
+    /// For backward compatibility with the old API. New code should use
+    /// [`configure()`](crate::configure) instead.
     pub fn builder() -> RuntimeConfigBuilder {
         RuntimeConfigBuilder::default()
     }
@@ -418,7 +421,9 @@ impl RuntimeConfigBuilder {
         self
     }
 
-    /// Build the configuration
+    /// Build the configuration.
+    ///
+    /// Returns the configured `RuntimeConfig`.
     pub fn build(self) -> RuntimeConfig {
         self.config
     }

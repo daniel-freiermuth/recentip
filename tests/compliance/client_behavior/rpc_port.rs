@@ -137,11 +137,11 @@ fn client_rpc_must_not_use_sd_port() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         // Use public API: find service and wait for availability via SD
         let proxy = runtime
@@ -342,15 +342,12 @@ fn tcp_connection_established_before_subscribe_767() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .preferred_transport(recentip::Transport::Tcp)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<
-            turmoil::net::UdpSocket,
-            turmoil::net::TcpStream,
-            turmoil::net::TcpListener,
-        > = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)

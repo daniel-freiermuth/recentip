@@ -38,8 +38,7 @@ fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
 
     // Server offers events via UDP only
     sim.host("server", || async {
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(Default::default()).await.unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -171,11 +170,7 @@ fn subscribe_udp_endpoint_to_tcp_only_server_should_nack() {
 
     // Server offers events via TCP only
     sim.host("server", || async {
-        let runtime: Runtime<
-            turmoil::net::UdpSocket,
-            turmoil::net::TcpStream,
-            turmoil::net::TcpListener,
-        > = Runtime::with_socket_type(Default::default()).await.unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))

@@ -49,11 +49,11 @@ fn sd_reboot_flag_set_after_startup() {
 
     // Library side - offers a service
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -142,11 +142,11 @@ fn sd_session_starts_at_one() {
         // Extra delay to ensure observer's multicast join has propagated
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -221,11 +221,11 @@ fn sd_reboot_flag_clears_after_wraparound() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -295,11 +295,11 @@ fn sd_separate_multicast_unicast_sessions() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -316,11 +316,11 @@ fn sd_separate_multicast_unicast_sessions() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         // Subscribe to trigger unicast SD responses
         let proxy = runtime.find(TEST_SERVICE_ID);

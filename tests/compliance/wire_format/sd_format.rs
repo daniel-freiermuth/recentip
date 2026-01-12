@@ -31,11 +31,11 @@ fn sd_offer_wire_format() {
 
     // Library side - offers a service
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         // Offer a service - this sends SD Offer messages
         let _offering = runtime
@@ -118,11 +118,11 @@ fn sd_uses_port_30490() {
 
     // Library offers a service - verify SD is sent to port 30490
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -181,11 +181,11 @@ fn sd_offer_entry_type_wire_format() {
 
     // Library side - offers a service
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -252,12 +252,12 @@ fn offer_service_ttl_on_wire() {
 
     // Server with custom offer_ttl
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .offer_ttl(CUSTOM_OFFER_TTL)
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -383,12 +383,12 @@ fn subscribe_eventgroup_ttl_on_wire() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .subscribe_ttl(CUSTOM_SUBSCRIBE_TTL)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -470,12 +470,12 @@ fn find_service_ttl_on_wire() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .find_ttl(CUSTOM_FIND_TTL)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         // Start finding service - calling  triggers Command::Find which sends FindService
         let proxy = runtime
@@ -505,8 +505,7 @@ fn subscribe_ack_echoes_client_ttl_123() {
 
     // Server with default offer_ttl (3600) - we verify the Ack uses client's TTL, not this
     sim.host("server", || async {
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(Default::default()).await.unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -621,8 +620,7 @@ fn subscribe_ack_echoes_client_ttl_1000_000() {
 
     // Server with default offer_ttl (3600) - we verify the Ack uses client's TTL, not this
     sim.host("server", || async {
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(Default::default()).await.unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -737,8 +735,7 @@ fn subscribe_ack_echoes_client_ttl_1() {
 
     // Server with default offer_ttl (3600) - we verify the Ack uses client's TTL, not this
     sim.host("server", || async {
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(Default::default()).await.unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))

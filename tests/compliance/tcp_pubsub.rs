@@ -37,8 +37,6 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime
-type TurmoilRuntime =
-    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 const TCP_PUB_SUB_SERVICE_ID: u16 = 0x2345;
 const TCP_PUB_SUB_SERVICE_VERSION: (u8, u32) = (1, 0);
@@ -63,10 +61,11 @@ fn tcp_basic_subscribe_and_receive_events() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         // Offer service via TCP only
         let offering = runtime
@@ -106,11 +105,12 @@ fn tcp_basic_subscribe_and_receive_events() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -170,10 +170,11 @@ fn tcp_multiple_subscribers_receive_events() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let offering = runtime
             .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
@@ -212,11 +213,12 @@ fn tcp_multiple_subscribers_receive_events() {
     sim.client("client1", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -244,11 +246,12 @@ fn tcp_multiple_subscribers_receive_events() {
     sim.client("client2", async move {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -311,10 +314,11 @@ fn tcp_large_payload_events() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let offering = runtime
             .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
@@ -352,11 +356,12 @@ fn tcp_large_payload_events() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -422,10 +427,11 @@ fn tcp_different_eventgroups() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let offering = runtime
             .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
@@ -483,11 +489,12 @@ fn tcp_different_eventgroups() {
     sim.client("client1", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -516,11 +523,12 @@ fn tcp_different_eventgroups() {
     sim.client("client2", async move {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -582,10 +590,11 @@ fn dual_stack_service_client_prefers_tcp() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         // Offer service via both TCP and UDP
         let offering = runtime
@@ -624,11 +633,12 @@ fn dual_stack_service_client_prefers_tcp() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Client prefers TCP
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -674,10 +684,11 @@ fn dual_stack_service_client_prefers_udp() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         // Offer service via both TCP and UDP
         let offering = runtime
@@ -716,11 +727,12 @@ fn dual_stack_service_client_prefers_udp() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Client prefers UDP (default)
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Udp)
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -772,10 +784,11 @@ fn tcp_only_server_udp_preferring_client() {
         .build();
 
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         // Offer service via TCP only
         let offering = runtime
@@ -815,11 +828,12 @@ fn tcp_only_server_udp_preferring_client() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Client prefers UDP, but server is TCP-only
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Udp) // Preference, not requirement
-            .build();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime.find(TCP_PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)

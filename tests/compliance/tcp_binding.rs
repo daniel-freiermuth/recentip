@@ -34,8 +34,6 @@ macro_rules! covers {
 }
 
 /// Type alias for turmoil-based runtime (needs both UdpSocket and TcpStream)
-type TurmoilRuntime =
-    Runtime<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>;
 
 const TEST_SERVICE_ID: u16 = 0x1234;
 const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
@@ -92,17 +90,7 @@ fn is_magic_cookie(data: &[u8]) -> bool {
 // ============================================================================
 
 /// Create a RuntimeConfig for TCP transport
-fn tcp_config() -> RuntimeConfig {
-    RuntimeConfig::builder().transport(Transport::Tcp).build()
-}
-
-#[allow(dead_code)]
-fn tcp_config_with_magic_cookies() -> RuntimeConfig {
-    RuntimeConfig::builder()
-        .transport(Transport::Tcp)
-        .magic_cookies(true)
-        .build()
-}
+// TCP config is now created inline with recentip::configure().preferred_transport(Transport::Tcp)
 
 // ============================================================================
 // TCP Connection Lifecycle Tests
@@ -121,8 +109,12 @@ fn client_opens_tcp_connection() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -149,8 +141,12 @@ fn client_opens_tcp_connection() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -193,8 +189,12 @@ fn single_tcp_connection_reused() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -225,8 +225,12 @@ fn single_tcp_connection_reused() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -272,8 +276,12 @@ fn client_reestablishes_connection() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -301,8 +309,12 @@ fn client_reestablishes_connection() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -357,8 +369,12 @@ fn each_message_has_own_header() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -390,8 +406,12 @@ fn each_message_has_own_header() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -434,8 +454,12 @@ fn multiple_messages_per_segment_parsed() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -465,8 +489,12 @@ fn multiple_messages_per_segment_parsed() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -511,8 +539,12 @@ fn connection_lost_fails_pending_requests() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -534,8 +566,12 @@ fn connection_lost_fails_pending_requests() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -590,8 +626,13 @@ fn magic_cookie_recognized() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config_with_magic_cookies();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .magic_cookies(true)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -613,8 +654,13 @@ fn magic_cookie_recognized() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config_with_magic_cookies();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .magic_cookies(true)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -658,8 +704,13 @@ fn tcp_segment_starts_with_magic_cookie() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config_with_magic_cookies();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .magic_cookies(true)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -682,8 +733,13 @@ fn tcp_segment_starts_with_magic_cookie() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config_with_magic_cookies();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .magic_cookies(true)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -731,8 +787,13 @@ fn only_one_magic_cookie_per_segment() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config_with_magic_cookies();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .magic_cookies(true)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -757,8 +818,13 @@ fn only_one_magic_cookie_per_segment() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config_with_magic_cookies();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .magic_cookies(true)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -809,8 +875,12 @@ fn tcp_header_format_matches_udp() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -831,8 +901,12 @@ fn tcp_header_format_matches_udp() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -882,8 +956,12 @@ fn tcp_loss_does_not_reset_session_id() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -911,8 +989,12 @@ fn tcp_loss_does_not_reset_session_id() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -971,8 +1053,12 @@ fn reboot_detection_resets_tcp_connections() {
         .build();
 
     sim.host("server", || async {
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -1010,8 +1096,12 @@ fn reboot_detection_resets_tcp_connections() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = tcp_config();
-        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)

@@ -32,8 +32,7 @@ fn subscribe_to_unknown_service_id_should_nack() {
 
     // Server offers service 0x1234
     sim.host("server", || async {
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(Default::default()).await.unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -221,8 +220,7 @@ fn subscribe_to_unknown_instance_id_should_nack() {
 
     // Server offers instance 0x0001
     sim.host("server", || async {
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(Default::default()).await.unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -426,8 +424,7 @@ fn subscribe_to_unknown_eventgroup_should_nack() {
 
     // Server offers eventgroup 0x0001
     sim.host("server", || async {
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(Default::default()).await.unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -618,8 +615,7 @@ fn subscribe_to_wrong_major_version_should_nack() {
 
     // Server offers major version 1
     sim.host("server", || async {
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(Default::default()).await.unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))

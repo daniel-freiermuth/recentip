@@ -40,7 +40,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     // Create the runtime
-//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+//!     let runtime = recentip::configure().start().await?;
 //!
 //!     // Find a remote service (waits for SD announcement)
 //!     let proxy = runtime.find(BRAKE_SERVICE_ID).await?;
@@ -64,7 +64,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
-//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+//!     let runtime = recentip::configure().start().await?;
 //!
 //!     // Offer a service (announces via SD)
 //!     let mut offering = runtime.offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001))
@@ -369,13 +369,12 @@ pub use handles::{OfferBuilder, SomeIp};
 
 pub use config::{MethodConfig, RuntimeConfig, Transport};
 
-/// Backward compatibility alias for [`SomeIp`]
-#[deprecated(since = "0.2.0", note = "Use `SomeIp` instead")]
-pub type Runtime<
-    U = tokio::net::UdpSocket,
-    T = tokio::net::TcpStream,
-    L = tokio::net::TcpListener,
-> = SomeIp<U, T, L>;
+/// Deprecated: Use `SomeIp` instead.
+///
+/// This is a type alias for backward compatibility. New code should use [`SomeIp`] directly.
+#[deprecated(since = "0.1.0", note = "Use `SomeIp` instead")]
+pub type Runtime = SomeIp;
+
 pub use error::*;
 
 // Re-export handle types (explicit to avoid shadowing with internal runtime module)
@@ -692,6 +691,7 @@ pub mod prelude {
     pub use crate::{
         configure, Error, Event, EventBuilder, EventHandle, EventId, EventgroupId, InstanceId,
         MajorVersion, MethodConfig, MethodId, MinorVersion, OfferedService, Response, Result,
-        ReturnCode, RuntimeConfig, ServiceId, ServiceOffering, SomeIp, SomeIpBuilder, Transport,
+        ReturnCode, Runtime, RuntimeConfig, ServiceId, ServiceOffering, SomeIp, SomeIpBuilder,
+        Transport,
     };
 }

@@ -106,7 +106,7 @@ pub(crate) struct RuntimeInner {
 /// #[tokio::main]
 /// async fn main() -> Result<()> {
 ///     // Production (default)
-///     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+///     let runtime = recentip::configure().start().await?;
 ///
 ///     // For turmoil testing, the runtime is parameterized:
 ///     // type TestRuntime = SomeIp<turmoil::net::UdpSocket, ...>;
@@ -130,20 +130,11 @@ pub struct SomeIp<
     _phantom: std::marker::PhantomData<(U, T, L)>,
 }
 
-impl SomeIp<tokio::net::UdpSocket, tokio::net::TcpStream, tokio::net::TcpListener> {
-    /// Create a new runtime with the given configuration.
-    ///
-    /// This binds to the configured local address and joins the SD multicast group.
-    pub async fn new(config: RuntimeConfig) -> Result<Self> {
-        Self::with_socket_type(config).await
-    }
-}
-
 impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     /// Create a new runtime with a specific socket type.
     ///
     /// This is mainly useful for testing with turmoil.
-    pub async fn with_socket_type(config: RuntimeConfig) -> Result<Self> {
+    pub(crate) async fn new(config: RuntimeConfig) -> Result<Self> {
         // Bind the SD socket (always UDP, per SOME/IP spec)
         let sd_socket = U::bind(config.bind_addr).await?;
         let local_addr = sd_socket.local_addr()?;
@@ -251,6 +242,29 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
         })
     }
 
+    /// Create a new runtime with a specific socket type.
+    ///
+    /// This is for backward compatibility and testing with turmoil.
+    /// New code should use [`configure()`](crate::configure) instead.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    ///
+    /// # async fn example() -> Result<()> {
+    /// let config = RuntimeConfig::builder()
+    ///     .advertised_ip("192.168.1.100".parse().unwrap())
+    ///     .build();
+    /// let runtime = recentip::configure().start().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[deprecated(since = "0.1.0", note = "Use `configure()` instead")]
+    pub async fn with_socket_type(config: RuntimeConfig) -> Result<Self> {
+        Self::new(config).await
+    }
+
     /// Find a remote SOME/IP service.
     ///
     /// Returns a [`FindBuilder`] to configure the find criteria, then `.await`
@@ -274,7 +288,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
-    ///     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+    ///     let runtime = recentip::configure().start().await?;
     ///
     ///     // Simple: find any instance
     ///     let proxy = runtime.find(MY_SERVICE_ID).await?;
@@ -311,7 +325,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
-    ///     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+    ///     let runtime = recentip::configure().start().await?;
     ///
     ///     // Offer on both TCP and UDP with custom ports
     ///     let offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
@@ -354,7 +368,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
-    ///     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+    ///     let runtime = recentip::configure().start().await?;
     ///     let mut offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
     ///         .version(1, 0)
     ///         .start()
@@ -398,7 +412,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     /// ```no_run
     /// # use recentip::{SomeIp, SdEvent};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let runtime = SomeIp::new(Default::default()).await?;
+    /// let runtime = recentip::configure().start().await?;
     /// let mut sd_events = runtime.monitor_sd().await?;
     ///
     /// while let Some(event) = sd_events.recv().await {

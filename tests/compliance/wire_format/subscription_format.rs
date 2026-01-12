@@ -90,11 +90,11 @@ fn subscribe_eventgroup_entry_type() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -135,11 +135,11 @@ fn subscribe_ack_entry_type() {
 
     // Server offers service and handles subscription
     sim.host("server", || async {
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -276,13 +276,13 @@ fn subscription_max_ttl_doesnt_expire() {
     sim.host("server", || async {
         tokio::time::sleep(Duration::from_secs(2 * TICK_SECS as u64)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .cyclic_offer_delay(CYCLIC_OFFER_DELAY as u64 * 1000)
             .offer_ttl(OFFER_TTL)
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -436,10 +436,7 @@ fn subscription_ttl_expiration_stops_events() {
 
     // Server offers service and sends events continuously
     sim.host("server", || async {
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(RuntimeConfig::default())
-                .await
-                .unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
         let offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -649,11 +646,11 @@ fn stop_subscribe_has_ttl_zero() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let config = RuntimeConfig::builder()
+        let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .build();
-        let runtime: Runtime<turmoil::net::UdpSocket> =
-            Runtime::with_socket_type(config).await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)

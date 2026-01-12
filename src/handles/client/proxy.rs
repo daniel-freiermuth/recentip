@@ -25,7 +25,7 @@ use super::Subscription;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<()> {
-/// let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+/// let runtime = recentip::configure().start().await?;
 /// let proxy = runtime.find(MY_SERVICE_ID).await?;
 /// # Ok(())
 /// # }

@@ -23,7 +23,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
-//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+//!     let runtime = recentip::configure().start().await?;
 //!
 //!     // 1. Find the service (waits for discovery)
 //!     let proxy = runtime.find(MY_SERVICE_ID).await?;
@@ -52,7 +52,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
-//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+//!     let runtime = recentip::configure().start().await?;
 //!
 //!     // 1. Offer a service
 //!     let mut offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
@@ -88,7 +88,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
-//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
+//!     let runtime = recentip::configure().start().await?;
 //!
 //!     // 1. Bind (opens socket, but no SD announcement)
 //!     let instance: ServiceInstance<Bound> = runtime.bind(

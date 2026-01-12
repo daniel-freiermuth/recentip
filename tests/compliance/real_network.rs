@@ -57,7 +57,7 @@ fn tcp_test_config(_port: u16) -> RuntimeConfig {
             Ipv4Addr::new(239, 255, 255, 250),
             30490,
         )))
-        .transport(Transport::Tcp)
+        .preferred_transport(Transport::Tcp)
         .build()
 }
 
@@ -71,7 +71,7 @@ fn tcp_test_config_with_magic_cookies(_port: u16) -> RuntimeConfig {
             Ipv4Addr::new(239, 255, 255, 250),
             30490,
         )))
-        .transport(Transport::Tcp)
+        .preferred_transport(Transport::Tcp)
         .magic_cookies(true)
         .build()
 }
@@ -88,8 +88,18 @@ async fn udp_request_response_real_network() {
     let client_port = 40200;
 
     // Create server runtime and offer service
-    let server_config = test_config(server_port);
-    let server_runtime = Runtime::new(server_config).await.expect("Server runtime");
+    let server_runtime = recentip::configure()
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            30490,
+        )))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            30490,
+        )))
+        .start()
+        .await
+        .expect("Server runtime");
 
     let mut offering = server_runtime
         .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001))
@@ -100,8 +110,18 @@ async fn udp_request_response_real_network() {
         .expect("Offer service");
 
     // Create client runtime
-    let client_config = test_config(client_port);
-    let client_runtime = Runtime::new(client_config).await.expect("Client runtime");
+    let client_runtime = recentip::configure()
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            30490,
+        )))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            30490,
+        )))
+        .start()
+        .await
+        .expect("Client runtime");
 
     // Spawn server handler task
     let server_task = tokio::spawn(async move {
@@ -153,8 +173,18 @@ async fn udp_service_discovery_real_network() {
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
 
     let server_handle = tokio::spawn(async move {
-        let config = test_config(server_port);
-        let runtime = Runtime::new(config).await.expect("Server runtime");
+        let runtime = recentip::configure()
+            .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::UNSPECIFIED,
+                30490,
+            )))
+            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(239, 255, 255, 250),
+                30490,
+            )))
+            .start()
+            .await
+            .expect("Server runtime");
 
         let _offering = runtime
             .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0002))
@@ -171,8 +201,18 @@ async fn udp_service_discovery_real_network() {
     ready_rx.recv().await;
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let config = test_config(client_port);
-    let runtime = Runtime::new(config).await.expect("Client runtime");
+    let runtime = recentip::configure()
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            30490,
+        )))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            30490,
+        )))
+        .start()
+        .await
+        .expect("Client runtime");
 
     let proxy = runtime
         .find(ECHO_SERVICE_ID)
@@ -200,8 +240,19 @@ async fn tcp_request_response_real_network() {
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
 
     let server_handle = tokio::spawn(async move {
-        let config = tcp_test_config(server_port);
-        let runtime = Runtime::new(config).await.expect("Server runtime");
+        let runtime = recentip::configure()
+            .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::UNSPECIFIED,
+                30490,
+            )))
+            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(239, 255, 255, 250),
+                30490,
+            )))
+            .preferred_transport(Transport::Tcp)
+            .start()
+            .await
+            .expect("Server runtime");
 
         let mut offering = runtime
             .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001))
@@ -228,8 +279,19 @@ async fn tcp_request_response_real_network() {
     ready_rx.recv().await;
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let config = tcp_test_config(client_port);
-    let runtime = Runtime::new(config).await.expect("Client runtime");
+    let runtime = recentip::configure()
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            30490,
+        )))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            30490,
+        )))
+        .preferred_transport(Transport::Tcp)
+        .start()
+        .await
+        .expect("Client runtime");
 
     let proxy = runtime
         .find(ECHO_SERVICE_ID)
@@ -265,8 +327,20 @@ async fn tcp_magic_cookies_real_network() {
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
 
     let server_handle = tokio::spawn(async move {
-        let config = tcp_test_config_with_magic_cookies(server_port);
-        let runtime = Runtime::new(config).await.expect("Server runtime");
+        let runtime = recentip::configure()
+            .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::UNSPECIFIED,
+                30490,
+            )))
+            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(239, 255, 255, 250),
+                30490,
+            )))
+            .preferred_transport(Transport::Tcp)
+            .magic_cookies(true)
+            .start()
+            .await
+            .expect("Server runtime");
 
         let mut offering = runtime
             .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001))
@@ -293,8 +367,20 @@ async fn tcp_magic_cookies_real_network() {
     ready_rx.recv().await;
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let config = tcp_test_config_with_magic_cookies(client_port);
-    let runtime = Runtime::new(config).await.expect("Client runtime");
+    let runtime = recentip::configure()
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            30490,
+        )))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            30490,
+        )))
+        .preferred_transport(Transport::Tcp)
+        .magic_cookies(true)
+        .start()
+        .await
+        .expect("Client runtime");
 
     let proxy = runtime
         .find(ECHO_SERVICE_ID)
@@ -326,8 +412,19 @@ async fn tcp_multiple_requests_real_network() {
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
 
     let server_handle = tokio::spawn(async move {
-        let config = tcp_test_config(server_port);
-        let runtime = Runtime::new(config).await.expect("Server runtime");
+        let runtime = recentip::configure()
+            .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::UNSPECIFIED,
+                30490,
+            )))
+            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(239, 255, 255, 250),
+                30490,
+            )))
+            .preferred_transport(Transport::Tcp)
+            .start()
+            .await
+            .expect("Server runtime");
 
         let mut offering = runtime
             .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001))
@@ -356,8 +453,19 @@ async fn tcp_multiple_requests_real_network() {
     ready_rx.recv().await;
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let config = tcp_test_config(client_port);
-    let runtime = Runtime::new(config).await.expect("Client runtime");
+    let runtime = recentip::configure()
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            30490,
+        )))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            30490,
+        )))
+        .preferred_transport(Transport::Tcp)
+        .start()
+        .await
+        .expect("Client runtime");
 
     let proxy = runtime
         .find(ECHO_SERVICE_ID)
@@ -412,8 +520,18 @@ async fn udp_events_real_network() {
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
 
     let server_handle = tokio::spawn(async move {
-        let config = test_config(server_port);
-        let runtime = Runtime::new(config).await.expect("Server runtime");
+        let runtime = recentip::configure()
+            .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::UNSPECIFIED,
+                30490,
+            )))
+            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(239, 255, 255, 250),
+                30490,
+            )))
+            .start()
+            .await
+            .expect("Server runtime");
 
         let mut offering = runtime
             .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0001))
@@ -458,8 +576,18 @@ async fn udp_events_real_network() {
     ready_rx.recv().await;
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let config = test_config(client_port);
-    let runtime = Runtime::new(config).await.expect("Client runtime");
+    let runtime = recentip::configure()
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            30490,
+        )))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            30490,
+        )))
+        .start()
+        .await
+        .expect("Client runtime");
 
     let proxy = runtime
         .find(ECHO_SERVICE_ID)
@@ -508,7 +636,7 @@ async fn udp_two_runtimes_same_sd_port() {
 
     // Both runtimes bind to INADDR_ANY on the SD multicast port
     // This tests SO_REUSEPORT functionality
-    let server_config = RuntimeConfig::builder()
+    let server_runtime = recentip::configure()
         .bind_addr(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
             sd_port,
@@ -517,19 +645,10 @@ async fn udp_two_runtimes_same_sd_port() {
             Ipv4Addr::new(239, 255, 255, 250),
             sd_port,
         )))
-        .build();
-    let client_config = RuntimeConfig::builder()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            sd_port,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            sd_port,
-        )))
-        .build();
+        .start()
+        .await
+        .expect("Server runtime");
 
-    let server_runtime = Runtime::new(server_config).await.expect("Server runtime");
     let mut offering = server_runtime
         .offer(ECHO_SERVICE_ID, InstanceId::Id(0x0003))
         .version(ECHO_SERVICE_VERSION.0, ECHO_SERVICE_VERSION.1)
@@ -538,7 +657,18 @@ async fn udp_two_runtimes_same_sd_port() {
         .await
         .expect("Offer service");
 
-    let client_runtime = Runtime::new(client_config).await.expect("Client runtime");
+    let client_runtime = recentip::configure()
+        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            sd_port,
+        )))
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(239, 255, 255, 250),
+            sd_port,
+        )))
+        .start()
+        .await
+        .expect("Client runtime");
 
     let server_task = tokio::spawn(async move {
         if let Some(ServiceEvent::Call {

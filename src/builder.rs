@@ -191,21 +191,38 @@ impl SomeIpBuilder {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn start(self) -> Result<SomeIp> {
-        SomeIp::new(self.config).await
+    pub async fn start(
+        self,
+    ) -> Result<SomeIp<tokio::net::UdpSocket, tokio::net::TcpStream, tokio::net::TcpListener>> {
+        self.start_generic().await
     }
 
-    /// Start with custom socket types (for testing with network simulators).
+    /// Start with custom socket types (for custom network implementations).
     ///
-    /// This is primarily used for testing with turmoil or other network simulators.
-    /// Most users should use [`start()`](Self::start) instead.
-    pub async fn start_with_sockets<U, T, L>(self) -> Result<SomeIp<U, T, L>>
+    /// Use this method when you need custom socket implementations.
+    /// For most use cases, prefer [`start`](Self::start) (tokio) or
+    /// [`start_turmoil`](Self::start_turmoil) (testing).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    ///
+    /// # async fn example() -> Result<()> {
+    /// let someip = recentip::configure()
+    ///     .advertised_ip("192.168.1.100".parse().unwrap())
+    ///     .start_generic::<tokio::net::UdpSocket, tokio::net::TcpStream, tokio::net::TcpListener>()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn start_generic<U, T, L>(self) -> Result<SomeIp<U, T, L>>
     where
         U: UdpSocket,
         T: TcpStream,
         L: TcpListener<Stream = T>,
     {
-        SomeIp::with_socket_type(self.config).await
+        SomeIp::new(self.config).await
     }
 }
 
@@ -233,6 +250,6 @@ impl SomeIpBuilder {
         self,
     ) -> Result<SomeIp<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>>
     {
-        self.start_with_sockets().await
+        self.start_generic().await
     }
 }
