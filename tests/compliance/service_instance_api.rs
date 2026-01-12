@@ -607,7 +607,7 @@ fn test_notify_requires_announced_state() {
                 .await
                 .unwrap();
 
-            // service.notify(...) should NOT compile - method only exists on Announced
+            // service.event(EventId::new(0x8001).unwrap()).eventgroup(...) should NOT compile - method only exists on Announced
             // This is enforced by the type system
 
             let announced = service.announce().await.unwrap();
@@ -617,11 +617,11 @@ fn test_notify_requires_announced_state() {
 
             // notify() IS available on Announced
             announced
-                .notify(
-                    EventgroupId::new(0x0001).unwrap(),
-                    EventId::new(0x8001).unwrap(),
-                    b"brake_event",
-                )
+                .event(EventId::new(0x8001).unwrap())
+                .eventgroup(EventgroupId::new(0x0001).unwrap())
+                .create()
+                .unwrap()
+                .notify(b"brake_event")
                 .await
                 .unwrap();
 
@@ -877,7 +877,7 @@ fn test_graceful_shutdown_drains_requests() {
             {
                 // Handle remaining requests
                 match event {
-                    someip_runtime::handle::ServiceEvent::Call { responder, .. } => {
+                    recentip::handle::ServiceEvent::Call { responder, .. } => {
                         responder.reply(b"response").await.unwrap();
                     }
                     _ => {}
@@ -904,7 +904,7 @@ fn test_graceful_shutdown_drains_requests() {
 
             // Make a call that should succeed even during shutdown
             let response = available
-                .call(someip_runtime::MethodId::new(0x0001).unwrap(), b"request")
+                .call(recentip::MethodId::new(0x0001).unwrap(), b"request")
                 .await;
 
             assert!(
@@ -1447,7 +1447,7 @@ fn test_rpc_in_bound_state() {
 
             // RPC should work even though server never announced
             let response = proxy
-                .call(someip_runtime::MethodId::new(0x0001).unwrap(), b"request")
+                .call(recentip::MethodId::new(0x0001).unwrap(), b"request")
                 .await
                 .unwrap();
 
@@ -1508,12 +1508,7 @@ fn test_notify_no_subscribers_succeeds() {
             let announced = service.announce().await.unwrap();
 
             // No subscribers yet, but notify should succeed (no-op)
-            let result = announced
-                .notify(
-                    EventgroupId::new(0x0001).unwrap(),
-                    EventId::new(0x8001).unwrap(),
-                    b"event_data",
-                )
+            let result = announced.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(0x0001).unwrap()).create().unwrap().notify(b"event_data",)
                 .await;
 
             assert!(
@@ -2145,11 +2140,7 @@ fn test_concurrent_notify() {
             // Multiple sequential notifies (avoiding lifetime issues with concurrent)
             for i in 0..10 {
                 let payload = format!("event_{}", i);
-                let result = announced
-                    .notify(
-                        EventgroupId::new(0x0001).unwrap(),
-                        EventId::new(0x8001).unwrap(),
-                        payload.as_bytes(),
+                let result = announced.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(0x0001).unwrap()).create().unwrap().notify(payload.as_bytes(),
                     )
                     .await;
                 assert!(result.is_ok(), "Notify {} should succeed", i);
@@ -2253,12 +2244,7 @@ fn test_notify_survives_subscriber_disconnect() {
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Notify after subscriber left - should not panic
-            let result = announced
-                .notify(
-                    EventgroupId::new(0x0001).unwrap(),
-                    EventId::new(0x8001).unwrap(),
-                    b"event_after_disconnect",
-                )
+            let result = announced.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(0x0001).unwrap()).create().unwrap().notify(b"event_after_disconnect",)
                 .await;
 
             // Should succeed (maybe delivered to nobody, but no error)
@@ -2365,12 +2351,7 @@ fn test_max_udp_payload_notify() {
             // Use maximum UDP-safe payload size
             let large_payload = vec![0xABu8; MAX_UDP_PAYLOAD];
 
-            let result = announced
-                .notify(
-                    EventgroupId::new(0x0001).unwrap(),
-                    EventId::new(0x8001).unwrap(),
-                    &large_payload,
-                )
+            let result = announced.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(0x0001).unwrap()).create().unwrap().notify(&large_payload,)
                 .await;
 
             assert!(result.is_ok(), "Max UDP payload should succeed");
@@ -2683,12 +2664,7 @@ fn test_empty_payload_notify() {
             tokio::time::sleep(Duration::from_millis(200)).await;
 
             // Empty payload
-            let result = announced
-                .notify(
-                    EventgroupId::new(0x0001).unwrap(),
-                    EventId::new(0x8001).unwrap(),
-                    b"",
-                )
+            let result = announced.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(0x0001).unwrap()).create().unwrap().notify(b"",)
                 .await;
 
             assert!(result.is_ok(), "Empty payload should succeed");

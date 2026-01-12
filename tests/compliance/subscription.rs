@@ -66,13 +66,11 @@ fn subscribe_and_receive_events() {
             let eventgroup = EventgroupId::new(0x0001).unwrap();
             let event_id = EventId::new(0x8001).unwrap();
 
-            offering
-                .notify(eventgroup, event_id, b"event1")
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event1")
                 .await
                 .unwrap();
             tokio::time::sleep(Duration::from_millis(100)).await;
-            offering
-                .notify(eventgroup, event_id, b"event2")
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event2")
                 .await
                 .unwrap();
 
@@ -238,8 +236,7 @@ fn unsubscribe_on_drop() {
             let event_id = EventId::new(0x8001).unwrap();
 
             // Send an event - should be delivered
-            offering
-                .notify(eventgroup, event_id, b"before_unsub")
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"before_unsub")
                 .await
                 .unwrap();
 
@@ -248,7 +245,7 @@ fn unsubscribe_on_drop() {
 
             // Send another event - should NOT be delivered (client unsubscribed)
             // (We can't directly test this without packet inspection, but the flow is verified)
-            let _ = offering.notify(eventgroup, event_id, b"after_unsub").await;
+            let _ = offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"after_unsub").await;
 
             tokio::time::sleep(Duration::from_millis(200)).await;
             *flag.lock().unwrap() = true;
@@ -344,12 +341,10 @@ fn subscribe_multiple_eventgroups() {
             let event_id1 = EventId::new(0x8001).unwrap();
             let event_id2 = EventId::new(0x8002).unwrap();
 
-            offering
-                .notify(eg1, event_id1, b"group1_event")
+            offering.event(event_id1).eventgroup(eg1).create().unwrap().notify(b"group1_event")
                 .await
                 .unwrap();
-            offering
-                .notify(eg2, event_id2, b"group2_event")
+            offering.event(event_id2).eventgroup(eg2).create().unwrap().notify(b"group2_event")
                 .await
                 .unwrap();
 
@@ -488,8 +483,7 @@ fn event_id_has_high_bit() {
             // Event ID with high bit set
             let event_id = EventId::new(0x8100).unwrap();
 
-            offering
-                .notify(eventgroup, event_id, b"data")
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"data")
                 .await
                 .unwrap();
 
@@ -603,8 +597,7 @@ fn mixed_rpc_and_events() {
             // Emit event after RPC
             let eventgroup = EventgroupId::new(0x0001).unwrap();
             let event_id = EventId::new(0x8001).unwrap();
-            offering
-                .notify(eventgroup, event_id, b"post_rpc_event")
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"post_rpc_event")
                 .await
                 .unwrap();
 

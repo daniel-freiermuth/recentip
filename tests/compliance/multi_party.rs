@@ -224,8 +224,7 @@ fn multiple_clients_subscribe_to_events() {
             // Send event
             let eventgroup = EventgroupId::new(0x0001).unwrap();
             let event_id = EventId::new(0x8001).unwrap();
-            offering
-                .notify(eventgroup, event_id, b"broadcast_event")
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"broadcast_event")
                 .await
                 .unwrap();
 

@@ -283,7 +283,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     ///     // With criteria: specific instance and version
     ///     let proxy = runtime.find(MY_SERVICE_ID)
-    ///         .instance(1)
+    ///         .instance(InstanceId::Id(1))
     ///         .major_version(1)
     ///         .await?;
     ///

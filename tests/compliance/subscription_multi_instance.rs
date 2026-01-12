@@ -64,8 +64,7 @@ fn subscribe_to_multiple_instances() {
 
         for i in 0..3 {
             let event_data = format!("instance1_event{}", i);
-            offering
-                .notify(eventgroup, event_id, event_data.as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(event_data.as_bytes())
                 .await
                 .unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -99,8 +98,7 @@ fn subscribe_to_multiple_instances() {
 
         for i in 0..3 {
             let event_data = format!("instance2_event{}", i);
-            offering
-                .notify(eventgroup, event_id, event_data.as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(event_data.as_bytes())
                 .await
                 .unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;

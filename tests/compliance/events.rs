@@ -156,8 +156,7 @@ fn event_transports_value_data() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
         let sensor_data = b"temperature=42.5,humidity=65";
-        offering
-            .notify(eventgroup, event_id, sensor_data)
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(sensor_data)
             .await
             .unwrap();
 
@@ -246,7 +245,7 @@ fn events_not_sent_to_non_subscribers() {
         let event_id = EventId::new(0x8001).unwrap();
 
         for i in 0..5 {
-            offering.notify(eventgroup, event_id, &[i]).await.unwrap();
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(&[i]).await.unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
@@ -371,8 +370,7 @@ fn unsubscribe_stops_event_delivery() {
         // First event (client is subscribed)
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering
-            .notify(eventgroup, event_id, b"event_while_subscribed")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event_while_subscribed")
             .await
             .unwrap();
 
@@ -380,8 +378,7 @@ fn unsubscribe_stops_event_delivery() {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Second event (client has unsubscribed)
-        offering
-            .notify(eventgroup, event_id, b"event_after_unsub")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event_after_unsub")
             .await
             .unwrap();
 
@@ -467,8 +464,7 @@ fn event_uses_notification_message_type_on_wire() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering
-            .notify(eventgroup, event_id, b"test")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"test")
             .await
             .unwrap();
 

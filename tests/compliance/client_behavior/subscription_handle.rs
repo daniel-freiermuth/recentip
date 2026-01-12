@@ -41,11 +41,7 @@ fn test_subscribe_drop_unsubscribes_in_time() {
                 .unwrap();
 
             loop {
-                offering
-                    .notify(
-                        EventgroupId::new(1).unwrap(),
-                        EventId::new(0x8001).unwrap(),
-                        "test".as_bytes(),
+                offering.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("test".as_bytes(),
                     )
                     .await
                     .unwrap();
@@ -141,11 +137,7 @@ fn test_two_subscribers_one_drops() {
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
-                offering
-                    .notify(
-                        EventgroupId::new(1).unwrap(),
-                        EventId::new(0x8001).unwrap(),
-                        "test".as_bytes(),
+                offering.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("test".as_bytes(),
                     )
                     .await
                     .unwrap();
@@ -240,11 +232,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
             for _ in 0..10 {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
-                offering
-                    .notify(
-                        EventgroupId::new(1).unwrap(),
-                        EventId::new(0x8001).unwrap(),
-                        "test".as_bytes(),
+                offering.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("test".as_bytes(),
                     )
                     .await
                     .unwrap();
@@ -272,11 +260,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
-                offering2
-                    .notify(
-                        EventgroupId::new(1).unwrap(),
-                        EventId::new(0x8001).unwrap(),
-                        "test".as_bytes(),
+                offering2.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("test".as_bytes(),
                     )
                     .await
                     .unwrap();
@@ -369,11 +353,7 @@ fn test_two_subscribers_get_events() {
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
-                offering
-                    .notify(
-                        EventgroupId::new(1).unwrap(),
-                        EventId::new(0x8001).unwrap(),
-                        "test".as_bytes(),
+                offering.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("test".as_bytes(),
                     )
                     .await
                     .unwrap();

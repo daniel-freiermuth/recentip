@@ -501,8 +501,7 @@ fn field_notifier_sends_updated_value() {
             let updated_value = 100u32.to_be_bytes();
             let eventgroup_id = EventgroupId::new(0x01).unwrap();
             let notifier_event = EventId::new(0x8001).unwrap();
-            offering
-                .notify(eventgroup_id, notifier_event, &updated_value)
+            offering.event(notifier_event).eventgroup(eventgroup_id).create().unwrap().notify(&updated_value)
                 .await
                 .unwrap();
             *flag.lock().unwrap() = true;
@@ -646,11 +645,7 @@ fn field_combines_getter_setter_notifier() {
                                 tokio::time::sleep(Duration::from_millis(10)).await;
                                 let eventgroup_id = EventgroupId::new(0x01).unwrap();
                                 let notifier_event = EventId::new(0x8001).unwrap();
-                                offering
-                                    .notify(
-                                        eventgroup_id,
-                                        notifier_event,
-                                        &field_value.to_be_bytes(),
+                                offering.event(notifier_event).eventgroup(eventgroup_id).create().unwrap().notify(&field_value.to_be_bytes(),
                                     )
                                     .await
                                     .unwrap();

@@ -743,7 +743,7 @@ fn events_use_session_handling() {
         let event = EventId::new(0x8001).unwrap();
 
         for i in 0..3 {
-            offering.notify(eventgroup, event, &[i]).await.unwrap();
+            offering.event(event).eventgroup(eventgroup).create().unwrap().notify(&[i]).await.unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
@@ -1589,8 +1589,7 @@ fn late_server_discovery_subscribe_event() {
         // Send event
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering
-            .notify(eventgroup, event_id, b"late-event")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"late-event")
             .await
             .unwrap();
 

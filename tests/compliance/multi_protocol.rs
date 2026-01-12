@@ -298,8 +298,7 @@ fn mixed_transport_event_delivery() {
 
         for i in 0..3 {
             let tcp_payload = format!("tcp_event_{}", i);
-            tcp_offering
-                .notify(eventgroup, event_id, tcp_payload.as_bytes())
+            tcp_offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(tcp_payload.as_bytes())
                 .await
                 .unwrap();
             eprintln!("[tcp_server] Sent tcp_event_{}", i);
@@ -350,8 +349,7 @@ fn mixed_transport_event_delivery() {
 
         for i in 0..3 {
             let udp_payload = format!("udp_event_{}", i);
-            udp_offering
-                .notify(eventgroup, event_id, udp_payload.as_bytes())
+            udp_offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(udp_payload.as_bytes())
                 .await
                 .unwrap();
             eprintln!("[udp_server] Sent udp_event_{}", i);
@@ -1254,8 +1252,7 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
         tokio::time::sleep(Duration::from_millis(200)).await;
         for i in 0..3 {
             let payload = format!("udp_event_{}", i);
-            offering
-                .notify(eventgroup, event_id, payload.as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent event {}", i);
@@ -1396,8 +1393,7 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
         for i in 0..3 {
             let payload = format!("udp_event_{}", i);
             eprintln!("[server] Sending event {}", i);
-            offering
-                .notify(eventgroup, event_id, payload.as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent event {}", i);
@@ -1540,8 +1536,7 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
         tokio::time::sleep(Duration::from_millis(200)).await;
         for i in 0..3 {
             let payload = format!("tcp_event_{}", i);
-            offering
-                .notify(eventgroup, event_id, payload.as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent event {}", i);
@@ -1893,8 +1888,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
 
                 // Send events periodically once we have subscribers
                 if tcp_subscribed || udp_subscribed {
-                    offering
-                        .notify(eventgroup, event_id, b"event_data")
+                    offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event_data")
                         .await
                         .ok();
                 }

@@ -88,8 +88,7 @@ fn tcp_basic_subscribe_and_receive_events() {
 
         for i in 0..5 {
             let payload = format!("tcp_event_{}", i);
-            offering
-                .notify(eventgroup, event_id, payload.as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent: {}", payload);
@@ -191,8 +190,7 @@ fn tcp_multiple_subscribers_receive_events() {
 
         for i in 0..3 {
             let payload = format!("broadcast_{}", i);
-            offering
-                .notify(eventgroup, event_id, payload.as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Broadcast: {}", payload);
@@ -328,8 +326,7 @@ fn tcp_large_payload_events() {
         let sizes = [100, 1000, 5000, 10000, 30000];
         for size in sizes {
             let payload: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
-            offering
-                .notify(eventgroup, event_id, &payload)
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(&payload)
                 .await
                 .unwrap();
             eprintln!("[server] Sent {} byte payload", size);
@@ -436,8 +433,7 @@ fn tcp_different_eventgroups() {
 
         // Send events to eventgroup 1
         for i in 0..3 {
-            offering
-                .notify(eg1, event1, format!("eg1_{}", i).as_bytes())
+            offering.event(event1).eventgroup(eg1).create().unwrap().notify(format!("eg1_{}", i).as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent to EG1");
@@ -447,8 +443,7 @@ fn tcp_different_eventgroups() {
 
         // Send events to eventgroup 2
         for i in 0..3 {
-            offering
-                .notify(eg2, event2, format!("eg2_{}", i).as_bytes())
+            offering.event(event2).eventgroup(eg2).create().unwrap().notify(format!("eg2_{}", i).as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent to EG2");
@@ -584,8 +579,7 @@ fn dual_stack_service_client_prefers_tcp() {
 
         for i in 0..5 {
             let payload = format!("event_{}", i);
-            offering
-                .notify(eventgroup, event_id, payload.as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent: {}", payload);
@@ -673,8 +667,7 @@ fn dual_stack_service_client_prefers_udp() {
 
         for i in 0..5 {
             let payload = format!("event_{}", i);
-            offering
-                .notify(eventgroup, event_id, payload.as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent: {}", payload);
@@ -766,8 +759,7 @@ fn tcp_only_server_udp_preferring_client() {
         let event_id = EventId::new(0x8001).unwrap();
 
         for i in 0..3 {
-            offering
-                .notify(eventgroup, event_id, format!("tcp_{}", i).as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(format!("tcp_{}", i).as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent via TCP");

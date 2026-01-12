@@ -348,8 +348,7 @@ fn notification_message_type() {
 
         let event_id = EventId::new(0x8001).unwrap();
         let eventgroup = EventgroupId::new(1).unwrap();
-        offering
-            .notify(eventgroup, event_id, b"event_data")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event_data")
             .await
             .unwrap();
 
@@ -485,7 +484,7 @@ fn protocol_version_is_one() {
     covers!(feat_req_recentip_369);
 
     // Protocol version is a constant in the wire format
-    assert_eq!(someip_runtime::wire::PROTOCOL_VERSION, 0x01);
+    assert_eq!(recentip::wire::PROTOCOL_VERSION, 0x01);
 }
 
 /// Return code in successful response is E_OK

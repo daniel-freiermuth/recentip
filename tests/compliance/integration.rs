@@ -266,8 +266,7 @@ fn notification_delivery() {
         // Send notification
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering
-            .notify(eventgroup, event_id, b"event_data")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event_data")
             .await
             .unwrap();
 

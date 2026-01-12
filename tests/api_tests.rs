@@ -429,8 +429,7 @@ fn library_auto_renews_subscription() {
 
         let mut i = 0;
         loop {
-            offering
-                .notify(eventgroup, event_id, format!("event{}", i).as_bytes())
+            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(format!("event{}", i).as_bytes())
                 .await
                 .unwrap();
             tokio::time::sleep(Duration::from_millis(500)).await;
@@ -526,13 +525,11 @@ fn test_event_subscription() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
 
-        offering
-            .notify(eventgroup, event_id, b"event1")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event1")
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
-        offering
-            .notify(eventgroup, event_id, b"event2")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event2")
             .await
             .unwrap();
 
@@ -882,43 +879,23 @@ fn test_multiple_versions_subscribe_both_data() {
             .unwrap();
 
         loop {
-            offering1
-                .notify(
-                    EventgroupId::new(1).unwrap(),
-                    EventId::new(0x8001).unwrap(),
-                    "1".as_bytes(),
+            offering1.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("1".as_bytes(),
                 )
                 .await
                 .unwrap();
-            offering2
-                .notify(
-                    EventgroupId::new(1).unwrap(),
-                    EventId::new(0x8002).unwrap(),
-                    "2".as_bytes(),
+            offering2.event(EventId::new(0x8002).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("2".as_bytes(),
                 )
                 .await
                 .unwrap();
-            offering3
-                .notify(
-                    EventgroupId::new(1).unwrap(),
-                    EventId::new(0x8003).unwrap(),
-                    "3".as_bytes(),
+            offering3.event(EventId::new(0x8003).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("3".as_bytes(),
                 )
                 .await
                 .unwrap();
-            offering4
-                .notify(
-                    EventgroupId::new(1).unwrap(),
-                    EventId::new(0x8004).unwrap(),
-                    "4".as_bytes(),
+            offering4.event(EventId::new(0x8004).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("4".as_bytes(),
                 )
                 .await
                 .unwrap();
-            offering5
-                .notify(
-                    EventgroupId::new(1).unwrap(),
-                    EventId::new(0x8005).unwrap(),
-                    "5".as_bytes(),
+            offering5.event(EventId::new(0x8005).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("5".as_bytes(),
                 )
                 .await
                 .unwrap();
@@ -1070,43 +1047,23 @@ fn test_multiple_versions_subscribed_one_dropped() {
                 .unwrap();
 
             loop {
-                offering1
-                    .notify(
-                        EventgroupId::new(1).unwrap(),
-                        EventId::new(0x8001).unwrap(),
-                        "1".as_bytes(),
+                offering1.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("1".as_bytes(),
                     )
                     .await
                     .unwrap();
-                offering2
-                    .notify(
-                        EventgroupId::new(1).unwrap(),
-                        EventId::new(0x8002).unwrap(),
-                        "2".as_bytes(),
+                offering2.event(EventId::new(0x8002).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("2".as_bytes(),
                     )
                     .await
                     .unwrap();
-                offering3
-                    .notify(
-                        EventgroupId::new(1).unwrap(),
-                        EventId::new(0x8003).unwrap(),
-                        "3".as_bytes(),
+                offering3.event(EventId::new(0x8003).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("3".as_bytes(),
                     )
                     .await
                     .unwrap();
-                offering4
-                    .notify(
-                        EventgroupId::new(1).unwrap(),
-                        EventId::new(0x8004).unwrap(),
-                        "4".as_bytes(),
+                offering4.event(EventId::new(0x8004).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("4".as_bytes(),
                     )
                     .await
                     .unwrap();
-                offering5
-                    .notify(
-                        EventgroupId::new(1).unwrap(),
-                        EventId::new(0x8005).unwrap(),
-                        "5".as_bytes(),
+                offering5.event(EventId::new(0x8005).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("5".as_bytes(),
                     )
                     .await
                     .unwrap();

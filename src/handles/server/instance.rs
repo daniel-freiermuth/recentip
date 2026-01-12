@@ -249,33 +249,20 @@ impl ServiceInstance<Announced> {
         })
     }
 
-    /// Send a notification to all subscribers (static + dynamic).
+    /// Create an event that can send notifications to subscribers.
     ///
-    /// This sends to both:
-    /// - Static subscribers registered via `add_static_subscriber()`
-    /// - Dynamic subscribers that subscribed via Service Discovery
-    pub async fn notify(
-        &self,
-        eventgroup: EventgroupId,
-        event_id: EventId,
-        payload: &[u8],
-    ) -> Result<()> {
+    /// Events declare which eventgroups they belong to via the builder.
+    /// When `notify()` is called on the returned [`EventHandle`], the
+    /// notification is sent to subscribers of all configured eventgroups.
+    pub fn event(&self, event_id: EventId) -> crate::handles::server::event::EventBuilder {
         let inner = self.inner.as_ref().expect("inner should be Some");
-
-        inner
-            .cmd_tx
-            .send(Command::Notify {
-                service_id: self.service_id,
-                instance_id: self.instance_id,
-                major_version: self.major_version,
-                eventgroup_ids: vec![eventgroup.value()],
-                event_id: event_id.value(),
-                payload: bytes::Bytes::copy_from_slice(payload),
-            })
-            .await
-            .map_err(|_| Error::RuntimeShutdown)?;
-
-        Ok(())
+        crate::handles::server::event::EventBuilder::new(
+            inner.clone(),
+            self.service_id,
+            self.instance_id,
+            self.major_version,
+            event_id,
+        )
     }
 
     /// Send a notification ONLY to static subscribers.

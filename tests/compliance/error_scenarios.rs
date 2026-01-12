@@ -66,8 +66,7 @@ fn no_error_response_for_events() {
         // Send event notification - this is one-way, no response expected
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering
-            .notify(eventgroup, event_id, b"event_data")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event_data")
             .await
             .unwrap();
 
@@ -383,7 +382,7 @@ fn server_returns_various_error_codes() {
 // ============================================================================
 
 /// Helper to parse a SOME/IP header from raw bytes
-fn parse_header_wire(data: &[u8]) -> Option<someip_runtime::wire::Header> {
+fn parse_header_wire(data: &[u8]) -> Option<recentip::wire::Header> {
     use bytes::Bytes;
     use recentip::wire::Header;
 
@@ -500,7 +499,7 @@ fn error_response_copies_request_header() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             // Found our service offer
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let recentip::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {

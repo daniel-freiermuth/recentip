@@ -523,16 +523,14 @@ fn udp_multicast_eventgroup_with_initial_events() {
 
         // Send initial event (unicast to subscriber)
         let event_id = EventId::new(0x8001).unwrap();
-        offering
-            .notify(eventgroup, event_id, b"initial value")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"initial value")
             .await
             .unwrap();
 
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         // Send subsequent event (could be multicast in full implementation)
-        offering
-            .notify(eventgroup, event_id, b"update")
+        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"update")
             .await
             .unwrap();
 
