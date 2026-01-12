@@ -21,7 +21,7 @@
 //! User calls proxy.call()
 //!        │
 //!        ▼
-//! ProxyHandle sends Command::Call
+//! OfferedService sends Command::Call
 //!        │
 //!        ▼
 //! Runtime receives command

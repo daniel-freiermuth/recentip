@@ -113,9 +113,8 @@ let runtime = Runtime::new(config).await?;
 | Type | Role | Pattern |
 |------|------|---------|
 | `Runtime` | Central coordinator, owns sockets | — |
-| `ProxyHandle` | Client proxy to remote service | — |
-| `OfferingHandle` | Server handle for offered service | — |
-| `ServiceInstance<State>` | Advanced server with bind/announce control | `Bound` → `Announced` |
+| `OfferedService` | Client proxy to remote service | — |
+| `ServiceOffering` | Server handle for offered service | — |
 | `Subscription` | Receive events from eventgroup | — |
 | `Responder` | Reply to incoming RPC request | Consumed on reply |
 
@@ -194,7 +193,7 @@ We aim for 100% coverage of the open SOME/IP 2025-12 specs.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      User Application                       │
-│   ProxyHandle          OfferingHandle         ServiceInstance│
+│   OfferedService       ServiceOffering                       │
 └──────────┬─────────────────┬─────────────────────┬──────────┘
            │ Commands        │ Commands            │ Commands
            ▼                 ▼                     ▼

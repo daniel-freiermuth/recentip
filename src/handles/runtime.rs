@@ -31,7 +31,7 @@ use tokio::sync::mpsc;
 
 use crate::config::{MethodConfig, Transport};
 use crate::error::{Error, Result};
-use crate::handles::{FindBuilder, OfferingHandle};
+use crate::handles::{FindBuilder, ServiceOffering};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::runtime::{
     event_loop::runtime_task,
@@ -78,8 +78,8 @@ pub(crate) struct RuntimeInner {
 /// # Lifecycle
 ///
 /// The runtime spawns a background task that runs until:
-/// 1. All handles ([`ProxyHandle`](crate::handle::ProxyHandle),
-///    [`OfferingHandle`](crate::handle::OfferingHandle)) are dropped
+/// 1. All handles ([`OfferedService`](crate::handle::OfferedService),
+///    [`ServiceOffering`](crate::handle::ServiceOffering)) are dropped
 /// 2. An unrecoverable error occurs
 ///
 /// When the `Runtime` is dropped, it signals shutdown and waits for cleanup.
@@ -538,7 +538,7 @@ impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a
     ///
     /// If no transports are configured, falls back to the runtime's default
     /// transport configuration for backward compatibility.
-    pub async fn start(mut self) -> Result<OfferingHandle> {
+    pub async fn start(mut self) -> Result<ServiceOffering> {
         // Fallback to runtime config if no transport specified
         if !self.config.has_transport() {
             match self.runtime.inner.config.preferred_transport {
@@ -565,7 +565,7 @@ impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a
 
         let requests_rx = response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
 
-        Ok(OfferingHandle::new(
+        Ok(ServiceOffering::new(
             Arc::clone(&self.runtime.inner),
             self.service_id,
             self.instance,

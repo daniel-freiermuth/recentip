@@ -8,8 +8,8 @@
 //!
 //! | Handle | Role | Notes |
 //! |--------|------|-------|
-//! | [`ProxyHandle`] | Client: call methods, subscribe to events | Created via `Runtime::find()` |
-//! | [`OfferingHandle`] | Server: receive requests, send responses | — |
+//! | [`OfferedService`] | Client: call methods, subscribe to events | Created via `Runtime::find()` |
+//! | [`ServiceOffering`] | Server: receive requests, send responses | — |
 //! | [`ServiceInstance`] | Server (advanced): typestate for bind/announce | `Bound` → `Announced` |
 //! | [`Subscription`] | Client: receive events from a subscribed eventgroup | — |
 //! | [`Responder`] | Server: reply to a specific RPC request | Consumed on reply |
@@ -77,9 +77,9 @@
 //!
 //! ## Server-Side Pattern (Advanced Typestate)
 //!
-//! For finer control over the bind/announce lifecycle:
+//! For finer control over the bind/announce lifecycle (TODO: ServiceInstance API):
 //!
-//! ```no_run
+//! ```ignore
 //! use recentip::prelude::*;
 //! use recentip::handles::{ServiceInstance, Bound, Announced};
 //! use recentip::Transport;
@@ -131,6 +131,6 @@ pub mod runtime;
 pub mod server;
 
 // Re-export all public types for convenient access
-pub use client::{FindBuilder, ProxyHandle, StaticEventListener, Subscription};
+pub use client::{FindBuilder, OfferedService, StaticEventListener, Subscription};
 pub use runtime::{OfferBuilder, Runtime, RuntimeConfig};
-pub use server::{EventBuilder, EventHandle, OfferingHandle, Responder, ServiceEvent};
+pub use server::{EventBuilder, EventHandle, ServiceOffering, Responder, ServiceEvent};

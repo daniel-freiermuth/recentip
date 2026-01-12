@@ -1,4 +1,4 @@
-//! `ProxyHandle` for calling methods on remote SOME/IP services
+//! `OfferedService` for calling methods on remote SOME/IP services
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -37,9 +37,9 @@ use super::Subscription;
 ///
 /// ```no_run
 /// use recentip::prelude::*;
-/// use recentip::handles::ProxyHandle;
+/// use recentip::handles::OfferedService;
 ///
-/// async fn call_method(proxy: &ProxyHandle) -> Result<()> {
+/// async fn call_method(proxy: &OfferedService) -> Result<()> {
 ///     let method_id = MethodId::new(0x0001).unwrap();
 ///     let response = proxy.call(method_id, b"request payload").await?;
 ///     if response.return_code == ReturnCode::Ok {
@@ -56,9 +56,9 @@ use super::Subscription;
 ///
 /// ```no_run
 /// use recentip::prelude::*;
-/// use recentip::handles::ProxyHandle;
+/// use recentip::handles::OfferedService;
 ///
-/// async fn subscribe_events(proxy: &ProxyHandle) -> Result<()> {
+/// async fn subscribe_events(proxy: &OfferedService) -> Result<()> {
 ///     let eventgroup = EventgroupId::new(0x0001).unwrap();
 ///     let mut sub = proxy.subscribe(eventgroup).await?;
 ///     while let Some(event) = sub.next().await {
@@ -71,13 +71,13 @@ use super::Subscription;
 ///
 /// # Cloning
 ///
-/// `ProxyHandle` is `Clone`. Clone it to share across tasks:
+/// `OfferedService` is `Clone`. Clone it to share across tasks:
 ///
 /// ```no_run
 /// use recentip::prelude::*;
-/// use recentip::handles::ProxyHandle;
+/// use recentip::handles::OfferedService;
 ///
-/// async fn clone_example(proxy: ProxyHandle) {
+/// async fn clone_example(proxy: OfferedService) {
 ///     let method = MethodId::new(0x0001).unwrap();
 ///     let proxy2 = proxy.clone();
 ///     tokio::spawn(async move {
@@ -86,7 +86,7 @@ use super::Subscription;
 /// }
 /// # fn main() {}
 /// ```
-pub struct ProxyHandle {
+pub struct OfferedService {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
     instance_id: InstanceId,
@@ -95,7 +95,7 @@ pub struct ProxyHandle {
     transport: crate::config::Transport,
 }
 
-impl Clone for ProxyHandle {
+impl Clone for OfferedService {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
@@ -108,8 +108,8 @@ impl Clone for ProxyHandle {
     }
 }
 
-impl ProxyHandle {
-    /// Create a new `ProxyHandle` (for static deployments or after discovery).
+impl OfferedService {
+    /// Create a new `OfferedService` (for static deployments or after discovery).
     pub(crate) fn new(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
@@ -157,9 +157,9 @@ impl ProxyHandle {
     /// For concurrent requests, clone the proxy handle:
     /// ```no_run
     /// use recentip::prelude::*;
-    /// use recentip::handles::ProxyHandle;
+    /// use recentip::handles::OfferedService;
     ///
-    /// async fn concurrent_calls(proxy: ProxyHandle) {
+    /// async fn concurrent_calls(proxy: OfferedService) {
     ///     let method = MethodId::new(0x0001).unwrap();
     ///     let proxy2 = proxy.clone();
     ///     tokio::spawn(async move {
@@ -256,7 +256,7 @@ impl ProxyHandle {
     }
 }
 
-impl Drop for ProxyHandle {
+impl Drop for OfferedService {
     fn drop(&mut self) {
         // Notify runtime to stop finding (best effort)
         let _ = self.inner.cmd_tx.try_send(Command::StopFind {

@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use recentip::{EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder};
+use recentip::{EventId, EventgroupId, InstanceId, OfferedService, Runtime, RuntimeConfigBuilder};
 use tracing::Instrument;
 
 type TurmoilRuntime =
@@ -388,7 +388,7 @@ fn test_two_subscribers_get_events() {
     });
 
     sim.client("client", async move {
-        async fn subscribe_and_listen(service: ProxyHandle) {
+        async fn subscribe_and_listen(service: OfferedService) {
             tracing::info!("Starting subscription flow");
             let mut subscription = service
                 .subscribe(EventgroupId::new(1).unwrap())

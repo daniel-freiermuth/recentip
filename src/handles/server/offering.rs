@@ -1,4 +1,4 @@
-//! `OfferingHandle` for server-side service offerings
+//! `ServiceOffering` for server-side service offerings
 
 use std::sync::Arc;
 
@@ -15,7 +15,7 @@ use super::{Responder, ServiceEvent};
 ///
 /// Use `runtime.offer(service_id, instance)` to create an offering.
 /// Receive requests via `next()` and send events via `notify()`.
-pub struct OfferingHandle {
+pub struct ServiceOffering {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
     instance_id: InstanceId,
@@ -23,7 +23,7 @@ pub struct OfferingHandle {
     requests: mpsc::Receiver<ServiceRequest>,
 }
 
-impl OfferingHandle {
+impl ServiceOffering {
     pub(crate) fn new(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
@@ -147,8 +147,8 @@ impl OfferingHandle {
     /// # Example
     ///
     /// ```no_run
-    /// # use someip_runtime::prelude::*;
-    /// # async fn example(offering: OfferingHandle) -> Result<()> {
+    /// # use recentip::prelude::*;
+    /// # async fn example(offering: ServiceOffering) -> Result<()> {
     /// let temperature = offering
     ///     .event(EventId::new(0x8001).unwrap())
     ///     .eventgroup(EventgroupId::new(0x0001).unwrap())
@@ -179,7 +179,7 @@ impl OfferingHandle {
     }
 }
 
-impl Drop for OfferingHandle {
+impl Drop for ServiceOffering {
     fn drop(&mut self) {
         let _ = self.inner.cmd_tx.try_send(Command::StopOffer {
             service_id: self.service_id,

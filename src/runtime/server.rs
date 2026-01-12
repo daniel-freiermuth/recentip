@@ -33,7 +33,7 @@
 //! Runtime forwards to handle_incoming_request()
 //!        │
 //!        ▼
-//! Creates ServiceRequest, sends to OfferingHandle's channel
+//! Creates ServiceRequest, sends to ServiceOffering's channel
 //!        │
 //!        ▼
 //! User processes, calls responder.reply()

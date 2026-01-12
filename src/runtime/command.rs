@@ -11,8 +11,8 @@
 //!
 //! ```text
 //! ┌─────────────────┐      Command channel      ┌─────────────────┐
-//! │   ProxyHandle   │ ──────────────────────▶ │     Runtime      │
-//! │ OfferingHandle  │  cmd_tx.send(Command)  │    Event Loop   │
+//! │ OfferedService  │ ──────────────────────▶ │     Runtime      │
+//! │ServiceOffering  │  cmd_tx.send(Command)  │    Event Loop   │
 //! └─────────────────┘                        └─────────────────┘
 //! ```
 //!

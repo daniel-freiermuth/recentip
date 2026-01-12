@@ -23,9 +23,9 @@
 //!
 //! ```no_run
 //! use recentip::prelude::*;
-//! use recentip::handle::ProxyHandle;
+//! use recentip::handle::OfferedService;
 //!
-//! async fn call_with_error_handling(proxy: &ProxyHandle) -> Result<()> {
+//! async fn call_with_error_handling(proxy: &OfferedService) -> Result<()> {
 //!     let method = MethodId::new(0x0001).unwrap();
 //!     let payload = b"request";
 //!

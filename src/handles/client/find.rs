@@ -9,7 +9,7 @@ use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::runtime::{Command, ServiceAvailability};
 use crate::{InstanceId, MajorVersion, ServiceId};
 
-use super::ProxyHandle;
+use super::OfferedService;
 
 /// Builder for finding a remote SOME/IP service.
 ///
@@ -105,7 +105,7 @@ where
     ///
     /// - [`Error::NotAvailable`] - No matching service found (all find repetitions exhausted)
     /// - [`Error::RuntimeShutdown`] - Runtime was shut down during discovery
-    pub async fn await_discovery(self) -> Result<ProxyHandle> {
+    pub async fn await_discovery(self) -> Result<OfferedService> {
         // TODO maybe oneshot channel would be better?
         let (notify_tx, mut notify_rx) = mpsc::channel(1);
 
@@ -138,7 +138,7 @@ where
             }
         };
 
-        Ok(ProxyHandle::new(
+        Ok(OfferedService::new(
             Arc::clone(self.runtime.inner()),
             self.service_id,
             InstanceId::Id(discovered_instance_id),
@@ -156,7 +156,7 @@ where
     T: TcpStream + Sync + 'a,
     L: TcpListener<Stream = T> + 'a,
 {
-    type Output = Result<ProxyHandle>;
+    type Output = Result<OfferedService>;
     type IntoFuture =
         std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
 

@@ -140,7 +140,7 @@
 //! | Module | Visibility | Responsibility |
 //! |--------|------------|----------------|
 //! | [`runtime`] | Public | Event loop executor, socket management, [`Runtime`] struct |
-//! | [`handle`] | Public | User-facing API: [`ProxyHandle`], [`OfferingHandle`], [`ServiceInstance`] |
+//! | [`handle`] | Public | User-facing API: [`OfferedService`], [`ServiceOffering`] |
 //! | [`config`] | Public | Configuration: [`RuntimeConfig`], [`Transport`], [`MethodConfig`] |
 //! | [`error`] | Public | Error types: [`Error`], [`Result`] |
 //! | [`wire`] | Public | Wire format: [`Header`](wire::Header), [`SdMessage`](wire::SdMessage), parsing |
@@ -162,7 +162,7 @@
 //! 3. **Dispatches commands** from handles to appropriate handlers
 //! 4. **Manages all I/O** through owned sockets
 //!
-//! Handles (like [`ProxyHandle`] and [`OfferingHandle`]) don't perform I/O themselves.
+//! Handles (like [`OfferedService`] and [`ServiceOffering`]) don't perform I/O themselves.
 //! They send [`Command`](command) messages to the runtime, which processes them
 //! atomically in the event loop. This design:
 //!
@@ -174,9 +174,7 @@
 //!
 //! The library uses **type-state patterns** to enforce correct usage at compile time:
 //!
-//! - [`ProxyHandle`] → returned by `find()`, ready for `.call()`, `.subscribe()`, etc.
-//! - [`ServiceInstance<Bound>`] → socket is open, but not announced via SD
-//! - [`ServiceInstance<Announced>`] → actively announced, accepting requests
+//! - [`OfferedService`] → returned by `find()`, ready for `.call()`, `.subscribe()`, etc.
 //!
 //! This prevents runtime errors like "announcing a service that hasn't bound a socket".
 //!
@@ -223,9 +221,9 @@
 //!
 //! ```no_run
 //! use recentip::prelude::*;
-//! use recentip::handle::ProxyHandle;
+//! use recentip::handle::OfferedService;
 //!
-//! async fn subscribe_example(proxy: &ProxyHandle) -> Result<()> {
+//! async fn subscribe_example(proxy: &OfferedService) -> Result<()> {
 //!     let eventgroup = EventgroupId::new(0x0001).unwrap();
 //!     let mut events = proxy.subscribe(eventgroup).await?;
 //!
@@ -242,12 +240,12 @@
 //! ```no_run
 //! use recentip::prelude::*;
 //!
-//! async fn publish_example(offering: &OfferingHandle) -> Result<()> {
+//! async fn publish_example(offering: &ServiceOffering) -> Result<()> {
 //!     // Create an event handle that belongs to eventgroup 0x0001
 //!     let temperature = offering
 //!         .event(EventId::new(0x8001).unwrap())
 //!         .eventgroup(EventgroupId::new(0x0001).unwrap())
-//!         .create()?;
+//!         .create().await?;
 //!
 //!     // Send notification to all subscribers of this event's eventgroups
 //!     temperature.notify(b"42.5").await?;
@@ -260,9 +258,9 @@
 //!
 //! ```no_run
 //! use recentip::prelude::*;
-//! use recentip::handle::ProxyHandle;
+//! use recentip::handle::OfferedService;
 //!
-//! async fn error_handling_example(proxy: &ProxyHandle) -> Result<()> {
+//! async fn error_handling_example(proxy: &OfferedService) -> Result<()> {
 //!     let method_id = MethodId::new(0x0001).unwrap();
 //!     let payload = b"request";
 //!
@@ -377,8 +375,8 @@ pub use handles::{
     EventHandle,
     // Client-side handles
     FindBuilder,
-    OfferingHandle,
-    ProxyHandle,
+    ServiceOffering,
+    OfferedService,
     Responder,
     ServiceEvent,
     StaticEventListener,
@@ -650,7 +648,7 @@ pub struct ClientInfo {
 pub mod prelude {
     pub use crate::{
         Error, Event, EventBuilder, EventHandle, EventId, EventgroupId, InstanceId, MajorVersion,
-        MethodConfig, MethodId, MinorVersion, OfferingHandle, Response, Result, ReturnCode,
+        MethodConfig, MethodId, MinorVersion, ServiceOffering, Response, Result, ReturnCode,
         Runtime, RuntimeConfig, ServiceId,
     };
 }

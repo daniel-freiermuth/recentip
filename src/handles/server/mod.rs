@@ -1,7 +1,7 @@
 //! # Server-Side Handles
 //!
 //! Handles for server-side SOME/IP operations:
-//! - [`OfferingHandle`]: Simple API for offering a service
+//! - [`ServiceOffering`]: Simple API for offering a service
 //! - [`OfferBuilder`]: Builder for configuring service offerings (in runtime module)
 //! - [`ServiceInstance`]: Advanced typestate API for bind/announce lifecycle
 //! - [`EventHandle`]: Handle to send notification events
@@ -14,5 +14,5 @@ mod offering;
 mod responder;
 
 pub use event::{EventBuilder, EventHandle};
-pub use offering::OfferingHandle;
+pub use offering::ServiceOffering;
 pub use responder::{Responder, ServiceEvent};

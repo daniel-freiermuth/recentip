@@ -1,14 +1,14 @@
 //! Event handle for server-side notifications
 //!
-//! Events are created from an [`OfferingHandle`] and know which eventgroups
+//! Events are created from a [`ServiceOffering`] and know which eventgroups
 //! they belong to. This enables a simpler `notify()` API that automatically
 //! routes to the correct subscribers.
 //!
 //! # Example
 //!
 //! ```no_run
-//! # use someip_runtime::prelude::*;
-//! # async fn example(offering: OfferingHandle) -> Result<()> {
+//! # use recentip::prelude::*;
+//! # async fn example(offering: ServiceOffering) -> Result<()> {
 //! // Create an event that belongs to eventgroup 0x0001
 //! let temperature = offering
 //!     .event(EventId::new(0x8001).unwrap())
@@ -30,7 +30,7 @@ use crate::{EventId, EventgroupId, InstanceId, ServiceId};
 
 /// Builder for creating an [`EventHandle`].
 ///
-/// Obtained via [`OfferingHandle::event()`](super::OfferingHandle::event).
+/// Obtained via [`ServiceOffering::event()`](super::ServiceOffering::event).
 pub struct EventBuilder {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
@@ -121,7 +121,7 @@ impl EventBuilder {
 /// # Example
 ///
 /// ```no_run
-/// # use someip_runtime::prelude::*;
+/// # use recentip::prelude::*;
 /// # async fn example(event: EventHandle) -> Result<()> {
 /// // Send notification to all subscribers
 /// event.notify(b"payload").await?;

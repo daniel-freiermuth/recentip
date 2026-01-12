@@ -11,5 +11,5 @@ mod proxy;
 mod subscription;
 
 pub use find::FindBuilder;
-pub use proxy::ProxyHandle;
+pub use proxy::OfferedService;
 pub use subscription::{StaticEventListener, Subscription};
