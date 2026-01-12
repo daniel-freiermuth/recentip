@@ -60,129 +60,41 @@ Create a comprehensive test suite that proves RECENT/IP spec compliance, with a 
 - [x] **3.2** Auto-generate COMPLIANCE.md ✅ `scripts/generate_compliance.py`
 - [x] **3.3** Coverage report by spec section ✅ COVERAGE_REPORT.md
 
----
-
-## Current Stats (2026-01-04)
-
-| Metric | Value |
-|--------|-------|
-| Total Tests | 210 |
-| Requirements Covered | 153 |
-| Total Requirements | 639 |
-| Overall Coverage | 23.9% |
-
-### Coverage by Specification
-
-| File | Covered | Total | Coverage |
-|------|---------|-------|----------|
-| someip-rpc.rst | 74 | 248 | 40.9% |
-| someip-sd.rst | 61 | 328 | 25.4% |
-| someip-tp.rst | 9 | 40 | 24.3% |
-| someip-ids.rst | 1 | 8 | 0.0% |
-| someip-compat.rst | 0 | 15 | 0.0% |
-
-### Ignored Tests by Reason
-
-| Reason | Count | Notes |
-|--------|-------|-------|
-| `Runtime::new not implemented` | 75 | Old sync API tests in unported modules |
-| `SOME/IP-TP not yet implemented` | 10 | Transport Protocol segmentation |
-| `fire_and_forget not yet implemented` | 2 | REQUEST_NO_RETURN message type |
-| `ERROR message type handling` | 1 | Error response propagation |
-| `turmoil timing limitation` | 1 | Late server + subscription edge case |
-| `request ID matching` | 1 | Runtime doesn't match responses by request ID |
-
-### Ported Modules (turmoil-based async tests)
-
-| Module | Tests | Status |
-|--------|-------|--------|
-| api_types | 22 | ✅ All passing |
-| integration | 8 | ✅ All passing |
-| wire_format | 14 | ✅ All passing |
-| service_discovery | 11 | ✅ All passing |
-| subscription | 6 | ✅ All passing |
-| session_handling | 16 | ✅ 14 passing, 2 ignored |
-| error_handling | 14 | ✅ All passing |
-| transport_protocol | 8 unit + 9 ignored | ✅ Unit tests passing, integration awaits TP |
-| message_types | 23 unit + 5 proptest + 2 turmoil | ✅ Passing, 3 ignored |
-
-### Unported Modules (still use old SimulatedNetwork)
-
-These modules compile but all their integration tests are ignored with
-`#[ignore = "Runtime::new not implemented"]`. They need migration to turmoil:
-
-| Module | Ignored Tests |
-|--------|---------------|
-| error_scenarios | 9 |
-| events | 11 |
-| fields | 7 |
-| instances | 8 |
-| multi_party | 8 |
-| rpc_flow | 8 |
-| tcp_binding | 12 |
-| udp_binding | 8 |
-| version_handling | 4 |
-
----
-
-## API Design Decisions Made
-
-### Confirmed
-- [x] `subscribe(&self, ...)` takes reference (allows multiple eventgroup subscriptions)
-- [x] RPC calls on `ServiceProxy<Available>`, not on `Subscription`
-- [x] Session handling always enabled (mandatory per spec)
-- [x] No `initial_session_id` config (just iterate in tests)
-- [x] `ConcreteInstanceId` implements `Ord` for sorting
-
-### API Added
-- [x] `RuntimeConfig::builder().transport().magic_cookies()`
-- [x] `ServiceConfigBuilder::port()` for port sharing
-- [x] `ServiceProxy::available_instances()` for multi-instance discovery
-- [x] `AvailableInstance` struct with `instance_id()`, `service_id()`, `endpoint()`
-- [x] `SimulatedNetwork::new_multi(count)` for N-party testing
 
 ---
 
 ## Next Steps
 
-### Priority 1: Implement Missing Features
-| Feature | Ignored Tests | Notes |
-|---------|---------------|-------|
-| `fire_and_forget()` | 2 | REQUEST_NO_RETURN message type |
-| ERROR message handling | 1 | `reply_error()` → client `Err` |
-| SOME/IP-TP | 10 | Large message segmentation |
-| Request ID matching | 1 | Match responses to pending requests |
+### Priority 1: Implement SOME/IP-TP
+SOME/IP-TP is **NOT implemented**. The 9 TP tests that "pass" when running ignored tests are empty stubs - they only contain `covers!()` macros and comments. The TP header parsing utilities are tested, but the actual segmentation/reassembly in the runtime is not implemented.
 
-### Priority 2: Port Remaining Modules to Turmoil
-The 75 tests with `#[ignore = "Runtime::new not implemented"]` are in modules
-that still use the old `SimulatedNetwork` infrastructure. Port them to turmoil:
-- events.rs (11 tests)
-- tcp_binding.rs (12 tests)  
-- error_scenarios.rs (9 tests)
-- rpc_flow.rs (8 tests)
-- instances.rs (8 tests)
-- multi_party.rs (8 tests)
-- udp_binding.rs (8 tests)
-- fields.rs (7 tests)
-- version_handling.rs (4 tests)
+### Priority 2: Fix Failing Ignored Tests (3 tests)
+| Test | Status | Notes |
+|------|--------|-------|
+| multi_protocol::preferred_transport_respected_for_pubsub_when_both_available | ❌ Fail | Transport preference for pub/sub |
+| server_behavior::subscription_nack::subscribe_to_unknown_eventgroup_should_nack | ❌ Fail | NACK for unknown eventgroups |
+| real_network::udp_events_real_network | ❌ Fail | Real network event delivery |
+
+### Other Ignored Tests (11 tests, all pass but some are stubs)
+| Test | Notes |
+|------|-------|
+| transport_protocol::tp_* (9 tests) | Empty stubs awaiting TP implementation |
+| session_handling::session_id_wraps_to_0001_not_0000 | Works, but takes 256s to run |
 
 ---
 
 ## Future Considerations
 
-### ServiceConfig Builder Pattern
-The old sync API had a `ServiceConfig::builder()` pattern for configuring service offerings:
-```rust
-let config = ServiceConfig::builder()
-    .service(service_id)
-    .instance(instance_id)
-    .eventgroup(eventgroup_id)
-    .build()?;
-```
+### Conditional Subscription Acceptance
+Currently subscriptions are auto-accepted for any offered service. To support:
+- Resource limits (max subscribers per eventgroup)
+- Security checks (client credentials validation)
+- Business logic (eventgroup availability conditions)
 
-The current async API uses the `Service` trait + `runtime.offer::<S>(instance_id)` pattern instead.
-Consider whether we need a runtime config for:
-- Per-service eventgroup definitions
-- Port configuration for port sharing
-- TTL and timing parameters
-- Method/event routing configuration
+Would need:
+1. Add responder handle to `ServiceEvent::Subscribe`
+2. Defer ACK/NACK until application responds (with timeout)
+3. Use `subscribe_eventgroup_nack()` for rejections
+
+Low priority - most SOME/IP deployments auto-accept. Mainly needed for vsomeip compatibility
+in security-sensitive environments.
