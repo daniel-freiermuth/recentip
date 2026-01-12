@@ -13,7 +13,7 @@
 //! The turmoil-based tests (run with `--features turmoil`) provide comprehensive
 //! network testing with simulated separate hosts.
 
-use someip_runtime::{
+use recentip::{
     EventId, EventgroupId, InstanceId, MethodId, Runtime, RuntimeConfig, ServiceEvent, Transport,
 };
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};

@@ -9,9 +9,9 @@
 //! - feat_req_recentip_634: Setter is request/response with value as request payload
 //! - feat_req_recentip_635: Notifier sends notification event with updated value
 
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::Runtime;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 

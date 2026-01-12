@@ -22,8 +22,8 @@
 //! ## Usage Pattern
 //!
 //! ```no_run
-//! use someip_runtime::prelude::*;
-//! use someip_runtime::handle::ProxyHandle;
+//! use recentip::prelude::*;
+//! use recentip::handle::ProxyHandle;
 //!
 //! async fn call_with_error_handling(proxy: &ProxyHandle) -> Result<()> {
 //!     let method = MethodId::new(0x0001).unwrap();

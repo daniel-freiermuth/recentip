@@ -17,7 +17,7 @@
 //! ## Client-Side Pattern
 //!
 //! ```no_run
-//! use someip_runtime::prelude::*;
+//! use recentip::prelude::*;
 //!
 //! const MY_SERVICE_ID: u16 = 0x1234;
 //!
@@ -45,8 +45,8 @@
 //! ## Server-Side Pattern (Simple)
 //!
 //! ```no_run
-//! use someip_runtime::prelude::*;
-//! use someip_runtime::handles::ServiceEvent;
+//! use recentip::prelude::*;
+//! use recentip::handles::ServiceEvent;
 //!
 //! const MY_SERVICE_ID: u16 = 0x1234;
 //!
@@ -80,9 +80,9 @@
 //! For finer control over the bind/announce lifecycle:
 //!
 //! ```no_run
-//! use someip_runtime::prelude::*;
-//! use someip_runtime::handles::{ServiceInstance, Bound, Announced};
-//! use someip_runtime::Transport;
+//! use recentip::prelude::*;
+//! use recentip::handles::{ServiceInstance, Bound, Announced};
+//! use recentip::Transport;
 //!
 //! const MY_SERVICE_ID: u16 = 0x1234;
 //!

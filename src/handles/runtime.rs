@@ -89,7 +89,7 @@ pub(crate) struct RuntimeInner {
 /// to ensure all pending RPC responses are sent:
 ///
 /// ```no_run
-/// # use someip_runtime::prelude::*;
+/// # use recentip::prelude::*;
 /// # async fn example(runtime: Runtime) {
 /// // Process requests...
 /// runtime.shutdown().await;  // Ensures all pending responses are sent
@@ -103,7 +103,7 @@ pub(crate) struct RuntimeInner {
 /// the default tokio types are used:
 ///
 /// ```no_run
-/// use someip_runtime::prelude::*;
+/// use recentip::prelude::*;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<()> {
@@ -270,7 +270,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// # Example
     ///
     /// ```no_run
-    /// use someip_runtime::prelude::*;
+    /// use recentip::prelude::*;
     ///
     /// const MY_SERVICE_ID: u16 = 0x1234;
     ///
@@ -307,7 +307,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// # Example
     /// ```no_run
-    /// use someip_runtime::prelude::*;
+    /// use recentip::prelude::*;
     ///
     /// const MY_SERVICE_ID: u16 = 0x1234;
     ///
@@ -358,8 +358,8 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// # Example
     /// ```no_run
-    /// use someip_runtime::prelude::*;
-    /// use someip_runtime::Transport;
+    /// use recentip::prelude::*;
+    /// use recentip::Transport;
     ///
     /// const MY_SERVICE_ID: u16 = 0x1234;
     ///
@@ -450,8 +450,8 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// # Example
     /// ```no_run
-    /// use someip_runtime::prelude::*;
-    /// use someip_runtime::Transport;
+    /// use recentip::prelude::*;
+    /// use recentip::Transport;
     ///
     /// const MY_SERVICE_ID: u16 = 0x1234;
     /// const MY_SERVICE_MAJOR: u8 = 1;
@@ -504,7 +504,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// # Example
     /// ```no_run
-    /// use someip_runtime::prelude::*;
+    /// use recentip::prelude::*;
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
@@ -569,8 +569,8 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// # Example
     /// ```no_run
-    /// use someip_runtime::prelude::*;
-    /// use someip_runtime::handle::ServiceEvent;
+    /// use recentip::prelude::*;
+    /// use recentip::handle::ServiceEvent;
     ///
     /// const MY_SERVICE_ID: u16 = 0x1234;
     ///
@@ -618,7 +618,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// # Examples
     ///
     /// ```no_run
-    /// # use someip_runtime::{Runtime, SdEvent};
+    /// # use recentip::{Runtime, SdEvent};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let runtime = Runtime::new(Default::default()).await?;
     /// let mut sd_events = runtime.monitor_sd().await?;
@@ -667,7 +667,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 ///
 /// # Example
 /// ```no_run
-/// use someip_runtime::prelude::*;
+/// use recentip::prelude::*;
 ///
 /// const MY_SERVICE_ID: u16 = 0x1234;
 ///

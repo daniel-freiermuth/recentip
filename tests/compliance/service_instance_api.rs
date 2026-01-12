@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 // Import only from the public API
-use someip_runtime::{
+use recentip::{
     handle::ServiceEvent, EventId, EventgroupId, InstanceId, MethodId, Runtime, RuntimeConfig,
     ServiceId, Transport,
 };
@@ -1413,7 +1413,7 @@ fn test_rpc_in_bound_state() {
                 .flatten()
             {
                 match event {
-                    someip_runtime::handle::ServiceEvent::Call { responder, .. } => {
+                    recentip::handle::ServiceEvent::Call { responder, .. } => {
                         responder.reply(b"static_response").await.unwrap();
                     }
                     _ => {}
@@ -2448,8 +2448,8 @@ fn test_large_tcp_rpc_payload() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = someip_runtime::RuntimeConfig {
-                preferred_transport: someip_runtime::Transport::Tcp,
+            let config = recentip::RuntimeConfig {
+                preferred_transport: recentip::Transport::Tcp,
                 ..Default::default()
             };
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -2485,8 +2485,8 @@ fn test_large_tcp_rpc_payload() {
         async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
-            let config = someip_runtime::RuntimeConfig {
-                preferred_transport: someip_runtime::Transport::Tcp,
+            let config = recentip::RuntimeConfig {
+                preferred_transport: recentip::Transport::Tcp,
                 ..Default::default()
             };
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -2555,8 +2555,8 @@ fn test_response_after_offering_dropped() {
     sim.host("server", move || {
         let flag = server_ran_clone.clone();
         async move {
-            let config = someip_runtime::RuntimeConfig {
-                preferred_transport: someip_runtime::Transport::Tcp,
+            let config = recentip::RuntimeConfig {
+                preferred_transport: recentip::Transport::Tcp,
                 ..Default::default()
             };
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -2595,8 +2595,8 @@ fn test_response_after_offering_dropped() {
         async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
-            let config = someip_runtime::RuntimeConfig {
-                preferred_transport: someip_runtime::Transport::Tcp,
+            let config = recentip::RuntimeConfig {
+                preferred_transport: recentip::Transport::Tcp,
                 ..Default::default()
             };
             let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
@@ -2854,7 +2854,7 @@ fn test_next_in_bound_state() {
                 .flatten()
             {
                 match event {
-                    someip_runtime::handle::ServiceEvent::Call { responder, .. } => {
+                    recentip::handle::ServiceEvent::Call { responder, .. } => {
                         responder.reply(b"bound_response").await.unwrap();
                     }
                     _ => {}
@@ -2887,7 +2887,7 @@ fn test_next_in_bound_state() {
             );
 
             let response = proxy
-                .call(someip_runtime::MethodId::new(0x0001).unwrap(), b"request")
+                .call(recentip::MethodId::new(0x0001).unwrap(), b"request")
                 .await
                 .unwrap();
 
@@ -2953,7 +2953,7 @@ fn test_next_in_announced_state() {
                     .flatten()
             {
                 match event {
-                    someip_runtime::handle::ServiceEvent::Call { responder, .. } => {
+                    recentip::handle::ServiceEvent::Call { responder, .. } => {
                         responder.reply(b"announced_response").await.unwrap();
                     }
                     _ => {}
@@ -2979,7 +2979,7 @@ fn test_next_in_announced_state() {
             let available = proxy.await.unwrap();
 
             let response = available
-                .call(someip_runtime::MethodId::new(0x0001).unwrap(), b"request")
+                .call(recentip::MethodId::new(0x0001).unwrap(), b"request")
                 .await
                 .unwrap();
 
@@ -3050,10 +3050,10 @@ fn test_subscription_events_received() {
                 .flatten()
             {
                 match event {
-                    someip_runtime::handle::ServiceEvent::Subscribe { .. } => {
+                    recentip::handle::ServiceEvent::Subscribe { .. } => {
                         subscribe_count += 1;
                     }
-                    someip_runtime::handle::ServiceEvent::Unsubscribe { .. } => {
+                    recentip::handle::ServiceEvent::Unsubscribe { .. } => {
                         unsubscribe_count += 1;
                     }
                     _ => {}

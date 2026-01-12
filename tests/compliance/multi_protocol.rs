@@ -27,10 +27,10 @@
 //!
 //! Run with: cargo test --features turmoil --test compliance multi_protocol
 
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
-use someip_runtime::Transport;
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::Runtime;
+use recentip::Transport;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

@@ -17,8 +17,8 @@ use super::helpers::{
     build_response, build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers,
     parse_header, parse_sd_message, TEST_SERVICE_ID,
 };
-use someip_runtime::prelude::*;
-use someip_runtime::{Runtime, RuntimeConfig};
+use recentip::prelude::*;
+use recentip::{Runtime, RuntimeConfig};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -343,7 +343,7 @@ fn tcp_connection_established_before_subscribe_767() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let config = RuntimeConfig::builder()
-            .preferred_transport(someip_runtime::Transport::Tcp)
+            .preferred_transport(recentip::Transport::Tcp)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: Runtime<

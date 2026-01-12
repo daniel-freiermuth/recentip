@@ -7,9 +7,9 @@
 //! For most applications, the defaults work out of the box:
 //!
 //! ```no_run
-//! use someip_runtime::{Runtime, RuntimeConfig};
+//! use recentip::{Runtime, RuntimeConfig};
 //!
-//! # async fn example() -> someip_runtime::Result<()> {
+//! # async fn example() -> recentip::Result<()> {
 //! let config = RuntimeConfig::default();
 //! let runtime = Runtime::new(config).await?;
 //! # Ok(())
@@ -21,7 +21,7 @@
 //! For custom configurations, use the builder:
 //!
 //! ```
-//! use someip_runtime::{RuntimeConfig, Transport};
+//! use recentip::{RuntimeConfig, Transport};
 //! use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
 //!
 //! let config = RuntimeConfig::builder()
@@ -65,7 +65,7 @@
 //! - Should be reachable by remote peers
 //!
 //! ```no_run
-//! use someip_runtime::RuntimeConfig;
+//! use recentip::RuntimeConfig;
 //! use std::net::Ipv4Addr;
 //!
 //! // Real network example
@@ -269,7 +269,7 @@ impl RuntimeConfigBuilder {
     /// 
     /// Example:
     /// ```no_run
-    /// use someip_runtime::prelude::*;
+    /// use recentip::prelude::*;
     /// use std::net::{SocketAddr, Ipv4Addr, SocketAddrV4};
     ///
     /// let config = RuntimeConfig::builder()
@@ -297,7 +297,7 @@ impl RuntimeConfigBuilder {
     ///
     /// # Example
     /// ```no_run
-    /// use someip_runtime::prelude::*;
+    /// use recentip::prelude::*;
     /// use std::net::Ipv4Addr;
     ///
     /// let config = RuntimeConfig::builder()
@@ -474,7 +474,7 @@ impl MethodConfig {
 ///
 /// # Example
 /// ```
-/// use someip_runtime::config::OfferConfig;
+/// use recentip::config::OfferConfig;
 ///
 /// // Offer on both TCP and UDP with custom ports
 /// let config = OfferConfig::new()

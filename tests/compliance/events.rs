@@ -11,9 +11,9 @@
 //! event delivery semantics and edge cases.
 
 use bytes::Bytes;
-use someip_runtime::prelude::*;
-use someip_runtime::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
-use someip_runtime::Runtime;
+use recentip::prelude::*;
+use recentip::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
+use recentip::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -278,7 +278,7 @@ fn events_not_sent_to_non_subscribers() {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
                                     addr,
                                     port,
                                     ..

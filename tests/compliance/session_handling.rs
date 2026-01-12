@@ -10,9 +10,9 @@
 //! - feat_req_recentip_677: Session ID wraps from 0xFFFF to 0x0001
 //! - feat_req_recentip_711: Server copies Request ID from request to response
 
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::Runtime;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers

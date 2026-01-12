@@ -11,9 +11,9 @@
 //! - Client must propagate NACK as an error to the caller
 
 use super::helpers::{build_sd_offer, build_sd_subscribe_ack, covers, parse_sd_message};
-use someip_runtime::prelude::*;
-use someip_runtime::wire::{L4Protocol, SdOption};
-use someip_runtime::{Runtime, RuntimeConfig};
+use recentip::prelude::*;
+use recentip::wire::{L4Protocol, SdOption};
+use recentip::{Runtime, RuntimeConfig};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -57,7 +57,7 @@ fn build_event_notification(
 
 /// Extract the first IPv4 UDP endpoint from an SD entry's options
 fn extract_client_udp_endpoint(
-    entry: &someip_runtime::wire::SdEntry,
+    entry: &recentip::wire::SdEntry,
     options: &[SdOption],
 ) -> Option<(Ipv4Addr, u16)> {
     // Calculate the option indices for this entry

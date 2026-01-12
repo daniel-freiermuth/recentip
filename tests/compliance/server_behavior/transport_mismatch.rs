@@ -15,8 +15,8 @@ use super::helpers::{
     build_sd_subscribe_with_tcp_endpoint, build_sd_subscribe_with_udp_endpoint, covers,
     parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION,
 };
-use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
+use recentip::prelude::*;
+use recentip::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 

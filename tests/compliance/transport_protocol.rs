@@ -21,9 +21,9 @@
 
 use std::time::Duration;
 
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::Runtime;
 
 #[cfg(feature = "turmoil")]
 type TurmoilRuntime =

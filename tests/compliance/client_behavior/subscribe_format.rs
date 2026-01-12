@@ -15,8 +15,8 @@ use super::helpers::{
     build_sd_offer, build_sd_offer_dual_stack, build_sd_offer_tcp_only, build_sd_subscribe_ack,
     covers, parse_sd_message, TEST_SERVICE_ID,
 };
-use someip_runtime::prelude::*;
-use someip_runtime::{Runtime, RuntimeConfig};
+use recentip::prelude::*;
+use recentip::{Runtime, RuntimeConfig};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -280,7 +280,7 @@ fn subscribe_format_tcp_only_cyclic_offers() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let config = RuntimeConfig::builder()
-            .preferred_transport(someip_runtime::Transport::Tcp)
+            .preferred_transport(recentip::Transport::Tcp)
             .subscribe_ttl(5)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
@@ -409,7 +409,7 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
 
         // Default config prefers UDP
         let config = RuntimeConfig::builder()
-            .preferred_transport(someip_runtime::Transport::Udp)
+            .preferred_transport(recentip::Transport::Udp)
             .subscribe_ttl(5)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
@@ -547,7 +547,7 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let config = RuntimeConfig::builder()
-            .preferred_transport(someip_runtime::Transport::Tcp)
+            .preferred_transport(recentip::Transport::Tcp)
             .subscribe_ttl(5)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
@@ -680,7 +680,7 @@ fn subscribe_format_client_adapts_to_available_transport() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let config = RuntimeConfig::builder()
-            .preferred_transport(someip_runtime::Transport::Tcp) // Prefers TCP!
+            .preferred_transport(recentip::Transport::Tcp) // Prefers TCP!
             .subscribe_ttl(5)
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
@@ -702,7 +702,7 @@ fn subscribe_format_client_adapts_to_available_transport() {
         // Verify the proxy detected UDP transport despite TCP preference
         assert_eq!(
             proxy.transport(),
-            someip_runtime::Transport::Udp,
+            recentip::Transport::Udp,
             "Proxy should use UDP transport when that's all that's offered"
         );
 

@@ -33,7 +33,7 @@
 //! ### Minimal Client
 //!
 //! ```no_run
-//! use someip_runtime::prelude::*;
+//! use recentip::prelude::*;
 //!
 //! const BRAKE_SERVICE_ID: u16 = 0x1234;
 //!
@@ -57,8 +57,8 @@
 //! ### Minimal Server
 //!
 //! ```no_run
-//! use someip_runtime::prelude::*;
-//! use someip_runtime::handle::ServiceEvent;
+//! use recentip::prelude::*;
+//! use recentip::handle::ServiceEvent;
 //!
 //! const BRAKE_SERVICE_ID: u16 = 0x1234;
 //!
@@ -207,7 +207,7 @@
 //! ## Configure Transport (UDP vs TCP)
 //!
 //! ```
-//! use someip_runtime::{RuntimeConfig, Transport};
+//! use recentip::{RuntimeConfig, Transport};
 //!
 //! // Default: UDP
 //! let config = RuntimeConfig::default();
@@ -222,8 +222,8 @@
 //! ## Subscribe to Events
 //!
 //! ```no_run
-//! use someip_runtime::prelude::*;
-//! use someip_runtime::handle::ProxyHandle;
+//! use recentip::prelude::*;
+//! use recentip::handle::ProxyHandle;
 //!
 //! async fn subscribe_example(proxy: &ProxyHandle) -> Result<()> {
 //!     let eventgroup = EventgroupId::new(0x0001).unwrap();
@@ -240,8 +240,8 @@
 //! ## Publish Events (Server-Side)
 //!
 //! ```no_run
-//! use someip_runtime::prelude::*;
-//! use someip_runtime::handle::OfferingHandle;
+//! use recentip::prelude::*;
+//! use recentip::handle::OfferingHandle;
 //!
 //! async fn publish_example(offering: &OfferingHandle) -> Result<()> {
 //!     let eventgroup = EventgroupId::new(0x0001).unwrap();
@@ -257,8 +257,8 @@
 //! ## Handle Errors Gracefully
 //!
 //! ```no_run
-//! use someip_runtime::prelude::*;
-//! use someip_runtime::handle::ProxyHandle;
+//! use recentip::prelude::*;
+//! use recentip::handle::ProxyHandle;
 //!
 //! async fn error_handling_example(proxy: &ProxyHandle) -> Result<()> {
 //!     let method_id = MethodId::new(0x0001).unwrap();

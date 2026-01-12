@@ -8,9 +8,9 @@
 //! - feat_req_recentip_804: Event delivery to multiple subscribers
 //! - feat_req_recentipsd_109: SD multicast reaches all participants
 
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::Runtime;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 

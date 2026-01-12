@@ -24,7 +24,7 @@
 //! The [`Runtime`](crate::Runtime) is generic over socket types:
 //!
 //! ```no_run
-//! use someip_runtime::prelude::*;
+//! use recentip::prelude::*;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {

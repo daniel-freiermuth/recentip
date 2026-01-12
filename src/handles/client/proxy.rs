@@ -19,7 +19,7 @@ use super::Subscription;
 /// Use [`Runtime::find`](crate::Runtime::find) to find and connect to a service:
 ///
 /// ```no_run
-/// use someip_runtime::prelude::*;
+/// use recentip::prelude::*;
 ///
 /// const MY_SERVICE_ID: u16 = 0x1234;
 ///
@@ -36,8 +36,8 @@ use super::Subscription;
 /// Call methods with `.call()`:
 ///
 /// ```no_run
-/// use someip_runtime::prelude::*;
-/// use someip_runtime::handles::ProxyHandle;
+/// use recentip::prelude::*;
+/// use recentip::handles::ProxyHandle;
 ///
 /// async fn call_method(proxy: &ProxyHandle) -> Result<()> {
 ///     let method_id = MethodId::new(0x0001).unwrap();
@@ -55,8 +55,8 @@ use super::Subscription;
 /// Subscribe to eventgroups to receive events:
 ///
 /// ```no_run
-/// use someip_runtime::prelude::*;
-/// use someip_runtime::handles::ProxyHandle;
+/// use recentip::prelude::*;
+/// use recentip::handles::ProxyHandle;
 ///
 /// async fn subscribe_events(proxy: &ProxyHandle) -> Result<()> {
 ///     let eventgroup = EventgroupId::new(0x0001).unwrap();
@@ -74,8 +74,8 @@ use super::Subscription;
 /// `ProxyHandle` is `Clone`. Clone it to share across tasks:
 ///
 /// ```no_run
-/// use someip_runtime::prelude::*;
-/// use someip_runtime::handles::ProxyHandle;
+/// use recentip::prelude::*;
+/// use recentip::handles::ProxyHandle;
 ///
 /// async fn clone_example(proxy: ProxyHandle) {
 ///     let method = MethodId::new(0x0001).unwrap();
@@ -156,8 +156,8 @@ impl ProxyHandle {
     ///
     /// For concurrent requests, clone the proxy handle:
     /// ```no_run
-    /// use someip_runtime::prelude::*;
-    /// use someip_runtime::handles::ProxyHandle;
+    /// use recentip::prelude::*;
+    /// use recentip::handles::ProxyHandle;
     ///
     /// async fn concurrent_calls(proxy: ProxyHandle) {
     ///     let method = MethodId::new(0x0001).unwrap();

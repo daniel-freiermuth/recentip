@@ -52,7 +52,7 @@
 //! doesn't need to interact with wire formats directly.
 //!
 //! ```
-//! use someip_runtime::wire::{Header, MessageType};
+//! use recentip::wire::{Header, MessageType};
 //! use bytes::{Buf, BytesMut, BufMut};
 //!
 //! // Build a header

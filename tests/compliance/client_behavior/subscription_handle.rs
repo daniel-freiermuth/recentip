@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use someip_runtime::{
+use recentip::{
     EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder,
 };
 use tracing::Instrument;
@@ -55,7 +55,7 @@ fn test_subscribe_drop_unsubscribes_in_time() {
                     if let Ok(Some(event)) = tokio::time::timeout(remaining, offering.next()).await
                     {
                         match event {
-                            someip_runtime::ServiceEvent::Unsubscribe { .. } => {
+                            recentip::ServiceEvent::Unsubscribe { .. } => {
                                 received_unsub
                                     .lock()
                                     .unwrap()
@@ -151,7 +151,7 @@ fn test_two_subscribers_one_drops() {
                     .unwrap();
                 if let Some(event) = offering.next().await {
                     match event {
-                        someip_runtime::ServiceEvent::Unsubscribe { .. } => {
+                        recentip::ServiceEvent::Unsubscribe { .. } => {
                             tracing::info!("Server: Received unsubscribe");
                         }
                         _ => {}
@@ -250,7 +250,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
                     .unwrap();
                 if let Some(event) = offering.next().await {
                     match event {
-                        someip_runtime::ServiceEvent::Unsubscribe { .. } => {
+                        recentip::ServiceEvent::Unsubscribe { .. } => {
                             tracing::info!("Server: Received unsubscribe");
                         }
                         _ => {}
@@ -282,7 +282,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
                     .unwrap();
                 if let Some(event) = offering2.next().await {
                     match event {
-                        someip_runtime::ServiceEvent::Unsubscribe { .. } => {
+                        recentip::ServiceEvent::Unsubscribe { .. } => {
                             tracing::info!("Server: Received unsubscribe");
                         }
                         _ => {}
@@ -379,7 +379,7 @@ fn test_two_subscribers_get_events() {
                     .unwrap();
                 if let Some(event) = offering.next().await {
                     match event {
-                        someip_runtime::ServiceEvent::Unsubscribe { .. } => {
+                        recentip::ServiceEvent::Unsubscribe { .. } => {
                             tracing::info!("Server: Received unsubscribe");
                         }
                         _ => {}

@@ -12,10 +12,10 @@
 //! - feat_req_recentip_814: Clients receive via unicast and/or multicast
 
 use bytes::Bytes;
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::wire::{Header, SD_SERVICE_ID};
-use someip_runtime::{Runtime, RuntimeConfig};
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::wire::{Header, SD_SERVICE_ID};
+use recentip::{Runtime, RuntimeConfig};
 use std::net::SocketAddr;
 use std::time::Duration;
 

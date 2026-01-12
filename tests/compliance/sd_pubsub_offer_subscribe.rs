@@ -28,9 +28,9 @@
 //! Run with: cargo test --features turmoil --test compliance sd_pubsub_offer_subscribe
 
 use bytes::Bytes;
-use someip_runtime::prelude::*;
-use someip_runtime::wire::{Header, SdEntryType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
-use someip_runtime::Runtime;
+use recentip::prelude::*;
+use recentip::wire::{Header, SdEntryType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
+use recentip::Runtime;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

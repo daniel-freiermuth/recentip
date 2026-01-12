@@ -22,9 +22,9 @@
 //! 3. TCP connection handling (reconnection, cleanup)
 //! 4. Large payload handling (TCP advantage over UDP)
 
-use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
-use someip_runtime::Transport;
+use recentip::prelude::*;
+use recentip::Runtime;
+use recentip::Transport;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

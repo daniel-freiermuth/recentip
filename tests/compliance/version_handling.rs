@@ -14,13 +14,13 @@
 //! - Client/server must match major version
 
 use bytes::Bytes;
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::wire::{
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::wire::{
     Header, SdMessage, INTERFACE_VERSION_OFFSET, PROTOCOL_VERSION, PROTOCOL_VERSION_OFFSET,
     SD_METHOD_ID, SD_SERVICE_ID,
 };
-use someip_runtime::Runtime;
+use recentip::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -301,7 +301,7 @@ fn server_ignores_wrong_protocol_version() {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
                                     addr,
                                     port,
                                     ..
@@ -569,7 +569,7 @@ fn response_preserves_interface_version() {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
                                     addr,
                                     port,
                                     ..

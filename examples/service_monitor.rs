@@ -52,7 +52,7 @@
 //! ```
 
 use clap::Parser;
-use someip_runtime::{Runtime, RuntimeConfig, SdEvent};
+use recentip::{Runtime, RuntimeConfig, SdEvent};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 /// SOME/IP Service Discovery Monitor

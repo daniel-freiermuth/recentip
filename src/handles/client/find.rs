@@ -28,7 +28,7 @@ use super::ProxyHandle;
 /// # Example
 ///
 /// ```no_run
-/// use someip_runtime::prelude::*;
+/// use recentip::prelude::*;
 ///
 /// const BRAKE_SERVICE_ID: u16 = 0x1234;
 ///

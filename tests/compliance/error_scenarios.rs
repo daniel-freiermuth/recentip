@@ -10,9 +10,9 @@
 //! - feat_req_recentip_798: Messages with length < 8 shall be ignored (wire format test)
 //! - feat_req_recentip_703: Use known protocol version (wire format test)
 
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::Runtime;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -385,7 +385,7 @@ fn server_returns_various_error_codes() {
 /// Helper to parse a SOME/IP header from raw bytes
 fn parse_header_wire(data: &[u8]) -> Option<someip_runtime::wire::Header> {
     use bytes::Bytes;
-    use someip_runtime::wire::Header;
+    use recentip::wire::Header;
 
     if data.len() < Header::SIZE {
         return None;
@@ -397,11 +397,11 @@ fn parse_header_wire(data: &[u8]) -> Option<someip_runtime::wire::Header> {
 fn parse_sd_message(
     data: &[u8],
 ) -> Option<(
-    someip_runtime::wire::Header,
-    someip_runtime::wire::SdMessage,
+    recentip::wire::Header,
+    recentip::wire::SdMessage,
 )> {
     use bytes::Bytes;
-    use someip_runtime::wire::{Header, SdMessage};
+    use recentip::wire::{Header, SdMessage};
 
     const SD_SERVICE_ID: u16 = 0xFFFF;
     const SD_METHOD_ID: u16 = 0x8100;
@@ -426,10 +426,10 @@ fn parse_sd_message(
 #[test_log::test]
 fn error_response_copies_request_header() {
     use bytes::{BufMut, BytesMut};
-    use someip_runtime::handle::ServiceEvent;
-    use someip_runtime::prelude::*;
-    use someip_runtime::wire::MessageType;
-    use someip_runtime::{Runtime, RuntimeConfig};
+    use recentip::handle::ServiceEvent;
+    use recentip::prelude::*;
+    use recentip::wire::MessageType;
+    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -604,10 +604,10 @@ fn error_response_copies_request_header() {
 #[test_log::test]
 fn exception_message_type_when_configured() {
     use bytes::{BufMut, BytesMut};
-    use someip_runtime::handle::ServiceEvent;
-    use someip_runtime::prelude::*;
-    use someip_runtime::wire::MessageType;
-    use someip_runtime::{Runtime, RuntimeConfig};
+    use recentip::handle::ServiceEvent;
+    use recentip::prelude::*;
+    use recentip::wire::MessageType;
+    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -680,7 +680,7 @@ fn exception_message_type_when_configured() {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
+                                if let recentip::wire::SdOption::Ipv4Endpoint { addr, port, .. } = opt {
                                     let ip = if addr.is_unspecified() {
                                         from.ip()
                                     } else {
@@ -755,10 +755,10 @@ fn exception_message_type_when_configured() {
 #[test_log::test]
 fn mixed_exception_config_per_method() {
     use bytes::{BufMut, BytesMut};
-    use someip_runtime::handle::ServiceEvent;
-    use someip_runtime::prelude::*;
-    use someip_runtime::wire::MessageType;
-    use someip_runtime::{Runtime, RuntimeConfig};
+    use recentip::handle::ServiceEvent;
+    use recentip::prelude::*;
+    use recentip::wire::MessageType;
+    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -825,7 +825,7 @@ fn mixed_exception_config_per_method() {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
                                     addr,
                                     port,
                                     ..
@@ -932,9 +932,9 @@ fn mixed_exception_config_per_method() {
 #[test_log::test]
 fn internal_unknown_service_error_uses_response() {
     use bytes::{BufMut, BytesMut};
-    use someip_runtime::prelude::*;
-    use someip_runtime::wire::MessageType;
-    use someip_runtime::{Runtime, RuntimeConfig};
+    use recentip::prelude::*;
+    use recentip::wire::MessageType;
+    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -985,7 +985,7 @@ fn internal_unknown_service_error_uses_response() {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
                                     addr,
                                     port,
                                     ..
@@ -1061,8 +1061,8 @@ fn internal_unknown_service_error_uses_response() {
 #[test_log::test]
 fn messages_with_short_length_ignored() {
     use bytes::{BufMut, BytesMut};
-    use someip_runtime::prelude::*;
-    use someip_runtime::{Runtime, RuntimeConfig};
+    use recentip::prelude::*;
+    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -1122,7 +1122,7 @@ fn messages_with_short_length_ignored() {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
                                     addr,
                                     port,
                                     ..
@@ -1175,9 +1175,9 @@ fn messages_with_short_length_ignored() {
 /// All messages sent by the library must use protocol version 0x01.
 #[test_log::test]
 fn uses_known_protocol_version() {
-    use someip_runtime::prelude::*;
-    use someip_runtime::wire::Header;
-    use someip_runtime::{Runtime, RuntimeConfig};
+    use recentip::prelude::*;
+    use recentip::wire::Header;
+    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -1210,7 +1210,7 @@ fn uses_known_protocol_version() {
                 .ok()
                 .flatten()
             {
-                if let someip_runtime::handle::ServiceEvent::Call { responder, .. } = event {
+                if let recentip::handle::ServiceEvent::Call { responder, .. } = event {
                     let _ = responder.reply(b"response").await;
                 }
             }
@@ -1251,7 +1251,7 @@ fn uses_known_protocol_version() {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
                                     addr,
                                     port,
                                     ..
@@ -1336,9 +1336,9 @@ fn uses_known_protocol_version() {
 #[test_log::test]
 fn wrong_protocol_version_returns_error() {
     use bytes::{BufMut, BytesMut};
-    use someip_runtime::prelude::*;
-    use someip_runtime::wire::MessageType;
-    use someip_runtime::{Runtime, RuntimeConfig};
+    use recentip::prelude::*;
+    use recentip::wire::MessageType;
+    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -1397,7 +1397,7 @@ fn wrong_protocol_version_returns_error() {
                     for entry in &sd_msg.entries {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
-                                if let someip_runtime::wire::SdOption::Ipv4Endpoint {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
                                     addr,
                                     port,
                                     ..

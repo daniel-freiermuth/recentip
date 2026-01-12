@@ -20,10 +20,10 @@
 //! - feat_req_recentipsd_872: Reboot detection triggers TCP reset
 
 use bytes::Bytes;
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::wire::Header;
-use someip_runtime::{Runtime, RuntimeConfig, Transport};
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::wire::Header;
+use recentip::{Runtime, RuntimeConfig, Transport};
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers

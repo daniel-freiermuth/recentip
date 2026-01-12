@@ -4,10 +4,10 @@
 //! parser functions, and packet builders used across wire format tests.
 
 use bytes::Bytes;
-pub use someip_runtime::handle::ServiceEvent;
-pub use someip_runtime::prelude::*;
-pub use someip_runtime::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
-pub use someip_runtime::{Runtime, RuntimeConfig};
+pub use recentip::handle::ServiceEvent;
+pub use recentip::prelude::*;
+pub use recentip::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
+pub use recentip::{Runtime, RuntimeConfig};
 pub use std::net::SocketAddr;
 pub use std::time::Duration;
 

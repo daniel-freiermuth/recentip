@@ -1,8 +1,8 @@
 //! Basic API tests using turmoil for network simulation.
 
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::Runtime;
-use someip_runtime::{EventId, EventgroupId, InstanceId, MethodId, RuntimeConfig, ServiceId};
+use recentip::handle::ServiceEvent;
+use recentip::Runtime;
+use recentip::{EventId, EventgroupId, InstanceId, MethodId, RuntimeConfig, ServiceId};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -601,7 +601,7 @@ fn test_event_subscription() {
 /// The client should propagate this rejection to the caller.
 #[test_log::test]
 fn subscribe_returns_error_on_nack() {
-    use someip_runtime::EventgroupId;
+    use recentip::EventgroupId;
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

@@ -5,7 +5,7 @@
 
 use crate::covers;
 use proptest::prelude::*;
-use someip_runtime::prelude::*;
+use recentip::prelude::*;
 
 // ============================================================================
 // RPC PROTOCOL COMPLIANCE (someip-rpc.rst)

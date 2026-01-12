@@ -6,9 +6,9 @@
 //! For wire-level byte verification, see wire_capture.rs which uses
 //! raw sockets to inspect actual packet contents.
 
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::Runtime;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers

@@ -4,9 +4,9 @@
 //!
 //! Reference: someip-sd.rst (Eventgroup entries and subscription handling)
 
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
-use someip_runtime::Runtime;
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
+use recentip::Runtime;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 

@@ -15,8 +15,8 @@
 //!
 //! You should see the monitor detect this service becoming available.
 
-use someip_runtime::handle::ServiceEvent;
-use someip_runtime::prelude::*;
+use recentip::handle::ServiceEvent;
+use recentip::prelude::*;
 
 /// Example service definition
 const EXAMPLE_SERVICE_ID: u16 = 0x1234;
