@@ -40,7 +40,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     // Create the runtime
-//!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
 //!
 //!     // Find a remote service (waits for SD announcement)
 //!     let proxy = runtime.find(BRAKE_SERVICE_ID).await?;
@@ -64,7 +64,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
-//!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
 //!
 //!     // Offer a service (announces via SD)
 //!     let mut offering = runtime.offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001))
@@ -108,7 +108,7 @@
 //!           │ Commands           │ Commands               │ Commands
 //!           ▼                    ▼                        ▼
 //! ┌─────────────────────────────────────────────────────────────────────────┐
-//! │                         Runtime (Event Loop)                            │
+//! │                         SomeIp (Event Loop)                            │
 //! │  ┌───────────────────────────────────────────────────────────────────┐  │
 //! │  │                      RuntimeState                                 │  │
 //! │  │  • offered: HashMap<ServiceKey, OfferedService>                   │  │
@@ -139,7 +139,7 @@
 //!
 //! | Module | Visibility | Responsibility |
 //! |--------|------------|----------------|
-//! | [`runtime`] | Public | Event loop executor, socket management, [`Runtime`] struct |
+//! | [`runtime`] | Public | Event loop executor, socket management, [`SomeIp`] struct |
 //! | [`handle`] | Public | User-facing API: [`OfferedService`], [`ServiceOffering`] |
 //! | [`config`] | Public | Configuration: [`RuntimeConfig`], [`Transport`], [`MethodConfig`] |
 //! | [`error`] | Public | Error types: [`Error`], [`Result`] |
@@ -153,9 +153,9 @@
 //!
 //! ## Key Concepts
 //!
-//! ### The Runtime as State Machine Executor
+//! ### The SomeIp as State Machine Executor
 //!
-//! The [`Runtime`] is the **central coordinator**. It:
+//! The [`SomeIp`] is the **central coordinator**. It:
 //!
 //! 1. **Owns all state** in a single [`RuntimeState`](state) struct
 //! 2. **Runs an event loop** via `tokio::select!` over multiple sources
@@ -276,7 +276,7 @@
 //!             // Service went offline
 //!         }
 //!         Err(Error::RuntimeShutdown) => {
-//!             // Runtime was dropped
+//!             // SomeIp was dropped
 //!         }
 //!         Err(e) => {
 //!             // Other error (I/O, protocol, etc.)
@@ -347,6 +347,7 @@
 
 use std::net::SocketAddr;
 
+pub mod builder;
 pub mod net;
 
 // Internal modules for runtime implementation (moved to runtime/)
@@ -362,10 +363,19 @@ pub mod tcp;
 /// Exposed for testing and interoperability verification.
 pub mod wire;
 
-// Re-export Runtime and config types from handles module
-pub use handles::{OfferBuilder, Runtime, RuntimeConfig};
+// Re-export SomeIp and builder
+pub use builder::SomeIpBuilder;
+pub use handles::{OfferBuilder, SomeIp};
 
-pub use config::{MethodConfig, RuntimeConfigBuilder, Transport};
+pub use config::{MethodConfig, RuntimeConfig, Transport};
+
+/// Backward compatibility alias for [`SomeIp`]
+#[deprecated(since = "0.2.0", note = "Use `SomeIp` instead")]
+pub type Runtime<
+    U = tokio::net::UdpSocket,
+    T = tokio::net::TcpStream,
+    L = tokio::net::TcpListener,
+> = SomeIp<U, T, L>;
 pub use error::*;
 
 // Re-export handle types (explicit to avoid shadowing with internal runtime module)
@@ -375,10 +385,10 @@ pub use handles::{
     EventHandle,
     // Client-side handles
     FindBuilder,
-    ServiceOffering,
     OfferedService,
     Responder,
     ServiceEvent,
+    ServiceOffering,
     StaticEventListener,
     Subscription,
 };
@@ -391,6 +401,39 @@ pub use runtime::SdEvent;
 pub mod handle {
     //! Backward compatibility re-exports from handles module
     pub use crate::handles::*;
+}
+
+// ============================================================================
+// ENTRY POINT
+// ============================================================================
+
+/// Configure and start a SOME/IP runtime.
+///
+/// This is the main entry point for creating a SOME/IP runtime instance.
+/// Returns a builder that allows fluent configuration of the runtime parameters.
+///
+/// # Example
+///
+/// ```no_run
+/// use recentip::prelude::*;
+/// use std::net::Ipv4Addr;
+///
+/// #[tokio::main]
+/// async fn main() -> recentip::Result<()> {
+///     // Start with defaults
+///     let someip = recentip::configure().start().await?;
+///     
+///     // Or configure before starting
+///     let someip = recentip::configure()
+///         .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
+///         .preferred_transport(Transport::Tcp)
+///         .start().await?;
+///     
+///     Ok(())
+/// }
+/// ```
+pub fn configure() -> SomeIpBuilder {
+    SomeIpBuilder::new()
 }
 
 // ============================================================================
@@ -647,8 +690,8 @@ pub struct ClientInfo {
 
 pub mod prelude {
     pub use crate::{
-        Error, Event, EventBuilder, EventHandle, EventId, EventgroupId, InstanceId, MajorVersion,
-        MethodConfig, MethodId, MinorVersion, ServiceOffering, Response, Result, ReturnCode,
-        Runtime, RuntimeConfig, ServiceId,
+        configure, Error, Event, EventBuilder, EventHandle, EventId, EventgroupId, InstanceId,
+        MajorVersion, MethodConfig, MethodId, MinorVersion, OfferedService, Response, Result,
+        ReturnCode, RuntimeConfig, ServiceId, ServiceOffering, SomeIp, SomeIpBuilder, Transport,
     };
 }

@@ -11,7 +11,7 @@
 //!
 //! ```text
 //! ┌─────────────────┐      Command channel      ┌─────────────────┐
-//! │ OfferedService  │ ──────────────────────▶ │     Runtime      │
+//! │ OfferedService  │ ──────────────────────▶ │     SomeIp      │
 //! │ServiceOffering  │  cmd_tx.send(Command)  │    Event Loop   │
 //! └─────────────────┘                        └─────────────────┘
 //! ```

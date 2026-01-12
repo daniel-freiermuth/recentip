@@ -8,7 +8,7 @@
 //!
 //! | Handle | Role | Notes |
 //! |--------|------|-------|
-//! | [`OfferedService`] | Client: call methods, subscribe to events | Created via `Runtime::find()` |
+//! | [`OfferedService`] | Client: call methods, subscribe to events | Created via `SomeIp::find()` |
 //! | [`ServiceOffering`] | Server: receive requests, send responses | — |
 //! | [`ServiceInstance`] | Server (advanced): typestate for bind/announce | `Bound` → `Announced` |
 //! | [`Subscription`] | Client: receive events from a subscribed eventgroup | — |
@@ -23,7 +23,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
-//!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
 //!
 //!     // 1. Find the service (waits for discovery)
 //!     let proxy = runtime.find(MY_SERVICE_ID).await?;
@@ -52,7 +52,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
-//!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
 //!
 //!     // 1. Offer a service
 //!     let mut offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
@@ -88,7 +88,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
-//!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
 //!
 //!     // 1. Bind (opens socket, but no SD announcement)
 //!     let instance: ServiceInstance<Bound> = runtime.bind(
@@ -132,5 +132,5 @@ pub mod server;
 
 // Re-export all public types for convenient access
 pub use client::{FindBuilder, OfferedService, StaticEventListener, Subscription};
-pub use runtime::{OfferBuilder, Runtime, RuntimeConfig};
-pub use server::{EventBuilder, EventHandle, ServiceOffering, Responder, ServiceEvent};
+pub use runtime::{OfferBuilder, SomeIp};
+pub use server::{EventBuilder, EventHandle, Responder, ServiceEvent, ServiceOffering};

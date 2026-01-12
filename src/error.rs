@@ -13,7 +13,7 @@
 //! | [`Error::Protocol`] | Wire protocol violation | No (bug/incompatibility) |
 //! | [`Error::ServiceUnavailable`] | Service not found/offline | Maybe (retry later) |
 //! | [`Error::NotSubscribed`] | Eventgroup not subscribed | Yes (subscribe first) |
-//! | [`Error::RuntimeShutdown`] | Runtime was dropped | No (restart app) |
+//! | [`Error::RuntimeShutdown`] | SomeIp was dropped | No (restart app) |
 //! | [`Error::ChannelFull`] | Event dropped due to backpressure | Yes (slow down) |
 //! | [`Error::AlreadyOffered`] | Duplicate offer attempt | Yes (use existing) |
 //! | [`Error::SubscriptionRejected`] | Server rejected subscription | Maybe (check eventgroup) |
@@ -94,7 +94,7 @@ pub enum Error {
 
     /// The runtime has shut down.
     ///
-    /// Occurs when the [`Runtime`](crate::Runtime) is dropped while
+    /// Occurs when the [`SomeIp`](crate::SomeIp) is dropped while
     /// operations are pending. Application is terminating.
     RuntimeShutdown,
 
@@ -140,7 +140,7 @@ impl fmt::Display for Error {
             Self::Protocol(e) => write!(f, "Protocol error: {}", e.message),
             Self::ServiceUnavailable => write!(f, "Service unavailable"),
             Self::NotSubscribed => write!(f, "Not subscribed to eventgroup"),
-            Self::RuntimeShutdown => write!(f, "Runtime has shut down"),
+            Self::RuntimeShutdown => write!(f, "SomeIp has shut down"),
             Self::ChannelFull => write!(f, "Channel full, event dropped"),
             Self::AlreadyOffered => write!(f, "Service/instance is already offered or bound"),
             Self::SubscriptionRejected => write!(f, "Subscription rejected by server"),

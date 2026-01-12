@@ -24,19 +24,19 @@
 //! OfferedService sends Command::Call
 //!        │
 //!        ▼
-//! Runtime receives command
+//! SomeIp receives command
 //!        │
 //!        ▼
 //! handle_call() adds to pending_calls, returns Action::SendClientMessage
 //!        │
 //!        ▼
-//! Runtime sends message via client RPC socket
+//! SomeIp sends message via client RPC socket
 //!        │
 //!        ▼
 //! Server processes and responds
 //!        │
 //!        ▼
-//! Runtime receives on client RPC socket
+//! SomeIp receives on client RPC socket
 //!        │
 //!        ▼
 //! handle_incoming_response() matches pending_call, sends result via oneshot

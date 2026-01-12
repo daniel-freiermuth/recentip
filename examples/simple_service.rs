@@ -40,12 +40,11 @@ async fn main() -> Result<()> {
         EXAMPLE_SERVICE_ID
     );
 
-    // Create runtime
-    let config = RuntimeConfig::default();
-    let runtime = Runtime::new(config).await?;
+    // Create SOME/IP runtime
+    let someip = recentip::configure().start().await?;
 
     // Offer the service on UDP
-    let mut offering = runtime
+    let mut offering = someip
         .offer(EXAMPLE_SERVICE_ID, InstanceId::Id(1))
         .version(EXAMPLE_SERVICE_VERSION.0, EXAMPLE_SERVICE_VERSION.1)
         .udp()
@@ -92,7 +91,7 @@ async fn main() -> Result<()> {
     }
 
     // Graceful shutdown
-    runtime.shutdown().await;
+    someip.shutdown().await;
     println!("Service stopped.");
 
     Ok(())

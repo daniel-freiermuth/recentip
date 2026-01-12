@@ -13,7 +13,7 @@ use super::OfferedService;
 
 /// Builder for finding a remote SOME/IP service.
 ///
-/// Created via [`Runtime::find()`](crate::Runtime::find). Configure the find
+/// Created via [`SomeIp::find()`](crate::SomeIp::find). Configure the find
 /// criteria, then `.await` to discover the service. Returns the **first**
 /// matching `OfferService` announcement.
 ///
@@ -34,7 +34,7 @@ use super::OfferedService;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<()> {
-///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+///     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
 ///
 ///     // Find any instance of the service with any major version
 ///     let proxy = runtime.find(BRAKE_SERVICE_ID).await?;
@@ -54,7 +54,7 @@ where
     T: TcpStream,
     L: TcpListener<Stream = T>,
 {
-    runtime: &'a crate::Runtime<U, T, L>,
+    runtime: &'a crate::SomeIp<U, T, L>,
     service_id: ServiceId,
     instance_id: InstanceId,
     major_version: MajorVersion,
@@ -71,7 +71,7 @@ where
     /// Defaults:
     /// - Instance: `Any`
     /// - Major version: `Any`
-    pub(crate) fn new(runtime: &'a crate::Runtime<U, T, L>, service_id: ServiceId) -> Self {
+    pub(crate) fn new(runtime: &'a crate::SomeIp<U, T, L>, service_id: ServiceId) -> Self {
         Self {
             runtime,
             service_id,
@@ -104,7 +104,7 @@ where
     /// # Errors
     ///
     /// - [`Error::NotAvailable`] - No matching service found (all find repetitions exhausted)
-    /// - [`Error::RuntimeShutdown`] - Runtime was shut down during discovery
+    /// - [`Error::RuntimeShutdown`] - SomeIp was shut down during discovery
     pub async fn await_discovery(self) -> Result<OfferedService> {
         // TODO maybe oneshot channel would be better?
         let (notify_tx, mut notify_rx) = mpsc::channel(1);

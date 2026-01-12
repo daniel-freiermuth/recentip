@@ -21,7 +21,7 @@
 //! ## Usage
 //!
 //! User code typically doesn't interact with these traits directly.
-//! The [`Runtime`](crate::Runtime) is generic over socket types:
+//! The [`SomeIp`](crate::SomeIp) is generic over socket types:
 //!
 //! ```no_run
 //! use recentip::prelude::*;
@@ -29,10 +29,10 @@
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     // Production (default) - uses tokio sockets internally
-//!     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+//!     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
 //!
 //!     // For testing with turmoil, see tests/compliance/ for examples
-//!     // using Runtime::<turmoil types>::with_socket_type()
+//!     // using SomeIp::<turmoil types>::with_socket_type()
 //!     Ok(())
 //! }
 //! ```

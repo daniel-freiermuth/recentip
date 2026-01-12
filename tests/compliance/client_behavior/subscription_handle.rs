@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use recentip::{EventId, EventgroupId, InstanceId, OfferedService, Runtime, RuntimeConfigBuilder};
+use recentip::{EventId, EventgroupId, InstanceId, OfferedService, Runtime, RuntimeConfig};
 use tracing::Instrument;
 
 type TurmoilRuntime =
@@ -70,7 +70,7 @@ fn test_subscribe_drop_unsubscribes_in_time() {
 
     let unsub_send_time_clone = unsub_send_time.clone();
     sim.client("client", async move {
-        let runtime_config = RuntimeConfigBuilder::default()
+        let runtime_config = RuntimeConfig::builder()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
@@ -160,7 +160,7 @@ fn test_two_subscribers_one_drops() {
     });
 
     sim.client("client", async move {
-        let runtime_config = RuntimeConfigBuilder::default()
+        let runtime_config = RuntimeConfig::builder()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
@@ -291,7 +291,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
     });
 
     sim.client("client", async move {
-        let runtime_config = RuntimeConfigBuilder::default()
+        let runtime_config = RuntimeConfig::builder()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();
@@ -409,7 +409,7 @@ fn test_two_subscribers_get_events() {
             );
         }
 
-        let runtime_config = RuntimeConfigBuilder::default()
+        let runtime_config = RuntimeConfig::builder()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .build();
         let runtime: TurmoilRuntime = Runtime::with_socket_type(runtime_config).await.unwrap();

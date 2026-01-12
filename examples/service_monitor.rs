@@ -52,7 +52,7 @@
 //! ```
 
 use clap::Parser;
-use recentip::{Runtime, RuntimeConfig, SdEvent};
+use recentip::SdEvent;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 /// SOME/IP Service Discovery Monitor
@@ -113,20 +113,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{:<25} {:<15} {:<30}", "Timestamp", "Service:Inst", "Event");
     println!("{:-<80}", "");
 
-    // Create runtime with custom multicast address
-    let config = RuntimeConfig {
-        bind_addr: if let Some(local) = args.local {
-            SocketAddr::V4(SocketAddrV4::new(local, 30490))
-        } else {
-            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30490))
-        },
-        sd_multicast: SocketAddr::V4(SocketAddrV4::new(args.multicast, 30490)),
-        ..Default::default()
-    };
-    let runtime = Runtime::new(config).await?;
+    // Create SOME/IP runtime with custom multicast address
+    let mut builder = recentip::configure()
+        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(args.multicast, 30490)));
+
+    if let Some(local) = args.local {
+        builder = builder.bind_addr(SocketAddr::V4(SocketAddrV4::new(local, 30490)));
+    }
+
+    let someip = builder.start().await?;
 
     // Get SD event monitor channel
-    let mut sd_events = runtime.monitor_sd().await?;
+    let mut sd_events = someip.monitor_sd().await?;
 
     // Set up Ctrl+C handler
     let mut shutdown = tokio::spawn(async {
@@ -169,6 +167,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    runtime.shutdown().await;
+    someip.shutdown().await;
     Ok(())
 }

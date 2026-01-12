@@ -156,8 +156,8 @@ fn subscribe_nack_then_ack() {
 
                                 if entry.major_version == VERSION_ACK {
                                     // Extract client endpoint from subscribe options
-                                    if let Some((client_ip, client_port)) = 
-                                        extract_client_udp_endpoint(entry, &sd_msg.options) 
+                                    if let Some((client_ip, client_port)) =
+                                        extract_client_udp_endpoint(entry, &sd_msg.options)
                                     {
                                         v1_client_endpoint = Some(SocketAddr::from((client_ip, client_port)));
                                         eprintln!("[wire_server] v1 client endpoint: {:?}", v1_client_endpoint);

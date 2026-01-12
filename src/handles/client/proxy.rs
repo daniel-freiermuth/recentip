@@ -16,7 +16,7 @@ use super::Subscription;
 ///
 /// # Creating a Proxy
 ///
-/// Use [`Runtime::find`](crate::Runtime::find) to find and connect to a service:
+/// Use [`SomeIp::find`](crate::SomeIp::find) to find and connect to a service:
 ///
 /// ```no_run
 /// use recentip::prelude::*;
@@ -25,7 +25,7 @@ use super::Subscription;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<()> {
-/// let runtime = Runtime::new(RuntimeConfig::default()).await?;
+/// let runtime = SomeIp::new(RuntimeConfig::default()).await?;
 /// let proxy = runtime.find(MY_SERVICE_ID).await?;
 /// # Ok(())
 /// # }

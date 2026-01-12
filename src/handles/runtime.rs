@@ -1,4 +1,4 @@
-//! # SOME/IP Runtime
+//! # SOME/IP SomeIp
 //!
 //! The runtime is the **central coordinator** for all SOME/IP communication.
 //! It manages network I/O, service discovery, and dispatches commands from handles.
@@ -21,7 +21,7 @@
 //! - All handles are dropped (command channel closes)
 //! - An unrecoverable I/O error occurs
 //!
-//! When the [`Runtime`] struct is dropped, it signals shutdown and waits for
+//! When the [`SomeIp`] struct is dropped, it signals shutdown and waits for
 //! the background task to complete gracefully.
 
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
@@ -29,7 +29,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::config::{MethodConfig, Transport};
+use crate::config::{MethodConfig, RuntimeConfig, Transport};
 use crate::error::{Error, Result};
 use crate::handles::{FindBuilder, ServiceOffering};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
@@ -41,16 +41,13 @@ use crate::runtime::{
 use crate::tcp::{TcpConnectionPool, TcpMessage};
 use crate::{InstanceId, SdEvent, ServiceId};
 
-// Re-export configuration types for backward compatibility
-pub use crate::config::RuntimeConfig;
-
 // ============================================================================
 // RUNTIME INNER
 // ============================================================================
 
-/// Shared state between the Runtime handle and the runtime task.
+/// Shared state between the SomeIp handle and the runtime task.
 ///
-/// This is an implementation detail. Users interact with [`Runtime`] directly.
+/// This is an implementation detail. Users interact with [`SomeIp`] directly.
 #[derive(Debug)]
 pub(crate) struct RuntimeInner {
     /// Channel to send commands to the runtime task.
@@ -58,7 +55,7 @@ pub(crate) struct RuntimeInner {
     /// All handle operations (find, offer, call, etc.) send commands through
     /// this channel. The runtime's event loop receives and processes them.
     pub(crate) cmd_tx: mpsc::Sender<Command>,
-    /// Runtime configuration (for static proxy creation)
+    /// SomeIp configuration (for static proxy creation)
     pub(crate) config: crate::config::RuntimeConfig,
 }
 
@@ -66,9 +63,9 @@ pub(crate) struct RuntimeInner {
 // RUNTIME
 // ============================================================================
 
-/// SOME/IP Runtime — the central coordinator for all SOME/IP communication.
+/// SOME/IP SomeIp — the central coordinator for all SOME/IP communication.
 ///
-/// Create one `Runtime` per application. It manages:
+/// Create one `SomeIp` per application. It manages:
 ///
 /// - **Service Discovery**: Multicast offers, finds, and subscription exchanges
 /// - **RPC Communication**: Request/response and fire-and-forget calls
@@ -82,7 +79,7 @@ pub(crate) struct RuntimeInner {
 ///    [`ServiceOffering`](crate::handle::ServiceOffering)) are dropped
 /// 2. An unrecoverable error occurs
 ///
-/// When the `Runtime` is dropped, it signals shutdown and waits for cleanup.
+/// When the `SomeIp` is dropped, it signals shutdown and waits for cleanup.
 ///
 /// # Graceful Shutdown
 ///
@@ -91,7 +88,7 @@ pub(crate) struct RuntimeInner {
 ///
 /// ```no_run
 /// # use recentip::prelude::*;
-/// # async fn example(runtime: Runtime) {
+/// # async fn example(runtime: SomeIp) {
 /// // Process requests...
 /// runtime.shutdown().await;  // Ensures all pending responses are sent
 /// # }
@@ -109,10 +106,10 @@ pub(crate) struct RuntimeInner {
 /// #[tokio::main]
 /// async fn main() -> Result<()> {
 ///     // Production (default)
-///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+///     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
 ///
 ///     // For turmoil testing, the runtime is parameterized:
-///     // type TestRuntime = Runtime<turmoil::net::UdpSocket, ...>;
+///     // type TestRuntime = SomeIp<turmoil::net::UdpSocket, ...>;
 ///     // See tests/compliance/ for examples.
 ///     Ok(())
 /// }
@@ -120,9 +117,9 @@ pub(crate) struct RuntimeInner {
 ///
 /// # Thread Safety
 ///
-/// The `Runtime` can be shared across tasks via its handles. Internally,
+/// The `SomeIp` can be shared across tasks via its handles. Internally,
 /// all state is managed by a single-threaded event loop, avoiding locks.
-pub struct Runtime<
+pub struct SomeIp<
     U: UdpSocket = tokio::net::UdpSocket,
     T: TcpStream = tokio::net::TcpStream,
     L: TcpListener<Stream = T> = tokio::net::TcpListener,
@@ -133,7 +130,7 @@ pub struct Runtime<
     _phantom: std::marker::PhantomData<(U, T, L)>,
 }
 
-impl Runtime<tokio::net::UdpSocket, tokio::net::TcpStream, tokio::net::TcpListener> {
+impl SomeIp<tokio::net::UdpSocket, tokio::net::TcpStream, tokio::net::TcpListener> {
     /// Create a new runtime with the given configuration.
     ///
     /// This binds to the configured local address and joins the SD multicast group.
@@ -142,7 +139,7 @@ impl Runtime<tokio::net::UdpSocket, tokio::net::TcpStream, tokio::net::TcpListen
     }
 }
 
-impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
+impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     /// Create a new runtime with a specific socket type.
     ///
     /// This is mainly useful for testing with turmoil.
@@ -277,7 +274,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
-    ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+    ///     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
     ///
     ///     // Simple: find any instance
     ///     let proxy = runtime.find(MY_SERVICE_ID).await?;
@@ -314,7 +311,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
-    ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+    ///     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
     ///
     ///     // Offer on both TCP and UDP with custom ports
     ///     let offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
@@ -357,7 +354,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
-    ///     let runtime = Runtime::new(RuntimeConfig::default()).await?;
+    ///     let runtime = SomeIp::new(RuntimeConfig::default()).await?;
     ///     let mut offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
     ///         .version(1, 0)
     ///         .start()
@@ -399,9 +396,9 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
     /// # Examples
     ///
     /// ```no_run
-    /// # use recentip::{Runtime, SdEvent};
+    /// # use recentip::{SomeIp, SdEvent};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let runtime = Runtime::new(Default::default()).await?;
+    /// let runtime = SomeIp::new(Default::default()).await?;
     /// let mut sd_events = runtime.monitor_sd().await?;
     ///
     /// while let Some(event) = sd_events.recv().await {
@@ -443,7 +440,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 
 /// Builder for configuring and starting a service offering.
 ///
-/// Created by [`Runtime::offer`]. Configure transport endpoints using the builder
+/// Created by [`SomeIp::offer`]. Configure transport endpoints using the builder
 /// methods, then call [`start`](OfferBuilder::start) to begin offering the service.
 ///
 /// # Example
@@ -452,7 +449,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 ///
 /// const MY_SERVICE_ID: u16 = 0x1234;
 ///
-/// # async fn example(runtime: Runtime) -> Result<()> {
+/// # async fn example(runtime: SomeIp) -> Result<()> {
 /// // Offer on both TCP and UDP
 /// let offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
 ///     .version(1, 0)
@@ -471,7 +468,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> Runtime<U, T, L> {
 /// # }
 /// ```
 pub struct OfferBuilder<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> {
-    runtime: &'a Runtime<U, T, L>,
+    runtime: &'a SomeIp<U, T, L>,
     service_id: ServiceId,
     instance: InstanceId,
     major_version: u8,
@@ -481,7 +478,7 @@ pub struct OfferBuilder<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = 
 
 impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a, U, T, L> {
     pub(crate) fn new(
-        runtime: &'a Runtime<U, T, L>,
+        runtime: &'a SomeIp<U, T, L>,
         service_id: ServiceId,
         instance: InstanceId,
     ) -> Self {

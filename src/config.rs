@@ -1,4 +1,4 @@
-//! # Runtime Configuration
+//! # SomeIp Configuration
 //!
 //! This module provides configuration types for the SOME/IP runtime.
 //!
@@ -7,11 +7,11 @@
 //! For most applications, the defaults work out of the box:
 //!
 //! ```no_run
-//! use recentip::{Runtime, RuntimeConfig};
+//! use recentip::{SomeIp, RuntimeConfig};
 //!
 //! # async fn example() -> recentip::Result<()> {
 //! let config = RuntimeConfig::default();
-//! let runtime = Runtime::new(config).await?;
+//! let runtime = SomeIp::new(config).await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -182,7 +182,7 @@ pub enum Transport {
     Tcp,
 }
 
-/// Runtime configuration
+/// SomeIp configuration
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
     /// Local address to bind to (default: 0.0.0.0:30490)

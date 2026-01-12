@@ -30,7 +30,7 @@
 //! Server's RPC socket receives
 //!        │
 //!        ▼
-//! Runtime forwards to handle_incoming_request()
+//! SomeIp forwards to handle_incoming_request()
 //!        │
 //!        ▼
 //! Creates ServiceRequest, sends to ServiceOffering's channel
@@ -42,7 +42,7 @@
 //! Responder sends result via oneshot to runtime
 //!        │
 //!        ▼
-//! Runtime sends response via OfferedService's RPC socket
+//! SomeIp sends response via OfferedService's RPC socket
 //! ```
 //!
 //! ## Contributor Notes

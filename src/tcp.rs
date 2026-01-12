@@ -333,7 +333,7 @@ async fn handle_client_tcp_connection<T: TcpStream>(
                                     from: peer_addr,
                                 };
                                 if msg_tx.send(msg).await.is_err() {
-                                    tracing::debug!("Runtime closed, stopping TCP client connection");
+                                    tracing::debug!("SomeIp closed, stopping TCP client connection");
                                     break;
                                 }
                             } else {
@@ -604,7 +604,7 @@ async fn handle_tcp_connection<T: TcpStream>(
                                     from: peer_addr,
                                 };
                                 if msg_tx.send(msg).await.is_err() {
-                                    tracing::debug!("Runtime closed, stopping TCP connection handler");
+                                    tracing::debug!("SomeIp closed, stopping TCP connection handler");
                                     break;
                                 }
                             } else {

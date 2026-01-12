@@ -1,4 +1,4 @@
-//! # Runtime State (Internal)
+//! # SomeIp State (Internal)
 //!
 //! This module contains the central state structure and supporting types
 //! used by the runtime's event loop. It is `pub(crate)` — internal to the
@@ -299,7 +299,7 @@ pub struct PendingServerResponse {
 // RUNTIME STATE
 // ============================================================================
 
-/// Runtime state managed by the runtime task
+/// SomeIp state managed by the runtime task
 pub struct RuntimeState {
     /// SD endpoint (port 30490) - only for Service Discovery
     pub(crate) local_endpoint: SocketAddr,

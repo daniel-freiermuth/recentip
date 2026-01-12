@@ -1,4 +1,4 @@
-//! # Runtime Event Loop
+//! # SomeIp Event Loop
 //!
 //! Internal event loop that processes commands and I/O events.
 //!
@@ -173,7 +173,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             cmd = cmd_rx.recv() => {
                 match cmd {
                     Some(Command::Shutdown) | None => {
-                        tracing::info!("Runtime shutting down, draining {} pending responses", pending_responses.len());
+                        tracing::info!("SomeIp shutting down, draining {} pending responses", pending_responses.len());
                         // Send StopOffer for all offered services
                         send_stop_offers(&sd_socket, &config, &mut state).await;
 
@@ -208,7 +208,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                 tracing::error!("Failed to send response during shutdown: {}", e);
                             }
                         }
-                        tracing::info!("Runtime shutdown complete");
+                        tracing::info!("SomeIp shutdown complete");
                         break;
                     }
                     // Special handling for Offer - needs async socket/listener creation

@@ -39,11 +39,11 @@ use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Create the runtime
-    let runtime = Runtime::new(RuntimeConfig::default()).await?;;
+    // Create the SOME/IP runtime
+    let someip = recentip::configure().start().await?;
 
     // Find a remote service (waits for SD announcement)
-    let proxy = runtime.find(BRAKE_SERVICE_ID).await?;
+    let proxy = someip.find(BRAKE_SERVICE_ID).await?;
 
     // Call a method (RPC)
     let method_id = MethodId::new(0x0001).unwrap();
@@ -65,10 +65,10 @@ use recentip::handle::ServiceEvent;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let runtime = Runtime::new(RuntimeConfig::default()).await?;
+    let someip = recentip::configure().start().await?;
 
     // Offer a service (announces via SD)
-    let mut offering = runtime.offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001))
+    let mut offering = someip.offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001))
         .version(BRAKE_VERSION.0, BRAKE_VERSION.1)
         .start()
         .await?;
@@ -97,22 +97,20 @@ Check the `examples` folder for examples.
 ## Configuration
 
 ```rust
-use recentip::{RuntimeConfig, Transport};
+use recentip::prelude::*;
 
-let config = RuntimeConfig::builder()
+let someip = recentip::configure()
     .preferred_transport(Transport::Tcp)  // Prefer TCP when service offers both
     .magic_cookies(true)                  // Enable Magic Cookies for debugging
     .offer_ttl(3)                         // Service offer TTL in seconds
-    .build();
-
-let runtime = Runtime::new(config).await?;
+    .start().await?;
 ```
 
 ## API Overview
 
 | Type | Role | Pattern |
-|------|------|---------|
-| `Runtime` | Central coordinator, owns sockets | — |
+|------|------|---------|  
+| `SomeIp` | Central coordinator, owns sockets | — |
 | `OfferedService` | Client proxy to remote service | — |
 | `ServiceOffering` | Server handle for offered service | — |
 | `Subscription` | Receive events from eventgroup | — |
@@ -180,7 +178,7 @@ cargo install cargo-dylint dylint-link
 cargo dylint --all
 ```
 
-The `RUNTIME_MUST_SHUTDOWN` lint warns when a `Runtime` might be dropped without `shutdown()`.
+The `RUNTIME_MUST_SHUTDOWN` lint warns when a `SomeIp` might be dropped without `shutdown()`.
 
 ## Specification Compliance
 
@@ -193,12 +191,12 @@ We aim for 100% coverage of the open SOME/IP 2025-12 specs.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      User Application                       │
-│   OfferedService       ServiceOffering                       │
+│   OfferedService       ServiceOffering        SomeIpBuilder │
 └──────────┬─────────────────┬─────────────────────┬──────────┘
-           │ Commands        │ Commands            │ Commands
-           ▼                 ▼                     ▼
+           │ Commands        │ Commands            │ configure()
+           ▼                 ▼                     ▼  
 ┌─────────────────────────────────────────────────────────────┐
-│                    Runtime (Event Loop)                      │
+│                   SomeIp (Event Loop)                        │
 │   RuntimeState: offered, discovered, pending_calls, etc.    │
 │   select! over: commands, SD socket, RPC socket, TCP, timer │
 └─────────────────────────────────────────────────────────────┘
