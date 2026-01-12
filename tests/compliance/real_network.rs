@@ -401,9 +401,8 @@ async fn tcp_multiple_requests_real_network() {
 /// unicast SubscribeEventgroupAck messages may be delivered to the wrong socket.
 /// Run with `cargo test -- --ignored` to include it.
 /// This should finally be tested using network namespaces, docker or vagrant
-/// TODO: this will be fixed once we implement the SD entpoint option
 #[tokio::test]
-#[ignore]
+#[ignore = "Requires .bind_sd_unicast() implementation + network namespaces/docker"]
 async fn udp_events_real_network() {
     let server_port = 41100;
     let client_port = 41200;

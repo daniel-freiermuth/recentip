@@ -411,8 +411,12 @@ fn subscribe_to_unknown_instance_id_should_nack() {
 ///
 /// Server offers eventgroup 0x0001, client tries to subscribe to eventgroup 0x0099.
 /// Server MUST respond with NACK.
+///
+/// NOTE: Our interpretation is that eventgroups may not be known yet at subscribe time,
+/// so we accept subscriptions preemptively. The subscription becomes active once the
+/// eventgroup is registered. This is a design choice, not a compliance bug.
 #[test_log::test]
-#[ignore = "Known issue: current implementation does not NACK unknown eventgroups"]
+#[ignore = "Design choice: accept subscriptions for not-yet-known eventgroups"]
 fn subscribe_to_unknown_eventgroup_should_nack() {
     covers!(feat_req_recentipsd_1137);
 

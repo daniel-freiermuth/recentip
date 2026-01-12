@@ -1839,11 +1839,9 @@ fn preferred_transport_respected_when_both_available() {
 /// - Client B subscribes via UDP
 /// - Both receive events
 ///
-/// NOTE: This test is ignored because:
-/// 1. TCP pub/sub event delivery is not yet fully implemented
-/// 2. Verifying which transport was used requires introspection
+/// NOTE: This test verifies that clients with different preferred transports
+/// can subscribe to a dual-stack service.
 #[test_log::test]
-#[ignore = "TCP pub/sub not implemented + requires transport introspection"]
 fn preferred_transport_respected_for_pubsub_when_both_available() {
     covers!(feat_req_recentip_324);
 
@@ -1881,6 +1879,14 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
             let eventgroup = EventgroupId::new(0x0001).unwrap();
             let event_id = EventId::new(0x8001).unwrap();
 
+            // Create event handle once, outside the loop
+            let event_handle = offering
+                .event(event_id)
+                .eventgroup(eventgroup)
+                .create()
+                .await
+                .unwrap();
+
             // Track subscriptions and send events
             let mut tcp_subscribed = false;
             let mut udp_subscribed = false;
@@ -1908,12 +1914,6 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
 
                 // Send events periodically once we have subscribers
                 if tcp_subscribed || udp_subscribed {
-                    let event_handle = offering
-                        .event(event_id)
-                        .eventgroup(eventgroup)
-                        .create()
-                        .await
-                        .unwrap();
                     event_handle.notify(b"event_data").await.ok();
                 }
             }
@@ -1923,7 +1923,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
     });
 
     // Client A with TCP preference
-    sim.host("tcp_client", || async {
+    sim.client("tcp_client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let config = RuntimeConfig::builder()
@@ -1962,7 +1962,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
     });
 
     // Client B with UDP preference
-    sim.host("udp_client", || async {
+    sim.client("udp_client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let config = RuntimeConfig::builder()
