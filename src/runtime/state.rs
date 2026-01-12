@@ -40,7 +40,7 @@
 //! 3. Update `new()` to initialize new fields
 //! 4. Add accessor methods if handlers in other modules need them
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
 use tokio::sync::{mpsc, oneshot};
@@ -310,6 +310,8 @@ pub struct RuntimeState {
     pub(crate) client_rpc_tx: mpsc::Sender<RpcSendMessage>,
     /// Services we're offering
     pub(crate) offered: HashMap<ServiceKey, OfferedService>,
+    /// Registered event IDs per service (for uniqueness validation)
+    pub(crate) registered_events: HashMap<ServiceKey, HashSet<u16>>,
     /// Services we're looking for
     pub(crate) find_requests: HashMap<ServiceKey, FindRequest>,
     /// Discovered remote services
@@ -357,6 +359,7 @@ impl RuntimeState {
             client_rpc_endpoint,
             client_rpc_tx,
             offered: HashMap::new(),
+            registered_events: HashMap::new(),
             find_requests: HashMap::new(),
             discovered: HashMap::new(),
             subscriptions: HashMap::new(),

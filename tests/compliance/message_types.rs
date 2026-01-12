@@ -286,7 +286,13 @@ fn server_sends_notification_type() {
 
         let eventgroup = EventgroupId::new(1).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(&[0xAA, 0xBB])
+        offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap()
+            .notify(&[0xAA, 0xBB])
             .await
             .unwrap();
 

@@ -152,7 +152,7 @@ impl OfferingHandle {
     /// let temperature = offering
     ///     .event(EventId::new(0x8001).unwrap())
     ///     .eventgroup(EventgroupId::new(0x0001).unwrap())
-    ///     .create()?;
+    ///     .create().await?;
     ///
     /// temperature.notify(b"42.5").await?;
     /// # Ok(())

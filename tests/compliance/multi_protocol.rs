@@ -295,12 +295,16 @@ fn mixed_transport_event_delivery() {
 
         // Wait a bit then send events
         tokio::time::sleep(Duration::from_millis(500)).await;
+        let event_handle = tcp_offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         for i in 0..3 {
             let tcp_payload = format!("tcp_event_{}", i);
-            tcp_offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(tcp_payload.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(tcp_payload.as_bytes()).await.unwrap();
             eprintln!("[tcp_server] Sent tcp_event_{}", i);
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -346,12 +350,16 @@ fn mixed_transport_event_delivery() {
 
         // Wait a bit then send events
         tokio::time::sleep(Duration::from_millis(500)).await;
+        let event_handle = udp_offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         for i in 0..3 {
             let udp_payload = format!("udp_event_{}", i);
-            udp_offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(udp_payload.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(udp_payload.as_bytes()).await.unwrap();
             eprintln!("[udp_server] Sent udp_event_{}", i);
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -1250,11 +1258,15 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
 
         // Send events
         tokio::time::sleep(Duration::from_millis(200)).await;
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
         for i in 0..3 {
             let payload = format!("udp_event_{}", i);
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(payload.as_bytes()).await.unwrap();
             eprintln!("[server] Sent event {}", i);
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -1390,12 +1402,16 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
 
         // Send events
         tokio::time::sleep(Duration::from_millis(200)).await;
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
         for i in 0..3 {
             let payload = format!("udp_event_{}", i);
             eprintln!("[server] Sending event {}", i);
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(payload.as_bytes()).await.unwrap();
             eprintln!("[server] Sent event {}", i);
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -1534,11 +1550,15 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
 
         // Send events
         tokio::time::sleep(Duration::from_millis(200)).await;
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
         for i in 0..3 {
             let payload = format!("tcp_event_{}", i);
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(payload.as_bytes()).await.unwrap();
             eprintln!("[server] Sent event {}", i);
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -1888,9 +1908,13 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
 
                 // Send events periodically once we have subscribers
                 if tcp_subscribed || udp_subscribed {
-                    offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event_data")
+                    let event_handle = offering
+                        .event(event_id)
+                        .eventgroup(eventgroup)
+                        .create()
                         .await
-                        .ok();
+                        .unwrap();
+                    event_handle.notify(b"event_data").await.ok();
                 }
             }
 

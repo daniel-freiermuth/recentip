@@ -61,12 +61,16 @@ fn subscribe_to_multiple_instances() {
         // Send events from instance 1
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         for i in 0..3 {
             let event_data = format!("instance1_event{}", i);
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(event_data.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(event_data.as_bytes()).await.unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
@@ -95,12 +99,16 @@ fn subscribe_to_multiple_instances() {
         // Send events from instance 2
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         for i in 0..3 {
             let event_data = format!("instance2_event{}", i);
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(event_data.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(event_data.as_bytes()).await.unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
 

@@ -296,11 +296,16 @@ fn subscription_max_ttl_doesnt_expire() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         let mut i: u32 = 0;
         loop {
-            let _ = offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(format!("event{}", i).as_bytes())
-                .await;
+            let _ = event_handle.notify(format!("event{}", i).as_bytes()).await;
             eprintln!("Server sent event {}", i);
             tokio::time::sleep(Duration::from_secs(TICK_SECS as u64)).await;
             i += 1;
@@ -446,11 +451,16 @@ fn subscription_ttl_expiration_stops_events() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         let mut i: u32 = 0;
         loop {
-            let _ = offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(format!("event{}", i).as_bytes())
-                .await;
+            let _ = event_handle.notify(format!("event{}", i).as_bytes()).await;
             eprintln!("Server sent event {}", i);
             tokio::time::sleep(Duration::from_millis(500)).await;
             i += 1;

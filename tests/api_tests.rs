@@ -427,9 +427,18 @@ fn library_auto_renews_subscription() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
 
+        // Create the event handle once
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+
         let mut i = 0;
         loop {
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(format!("event{}", i).as_bytes())
+            event_handle
+                .notify(format!("event{}", i).as_bytes())
                 .await
                 .unwrap();
             tokio::time::sleep(Duration::from_millis(500)).await;
@@ -525,13 +534,15 @@ fn test_event_subscription() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
 
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event1")
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
             .await
             .unwrap();
+        event_handle.notify(b"event1").await.unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event2")
-            .await
-            .unwrap();
+        event_handle.notify(b"event2").await.unwrap();
 
         // Keep server alive for a bit
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -878,27 +889,44 @@ fn test_multiple_versions_subscribe_both_data() {
             .await
             .unwrap();
 
+        // Create event handles once
+        let event1 = offering1
+            .event(EventId::new(0x8001).unwrap())
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .create()
+            .await
+            .unwrap();
+        let event2 = offering2
+            .event(EventId::new(0x8002).unwrap())
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .create()
+            .await
+            .unwrap();
+        let event3 = offering3
+            .event(EventId::new(0x8003).unwrap())
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .create()
+            .await
+            .unwrap();
+        let event4 = offering4
+            .event(EventId::new(0x8004).unwrap())
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .create()
+            .await
+            .unwrap();
+        let event5 = offering5
+            .event(EventId::new(0x8005).unwrap())
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .create()
+            .await
+            .unwrap();
+
         loop {
-            offering1.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("1".as_bytes(),
-                )
-                .await
-                .unwrap();
-            offering2.event(EventId::new(0x8002).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("2".as_bytes(),
-                )
-                .await
-                .unwrap();
-            offering3.event(EventId::new(0x8003).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("3".as_bytes(),
-                )
-                .await
-                .unwrap();
-            offering4.event(EventId::new(0x8004).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("4".as_bytes(),
-                )
-                .await
-                .unwrap();
-            offering5.event(EventId::new(0x8005).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("5".as_bytes(),
-                )
-                .await
-                .unwrap();
+            event1.notify("1".as_bytes()).await.unwrap();
+            event2.notify("2".as_bytes()).await.unwrap();
+            event3.notify("3".as_bytes()).await.unwrap();
+            event4.notify("4".as_bytes()).await.unwrap();
+            event5.notify("5".as_bytes()).await.unwrap();
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
     });
@@ -1046,27 +1074,44 @@ fn test_multiple_versions_subscribed_one_dropped() {
                 .await
                 .unwrap();
 
+            // Create event handles once
+            let event1 = offering1
+                .event(EventId::new(0x8001).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+            let event2 = offering2
+                .event(EventId::new(0x8002).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+            let event3 = offering3
+                .event(EventId::new(0x8003).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+            let event4 = offering4
+                .event(EventId::new(0x8004).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+            let event5 = offering5
+                .event(EventId::new(0x8005).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+
             loop {
-                offering1.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("1".as_bytes(),
-                    )
-                    .await
-                    .unwrap();
-                offering2.event(EventId::new(0x8002).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("2".as_bytes(),
-                    )
-                    .await
-                    .unwrap();
-                offering3.event(EventId::new(0x8003).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("3".as_bytes(),
-                    )
-                    .await
-                    .unwrap();
-                offering4.event(EventId::new(0x8004).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("4".as_bytes(),
-                    )
-                    .await
-                    .unwrap();
-                offering5.event(EventId::new(0x8005).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("5".as_bytes(),
-                    )
-                    .await
-                    .unwrap();
+                event1.notify("1".as_bytes()).await.unwrap();
+                event2.notify("2".as_bytes()).await.unwrap();
+                event3.notify("3".as_bytes()).await.unwrap();
+                event4.notify("4".as_bytes()).await.unwrap();
+                event5.notify("5".as_bytes()).await.unwrap();
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 if let Ok(Some(e)) =
                     tokio::time::timeout(Duration::from_millis(50), offering3.next()).await
@@ -1910,4 +1955,200 @@ fn build_sd_subscribe_nack(
     packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
 
     packet
+}
+
+/// Test that duplicate event IDs are detected and rejected
+#[test_log::test]
+fn test_duplicate_event_id_rejected() {
+    let mut sim = turmoil::Builder::new().build();
+
+    sim.client("server", async {
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+
+        let offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let event_id = EventId::new(0x8001).unwrap();
+
+        // Create first event handle - should succeed
+        let _event1 = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+
+        // Try to create a second event handle with the same event ID - should fail
+        let result = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await;
+
+        assert!(
+            result.is_err(),
+            "Expected duplicate event ID to be rejected"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, recentip::Error::Config(_)),
+            "Expected Config error, got: {:?}",
+            err
+        );
+
+        // Verify error message contains relevant information
+        let err_msg = format!("{:?}", err);
+        assert!(
+            err_msg.contains("already registered"),
+            "Error should mention 'already registered', got: {}",
+            err_msg
+        );
+        assert!(
+            err_msg.contains("0x8001"),
+            "Error should include event ID 0x8001, got: {}",
+            err_msg
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Test that different event IDs can be registered for the same service
+#[test_log::test]
+fn test_unique_event_ids_accepted() {
+    let mut sim = turmoil::Builder::new().build();
+
+    sim.client("server", async {
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+
+        let offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+
+        // Create multiple event handles with different event IDs - all should succeed
+        let _event1 = offering
+            .event(EventId::new(0x8001).unwrap())
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+        let _event2 = offering
+            .event(EventId::new(0x8002).unwrap())
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+        let _event3 = offering
+            .event(EventId::new(0x8003).unwrap())
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Test that the same event ID can be used in different service instances
+#[test_log::test]
+fn test_same_event_id_different_services() {
+    let mut sim = turmoil::Builder::new().build();
+
+    sim.client("server", async {
+        let config = RuntimeConfig::builder()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .build();
+
+        let runtime: TurmoilRuntime = Runtime::with_socket_type(config).await.unwrap();
+
+        let event_id = EventId::new(0x8001).unwrap();
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+
+        // Same event ID in different service IDs - should succeed
+        let offering1 = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+        let _event1 = offering1
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+
+        let offering2 = runtime
+            .offer(ANOTHER_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+        let _event2 = offering2
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+
+        // Same event ID in different instances - should succeed
+        let offering3 = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+        let _event3 = offering3
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+
+        // Same event ID in different major versions - should succeed
+        let offering4 = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(2, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+        let _event4 = offering4
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }

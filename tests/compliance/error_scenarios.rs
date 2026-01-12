@@ -66,7 +66,13 @@ fn no_error_response_for_events() {
         // Send event notification - this is one-way, no response expected
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event_data")
+        offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap()
+            .notify(b"event_data")
             .await
             .unwrap();
 
@@ -393,12 +399,7 @@ fn parse_header_wire(data: &[u8]) -> Option<recentip::wire::Header> {
 }
 
 /// Helper to parse an SD message from raw bytes
-fn parse_sd_message(
-    data: &[u8],
-) -> Option<(
-    recentip::wire::Header,
-    recentip::wire::SdMessage,
-)> {
+fn parse_sd_message(data: &[u8]) -> Option<(recentip::wire::Header, recentip::wire::SdMessage)> {
     use bytes::Bytes;
     use recentip::wire::{Header, SdMessage};
 
@@ -825,9 +826,7 @@ fn mixed_exception_config_per_method() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {
@@ -985,9 +984,7 @@ fn internal_unknown_service_error_uses_response() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {
@@ -1122,9 +1119,7 @@ fn messages_with_short_length_ignored() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {
@@ -1251,9 +1246,7 @@ fn uses_known_protocol_version() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {
@@ -1397,9 +1390,7 @@ fn wrong_protocol_version_returns_error() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {

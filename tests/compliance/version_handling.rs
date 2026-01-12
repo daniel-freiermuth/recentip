@@ -302,9 +302,7 @@ fn server_ignores_wrong_protocol_version() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {
@@ -570,9 +568,7 @@ fn response_preserves_interface_version() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {

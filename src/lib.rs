@@ -374,11 +374,11 @@ pub use error::*;
 pub use handles::{
     Announced,
     Bound,
-    // Client-side handles
-    FindBuilder,
     // Server-side handles
     EventBuilder,
     EventHandle,
+    // Client-side handles
+    FindBuilder,
     OfferingHandle,
     ProxyHandle,
     Responder,

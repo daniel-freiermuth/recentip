@@ -206,9 +206,7 @@ fn rpc_response_wire_format() {
                             // Use the source address with the offered port
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {
@@ -469,9 +467,7 @@ fn fire_and_forget_received_wire_format() {
                             // Found our service offer
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {

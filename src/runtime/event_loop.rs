@@ -678,6 +678,23 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             );
         }
 
+        Command::RegisterEvent {
+            service_id,
+            instance_id,
+            major_version,
+            event_id,
+            response,
+        } => {
+            let result = server::handle_register_event(
+                service_id,
+                instance_id,
+                major_version,
+                event_id,
+                state,
+            );
+            let _ = response.send(result);
+        }
+
         Command::Notify {
             service_id,
             instance_id,

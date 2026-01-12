@@ -3,9 +3,7 @@ use std::{
     time::Duration,
 };
 
-use recentip::{
-    EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder,
-};
+use recentip::{EventId, EventgroupId, InstanceId, ProxyHandle, Runtime, RuntimeConfigBuilder};
 use tracing::Instrument;
 
 type TurmoilRuntime =
@@ -40,11 +38,15 @@ fn test_subscribe_drop_unsubscribes_in_time() {
                 .await
                 .unwrap();
 
+            let event_handle = offering
+                .event(EventId::new(0x8001).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+
             loop {
-                offering.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("test".as_bytes(),
-                    )
-                    .await
-                    .unwrap();
+                event_handle.notify("test".as_bytes()).await.unwrap();
                 let target = tokio::time::Instant::now() + Duration::from_secs(1);
                 let mut remaining = target - tokio::time::Instant::now();
                 while remaining.as_secs_f32() > 0.0 {
@@ -134,13 +136,17 @@ fn test_two_subscribers_one_drops() {
                 .await
                 .unwrap();
 
+            let event_handle = offering
+                .event(EventId::new(0x8001).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
-                offering.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("test".as_bytes(),
-                    )
-                    .await
-                    .unwrap();
+                event_handle.notify("test".as_bytes()).await.unwrap();
                 if let Some(event) = offering.next().await {
                     match event {
                         recentip::ServiceEvent::Unsubscribe { .. } => {
@@ -229,13 +235,17 @@ fn test_dangling_subscription_cannot_unsubscribe() {
                 .await
                 .unwrap();
 
+            let event_handle = offering
+                .event(EventId::new(0x8001).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+
             for _ in 0..10 {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
-                offering.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("test".as_bytes(),
-                    )
-                    .await
-                    .unwrap();
+                event_handle.notify("test".as_bytes()).await.unwrap();
                 if let Some(event) = offering.next().await {
                     match event {
                         recentip::ServiceEvent::Unsubscribe { .. } => {
@@ -257,13 +267,17 @@ fn test_dangling_subscription_cannot_unsubscribe() {
                 .await
                 .unwrap();
 
+            let event_handle2 = offering2
+                .event(EventId::new(0x8001).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
-                offering2.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("test".as_bytes(),
-                    )
-                    .await
-                    .unwrap();
+                event_handle2.notify("test".as_bytes()).await.unwrap();
                 if let Some(event) = offering2.next().await {
                     match event {
                         recentip::ServiceEvent::Unsubscribe { .. } => {
@@ -350,13 +364,17 @@ fn test_two_subscribers_get_events() {
                 .await
                 .unwrap();
 
+            let event_handle = offering
+                .event(EventId::new(0x8001).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
-                offering.event(EventId::new(0x8001).unwrap()).eventgroup(EventgroupId::new(1).unwrap()).create().unwrap().notify("test".as_bytes(),
-                    )
-                    .await
-                    .unwrap();
+                event_handle.notify("test".as_bytes()).await.unwrap();
                 if let Some(event) = offering.next().await {
                     match event {
                         recentip::ServiceEvent::Unsubscribe { .. } => {

@@ -741,9 +741,15 @@ fn events_use_session_handling() {
         // Send multiple notifications
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         for i in 0..3 {
-            offering.event(event).eventgroup(eventgroup).create().unwrap().notify(&[i]).await.unwrap();
+            event_handle.notify(&[i]).await.unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
@@ -1589,9 +1595,13 @@ fn late_server_discovery_subscribe_event() {
         // Send event
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"late-event")
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
             .await
             .unwrap();
+        event_handle.notify(b"late-event").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())

@@ -156,9 +156,13 @@ fn event_transports_value_data() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
         let sensor_data = b"temperature=42.5,humidity=65";
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(sensor_data)
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
             .await
             .unwrap();
+        event_handle.notify(sensor_data).await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -244,8 +248,15 @@ fn events_not_sent_to_non_subscribers() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
 
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+
         for i in 0..5 {
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(&[i]).await.unwrap();
+            event_handle.notify(&[i]).await.unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
@@ -278,9 +289,7 @@ fn events_not_sent_to_non_subscribers() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {
@@ -370,7 +379,14 @@ fn unsubscribe_stops_event_delivery() {
         // First event (client is subscribed)
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event_while_subscribed")
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+        event_handle
+            .notify(b"event_while_subscribed")
             .await
             .unwrap();
 
@@ -378,9 +394,7 @@ fn unsubscribe_stops_event_delivery() {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Second event (client has unsubscribed)
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event_after_unsub")
-            .await
-            .unwrap();
+        event_handle.notify(b"event_after_unsub").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -464,9 +478,13 @@ fn event_uses_notification_message_type_on_wire() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"test")
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
             .await
             .unwrap();
+        event_handle.notify(b"test").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())

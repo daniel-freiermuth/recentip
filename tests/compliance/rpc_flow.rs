@@ -221,9 +221,7 @@ fn fire_and_forget_no_response_or_error() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             if let Some(opt) = sd_msg.options.first() {
                                 if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr,
-                                    port,
-                                    ..
+                                    addr, port, ..
                                 } = opt
                                 {
                                     let ip = if addr.is_unspecified() {

@@ -66,13 +66,16 @@ fn subscribe_and_receive_events() {
             let eventgroup = EventgroupId::new(0x0001).unwrap();
             let event_id = EventId::new(0x8001).unwrap();
 
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event1")
+            let event_handle = offering
+                .event(event_id)
+                .eventgroup(eventgroup)
+                .create()
                 .await
                 .unwrap();
+
+            event_handle.notify(b"event1").await.unwrap();
             tokio::time::sleep(Duration::from_millis(100)).await;
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"event2")
-                .await
-                .unwrap();
+            event_handle.notify(b"event2").await.unwrap();
 
             tokio::time::sleep(Duration::from_millis(500)).await;
             *flag.lock().unwrap() = true;
@@ -235,17 +238,22 @@ fn unsubscribe_on_drop() {
             let eventgroup = EventgroupId::new(0x0001).unwrap();
             let event_id = EventId::new(0x8001).unwrap();
 
-            // Send an event - should be delivered
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"before_unsub")
+            let event_handle = offering
+                .event(event_id)
+                .eventgroup(eventgroup)
+                .create()
                 .await
                 .unwrap();
+
+            // Send an event - should be delivered
+            event_handle.notify(b"before_unsub").await.unwrap();
 
             // Wait for unsubscribe
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Send another event - should NOT be delivered (client unsubscribed)
             // (We can't directly test this without packet inspection, but the flow is verified)
-            let _ = offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"after_unsub").await;
+            let _ = event_handle.notify(b"after_unsub").await;
 
             tokio::time::sleep(Duration::from_millis(200)).await;
             *flag.lock().unwrap() = true;
@@ -340,13 +348,21 @@ fn subscribe_multiple_eventgroups() {
             let eg2 = EventgroupId::new(0x0002).unwrap();
             let event_id1 = EventId::new(0x8001).unwrap();
             let event_id2 = EventId::new(0x8002).unwrap();
+            let event_handle1 = offering
+                .event(event_id1)
+                .eventgroup(eg1)
+                .create()
+                .await
+                .unwrap();
+            let event_handle2 = offering
+                .event(event_id2)
+                .eventgroup(eg2)
+                .create()
+                .await
+                .unwrap();
 
-            offering.event(event_id1).eventgroup(eg1).create().unwrap().notify(b"group1_event")
-                .await
-                .unwrap();
-            offering.event(event_id2).eventgroup(eg2).create().unwrap().notify(b"group2_event")
-                .await
-                .unwrap();
+            event_handle1.notify(b"group1_event").await.unwrap();
+            event_handle2.notify(b"group2_event").await.unwrap();
 
             tokio::time::sleep(Duration::from_millis(500)).await;
             *flag.lock().unwrap() = true;
@@ -482,10 +498,14 @@ fn event_id_has_high_bit() {
             let eventgroup = EventgroupId::new(0x0001).unwrap();
             // Event ID with high bit set
             let event_id = EventId::new(0x8100).unwrap();
-
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"data")
+            let event_handle = offering
+                .event(event_id)
+                .eventgroup(eventgroup)
+                .create()
                 .await
                 .unwrap();
+
+            event_handle.notify(b"data").await.unwrap();
 
             tokio::time::sleep(Duration::from_millis(500)).await;
             *flag.lock().unwrap() = true;
@@ -597,9 +617,13 @@ fn mixed_rpc_and_events() {
             // Emit event after RPC
             let eventgroup = EventgroupId::new(0x0001).unwrap();
             let event_id = EventId::new(0x8001).unwrap();
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"post_rpc_event")
+            let event_handle = offering
+                .event(event_id)
+                .eventgroup(eventgroup)
+                .create()
                 .await
                 .unwrap();
+            event_handle.notify(b"post_rpc_event").await.unwrap();
 
             tokio::time::sleep(Duration::from_millis(500)).await;
             *flag.lock().unwrap() = true;

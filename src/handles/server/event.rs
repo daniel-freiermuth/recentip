@@ -13,7 +13,7 @@
 //! let temperature = offering
 //!     .event(EventId::new(0x8001).unwrap())
 //!     .eventgroup(EventgroupId::new(0x0001).unwrap())
-//!     .create()?;
+//!     .create().await?;
 //!
 //! // Send to all subscribers of eventgroup 0x0001
 //! temperature.notify(b"42.5").await?;
@@ -75,13 +75,32 @@ impl EventBuilder {
     ///
     /// # Errors
     ///
-    /// Returns an error if no eventgroups were specified.
-    pub fn create(self) -> Result<EventHandle> {
+    /// Returns an error if:
+    /// - No eventgroups were specified
+    /// - The event ID is already registered for this service instance
+    pub async fn create(self) -> Result<EventHandle> {
         if self.eventgroups.is_empty() {
             return Err(Error::Config(crate::error::ConfigError::new(
                 "Event must belong to at least one eventgroup",
             )));
         }
+
+        // Register the event with the runtime to validate uniqueness
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.inner
+            .cmd_tx
+            .send(crate::runtime::Command::RegisterEvent {
+                service_id: self.service_id,
+                instance_id: self.instance_id,
+                major_version: self.major_version,
+                event_id: self.event_id.value(),
+                response: tx,
+            })
+            .await
+            .map_err(|_| Error::RuntimeShutdown)?;
+
+        // Wait for registration result
+        rx.await.map_err(|_| Error::RuntimeShutdown)??;
 
         Ok(EventHandle {
             inner: self.inner,
@@ -109,6 +128,7 @@ impl EventBuilder {
 /// # Ok(())
 /// # }
 /// ```
+#[derive(Debug, Clone)]
 pub struct EventHandle {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,

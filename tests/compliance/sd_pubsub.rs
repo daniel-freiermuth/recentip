@@ -331,10 +331,22 @@ fn server_tracks_subscription_state() {
         let eg2 = EventgroupId::new(0x0002).unwrap();
         let event1 = EventId::new(0x8001).unwrap();
         let event2 = EventId::new(0x8002).unwrap();
+        let event_handle1 = offering
+            .event(event1)
+            .eventgroup(eg1)
+            .create()
+            .await
+            .unwrap();
+        let event_handle2 = offering
+            .event(event2)
+            .eventgroup(eg2)
+            .create()
+            .await
+            .unwrap();
 
         // Send events to both eventgroups
-        offering.event(event1).eventgroup(eg1).create().unwrap().notify(b"eg1").await.unwrap();
-        offering.event(event2).eventgroup(eg2).create().unwrap().notify(b"eg2").await.unwrap();
+        event_handle1.notify(b"eg1").await.unwrap();
+        event_handle2.notify(b"eg2").await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
@@ -538,9 +550,10 @@ fn server_sends_initial_events_after_ack() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering.event(event_id).eventgroup(eventgroup).create().await.unwrap();
 
         // This simulates initial event after SubscribeAck
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"initial_value").await.unwrap();
+        event_handle.notify(b"initial_value").await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
@@ -605,14 +618,15 @@ fn initial_events_only_on_first_subscribe() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering.event(event_id).eventgroup(eventgroup).create().await.unwrap();
 
         // Wait for initial subscribe
         tokio::time::sleep(Duration::from_millis(500)).await;
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"initial").await.unwrap();
+        event_handle.notify(b"initial").await.unwrap();
 
         // Send updates
         tokio::time::sleep(Duration::from_millis(500)).await;
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"update1").await.unwrap();
+        event_handle.notify(b"update1").await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
@@ -692,7 +706,8 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
         // Send event on eventgroup 1
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.event(event_id).eventgroup(eventgroup1).create().unwrap().notify(b"shared_event").await.unwrap();
+        let event_handle = offering.event(event_id).eventgroup(eventgroup1).create().await.unwrap();
+        event_handle.notify(b"shared_event").await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
@@ -771,7 +786,8 @@ fn initial_events_for_multiple_eventgroups() {
         // Send initial events for subscribed eventgroups
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.event(event_id).eventgroup(eventgroup1).create().unwrap().notify(b"initial_eg1").await.unwrap();
+        let event_handle = offering.event(event_id).eventgroup(eventgroup1).create().await.unwrap();
+        event_handle.notify(b"initial_eg1").await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
@@ -1070,7 +1086,8 @@ fn client_udp_port_ready_before_subscribe() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"immediate").await.unwrap();
+        let event_handle = offering.event(event_id).eventgroup(eventgroup).create().await.unwrap();
+        event_handle.notify(b"immediate").await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
@@ -1200,10 +1217,11 @@ fn subscribe_timer_reset_on_offer() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering.event(event_id).eventgroup(eventgroup).create().await.unwrap();
 
         // Send events over time - subscription should be maintained
         for i in 0..3 {
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(format!("event{}", i).as_bytes()).await.unwrap();
+            event_handle.notify(format!("event{}", i).as_bytes()).await.unwrap();
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
         Ok(())
@@ -1277,7 +1295,8 @@ fn no_cyclic_subscribe_if_not_configured() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"test").await.unwrap();
+        let event_handle = offering.event(event_id).eventgroup(eventgroup).create().await.unwrap();
+        event_handle.notify(b"test").await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
@@ -1413,10 +1432,11 @@ fn pubsub_state_machine_flow() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering.event(event_id).eventgroup(eventgroup).create().await.unwrap();
 
         // Send events
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"state1").await.unwrap();
-        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(b"state2").await.unwrap();
+        event_handle.notify(b"state1").await.unwrap();
+        event_handle.notify(b"state2").await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(2)).await;
         Ok(())

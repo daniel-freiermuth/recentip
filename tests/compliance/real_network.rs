@@ -430,9 +430,16 @@ async fn udp_events_real_network() {
             match offering.next().await {
                 Some(ServiceEvent::Subscribe { eventgroup, .. }) => {
                     let event_id = EventId::new(0x8001).unwrap();
+                    let event_handle = offering
+                        .event(event_id)
+                        .eventgroup(eventgroup)
+                        .create()
+                        .await
+                        .unwrap();
                     for i in 0..3 {
                         let event_data = format!("event{}", i);
-                        offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(event_data.as_bytes())
+                        event_handle
+                            .notify(event_data.as_bytes())
                             .await
                             .expect("Notify");
                         tokio::time::sleep(Duration::from_millis(50)).await;

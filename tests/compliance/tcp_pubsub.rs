@@ -85,12 +85,16 @@ fn tcp_basic_subscribe_and_receive_events() {
         // Send events via TCP
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         for i in 0..5 {
             let payload = format!("tcp_event_{}", i);
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(payload.as_bytes()).await.unwrap();
             eprintln!("[server] Sent: {}", payload);
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -187,12 +191,16 @@ fn tcp_multiple_subscribers_receive_events() {
         // Send events - both clients should receive
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         for i in 0..3 {
             let payload = format!("broadcast_{}", i);
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(payload.as_bytes()).await.unwrap();
             eprintln!("[server] Broadcast: {}", payload);
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -321,14 +329,18 @@ fn tcp_large_payload_events() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         // Send payloads of increasing sizes
         let sizes = [100, 1000, 5000, 10000, 30000];
         for size in sizes {
             let payload: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(&payload)
-                .await
-                .unwrap();
+            event_handle.notify(&payload).await.unwrap();
             eprintln!("[server] Sent {} byte payload", size);
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -430,10 +442,23 @@ fn tcp_different_eventgroups() {
         let eg2 = EventgroupId::new(0x0002).unwrap();
         let event1 = EventId::new(0x8001).unwrap();
         let event2 = EventId::new(0x8002).unwrap();
+        let event_handle1 = offering
+            .event(event1)
+            .eventgroup(eg1)
+            .create()
+            .await
+            .unwrap();
+        let event_handle2 = offering
+            .event(event2)
+            .eventgroup(eg2)
+            .create()
+            .await
+            .unwrap();
 
         // Send events to eventgroup 1
         for i in 0..3 {
-            offering.event(event1).eventgroup(eg1).create().unwrap().notify(format!("eg1_{}", i).as_bytes())
+            event_handle1
+                .notify(format!("eg1_{}", i).as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent to EG1");
@@ -443,7 +468,8 @@ fn tcp_different_eventgroups() {
 
         // Send events to eventgroup 2
         for i in 0..3 {
-            offering.event(event2).eventgroup(eg2).create().unwrap().notify(format!("eg2_{}", i).as_bytes())
+            event_handle2
+                .notify(format!("eg2_{}", i).as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent to EG2");
@@ -576,12 +602,16 @@ fn dual_stack_service_client_prefers_tcp() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         for i in 0..5 {
             let payload = format!("event_{}", i);
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(payload.as_bytes()).await.unwrap();
             eprintln!("[server] Sent: {}", payload);
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -664,12 +694,16 @@ fn dual_stack_service_client_prefers_udp() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         for i in 0..5 {
             let payload = format!("event_{}", i);
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(payload.as_bytes())
-                .await
-                .unwrap();
+            event_handle.notify(payload.as_bytes()).await.unwrap();
             eprintln!("[server] Sent: {}", payload);
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -757,9 +791,16 @@ fn tcp_only_server_udp_preferring_client() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
 
         for i in 0..3 {
-            offering.event(event_id).eventgroup(eventgroup).create().unwrap().notify(format!("tcp_{}", i).as_bytes())
+            event_handle
+                .notify(format!("tcp_{}", i).as_bytes())
                 .await
                 .unwrap();
             eprintln!("[server] Sent via TCP");

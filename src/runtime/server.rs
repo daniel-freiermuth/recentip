@@ -396,6 +396,48 @@ pub async fn handle_listen_static_command<U: UdpSocket>(
 // SYNC COMMAND HANDLERS (SERVER-SIDE)
 // ============================================================================
 
+/// Handle `Command::RegisterEvent` - validate event ID uniqueness
+pub fn handle_register_event(
+    service_id: ServiceId,
+    instance_id: InstanceId,
+    major_version: u8,
+    event_id: u16,
+    state: &mut RuntimeState,
+) -> Result<()> {
+    let key = ServiceKey::new(service_id, instance_id, major_version);
+
+    // Check if the service is actually being offered
+    if !state.offered.contains_key(&key) {
+        return Err(Error::Config(crate::error::ConfigError::new(format!(
+            "Cannot register event for service {}/{}/{} that is not being offered",
+            service_id.value(),
+            instance_id.value(),
+            major_version
+        ))));
+    }
+
+    // Get or create the event set for this service
+    let events = state
+        .registered_events
+        .entry(key)
+        .or_insert_with(std::collections::HashSet::new);
+
+    // Check if event_id is already registered
+    if events.contains(&event_id) {
+        return Err(Error::Config(crate::error::ConfigError::new(format!(
+            "Event ID 0x{:04x} already registered for service {}/{}/{}",
+            event_id,
+            service_id.value(),
+            instance_id.value(),
+            major_version
+        ))));
+    }
+
+    // Register the event
+    events.insert(event_id);
+    Ok(())
+}
+
 /// Handle `Command::StopOffer`
 pub fn handle_stop_offer(
     service_id: ServiceId,
@@ -414,6 +456,9 @@ pub fn handle_stop_offer(
             target: state.config.sd_multicast,
         });
     }
+
+    // Clean up registered events for this service
+    state.registered_events.remove(&key);
 }
 
 /// Handle `Command::Notify`

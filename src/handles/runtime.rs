@@ -51,6 +51,7 @@ pub use crate::config::RuntimeConfig;
 /// Shared state between the Runtime handle and the runtime task.
 ///
 /// This is an implementation detail. Users interact with [`Runtime`] directly.
+#[derive(Debug)]
 pub(crate) struct RuntimeInner {
     /// Channel to send commands to the runtime task.
     ///

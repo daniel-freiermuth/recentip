@@ -135,6 +135,14 @@ pub enum Command {
         eventgroup_id: u16,
         subscription_id: u64,
     },
+    /// Register an event ID for a service (validates uniqueness)
+    RegisterEvent {
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        major_version: u8,
+        event_id: u16,
+        response: oneshot::Sender<Result<()>>,
+    },
     /// Send a notification event (server-side)
     Notify {
         service_id: ServiceId,
