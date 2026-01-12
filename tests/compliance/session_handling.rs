@@ -1018,10 +1018,10 @@ fn request_id_reusable_after_response() {
 /// This integration test serves as an end-to-end stress test that the full
 /// request/response cycle works correctly across session ID rollover.
 ///
-/// NOTE: This test is slow (~100s) because it makes 65536+ RPC calls.
-/// Run with `cargo test -- --ignored` to include it.
+/// NOTE: This test is slow (~5 minutes) because it makes 65536+ RPC calls.
+/// Run with `cargo test --features slow-tests` to include it.
 #[test_log::test]
-#[ignore]
+#[cfg(feature = "slow-tests")]
 fn session_id_wraps_to_0001_not_0000() {
     covers!(feat_req_recentip_677);
 
