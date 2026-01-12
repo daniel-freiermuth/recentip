@@ -61,7 +61,6 @@ use std::net::SocketAddr;
 use bytes::Bytes;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::config::MethodConfig;
 use crate::error::Result;
 use crate::{InstanceId, MajorVersion, ServiceId};
 
@@ -153,55 +152,7 @@ pub enum Command {
         event_id: u16,
         payload: Bytes,
     },
-    /// Send a notification to static subscribers only (no SD)
-    #[allow(dead_code)]
-    NotifyStatic {
-        service_id: ServiceId,
-        instance_id: InstanceId,
-        major_version: u8,
-        #[allow(dead_code)]
-        eventgroup_id: u16,
-        event_id: u16,
-        payload: Bytes,
-        targets: Vec<SocketAddr>,
-    },
-    /// Bind a service (listen on socket, no SD announcement)
-    Bind {
-        service_id: ServiceId,
-        instance_id: InstanceId,
-        major_version: u8,
-        minor_version: u32,
-        transport: crate::config::Transport,
-        method_config: MethodConfig,
-        response: oneshot::Sender<Result<mpsc::Receiver<ServiceRequest>>>,
-    },
-    /// Start announcing a bound service via SD
-    StartAnnouncing {
-        service_id: ServiceId,
-        instance_id: InstanceId,
-        major_version: u8,
-        response: oneshot::Sender<Result<()>>,
-    },
-    /// Stop announcing a service (keeps socket open)
-    StopAnnouncing {
-        service_id: ServiceId,
-        instance_id: InstanceId,
-        major_version: u8,
-        response: oneshot::Sender<Result<()>>,
-    },
-    /// Listen for static events (pre-configured, no SD)
-    ListenStatic {
-        service_id: ServiceId,
-        instance_id: InstanceId,
-        eventgroup_id: u16,
-        /// Port to bind for receiving events
-        port: u16,
-        /// Channel to send received events
-        events: mpsc::Sender<crate::Event>,
-        response: oneshot::Sender<Result<()>>,
-    },
     /// Shutdown the runtime
-    #[allow(dead_code)]
     Shutdown,
     /// Monitor all Service Discovery events
     MonitorSd { events: mpsc::Sender<SdEvent> },

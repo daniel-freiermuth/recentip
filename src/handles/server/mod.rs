@@ -10,11 +10,9 @@
 //! - [`ServiceEvent`]: Events received by an offered service
 
 mod event;
-mod instance;
 mod offering;
 mod responder;
 
 pub use event::{EventBuilder, EventHandle};
-pub use instance::{Announced, Bound, ServiceInstance};
 pub use offering::OfferingHandle;
 pub use responder::{Responder, ServiceEvent};

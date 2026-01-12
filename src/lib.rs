@@ -372,8 +372,6 @@ pub use error::*;
 
 // Re-export handle types (explicit to avoid shadowing with internal runtime module)
 pub use handles::{
-    Announced,
-    Bound,
     // Server-side handles
     EventBuilder,
     EventHandle,
@@ -383,7 +381,6 @@ pub use handles::{
     ProxyHandle,
     Responder,
     ServiceEvent,
-    ServiceInstance,
     StaticEventListener,
     Subscription,
 };

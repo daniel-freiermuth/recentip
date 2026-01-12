@@ -117,11 +117,6 @@ mod instances;
 #[path = "compliance/multi_party.rs"]
 mod multi_party;
 
-// service_instance_api contains turmoil integration tests for ServiceInstance typestate API
-#[cfg(feature = "turmoil")]
-#[path = "compliance/service_instance_api.rs"]
-mod service_instance_api;
-
 // SD pub/sub compliance tests for subscription lifecycle
 #[cfg(feature = "turmoil")]
 #[path = "compliance/sd_pubsub.rs"]

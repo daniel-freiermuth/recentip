@@ -222,20 +222,6 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             }
                         }
                     }
-                    // Special handling for Bind - needs async socket/listener creation (no SD announcement)
-                    Some(Command::Bind { service_id, instance_id, major_version, minor_version, transport, method_config, response }) => {
-                        server::handle_bind_command::<U, T, L>(
-                            service_id, instance_id, major_version, minor_version, transport, method_config, response,
-                            &config, &mut state, &rpc_tx, &tcp_rpc_tx
-                        ).await;
-                    }
-                    // Special handling for ListenStatic - needs async socket creation
-                    Some(Command::ListenStatic { service_id, instance_id, eventgroup_id, port, events, response }) => {
-                        server::handle_listen_static_command::<U>(
-                            service_id, instance_id, eventgroup_id, port, events, response,
-                            &mut state
-                        ).await;
-                    }
                     // Special handling for Subscribe - needs async TCP connection for TCP pub/sub (feat_req_recentipsd_767)
                     Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_id, events, response }) => {
                         if let Some(actions) = client::handle_subscribe_command(
@@ -715,68 +701,12 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             );
         }
 
-        Command::NotifyStatic {
-            service_id,
-            instance_id,
-            major_version,
-            eventgroup_id: _,
-            event_id,
-            payload,
-            targets,
-        } => {
-            server::handle_notify_static(
-                service_id,
-                instance_id,
-                major_version,
-                event_id,
-                payload,
-                targets,
-                state,
-                &mut actions,
-            );
-        }
-
-        Command::StartAnnouncing {
-            service_id,
-            instance_id,
-            major_version,
-            response,
-        } => {
-            server::handle_start_announcing(
-                service_id,
-                instance_id,
-                major_version,
-                response,
-                state,
-                &mut actions,
-            );
-        }
-
-        Command::StopAnnouncing {
-            service_id,
-            instance_id,
-            major_version,
-            response,
-        } => {
-            server::handle_stop_announcing(
-                service_id,
-                instance_id,
-                major_version,
-                response,
-                state,
-                &mut actions,
-            );
-        }
-
         Command::MonitorSd { events } => {
             state.sd_monitors.push(events);
         }
 
         // These are handled separately in runtime_task for async socket creation
-        Command::Shutdown
-        | Command::Offer { .. }
-        | Command::Bind { .. }
-        | Command::ListenStatic { .. } => {}
+        Command::Shutdown | Command::Offer { .. } => {}
     }
 
     if actions.is_empty() {
