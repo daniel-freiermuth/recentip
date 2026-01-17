@@ -399,11 +399,13 @@ fn subscribe_eventgroup_ttl_on_wire() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())

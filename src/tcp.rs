@@ -68,20 +68,23 @@ pub struct TcpMessage {
     pub data: Vec<u8>,
     /// The peer address this message came from
     pub from: SocketAddr,
+    /// The subscription ID this message is for (0 for RPC)
+    pub subscription_id: u64,
 }
 
 /// TCP connection pool manages connections to remote peers.
 ///
-/// Per SOME/IP spec, there should be a single TCP connection per client-server pair.
+/// Connections are keyed by (remote_endpoint, subscription_id) to allow
+/// separate connections per subscription (like UDP's per-subscription sockets).
 /// The pool handles connection establishment, reuse, and reconnection.
 ///
 /// For client-side TCP: When a connection is established, a reader task is spawned
 /// to receive responses and forward them to the runtime.
 pub struct TcpConnectionPool<T: TcpStream> {
-    /// Active connections indexed by peer address (just for tracking, not for sending)
-    connections: Arc<Mutex<HashMap<SocketAddr, TcpConnectionHandle>>>,
+    /// Active connections indexed by (peer address, subscription_id)
+    connections: Arc<Mutex<HashMap<(SocketAddr, u64), TcpConnectionHandle>>>,
     /// Sender for each connection
-    senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Vec<u8>>>>>,
+    senders: Arc<Mutex<HashMap<(SocketAddr, u64), mpsc::Sender<Vec<u8>>>>>,
     /// Channel to forward received messages to the runtime
     msg_tx: mpsc::Sender<TcpMessage>,
     /// Enable Magic Cookies for TCP resync (`feat_req_recentip_586`)
@@ -94,18 +97,6 @@ pub struct TcpConnectionPool<T: TcpStream> {
 struct TcpConnectionHandle {
     /// The local address of this connection (what the peer sees us as)
     local_addr: SocketAddr,
-}
-
-impl<T: TcpStream> Clone for TcpConnectionPool<T> {
-    fn clone(&self) -> Self {
-        Self {
-            connections: Arc::clone(&self.connections),
-            senders: Arc::clone(&self.senders),
-            msg_tx: self.msg_tx.clone(),
-            magic_cookies: self.magic_cookies,
-            _phantom: std::marker::PhantomData,
-        }
-    }
 }
 
 impl<T: TcpStream> TcpConnectionPool<T> {
@@ -128,11 +119,13 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     ///
     /// When a new connection is established, a reader task is spawned to receive
     /// responses and forward them to the runtime via the `msg_tx` channel.
+    /// Uses subscription_id 0 for RPC traffic (method calls/responses).
     pub async fn send(&self, target: SocketAddr, data: &[u8]) -> io::Result<()> {
-        // Check if we have a sender for this connection
+        // Check if we have a sender for this connection (use subscription_id 0 for RPC)
+        let key = (target, 0);
         let sender = {
             let senders = self.senders.lock().await;
-            senders.get(&target).cloned()
+            senders.get(&key).cloned()
         };
 
         if let Some(tx) = sender {
@@ -151,14 +144,15 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         // Create channel for sending data to this connection
         let (send_tx, send_rx) = mpsc::channel::<Vec<u8>>(32);
 
-        // Store the sender
+        // Store the sender (use subscription_id 0 for RPC)
+        let key = (target, 0);
         {
             let mut senders = self.senders.lock().await;
-            senders.insert(target, send_tx.clone());
+            senders.insert(key, send_tx.clone());
         }
         {
             let mut connections = self.connections.lock().await;
-            connections.insert(target, TcpConnectionHandle { local_addr });
+            connections.insert(key, TcpConnectionHandle { local_addr });
         }
 
         // Spawn connection handler task
@@ -176,6 +170,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
                 senders,
                 connections,
                 magic_cookies,
+                0, // subscription_id 0 for RPC
             )
             .await;
         });
@@ -195,11 +190,19 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// subscribing (per `feat_req_recentipsd_767`), and must advertise the correct
     /// endpoint (our local address on the TCP connection) so the server can send
     /// events back on the same connection.
-    pub async fn ensure_connected(&self, target: SocketAddr) -> io::Result<SocketAddr> {
+    ///
+    /// The subscription_id allows multiple connections per server (one per subscription),
+    /// mirroring UDP's per-subscription socket approach. Use 0 for RPC connections.
+    pub async fn ensure_connected(
+        &self,
+        target: SocketAddr,
+        subscription_id: u64,
+    ) -> io::Result<SocketAddr> {
+        let key = (target, subscription_id);
         // Check if we already have a connection
         {
             let connections = self.connections.lock().await;
-            if let Some(handle) = connections.get(&target) {
+            if let Some(handle) = connections.get(&key) {
                 return Ok(handle.local_addr);
             }
         }
@@ -218,11 +221,11 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         // Store the sender and connection handle
         {
             let mut senders = self.senders.lock().await;
-            senders.insert(target, send_tx);
+            senders.insert(key, send_tx);
         }
         {
             let mut connections = self.connections.lock().await;
-            connections.insert(target, TcpConnectionHandle { local_addr });
+            connections.insert(key, TcpConnectionHandle { local_addr });
         }
 
         // Spawn connection handler task
@@ -240,6 +243,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
                 senders,
                 connections,
                 magic_cookies,
+                subscription_id,
             )
             .await;
         });
@@ -247,29 +251,11 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         Ok(local_addr)
     }
 
-    /// Get the local address for an existing connection to a peer.
-    ///
-    /// Returns `None` if no connection exists.
-    pub async fn get_local_addr(&self, target: &SocketAddr) -> Option<SocketAddr> {
-        let connections = self.connections.lock().await;
-        connections.get(target).map(|h| h.local_addr)
-    }
-
-    /// Check if we have an active connection to a peer
-    pub async fn has_connection(&self, target: &SocketAddr) -> bool {
-        self.connections.lock().await.contains_key(target)
-    }
-
-    /// Close connection to a peer
+    /// Close connection to a peer (RPC connection, subscription_id 0)
     pub async fn close(&self, target: &SocketAddr) {
-        self.connections.lock().await.remove(target);
-        self.senders.lock().await.remove(target);
-    }
-
-    /// Close all connections
-    pub async fn close_all(&self) {
-        self.connections.lock().await.clear();
-        self.senders.lock().await.clear();
+        let key = (*target, 0);
+        self.connections.lock().await.remove(&key);
+        self.senders.lock().await.remove(&key);
     }
 }
 
@@ -283,9 +269,10 @@ async fn handle_client_tcp_connection<T: TcpStream>(
     peer_addr: SocketAddr,
     msg_tx: mpsc::Sender<TcpMessage>,
     mut send_rx: mpsc::Receiver<Vec<u8>>,
-    senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Vec<u8>>>>>,
-    connections: Arc<Mutex<HashMap<SocketAddr, TcpConnectionHandle>>>,
+    senders: Arc<Mutex<HashMap<(SocketAddr, u64), mpsc::Sender<Vec<u8>>>>>,
+    connections: Arc<Mutex<HashMap<(SocketAddr, u64), TcpConnectionHandle>>>,
     magic_cookies: bool,
+    subscription_id: u64,
 ) {
     let mut read_buffer = BytesMut::new();
     let mut read_buf = [0u8; 8192];
@@ -331,6 +318,7 @@ async fn handle_client_tcp_connection<T: TcpStream>(
                                 let msg = TcpMessage {
                                     data: message_data.to_vec(),
                                     from: peer_addr,
+                                    subscription_id,
                                 };
                                 if msg_tx.send(msg).await.is_err() {
                                     tracing::debug!("SomeIp closed, stopping TCP client connection");
@@ -368,8 +356,9 @@ async fn handle_client_tcp_connection<T: TcpStream>(
     }
 
     // Clean up
-    senders.lock().await.remove(&peer_addr);
-    connections.lock().await.remove(&peer_addr);
+    let key = (peer_addr, subscription_id);
+    senders.lock().await.remove(&key);
+    connections.lock().await.remove(&key);
 }
 
 /// Read SOME/IP messages from a TCP stream with framing.
@@ -602,6 +591,7 @@ async fn handle_tcp_connection<T: TcpStream>(
                                 let msg = TcpMessage {
                                     data: message_data.to_vec(),
                                     from: peer_addr,
+                                    subscription_id: 0, // Server-side, no subscription
                                 };
                                 if msg_tx.send(msg).await.is_err() {
                                     tracing::debug!("SomeIp closed, stopping TCP connection handler");

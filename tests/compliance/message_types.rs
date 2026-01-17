@@ -324,7 +324,12 @@ fn server_sends_notification_type() {
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(1).unwrap();
-        let mut subscription = proxy.subscribe(eventgroup).await.expect("Subscribe failed");
+        let mut subscription = proxy
+            .new_subscription()
+            .eventgroup(eventgroup)
+            .subscribe()
+            .await
+            .expect("Subscribe failed");
 
         // Should receive notification
         let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())

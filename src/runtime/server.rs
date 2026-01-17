@@ -64,7 +64,7 @@ use super::state::{
     OfferedService, PendingServerResponse, RpcMessage, RpcSendMessage, RpcTransportSender,
     RuntimeState, ServiceKey, SubscriberKey,
 };
-use crate::config::{MethodConfig, RuntimeConfig, Transport};
+use crate::config::RuntimeConfig;
 use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::tcp::{TcpMessage, TcpServer};
@@ -209,189 +209,6 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     Some(actions)
 }
 
-/// Handle `Command::Bind` which creates socket but does NOT announce via SD
-pub async fn handle_bind_command<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
-    service_id: ServiceId,
-    instance_id: InstanceId,
-    major_version: u8,
-    minor_version: u32,
-    transport: Transport,
-    method_config: MethodConfig,
-    response: oneshot::Sender<Result<mpsc::Receiver<ServiceRequest>>>,
-    config: &RuntimeConfig,
-    state: &mut RuntimeState,
-    rpc_tx: &mpsc::Sender<RpcMessage>,
-    tcp_rpc_tx: &mpsc::Sender<TcpMessage>,
-) {
-    let key = ServiceKey::new(service_id, instance_id, major_version);
-
-    // Check if already bound
-    if state.offered.contains_key(&key) {
-        let _ = response.send(Err(Error::AlreadyOffered));
-        return;
-    }
-
-    // Create channel for service requests
-    let (requests_tx, requests_rx) = mpsc::channel(64);
-
-    // Determine RPC port - use next available port starting from local_addr + 1
-    let rpc_port = state.local_endpoint.port() + 1 + state.offered.len() as u16;
-    let rpc_addr = SocketAddr::new(state.local_endpoint.ip(), rpc_port);
-
-    // Create the appropriate transport listener/socket
-    let result: std::io::Result<(SocketAddr, RpcTransportSender)> = match transport {
-        Transport::Udp => {
-            // Create and bind UDP RPC socket
-            match U::bind(rpc_addr).await {
-                Ok(rpc_socket) => {
-                    let (rpc_endpoint, rpc_send_tx) = spawn_rpc_socket_task(
-                        rpc_socket,
-                        service_id.value(),
-                        instance_id.value(),
-                        major_version,
-                        rpc_tx.clone(),
-                    )
-                    .await;
-                    Ok((rpc_endpoint, RpcTransportSender::Udp(rpc_send_tx)))
-                }
-                Err(e) => Err(e),
-            }
-        }
-        Transport::Tcp => {
-            // Create and bind TCP listener
-            match L::bind(rpc_addr).await {
-                Ok(listener) => {
-                    match TcpServer::<T>::spawn(
-                        listener,
-                        service_id.value(),
-                        instance_id.value(),
-                        tcp_rpc_tx.clone(),
-                        config.magic_cookies,
-                    )
-                    .await
-                    {
-                        Ok(tcp_server) => Ok((
-                            tcp_server.local_addr,
-                            RpcTransportSender::Tcp(tcp_server.send_tx),
-                        )),
-                        Err(e) => Err(e),
-                    }
-                }
-                Err(e) => Err(e),
-            }
-        }
-    };
-
-    match result {
-        Ok((rpc_endpoint, rpc_transport)) => {
-            // Store the offered service with its RPC endpoint (NOT announcing yet)
-            // Bind uses only the specified transport (no dual-stack for static binding)
-            let (udp_endpoint, udp_transport, tcp_endpoint, tcp_transport) = match transport {
-                Transport::Udp => (Some(rpc_endpoint), Some(rpc_transport), None, None),
-                Transport::Tcp => (None, None, Some(rpc_endpoint), Some(rpc_transport)),
-            };
-            state.offered.insert(
-                key,
-                OfferedService {
-                    major_version,
-                    minor_version,
-                    requests_tx,
-                    last_offer: Instant::now(),
-                    udp_endpoint,
-                    udp_transport,
-                    tcp_endpoint,
-                    tcp_transport,
-                    method_config,
-                    is_announcing: false, // Bind does NOT announce
-                },
-            );
-
-            let _ = response.send(Ok(requests_rx));
-        }
-        Err(e) => {
-            tracing::error!("Failed to bind RPC {:?} on {}: {}", transport, rpc_addr, e);
-            let _ = response.send(Err(Error::Io(e)));
-        }
-    }
-}
-
-/// Handle `Command::ListenStatic` which creates a socket to receive static events
-pub async fn handle_listen_static_command<U: UdpSocket>(
-    service_id: ServiceId,
-    instance_id: InstanceId,
-    eventgroup_id: u16,
-    port: u16,
-    events: mpsc::Sender<crate::Event>,
-    response: oneshot::Sender<Result<()>>,
-    state: &mut RuntimeState,
-) {
-    let key = SubscriberKey {
-        service_id: service_id.value(),
-        instance_id: instance_id.value(),
-        eventgroup_id,
-    };
-
-    // Bind a UDP socket to receive static notifications
-    let bind_addr = SocketAddr::new(state.local_endpoint.ip(), port);
-
-    match U::bind(bind_addr).await {
-        Ok(socket) => {
-            // Store the event channel for this listener
-            state.static_listeners.insert(key, events.clone());
-
-            // Spawn a task to receive events on this socket
-            tokio::spawn(async move {
-                let mut buf = [0u8; 65535];
-                loop {
-                    match socket.recv_from(&mut buf).await {
-                        Ok((len, _from)) => {
-                            // Parse the SOME/IP header
-                            if len >= Header::SIZE {
-                                let mut data = &buf[..len];
-                                if let Some(header) = Header::parse(&mut data) {
-                                    // Check if this is a notification
-                                    if header.message_type == MessageType::Notification {
-                                        if let Some(event_id) =
-                                            crate::EventId::new(header.method_id)
-                                        {
-                                            let payload_start = Header::SIZE;
-                                            let payload_end = (header.length as usize + 8).min(len);
-                                            let payload = Bytes::copy_from_slice(
-                                                &buf[payload_start..payload_end],
-                                            );
-
-                                            let event = crate::Event { event_id, payload };
-
-                                            if events.send(event).await.is_err() {
-                                                // Receiver dropped, exit the task
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!("Error receiving on static listener socket: {}", e);
-                            break;
-                        }
-                    }
-                }
-            });
-
-            let _ = response.send(Ok(()));
-        }
-        Err(e) => {
-            tracing::error!(
-                "Failed to bind static listener socket on port {}: {}",
-                port,
-                e
-            );
-            let _ = response.send(Err(Error::Io(e)));
-        }
-    }
-}
-
 // ============================================================================
 // SYNC COMMAND HANDLERS (SERVER-SIDE)
 // ============================================================================
@@ -475,7 +292,10 @@ pub fn handle_notify(
     let service_key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Collect all unique subscribers across all eventgroups
-    // Use a set to avoid sending duplicates if a client is subscribed to multiple eventgroups
+    // Deduplicate by endpoint to avoid sending the same event multiple times to the same client.
+    // For UDP: Each eventgroup subscription has its own socket (unique port), so dedup is per-EG.
+    // For TCP: Multiple eventgroup subscriptions share one connection, so we send once and let
+    //          the client route internally based on which EGs it subscribed to.
     let mut seen_subscribers = std::collections::HashSet::new();
     let mut subscribers: Vec<(SocketAddr, crate::config::Transport)> = Vec::new();
 
@@ -483,6 +303,7 @@ pub fn handle_notify(
         let sub_key = SubscriberKey {
             service_id: service_id.value(),
             instance_id: instance_id.value(),
+            major_version,
             eventgroup_id,
         };
 
@@ -514,108 +335,6 @@ pub fn handle_notify(
                 transport,
             });
         }
-    }
-}
-
-/// Handle `Command::NotifyStatic`
-pub fn handle_notify_static(
-    service_id: ServiceId,
-    instance_id: InstanceId,
-    major_version: u8,
-    event_id: u16,
-    payload: Bytes,
-    targets: Vec<SocketAddr>,
-    state: &mut RuntimeState,
-    actions: &mut Vec<Action>,
-) {
-    let service_key = ServiceKey::new(service_id, instance_id, major_version);
-
-    if state.offered.contains_key(&service_key) {
-        let notification_data = build_notification(
-            service_id.value(),
-            event_id,
-            state.client_id,
-            state.next_session_id(),
-            1, // interface version
-            &payload,
-        );
-
-        for target in targets {
-            actions.push(Action::SendServerMessage {
-                service_key,
-                data: notification_data.clone(),
-                target,
-                // TODO: Accept transport in API
-                transport: crate::config::Transport::Udp,
-            });
-        }
-    }
-}
-
-/// Handle `Command::StartAnnouncing`
-pub fn handle_start_announcing(
-    service_id: ServiceId,
-    instance_id: InstanceId,
-    major_version: u8,
-    response: oneshot::Sender<Result<()>>,
-    state: &mut RuntimeState,
-    actions: &mut Vec<Action>,
-) {
-    let key = ServiceKey::new(service_id, instance_id, major_version);
-
-    // Capture values before mutable borrow
-    let sd_flags = state.sd_flags(true);
-    let ttl = state.config.offer_ttl;
-    let sd_multicast = state.config.sd_multicast;
-
-    if let Some(offered) = state.offered.get_mut(&key) {
-        // Mark as announcing
-        offered.is_announcing = true;
-        offered.last_offer = Instant::now() - Duration::from_secs(10); // Force immediate offer
-
-        let msg = build_offer_message(&key, offered, sd_flags, ttl, state.config.advertised_ip);
-
-        actions.push(Action::SendSd {
-            message: msg,
-            target: sd_multicast,
-        });
-
-        let _ = response.send(Ok(()));
-    } else {
-        let _ = response.send(Err(Error::ServiceUnavailable));
-    }
-}
-
-/// Handle `Command::StopAnnouncing`
-/// Announcing a service that was only bound (not offered) before
-pub fn handle_stop_announcing(
-    service_id: ServiceId,
-    instance_id: InstanceId,
-    major_version: u8,
-    response: oneshot::Sender<Result<()>>,
-    state: &mut RuntimeState,
-    actions: &mut Vec<Action>,
-) {
-    let key = ServiceKey::new(service_id, instance_id, major_version);
-
-    // Capture values before mutable borrow
-    let sd_flags = state.sd_flags(false);
-    let sd_multicast = state.config.sd_multicast;
-
-    if let Some(offered) = state.offered.get_mut(&key) {
-        // Mark as not announcing
-        offered.is_announcing = false;
-
-        let msg = build_stop_offer_message(&key, offered, sd_flags);
-
-        actions.push(Action::SendSd {
-            message: msg,
-            target: sd_multicast,
-        });
-
-        let _ = response.send(Ok(()));
-    } else {
-        let _ = response.send(Err(Error::ServiceUnavailable));
     }
 }
 

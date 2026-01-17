@@ -97,6 +97,7 @@ impl ServiceKey {
 pub struct SubscriberKey {
     pub(crate) service_id: u16,
     pub(crate) instance_id: u16,
+    pub(crate) major_version: u8,
     pub(crate) eventgroup_id: u16,
 }
 
@@ -251,6 +252,14 @@ pub struct ClientSubscription {
     pub(crate) subscription_id: u64,
     pub(crate) eventgroup_id: u16,
     pub(crate) events_tx: mpsc::Sender<crate::Event>,
+    /// Local endpoint for this subscription (events are received on this port)
+    pub(crate) local_endpoint: SocketAddr,
+    /// True if this subscription has a dedicated socket task (UDP subscriptions only)
+    /// TCP subscriptions receive events via the shared TCP connection handler
+    pub(crate) has_dedicated_socket: bool,
+    /// The connection key used for TCP subscriptions (0 = shared connection, >0 = dedicated)
+    /// Used for routing: events from conn_key=0 only go to subscriptions with conn_key=0
+    pub(crate) tcp_conn_key: u64,
 }
 
 /// Pending RPC call (client-side)
@@ -270,7 +279,27 @@ pub struct PendingSubscriptionKey {
 /// Pending subscription waiting for ACK/NACK from server
 pub struct PendingSubscription {
     pub(crate) subscription_id: u64,
-    pub(crate) response: oneshot::Sender<crate::error::Result<u64>>,
+    pub(crate) response: Option<oneshot::Sender<crate::error::Result<u64>>>,
+}
+
+/// Key for tracking multi-eventgroup subscriptions
+/// A multi-eventgroup subscription uses the same subscription_id for all eventgroups
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MultiEventgroupSubscriptionKey {
+    pub(crate) service_id: u16,
+    pub(crate) instance_id: u16,
+    pub(crate) major_version: u8,
+    pub(crate) subscription_id: u64,
+}
+
+/// State for a multi-eventgroup subscription waiting for all ACKs
+pub struct MultiEventgroupSubscription {
+    /// All eventgroup IDs in this subscription
+    pub(crate) eventgroup_ids: Vec<u16>,
+    /// Eventgroups that have been ACKed (set)
+    pub(crate) acked_eventgroups: HashSet<u16>,
+    /// Response channel to send result when all ACKed or any NACKed
+    pub(crate) response: Option<oneshot::Sender<crate::error::Result<u64>>>,
 }
 
 // ============================================================================
@@ -325,8 +354,12 @@ pub struct RuntimeState {
     pub(crate) static_listeners: HashMap<SubscriberKey, mpsc::Sender<crate::Event>>,
     /// Pending RPC calls waiting for responses
     pub(crate) pending_calls: HashMap<CallKey, PendingCall>,
-    /// Pending subscriptions waiting for ACK/NACK
+    /// Pending subscriptions waiting for ACK/NACK (single eventgroup subscriptions)
     pub(crate) pending_subscriptions: HashMap<PendingSubscriptionKey, Vec<PendingSubscription>>,
+    /// Multi-eventgroup subscriptions waiting for ALL ACKs (or any NACK)
+    /// "All or nothing" semantics: subscription only succeeds if ALL eventgroups ACK
+    pub(crate) multi_eventgroup_subscriptions:
+        HashMap<MultiEventgroupSubscriptionKey, MultiEventgroupSubscription>,
     /// Client ID for outgoing requests
     pub(crate) client_id: u16,
     /// SD session ID counter
@@ -343,6 +376,11 @@ pub struct RuntimeState {
     pub(crate) sd_monitors: Vec<mpsc::Sender<crate::SdEvent>>,
     /// Next subscription ID for client-side subscriptions (unique per handle)
     next_subscription_id: u64,
+    /// Tracks which (service_id, instance_id) pairs are using each subscription endpoint (port).
+    /// This enables endpoint reuse across DIFFERENT services while maintaining isolation
+    /// within the SAME service (events can be routed by service_id in header, but not by eventgroup).
+    /// Key: port number, Value: set of (service_id, instance_id) using that port
+    pub(crate) subscription_endpoint_usage: HashMap<u16, HashSet<(u16, u16)>>,
 }
 
 impl RuntimeState {
@@ -367,6 +405,7 @@ impl RuntimeState {
             static_listeners: HashMap::new(),
             pending_calls: HashMap::new(),
             pending_subscriptions: HashMap::new(),
+            multi_eventgroup_subscriptions: HashMap::new(),
             client_id,
             session_id: 1,
             reboot_flag: true,
@@ -375,6 +414,7 @@ impl RuntimeState {
             peer_reboot_flags: HashMap::new(),
             sd_monitors: Vec::new(),
             next_subscription_id: 1,
+            subscription_endpoint_usage: HashMap::new(),
         }
     }
 
@@ -410,6 +450,79 @@ impl RuntimeState {
             flags |= SdMessage::FLAG_UNICAST;
         }
         flags
+    }
+
+    /// Find an existing subscription endpoint that can be reused for a new subscription.
+    ///
+    /// Returns Some(port) if there's an endpoint that doesn't already have a subscription
+    /// from the same (service_id, instance_id). This enables endpoint sharing across
+    /// different services while maintaining isolation within the same service.
+    ///
+    /// This includes the client_rpc_endpoint if this service isn't currently using it,
+    /// allowing port reuse after unsubscribe/resubscribe cycles.
+    ///
+    /// Returns None if no suitable endpoint exists (need to create a new one).
+    pub(crate) fn find_reusable_subscription_endpoint(
+        &self,
+        service_id: u16,
+        instance_id: u16,
+    ) -> Option<u16> {
+        // First, check if the client_rpc_endpoint is available for this service
+        // (i.e., this service has no subscriptions currently using it)
+        let rpc_port = self.client_rpc_endpoint.port();
+        let service_uses_rpc_port = self
+            .subscription_endpoint_usage
+            .get(&rpc_port)
+            .map_or(false, |services| {
+                services.contains(&(service_id, instance_id))
+            });
+
+        if !service_uses_rpc_port {
+            // The shared RPC endpoint is available for this service - prefer it
+            return Some(rpc_port);
+        }
+
+        // Otherwise, look for other dedicated endpoints not used by this service
+        for (&port, services) in &self.subscription_endpoint_usage {
+            if port == rpc_port {
+                continue; // Already checked above
+            }
+            // Can reuse if this service isn't already using this port
+            if !services.contains(&(service_id, instance_id)) {
+                return Some(port);
+            }
+        }
+        None
+    }
+
+    /// Register that a (service_id, instance_id) is using a subscription endpoint (port).
+    pub(crate) fn register_subscription_endpoint(
+        &mut self,
+        port: u16,
+        service_id: u16,
+        instance_id: u16,
+    ) {
+        self.subscription_endpoint_usage
+            .entry(port)
+            .or_default()
+            .insert((service_id, instance_id));
+    }
+
+    /// Unregister a (service_id, instance_id) from a subscription endpoint.
+    /// Called when a subscription is dropped.
+    pub(crate) fn unregister_subscription_endpoint(
+        &mut self,
+        port: u16,
+        service_id: u16,
+        instance_id: u16,
+    ) {
+        if let Some(services) = self.subscription_endpoint_usage.get_mut(&port) {
+            services.remove(&(service_id, instance_id));
+            // Clean up empty entries to avoid memory leak
+            if services.is_empty() {
+                self.subscription_endpoint_usage.remove(&port);
+            }
+        }
     }
 }
 

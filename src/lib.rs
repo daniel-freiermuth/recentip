@@ -20,6 +20,21 @@
 //! - **Dual transport**: UDP (default) and TCP with Magic Cookie support
 //! - **Spec compliance**: Extensive test coverage against SOME/IP specification
 //!
+//! ## Documentation
+//!
+//! | Resource | Description |
+//! |----------|-------------|
+//! | [Quick Start](#quick-start) | Get up and running in 5 minutes |
+//! | [`examples`] | In-depth guides: RPC, Pub/Sub, Transport, Monitoring |
+//! | [Architecture Overview](#architecture-overview) | Internal design for contributors |
+//! | [`compliance`] | Spec traceability: requirements → tests |
+//! | [`prelude`] | Common imports for getting started |
+//!
+//! **Key types:**
+//! - [`SomeIp`] — the runtime (start with [`configure()`])
+//! - [`handle::OfferedService`] — client proxy for calling methods and subscribing
+//! - [`handle::ServiceOffering`] — server handle for receiving requests and publishing events
+//!
 //! ## Quick Start
 //!
 //! Add to your `Cargo.toml`:
@@ -49,6 +64,18 @@
 //!     let method_id = MethodId::new(0x0001).unwrap();
 //!     let response = proxy.call(method_id, b"").await?;
 //!     println!("Response: {:?}", response);
+//!
+//!     // Subscribe to events
+//!     let eg = EventgroupId::new(0x0001).unwrap();
+//!     let mut subscription = proxy
+//!         .new_subscription()
+//!         .eventgroup(eg)
+//!         .subscribe()
+//!         .await?;
+//!     
+//!     while let Some(event) = subscription.next().await {
+//!         println!("Event: {:?}", event);
+//!     }
 //!
 //!     Ok(())
 //! }
@@ -224,10 +251,17 @@
 //! use recentip::handle::OfferedService;
 //!
 //! async fn subscribe_example(proxy: &OfferedService) -> Result<()> {
-//!     let eventgroup = EventgroupId::new(0x0001).unwrap();
-//!     let mut events = proxy.subscribe(eventgroup).await?;
+//!     let eg1 = EventgroupId::new(0x0001).unwrap();
+//!     let eg2 = EventgroupId::new(0x0002).unwrap();
+//!     
+//!     let mut subscription = proxy
+//!         .new_subscription()
+//!         .eventgroup(eg1)
+//!         .eventgroup(eg2)  // Optional: subscribe to multiple eventgroups
+//!         .subscribe()
+//!         .await?;
 //!
-//!     while let Some(event) = events.next().await {
+//!     while let Some(event) = subscription.next().await {
 //!         println!("Event {}: {} bytes", event.event_id.value(), event.payload.len());
 //!     }
 //!     Ok(())
@@ -348,6 +382,8 @@
 use std::net::SocketAddr;
 
 pub mod builder;
+pub mod compliance;
+pub mod examples;
 pub mod net;
 
 // Internal modules for runtime implementation (moved to runtime/)
@@ -390,6 +426,7 @@ pub use handles::{
     ServiceOffering,
     StaticEventListener,
     Subscription,
+    SubscriptionBuilder,
 };
 
 // Re-export SD event types for monitoring API
@@ -692,6 +729,6 @@ pub mod prelude {
         configure, Error, Event, EventBuilder, EventHandle, EventId, EventgroupId, InstanceId,
         MajorVersion, MethodConfig, MethodId, MinorVersion, OfferedService, Response, Result,
         ReturnCode, Runtime, RuntimeConfig, ServiceId, ServiceOffering, SomeIp, SomeIpBuilder,
-        Transport,
+        Subscription, SubscriptionBuilder, Transport,
     };
 }

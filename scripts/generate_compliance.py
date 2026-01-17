@@ -77,6 +77,14 @@ def generate_compliance_md(
         if req.id in req_to_tests:
             by_source[req.source_file]["covered"] += 1
     
+    # Calculate coverage stats
+    testable_count = sum(1 for r in requirements.values() if r.reqtype == 'Requirement')
+    info_count = sum(1 for r in requirements.values() if r.reqtype == 'Information')
+    covered_testable = sum(1 for req, _ in covered if req.reqtype == 'Requirement')
+    covered_info = sum(1 for req, _ in covered if req.reqtype == 'Information')
+    total_covered = covered_testable + covered_info
+    coverage_pct = (covered_testable / testable_count * 100) if testable_count > 0 else 0
+    
     # Generate markdown
     lines = [
         "# SOME/IP Specification Compliance",
@@ -89,10 +97,13 @@ def generate_compliance_md(
         f"| Metric | Count |",
         f"|--------|-------|",
         f"| Total Requirements | {len(requirements)} |",
-        f"| Requirements (testable) | {sum(1 for r in requirements.values() if r.reqtype == 'Requirement')} |",
-        f"| Information (non-testable) | {sum(1 for r in requirements.values() if r.reqtype == 'Information')} |",
-        f"| **Covered by Tests** | **{len(covered)}** |",
+        f"| Requirements (testable) | {testable_count} |",
+        f"| Information (non-testable) | {info_count} |",
+        f"| Covered (testable) | {covered_testable} |",
+        f"| Covered (info) | {covered_info} |",
+        f"| **Total Covered** | **{total_covered}** |",
         f"| Not Yet Covered | {len(not_covered_reqs)} |",
+        f"| **Coverage** | **{coverage_pct:.1f}%** |",
         "",
         "## Coverage by Spec Document",
         "",

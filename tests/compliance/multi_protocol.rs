@@ -391,11 +391,16 @@ fn mixed_transport_event_delivery() {
             .expect("TCP service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut tcp_sub =
-            tokio::time::timeout(Duration::from_secs(5), tcp_proxy.subscribe(eventgroup))
-                .await
-                .expect("TCP subscribe timeout")
-                .expect("TCP subscribe success");
+        let mut tcp_sub = tokio::time::timeout(
+            Duration::from_secs(5),
+            tcp_proxy
+                .new_subscription()
+                .eventgroup(eventgroup)
+                .subscribe(),
+        )
+        .await
+        .expect("TCP subscribe timeout")
+        .expect("TCP subscribe success");
 
         eprintln!("[client] Subscribed to TCP service");
 
@@ -408,11 +413,16 @@ fn mixed_transport_event_delivery() {
             .expect("UDP discovery timeout")
             .expect("UDP service available");
 
-        let mut udp_sub =
-            tokio::time::timeout(Duration::from_secs(5), udp_proxy.subscribe(eventgroup))
-                .await
-                .expect("UDP subscribe timeout")
-                .expect("UDP subscribe success");
+        let mut udp_sub = tokio::time::timeout(
+            Duration::from_secs(5),
+            udp_proxy
+                .new_subscription()
+                .eventgroup(eventgroup)
+                .subscribe(),
+        )
+        .await
+        .expect("UDP subscribe timeout")
+        .expect("UDP subscribe success");
 
         eprintln!("[client] Subscribed to UDP service");
 
@@ -1314,11 +1324,13 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
         eprintln!("[client] Service discovered, subscribing...");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed, waiting for events...");
 
@@ -1467,11 +1479,13 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
         );
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed via UDP despite TCP preference, waiting for events...");
 
@@ -1611,11 +1625,13 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
         eprintln!("[client] Service discovered (should be TCP endpoint despite UDP preference)");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed via TCP despite UDP preference, waiting for events...");
 
@@ -1967,11 +1983,13 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         eprintln!("[tcp_client] Subscribed, waiting for events...");
 
@@ -2007,11 +2025,13 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         eprintln!("[udp_client] Subscribed, waiting for events...");
 

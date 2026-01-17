@@ -40,7 +40,6 @@ format:
   stage: check
   script:
     - cargo fmt --check
-  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -72,7 +71,6 @@ test:
       coverage_report:
         coverage_format: cobertura
         path: coverage.xml
-  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -82,7 +80,25 @@ doc-test:
   stage: test
   script:
     - cargo test --doc
-  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+doc-build:
+  extends: .rust-base
+  stage: test
+  before_script:
+    - apt-get update && apt-get install -y python3
+    - rustup component add clippy rustfmt
+    - git submodule update --init
+  script:
+    - python3 tools/extract_requirements.py
+    - python3 scripts/extract_coverage.py
+    - cargo doc --no-deps
+  artifacts:
+    paths:
+      - target/doc/
+    expire_in: 1 week
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -100,7 +116,6 @@ build-release:
     paths:
       - target/release/libsomeip_runtime.*
     expire_in: 1 week
-  allow_failure: true
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
@@ -126,7 +141,10 @@ build-qnx:
 requirement-coverage:
   stage: test
   image: python:3.11
+  before_script:
+    - git submodule update --init
   script:
+    - python tools/extract_requirements.py
     - python scripts/extract_coverage.py
     - python scripts/generate_compliance.py
     # Fail if requirement coverage drops (optional threshold)
@@ -137,7 +155,6 @@ requirement-coverage:
       - COMPLIANCE.md
       - spec-data/coverage.json
     expire_in: 1 week
-  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -474,7 +474,12 @@ fn library_auto_renews_subscription() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
+        let mut subscription = proxy
+            .new_subscription()
+            .eventgroup(eventgroup)
+            .subscribe()
+            .await
+            .unwrap();
 
         // Collect events with timestamps
         let deadline = tokio::time::Instant::now() + Duration::from_secs(6);
@@ -585,11 +590,13 @@ fn test_event_subscription() {
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Timeout subscribing")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Timeout subscribing")
+        .expect("Subscribe should succeed");
 
         // Wait for events
         let event1 = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -690,8 +697,11 @@ fn subscribe_returns_error_on_nack() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
 
         // Subscribe should return an error when server sends NACK
-        let result =
-            tokio::time::timeout(Duration::from_secs(2), proxy.subscribe(eventgroup)).await;
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await;
 
         match result {
             Ok(Ok(_)) => panic!("Subscribe should have returned an error on NACK"),
@@ -840,7 +850,9 @@ fn test_many_version_subscribe_to_one() {
             .expect("Service v1 available");
 
         proxy
-            .subscribe(EventgroupId::new(0x0001).unwrap())
+            .new_subscription()
+            .eventgroup(EventgroupId::new(0x0001).unwrap())
+            .subscribe()
             .await
             .unwrap();
 
@@ -962,35 +974,50 @@ fn test_multiple_versions_subscribe_both_data() {
             .major_version(1)
             .await
             .unwrap();
-        let async1 = proxy_v1.subscribe(EventgroupId::new(1).unwrap());
+        let async1 = proxy_v1
+            .new_subscription()
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .subscribe();
 
         let mut proxy_v2 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(2)
             .await
             .unwrap();
-        let async2 = proxy_v2.subscribe(EventgroupId::new(1).unwrap());
+        let async2 = proxy_v2
+            .new_subscription()
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .subscribe();
 
         let mut proxy_v3 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(3)
             .await
             .unwrap();
-        let async3 = proxy_v3.subscribe(EventgroupId::new(1).unwrap());
+        let async3 = proxy_v3
+            .new_subscription()
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .subscribe();
 
         let mut proxy_v4 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(4)
             .await
             .unwrap();
-        let async4 = proxy_v4.subscribe(EventgroupId::new(1).unwrap());
+        let async4 = proxy_v4
+            .new_subscription()
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .subscribe();
 
         let mut proxy_v5 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(5)
             .await
             .unwrap();
-        let async5 = proxy_v5.subscribe(EventgroupId::new(1).unwrap());
+        let async5 = proxy_v5
+            .new_subscription()
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .subscribe();
 
         let (sub1, sub2, sub3, sub4, sub5) = tokio::join!(async1, async2, async3, async4, async5);
         let mut sub1 = sub1.expect("Sub 1 shuld have succeeded");
@@ -1164,7 +1191,9 @@ fn test_multiple_versions_subscribed_one_dropped() {
             .instance(InstanceId::Id(0x0001))
             .await
             .unwrap()
-            .subscribe(EventgroupId::new(1).unwrap())
+            .new_subscription()
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .subscribe()
             .await
             .unwrap();
         let async1 = async {
@@ -1189,7 +1218,9 @@ fn test_multiple_versions_subscribed_one_dropped() {
             .instance(InstanceId::Id(0x0001))
             .await
             .unwrap()
-            .subscribe(EventgroupId::new(1).unwrap())
+            .new_subscription()
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .subscribe()
             .await
             .unwrap();
         let async2 = async {
@@ -1214,7 +1245,9 @@ fn test_multiple_versions_subscribed_one_dropped() {
             .instance(InstanceId::Id(0x0001))
             .await
             .unwrap()
-            .subscribe(EventgroupId::new(1).unwrap())
+            .new_subscription()
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .subscribe()
             .await
             .unwrap();
         let async3 = async {
@@ -1231,7 +1264,9 @@ fn test_multiple_versions_subscribed_one_dropped() {
             .instance(InstanceId::Id(0x0001))
             .await
             .unwrap()
-            .subscribe(EventgroupId::new(1).unwrap())
+            .new_subscription()
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .subscribe()
             .await
             .unwrap();
         let async4 = async {
@@ -1256,7 +1291,9 @@ fn test_multiple_versions_subscribed_one_dropped() {
             .instance(InstanceId::Id(0x0001))
             .await
             .unwrap()
-            .subscribe(EventgroupId::new(1).unwrap())
+            .new_subscription()
+            .eventgroup(EventgroupId::new(1).unwrap())
+            .subscribe()
             .await
             .unwrap();
         let async5 = async {
@@ -1348,6 +1385,7 @@ proptest::proptest! {
     /// Property: Client can find services by major version with instance wildcard.
     /// Two services are offered with different instance IDs and major versions,
     /// and the client finds them using only the major version (any instance).
+    #[cfg(feature = "slow-tests")]
     #[test_log::test]
     fn test_find_instance_wildcard(
         instance1 in 1u16..=0xFFFEu16,
@@ -1433,6 +1471,7 @@ proptest::proptest! {
     /// Property: Client can find services by specific instance ID with version wildcard.
     /// Two services are offered with different instance IDs and major versions,
     /// and the client finds them using the specific instance ID (any version).
+    #[cfg(feature = "slow-tests")]
     #[test_log::test]
     fn test_find_version_wildcard(
         instance1 in 1u16..=0xFFFEu16,

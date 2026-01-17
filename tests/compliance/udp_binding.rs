@@ -566,7 +566,12 @@ fn udp_multicast_eventgroup_with_initial_events() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x01).unwrap();
-        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
+        let mut subscription = proxy
+            .new_subscription()
+            .eventgroup(eventgroup)
+            .subscribe()
+            .await
+            .unwrap();
 
         // Should receive initial event (unicast)
         let initial = tokio::time::timeout(Duration::from_secs(5), subscription.next())

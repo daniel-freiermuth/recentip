@@ -48,14 +48,29 @@ def extract_requirements(rst_path: Path) -> list[Requirement]:
             text_lines = []
             start_line = i + 1
             
-            # Parse the directive fields (lines starting with :field:)
+            # Parse the directive fields (lines starting with :field: value pattern)
             j = i + 1
             while j < len(lines):
                 field_line = lines[j]
                 stripped = field_line.strip()
                 
-                # Empty line or continuation of fields
-                if stripped == '' or stripped.startswith(':'):
+                # Empty lines are okay within directive fields
+                if stripped == '':
+                    j += 1
+                    continue
+                
+                # Check if this is a directive field (:fieldname: value) vs RST role (:role:`...`)
+                is_directive_field = False
+                if stripped.startswith(':'):
+                    second_colon = stripped.find(':', 1)
+                    if second_colon > 0:
+                        after_field = stripped[second_colon+1:]
+                        # Directive fields have space or empty after second colon
+                        # RST roles have backtick after second colon
+                        if not after_field.startswith('`'):
+                            is_directive_field = True
+                
+                if is_directive_field:
                     if stripped.startswith(':id:'):
                         req_id = stripped.split(':id:')[1].strip()
                     elif stripped.startswith(':reqtype:'):
@@ -64,25 +79,47 @@ def extract_requirements(rst_path: Path) -> list[Requirement]:
                         status = stripped.split(':status:')[1].strip()
                     j += 1
                 else:
-                    # Non-empty, non-field line - this is the requirement text
+                    # Non-field line - end of directive fields, start of content
                     break
             
-            # Collect the requirement text (content after fields until next directive or heading)
+            # Collect the requirement text (content after fields until next feat_req directive)
             while j < len(lines):
                 current_line = lines[j]
                 stripped = current_line.strip()
                 
-                # Stop at next directive or section heading
-                if stripped.startswith('.. '):
+                # Stop at next feat_req directive
+                if stripped.startswith('.. feat_req::'):
                     break
+                # Skip rst-class styling directives (they're not content separators)
+                if stripped.startswith('.. rst-class::'):
+                    j += 1
+                    continue
+                # Stop at other directives that indicate new content
+                if stripped.startswith('.. ') and not stripped.startswith('.. rst-class::'):
+                    break
+                # Stop at section headings
                 if j + 1 < len(lines) and lines[j+1].strip():
                     next_stripped = lines[j+1].strip()
                     if next_stripped and len(set(next_stripped)) == 1 and next_stripped[0] in '#*=-^"':
                         break
                 
                 # Collect non-empty text
-                if stripped and not stripped.startswith(':'):
-                    text_lines.append(stripped)
+                # Skip directive fields (:field: value) but include RST roles (:role:`...`)
+                if stripped:
+                    # Check if it looks like a directive field: starts with :word: followed by space/value
+                    # RST roles look like :word:`...` - they have backtick after the second colon
+                    is_directive_field = False
+                    if stripped.startswith(':'):
+                        # Find second colon
+                        second_colon = stripped.find(':', 1)
+                        if second_colon > 0:
+                            after_field = stripped[second_colon+1:]
+                            # Directive fields have space or empty after, roles have backtick
+                            if not after_field.startswith('`'):
+                                is_directive_field = True
+                    
+                    if not is_directive_field:
+                        text_lines.append(stripped)
                 j += 1
             
             if req_id:
@@ -104,15 +141,16 @@ def extract_requirements(rst_path: Path) -> list[Requirement]:
     return requirements
 
 def main():
-    spec_dir = Path(__file__).parent.parent.parent / 'src'
-    output_dir = Path(__file__).parent.parent / 'spec-data'
+    # Use the specs submodule (specs/src contains RST files)
+    project_root = Path(__file__).parent.parent
+    spec_dir = project_root / 'specs' / 'src'
+    output_dir = project_root / 'spec-data'
     output_dir.mkdir(exist_ok=True)
     
     if not spec_dir.exists():
         print(f"Spec directory not found: {spec_dir}")
-        print("Looking for RST files...")
-        # Try alternative path
-        spec_dir = Path('/mnt/fedora/home/daniel/side-projects/recentIpSpec/src')
+        print("Did you initialize the specs submodule? Run: git submodule update --init")
+        sys.exit(1)
     
     rst_files = list(spec_dir.glob('*.rst'))
     print(f"Found {len(rst_files)} RST files in {spec_dir}")

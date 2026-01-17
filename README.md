@@ -32,67 +32,14 @@ recentip = "0.1"
 
 ## Quick Start
 
-### Client: Find and Call a Service
+**📚 [See the full examples in the documentation](https://docs.rs/recentip/latest/recentip/examples/index.html)**
 
-```rust
-use recentip::prelude::*;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Create the SOME/IP runtime
-    let someip = recentip::configure().start().await?;
-
-    // Find a remote service (waits for SD announcement)
-    let proxy = someip.find(BRAKE_SERVICE_ID).await?;
-
-    // Call a method (RPC)
-    let method_id = MethodId::new(0x0001).unwrap();
-    let response = proxy.call(method_id, b"request payload").await?;
-    
-    if response.return_code == ReturnCode::Ok {
-        println!("Success: {} bytes", response.payload.len());
-    }
-
-    Ok(())
-}
-```
-
-### Server: Offer a Service
-
-```rust
-use recentip::prelude::*;
-use recentip::handle::ServiceEvent;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
-
-    // Offer a service (announces via SD)
-    let mut offering = someip.offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001))
-        .version(BRAKE_VERSION.0, BRAKE_VERSION.1)
-        .start()
-        .await?;
-
-    // Handle incoming requests
-    while let Some(event) = offering.next().await {
-        match event {
-            ServiceEvent::Call { method, payload, responder, .. } => {
-                // Process request and send response
-                responder.reply(b"OK").await?;
-            }
-            ServiceEvent::Subscribe { eventgroup, client } => {
-                // Subscriptions are auto-accepted
-                println!("Client {:?} subscribed to {:?}", client, eventgroup);
-            }
-            _ => {}
-        }
-    }
-    Ok(())
-}
-```
-
-## Examples
-Check the `examples` folder for examples.
+The documentation includes compile-checked examples covering:
+- **[Quickstart](https://docs.rs/recentip/latest/recentip/examples/quickstart/)** — Minimal client, server, pub/sub
+- **[RPC](https://docs.rs/recentip/latest/recentip/examples/rpc/)** — Request/response, fire-and-forget
+- **[Pub/Sub](https://docs.rs/recentip/latest/recentip/examples/pubsub/)** — Events, eventgroups, subscriptions
+- **[Transport](https://docs.rs/recentip/latest/recentip/examples/transport/)** — UDP, TCP, configuration
+- **[Monitoring](https://docs.rs/recentip/latest/recentip/examples/monitoring/)** — Service discovery events
 
 ## Configuration
 
@@ -113,7 +60,8 @@ let someip = recentip::configure()
 | `SomeIp` | Central coordinator, owns sockets | — |
 | `OfferedService` | Client proxy to remote service | — |
 | `ServiceOffering` | Server handle for offered service | — |
-| `Subscription` | Receive events from eventgroup | — |
+| `SubscriptionBuilder` | Build subscription to eventgroups | Builder pattern |
+| `Subscription` | Receive events from eventgroups | — |
 | `Responder` | Reply to incoming RPC request | Consumed on reply |
 
 ## Identifier Types
@@ -210,8 +158,11 @@ We aim for 100% coverage of the open SOME/IP 2025-12 specs.
 
 ## Not yet implemented
 - SOME/IP-TP
-- static configurations
-- configuration handling
+- Encryption
+- De-/Serialization
+- Fields, Getter, Setter
+- Static services (without SD)
+- Configuration handling
 
 ## License
 

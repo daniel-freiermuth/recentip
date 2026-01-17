@@ -34,7 +34,11 @@
 //!
 //!     // 3. Subscribe to events
 //!     let eventgroup = EventgroupId::new(0x0001).unwrap();
-//!     let mut subscription = proxy.subscribe(eventgroup).await?;
+//!     let mut subscription = proxy
+//!         .new_subscription()
+//!         .eventgroup(eventgroup)
+//!         .subscribe()
+//!         .await?;
 //!     while let Some(event) = subscription.next().await {
 //!         // Process event
 //!     }
@@ -131,6 +135,8 @@ pub mod runtime;
 pub mod server;
 
 // Re-export all public types for convenient access
-pub use client::{FindBuilder, OfferedService, StaticEventListener, Subscription};
+pub use client::{
+    FindBuilder, OfferedService, StaticEventListener, Subscription, SubscriptionBuilder,
+};
 pub use runtime::{OfferBuilder, SomeIp};
 pub use server::{EventBuilder, EventHandle, Responder, ServiceEvent, ServiceOffering};

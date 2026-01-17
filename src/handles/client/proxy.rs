@@ -3,14 +3,14 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::oneshot;
 
 use crate::error::{Error, Result};
 use crate::handles::runtime::RuntimeInner;
 use crate::runtime::Command;
-use crate::{EventgroupId, InstanceId, MajorVersion, MethodId, Response, ServiceId};
+use crate::{InstanceId, MajorVersion, MethodId, Response, ServiceId};
 
-use super::Subscription;
+use super::SubscriptionBuilder;
 
 /// Client-side proxy to a remote SOME/IP service.
 ///
@@ -59,9 +59,17 @@ use super::Subscription;
 /// use recentip::handles::OfferedService;
 ///
 /// async fn subscribe_events(proxy: &OfferedService) -> Result<()> {
-///     let eventgroup = EventgroupId::new(0x0001).unwrap();
-///     let mut sub = proxy.subscribe(eventgroup).await?;
-///     while let Some(event) = sub.next().await {
+///     let eg1 = EventgroupId::new(0x0001).unwrap();
+///     let eg2 = EventgroupId::new(0x0002).unwrap();
+///     
+///     let mut subscription = proxy
+///         .new_subscription()
+///         .eventgroup(eg1)
+///         .eventgroup(eg2)
+///         .subscribe()
+///         .await?;
+///     
+///     while let Some(event) = subscription.next().await {
 ///         println!("Event: {:?}", event);
 ///     }
 ///     Ok(())
@@ -207,37 +215,40 @@ impl OfferedService {
         Ok(())
     }
 
-    /// Subscribe to an eventgroup.
+    /// Create a new subscription builder.
     ///
-    /// Returns a subscription that can be used to receive events.
-    pub async fn subscribe(&self, eventgroup: EventgroupId) -> Result<Subscription> {
-        let (events_tx, events_rx) = mpsc::channel(64);
-        let (response_tx, response_rx) = oneshot::channel();
-
-        self.inner
-            .cmd_tx
-            .send(Command::Subscribe {
-                service_id: self.service_id,
-                instance_id: self.instance_id,
-                major_version: self.major_version,
-                eventgroup_id: eventgroup.value(),
-                events: events_tx,
-                response: response_tx,
-            })
-            .await
-            .map_err(|_| Error::RuntimeShutdown)?;
-
-        let subscription_id = response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
-
-        Ok(Subscription::new(
+    /// Use the builder to subscribe to one or more eventgroups that share
+    /// the same network endpoint.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    ///
+    /// # async fn example(proxy: recentip::handles::OfferedService) -> Result<()> {
+    /// let eg1 = EventgroupId::new(0x0001).unwrap();
+    /// let eg2 = EventgroupId::new(0x0002).unwrap();
+    ///
+    /// let mut subscription = proxy
+    ///     .new_subscription()
+    ///     .eventgroup(eg1)
+    ///     .eventgroup(eg2)
+    ///     .subscribe()
+    ///     .await?;
+    ///
+    /// while let Some(event) = subscription.next().await {
+    ///     println!("Event: {:?}", event);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new_subscription(&self) -> SubscriptionBuilder {
+        SubscriptionBuilder::new(
             Arc::clone(&self.inner),
             self.service_id,
             self.instance_id,
             self.major_version,
-            eventgroup,
-            subscription_id,
-            events_rx,
-        ))
+        )
     }
 
     /// Get the service ID

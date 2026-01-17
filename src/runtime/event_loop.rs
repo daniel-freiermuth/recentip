@@ -109,7 +109,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     continue;
                 }
 
-                if let Some(actions) = handle_method_message(&header, &mut cursor, method_msg.from, &mut state, method_msg.service_key, Transport::Udp) {
+                if let Some(actions) = handle_method_message(&header, &mut cursor, method_msg.from, &mut state, method_msg.service_key, Transport::Udp, 0) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -139,7 +139,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     .find(|(key, _)| key.service_id == header.service_id)
                     .map(|(key, _)| *key);
 
-                if let Some(actions) = handle_method_message(&header, &mut cursor, tcp_msg.from, &mut state, service_key, Transport::Tcp) {
+                if let Some(actions) = handle_method_message(&header, &mut cursor, tcp_msg.from, &mut state, service_key, Transport::Tcp, tcp_msg.subscription_id) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -162,7 +162,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                 }
 
                 // Protocol is weird. But it works anyway?
-                if let Some(actions) = handle_method_message(&header, &mut cursor, tcp_msg.from, &mut state, None, Transport::Udp) {
+                if let Some(actions) = handle_method_message(&header, &mut cursor, tcp_msg.from, &mut state, None, Transport::Udp, tcp_msg.subscription_id) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -222,10 +222,10 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             }
                         }
                     }
-                    // Special handling for Subscribe - needs async TCP connection for TCP pub/sub (feat_req_recentipsd_767)
-                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_id, events, response }) => {
-                        if let Some(actions) = client::handle_subscribe_command(
-                            service_id, instance_id, major_version, eventgroup_id, events, response,
+                    // Special handling for Subscribe - handles multiple eventgroups with shared endpoint
+                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response }) => {
+                        if let Some(actions) = client::handle_subscribe_command::<U, T>(
+                            service_id, instance_id, major_version, eventgroup_ids, events, response,
                             &mut state, &tcp_pool
                         ).await {
                             for action in actions {
@@ -501,6 +501,7 @@ fn handle_method_message(
     state: &mut RuntimeState,
     service_key: Option<ServiceKey>,
     transport: Transport,
+    subscription_id: u64,
 ) -> Option<Vec<Action>> {
     use bytes::Buf;
 
@@ -550,7 +551,7 @@ fn handle_method_message(
         }
         MessageType::Notification => {
             // Event notification - route to subscription
-            client::handle_incoming_notification(header, payload, from, state);
+            client::handle_incoming_notification(header, payload, from, state, subscription_id);
         }
         _ => {
             tracing::trace!(
