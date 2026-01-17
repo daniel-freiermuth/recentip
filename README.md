@@ -164,6 +164,150 @@ We aim for 100% coverage of the open SOME/IP 2025-12 specs.
 - Static services (without SD)
 - Configuration handling
 
+## Automotive Runtime Considerations
+
+SOME/IP is designed for automotive ECUs where runtime predictability matters.
+This section documents the library's behavior for systems with timing requirements.
+
+### Safety & Certification
+
+⚠️ **This library is NOT ASIL-qualified and NOT suitable for safety-critical functions.**
+
+- No formal verification or safety certification
+- Not developed according to ISO 26262 processes
+- Use only for QM (non-safety) applications
+- For ASIL-rated functions, use a certified SOME/IP implementation
+
+### Performance & Latency
+
+| Aspect | Status | Notes |
+|--------|--------|-------|
+| Throughput | Untested | No benchmarks yet; contributions welcome |
+| Latency bounds | ❌ Unbounded | Tokio provides no worst-case guarantees |
+| Jitter | ❌ Variable | Work-stealing scheduler, GC-free but not deterministic |
+| Zero-copy | ❌ Not yet | Message parsing allocates; zero-copy design possible |
+
+### Tokio Runtime Behavior
+
+This library uses [Tokio](https://tokio.rs/) as its async runtime. Key characteristics
+relevant to timing (see [Tokio runtime docs](https://docs.rs/tokio/latest/tokio/runtime/index.html)):
+
+**Bounded delay guarantee** (from Tokio docs):
+
+> Under the following two assumptions:
+> - There is some number `MAX_TASKS` such that the total number of tasks never exceeds `MAX_TASKS`.
+> - There is some number `MAX_SCHEDULE` such that calling `poll` on any task returns within `MAX_SCHEDULE` time units.
+>
+> Then, there is some number `MAX_DELAY` such that when a task is woken, it will be scheduled within `MAX_DELAY` time units.
+
+**Additional runtime characteristics:**
+- Tasks may be scheduled in any order; no priority support
+- A task may be scheduled 5× before another ready task runs
+- Work-stealing between threads adds non-deterministic delays
+- IO/timer checks occur every ~61 scheduled tasks (configurable via `event_interval`)
+- Global queue checked every ~31 local tasks (configurable via `global_queue_interval`)
+- **Not NUMA-aware** — consider multiple runtimes on NUMA systems
+
+**What this means for SOME/IP:**
+- Message latency depends on system load and task count
+- No guarantee that a high-priority service response arrives before low-priority work
+- Cyclic SD announcements may jitter under load
+- For sub-millisecond latency requirements, Tokio is not suitable
+
+### Async Runtime Abstraction Status
+
+While recentIP is right now using Tokio, it was written with other async runtimes and mind and can be ported or made agnostic with medium effort.
+
+### Current Limitations
+
+This library is **not suitable for hard real-time** applications:
+
+| Concern | Status | Notes |
+|---------|--------|-------|
+| Heap allocation | ⚠️ Dynamic | Allocates during operation (buffers, connections) |
+| Async runtime | ⚠️ Tokio | Work-stealing scheduler, not deterministic |
+| Blocking | ⚠️ Possible | Async mutex in TCP connection pool |
+| Panic paths | ⚠️ Minimal | 3 unwraps in runtime code (will be eliminated) |
+| Unsafe code | ✅ Forbidden | `#![forbid(unsafe_code)]` enforced |
+| Priority inversion | ⚠️ Possible | No priority-aware scheduling |
+
+### Suitable Use Cases
+
+- **Prototyping and simulation** — Fast iteration on service interfaces
+- **Test environments** — Deterministic network simulation via turmoil
+- **Non-safety-critical ECUs** — Infotainment, logging, diagnostics
+- **Development tooling** — Service monitors, traffic analyzers
+- **Linux-based gateways** — Central compute platforms
+
+### ASIL Compliance Considerations
+
+This library uses async Rust for efficient I/O multiplexing — waiting on multiple sockets, timers, and channels without threads or manual state machines. Async itself compiles to state machines, but the Tokio **runtime** is probably not ASIL-certifiable. However, recentIP is well-suited for **QM (Quality Management)** domains, which covers the majority of SOME/IP deployments: infotainment, telematics, diagnostics, logging, and service orchestration.
+
+### Future Directions
+
+For safety-critical or hard real-time deployments, consider:
+
+1. **Alternative async runtimes** — The `net` module is abstracted; could support [embassy](https://embassy.dev/) for embedded
+2. **Pre-allocation** — Buffer pools, bounded collections could be added
+3. **no_std support** — Currently requires std; a no_std core is architecturally possible
+4. **Static configuration** — Compile-time service definitions to eliminate runtime allocation
+
+Contributions toward these goals are welcome. See [DESIGN.md](DESIGN.md) for architecture details.
+
+### Relation to Real-Time Rust Ecosystems
+
+This library uses **Tokio**, which is designed for high-throughput servers, not real-time systems.
+For hard real-time requirements, consider these Rust ecosystems:
+
+#### Pure Rust Runtimes
+
+| Project | Model | Notes |
+|---------|-------|-------|
+| [RTIC](https://rtic.rs/) | Interrupt-driven, priority-based | Ideal for bare-metal MCUs with hardware priorities |
+| [Embassy](https://embassy.dev/) | Async, `no_std`, embedded | Could be a backend for this library's `net` abstraction |
+| [Drone OS](https://www.drone-os.com/) | Async, preemptive threads | RTOS with async/await, Cortex-M focus |
+| [Hubris](https://hubris.oxide.computer/) | IPC-based microkernel | Oxide's secure embedded OS |
+| [Tock](https://www.tockos.org/) | Process isolation, embedded | Security-focused embedded OS |
+
+#### Traditional RTOSes with Rust Bindings
+
+| Project | Rust Support | Notes |
+|---------|--------------|-------|
+| [FreeRTOS](https://www.freertos.org/) | [`freertos-rust`](https://crates.io/crates/freertos-rust) | Industry standard, 40+ architectures, AWS-maintained |
+| [RIOT](https://riot-os.org/) | [`riot-wrappers`](https://crates.io/crates/riot-wrappers) | IoT-focused, threading, network stacks, 8/16/32-bit |
+
+#### Automotive-Focused Rust Frameworks
+
+| Project | Model | Notes |
+|---------|-------|-------|
+| [OxidOS](https://oxidos.io/) | Tock-based, sandboxed apps | Automotive ASIL targeting, RISC-V ready, ST Stellar MCUs |
+| [Veecle OS](https://github.com/veecle/veecle-os) | Actor-based, OSAL abstraction | Supports std/Embassy/FreeRTOS backends; SOME/IP support built-in based on vsomeip |
+| [veecle-pxros](https://github.com/veecle/veecle-pxros) | PXROS-HR runtime | AURIX platform, ASIL-D certified kernel, Infineon/HighTec ecosystem |
+
+#### Robotics Middleware
+
+| Project | Rust Support | Notes |
+|---------|--------------|-------|
+| [ROS 2](https://docs.ros.org/) | [`ros2_rust`](https://github.com/ros2-rust/ros2_rust) | Pub/sub, services, zero-copy; used in ADAS/autonomous driving |
+
+#### Automotive Linux Distributions
+
+| Project | Rust Support | Notes |
+|---------|--------------|-------|
+| [Red Hat In-Vehicle OS](https://www.redhat.com/en/solutions/automotive) | Full Rust toolchain | RHEL-based, ASIL-B (ISO 26262); VW, Audi |
+| [Automotive Grade Linux](https://www.automotivelinux.org/) | Full Rust toolchain | Linux Foundation; Toyota, Honda, Mazda, Subaru, Suzuki, Mercedes-Benz |
+
+**Potential integration paths:**
+
+- **RTIC/Embassy**: Port the wire-format parsing ([`wire`](src/wire.rs)) and state machine logic; replace Tokio I/O with platform-specific drivers
+- **Veecle OS**: Already has SOME/IP support via `veecle-os-data-support-someip`; could potentially share wire-format code
+- **FreeRTOS/RIOT**: Use their Rust bindings for threading and networking, port our state machine logic
+- **ROS 2**: Bridge SOME/IP services to ROS 2 topics/services for ADAS integration
+- **Hypervisor approach**: Run this library in a Linux VM/container alongside an RTOS partition for non-safety workloads
+- **Shared memory**: Use this library on a Linux core, communicate with RTIC/Zephyr via shared memory for safety-critical functions
+
+Currently, no Rust SOME/IP implementation targets `no_std` or real-time runtimes. This represents an opportunity for the ecosystem.
+
 ## License
 
 This project is licensed under the [GPL-3.0 License](LICENSE).
