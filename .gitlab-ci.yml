@@ -84,6 +84,24 @@ doc-test:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+doc-build:
+  extends: .rust-base
+  stage: test
+  before_script:
+    - apt-get update && apt-get install -y python3
+    - rustup component add clippy rustfmt
+  script:
+    - python3 tools/extract_requirements.py
+    - python3 scripts/extract_coverage.py
+    - cargo doc --no-deps
+  artifacts:
+    paths:
+      - target/doc/
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
 # =============================================================================
 # BUILD STAGE
 # =============================================================================
