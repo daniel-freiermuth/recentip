@@ -1254,7 +1254,7 @@ fn tcp_different_major_versions_reuse_connection() {
                             2,
                             0,
                             lookup_ipv4("server"),
-                            30500,  // Same port as v1
+                            30500, // Same port as v1
                             0x06,
                             0xFFFFFF,
                         );

@@ -11,8 +11,8 @@
 //! - feat_req_recentipsd_1168: Server shall not send duplicate events for overlapping eventgroups
 
 use super::helpers::{
-    build_sd_subscribe_with_tcp_endpoint, build_sd_subscribe_with_udp_endpoint, covers, parse_header,
-    parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION,
+    build_sd_subscribe_with_tcp_endpoint, build_sd_subscribe_with_udp_endpoint, covers,
+    parse_header, parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION,
 };
 use recentip::prelude::*;
 use recentip::wire::MessageType;
@@ -93,7 +93,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
     // Raw socket client: connects to server's TCP port, subscribes to both eventgroups, counts event packets
     sim.client("raw_client", async move {
         use recentip::wire::{SdOption, L4Protocol};
-        
+
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // SD socket for subscribe messages (port 30490)
@@ -119,7 +119,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
                             && entry.ttl > 0
                         {
                             server_sd_endpoint = Some(SocketAddr::new(from.ip(), 30490));
-                            
+
                             // Extract TCP endpoint from options
                             for option in &sd_msg.options {
                                 if let SdOption::Ipv4Endpoint { addr, port, protocol: L4Protocol::Tcp } = option {
@@ -148,7 +148,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
         // Get client IP for endpoint option
         let client_ip: std::net::Ipv4Addr =
             turmoil::lookup("raw_client").to_string().parse().unwrap();
-        
+
         // Get local port of our TCP connection (to include in Subscribe endpoint option)
         let local_port = tcp_stream.local_addr()?.port();
 
@@ -210,7 +210,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
         // Read events from the TCP stream we opened to the server
         let mut event_packets_received = 0;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
-        
+
         while tokio::time::Instant::now() < deadline {
             // SOME/IP over TCP: read 16-byte header first
             let mut header_buf = [0u8; 16];
@@ -228,7 +228,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
                             let mut payload = vec![0u8; payload_len];
                             let _ = tcp_stream.read_exact(&mut payload).await;
                         }
-                        
+
                         // Check if this is our event (NOTIFICATION with our event ID)
                         if header.service_id == TEST_SERVICE_ID
                             && header.method_id == TEST_EVENT_ID

@@ -12,7 +12,6 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers

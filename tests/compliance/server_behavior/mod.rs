@@ -7,8 +7,8 @@
 //! - Library: Offers services, responds to subscribes
 //! - Raw sockets: Simulate clients sending subscribe messages
 
+pub mod event_dedup;
 mod helpers;
 pub mod sd_session;
-pub mod event_dedup;
 pub mod subscription_nack;
 pub mod transport_mismatch;
