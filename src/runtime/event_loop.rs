@@ -222,10 +222,10 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             }
                         }
                     }
-                    // Special handling for Subscribe - needs async TCP connection for TCP pub/sub (feat_req_recentipsd_767)
-                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_id, events, response }) => {
-                        if let Some(actions) = client::handle_subscribe_command(
-                            service_id, instance_id, major_version, eventgroup_id, events, response,
+                    // Special handling for Subscribe - handles multiple eventgroups with shared endpoint
+                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response }) => {
+                        if let Some(actions) = client::handle_subscribe_command::<U, T>(
+                            service_id, instance_id, major_version, eventgroup_ids, events, response,
                             &mut state, &tcp_pool
                         ).await {
                             for action in actions {

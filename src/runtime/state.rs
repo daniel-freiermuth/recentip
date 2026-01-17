@@ -270,7 +270,7 @@ pub struct PendingSubscriptionKey {
 /// Pending subscription waiting for ACK/NACK from server
 pub struct PendingSubscription {
     pub(crate) subscription_id: u64,
-    pub(crate) response: oneshot::Sender<crate::error::Result<u64>>,
+    pub(crate) response: Option<oneshot::Sender<crate::error::Result<u64>>>,
 }
 
 // ============================================================================

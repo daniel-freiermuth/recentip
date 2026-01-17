@@ -705,7 +705,9 @@ pub fn handle_subscribe_ack(entry: &SdEntry, state: &mut RuntimeState) {
     };
     if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
         for pending in pending_list {
-            let _ = pending.response.send(Ok(pending.subscription_id));
+            if let Some(response) = pending.response {
+                let _ = response.send(Ok(pending.subscription_id));
+            }
         }
     }
 }
@@ -735,9 +737,9 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
     };
     if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
         for pending in pending_list {
-            let _ = pending
-                .response
-                .send(Err(crate::error::Error::SubscriptionRejected));
+            if let Some(response) = pending.response {
+                let _ = response.send(Err(crate::error::Error::SubscriptionRejected));
+            }
         }
     }
 

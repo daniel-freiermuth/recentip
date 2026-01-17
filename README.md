@@ -53,6 +53,18 @@ async fn main() -> Result<()> {
         println!("Success: {} bytes", response.payload.len());
     }
 
+    // Subscribe to events
+    let eg = EventgroupId::new(0x0001).unwrap();
+    let mut subscription = proxy
+        .new_subscription()
+        .eventgroup(eg)
+        .subscribe()
+        .await?;
+    
+    while let Some(event) = subscription.next().await {
+        println!("Event: {:?}", event);
+    }
+
     Ok(())
 }
 ```
@@ -91,6 +103,36 @@ async fn main() -> Result<()> {
 }
 ```
 
+### Client: Subscribe to Events
+
+```rust
+use recentip::prelude::*;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let someip = recentip::configure().start().await?;
+    let proxy = someip.find(BRAKE_SERVICE_ID).await?;
+
+    // Subscribe to one or more eventgroups
+    let eg1 = EventgroupId::new(0x0001).unwrap();
+    let eg2 = EventgroupId::new(0x0002).unwrap();
+    
+    let mut subscription = proxy
+        .new_subscription()
+        .eventgroup(eg1)
+        .eventgroup(eg2)  // Optional: subscribe to multiple eventgroups
+        .subscribe()
+        .await?;
+    
+    // Receive events from all subscribed eventgroups
+    while let Some(event) = subscription.next().await {
+        println!("Event ID: 0x{:04x}, {} bytes", 
+                 event.event_id.value(), event.payload.len());
+    }
+    Ok(())
+}
+```
+
 ## Examples
 Check the `examples` folder for examples.
 
@@ -113,7 +155,8 @@ let someip = recentip::configure()
 | `SomeIp` | Central coordinator, owns sockets | — |
 | `OfferedService` | Client proxy to remote service | — |
 | `ServiceOffering` | Server handle for offered service | — |
-| `Subscription` | Receive events from eventgroup | — |
+| `SubscriptionBuilder` | Build subscription to eventgroups | Builder pattern |
+| `Subscription` | Receive events from eventgroups | — |
 | `Responder` | Reply to incoming RPC request | Consumed on reply |
 
 ## Identifier Types
@@ -210,8 +253,9 @@ We aim for 100% coverage of the open SOME/IP 2025-12 specs.
 
 ## Not yet implemented
 - SOME/IP-TP
-- static configurations
-- configuration handling
+- Fields, Getter, Setter
+- Static services (without SD)
+- Configuration handling
 
 ## License
 

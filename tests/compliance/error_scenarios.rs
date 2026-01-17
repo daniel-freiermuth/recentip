@@ -96,11 +96,13 @@ fn no_error_response_for_events() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         // Receive event - even if there were processing errors,
         // no error response would be sent (events are one-way)

@@ -99,11 +99,13 @@ fn subscribe_and_receive_events() {
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         // Receive first event
         let event1 = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -186,9 +188,12 @@ fn subscribe_receives_ack() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
 
         // Subscribe should succeed (implying SubscribeAck was received)
-        let result = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-            .await
-            .expect("Subscribe timeout");
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout");
 
         assert!(result.is_ok(), "Subscription should be acknowledged");
 
@@ -282,11 +287,13 @@ fn unsubscribe_on_drop() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
 
         {
-            let mut subscription =
-                tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                    .await
-                    .expect("Subscribe timeout")
-                    .expect("Subscribe should succeed");
+            let mut subscription = tokio::time::timeout(
+                Duration::from_secs(5),
+                proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+            )
+            .await
+            .expect("Subscribe timeout")
+            .expect("Subscribe should succeed");
 
             // Receive the first event
             let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -394,66 +401,39 @@ fn subscribe_multiple_eventgroups() {
         let eg1 = EventgroupId::new(0x0001).unwrap();
         let eg2 = EventgroupId::new(0x0002).unwrap();
 
-        let mut sub1 = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eg1))
-            .await
-            .expect("Sub1 timeout")
-            .expect("Sub1 should succeed");
+        let mut sub1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eg1).subscribe(),
+        )
+        .await
+        .expect("Sub1 timeout")
+        .expect("Sub1 should succeed");
 
-        let mut sub2 = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eg2))
-            .await
-            .expect("Sub2 timeout")
-            .expect("Sub2 should succeed");
+        let mut sub2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eg2).subscribe(),
+        )
+        .await
+        .expect("Sub2 timeout")
+        .expect("Sub2 should succeed");
 
         // Receive from both subscriptions
-        // Note: The SOME/IP wire format for events doesn't include the eventgroup ID,
-        // only the event_id. Without static event→eventgroup mapping configuration,
-        // the client cannot route events to specific subscriptions. The server-side
-        // correctly routes to the right eventgroup's subscribers, but on the client
-        // side, all subscriptions for a service receive all events. Applications
-        // should filter by event_id if needed.
+        // With per-subscription UDP sockets, each subscription receives only events
+        // for its eventgroup (proper isolation per SOME/IP spec)
         let event1 = tokio::time::timeout(Duration::from_secs(5), sub1.next())
             .await
             .expect("Event1 timeout");
-        let event2 = tokio::time::timeout(Duration::from_secs(5), sub1.next())
+        let event2 = tokio::time::timeout(Duration::from_secs(5), sub2.next())
             .await
             .expect("Event2 timeout");
-        let event3 = tokio::time::timeout(Duration::from_secs(5), sub2.next())
-            .await
-            .expect("Event3 timeout");
-        let event4 = tokio::time::timeout(Duration::from_secs(5), sub2.next())
-            .await
-            .expect("Event4 timeout");
 
-        // Verify all events were received (both subscriptions get all events)
+        // Verify both events were received
         assert!(event1.is_some());
         assert!(event2.is_some());
-        assert!(event3.is_some());
-        assert!(event4.is_some());
 
-        // Collect all received payloads
-        let mut payloads: Vec<_> = vec![
-            event1.unwrap().payload.to_vec(),
-            event2.unwrap().payload.to_vec(),
-            event3.unwrap().payload.to_vec(),
-            event4.unwrap().payload.to_vec(),
-        ];
-        payloads.sort();
-
-        // Should have received both events twice (once per subscription)
-        assert_eq!(
-            payloads
-                .iter()
-                .filter(|p| p.as_slice() == b"group1_event")
-                .count(),
-            2
-        );
-        assert_eq!(
-            payloads
-                .iter()
-                .filter(|p| p.as_slice() == b"group2_event")
-                .count(),
-            2
-        );
+        // Each subscription receives only its eventgroup's events
+        assert_eq!(event1.unwrap().payload.as_ref(), b"group1_event");
+        assert_eq!(event2.unwrap().payload.as_ref(), b"group2_event");
 
         Ok(())
     });
@@ -536,11 +516,13 @@ fn event_id_has_high_bit() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
             .await
@@ -657,11 +639,13 @@ fn mixed_rpc_and_events() {
 
         // Subscribe to events
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         // Make RPC call
         let method = MethodId::new(0x0001).unwrap();

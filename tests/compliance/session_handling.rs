@@ -788,11 +788,13 @@ fn events_use_session_handling() {
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         // Receive events
         let mut received = Vec::new();
@@ -1654,11 +1656,13 @@ fn late_server_discovery_subscribe_event() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
             .await

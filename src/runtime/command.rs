@@ -116,12 +116,12 @@ pub enum Command {
         /// Transport to use
         target_transport: crate::config::Transport,
     },
-    /// Subscribe to an eventgroup
+    /// Subscribe to multiple eventgroups (share same endpoint)
     Subscribe {
         service_id: ServiceId,
         instance_id: InstanceId,
         major_version: u8,
-        eventgroup_id: u16,
+        eventgroup_ids: Vec<u16>,
         events: mpsc::Sender<crate::Event>,
         /// Returns `subscription_id` on success for tracking unsubscribe
         response: oneshot::Sender<Result<u64>>,

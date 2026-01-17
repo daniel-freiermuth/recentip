@@ -136,11 +136,13 @@ fn subscribe_to_multiple_instances() {
             .expect("Instance 1 should be available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription1 =
-            tokio::time::timeout(Duration::from_secs(5), proxy1.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout for instance 1")
-                .expect("Subscribe to instance 1 should succeed");
+        let mut subscription1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy1.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout for instance 1")
+        .expect("Subscribe to instance 1 should succeed");
 
         // Find and subscribe to instance 2
         let proxy2 = runtime
@@ -151,11 +153,13 @@ fn subscribe_to_multiple_instances() {
             .expect("Discovery timeout for instance 2")
             .expect("Instance 2 should be available");
 
-        let mut subscription2 =
-            tokio::time::timeout(Duration::from_secs(5), proxy2.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout for instance 2")
-                .expect("Subscribe to instance 2 should succeed");
+        let mut subscription2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy2.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout for instance 2")
+        .expect("Subscribe to instance 2 should succeed");
 
         // Collect events from both subscriptions
         let mut events1 = Vec::new();

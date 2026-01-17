@@ -84,8 +84,11 @@ fn client_registers_for_events_via_sd() {
 
         // Subscribe to eventgroup - this registers for events at runtime via SD
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let result =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup)).await;
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await;
 
         if result.is_ok() && result.unwrap().is_ok() {
             *sub_flag.lock().unwrap() = true;
@@ -222,7 +225,11 @@ fn client_responds_to_offer_with_subscribe() {
 
         // Subscribe in response to OfferService
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = proxy.subscribe(eventgroup).await;
+        let _subscription = proxy
+            .new_subscription()
+            .eventgroup(eventgroup)
+            .subscribe()
+            .await;
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
     });
@@ -282,8 +289,11 @@ fn subscribe_resolves_on_ack() {
 
         // The subscribe() future resolves when SubscribeEventgroupAck is received.
         // Wire-level verification of entry type 0x07 is in wire_format::subscribe_ack_entry_type.
-        let result =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup)).await;
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await;
         if let Ok(Ok(_)) = result {
             *ack_flag.lock().unwrap() = true;
         }
@@ -375,7 +385,12 @@ fn server_tracks_subscription_state() {
             .expect("Service available");
 
         let eg1 = EventgroupId::new(0x0001).unwrap();
-        let mut sub = proxy.subscribe(eg1).await.unwrap();
+        let mut sub = proxy
+            .new_subscription()
+            .eventgroup(eg1)
+            .subscribe()
+            .await
+            .unwrap();
 
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while tokio::time::Instant::now() < deadline {
@@ -404,7 +419,12 @@ fn server_tracks_subscription_state() {
             .expect("Service available");
 
         let eg2 = EventgroupId::new(0x0002).unwrap();
-        let mut sub = proxy.subscribe(eg2).await.unwrap();
+        let mut sub = proxy
+            .new_subscription()
+            .eventgroup(eg2)
+            .subscribe()
+            .await
+            .unwrap();
 
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while tokio::time::Instant::now() < deadline {
@@ -506,7 +526,12 @@ fn client_deregisters_with_stop_subscribe() {
 
         // Subscribe then drop to trigger StopSubscribe
         {
-            let _subscription = proxy.subscribe(eventgroup).await.unwrap();
+            let _subscription = proxy
+                .new_subscription()
+                .eventgroup(eventgroup)
+                .subscribe()
+                .await
+                .unwrap();
             tokio::time::sleep(Duration::from_millis(200)).await;
             // subscription dropped here
         }
@@ -524,172 +549,16 @@ fn client_deregisters_with_stop_subscribe() {
     );
 }
 
-/* WIP: To be reviewed
-// ============================================================================
-// 3. INITIAL EVENTS
-// ============================================================================
-
-/// [feat_req_recentipsd_691] Server shall send initial events after SubscribeEventgroupAck.
-/// [feat_req_recentipsd_107] Initial events should be sent after SubscribeEventgroupAck.
-///
-/// After acknowledging subscription, server sends initial field values.
-#[test_log::test]
-fn server_sends_initial_events_after_ack() {
-    covers!(feat_req_recentipsd_691, feat_req_recentipsd_107);
-
-    let initial_event_received = Arc::new(Mutex::new(false));
-    let event_flag = Arc::clone(&initial_event_received);
-
-    let mut sim = turmoil::Builder::new()
-        .simulation_duration(Duration::from_secs(30))
-        .build();
-
-    sim.host("server", || async {
-        let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .start_turmoil().await.unwrap();
-        let offering = runtime
-            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
-            .udp()
-            .start()
-            .await
-            .unwrap();
-
-        // Wait for subscription, then send initial event
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let event_id = EventId::new(0x8001).unwrap();
-        let event_handle = offering.event(event_id).eventgroup(eventgroup).create().await.unwrap();
-
-        // This simulates initial event after SubscribeAck
-        event_handle.notify(b"initial_value").await.unwrap();
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        Ok(())
-    });
-
-    sim.client("client", async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .start_turmoil().await.unwrap();
-        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
-            .await
-            .expect("Discovery timeout")
-            .expect("Service available");
-
-        let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
-
-        // Should receive initial event shortly after subscription
-        let result = tokio::time::timeout(Duration::from_secs(3), subscription.next()).await;
-        if let Ok(Some(event)) = result {
-            if event.payload.as_ref() == b"initial_value" {
-                *event_flag.lock().unwrap() = true;
-            }
-        }
-        Ok(())
-    });
-
-    sim.run().unwrap();
-    assert!(*initial_event_received.lock().unwrap(), "Should receive initial event after subscribe");
-}
-
-/// [feat_req_recentipsd_1191] Client shall request Initial Events by setting Initial Data Requested Flag.
-/// [feat_req_recentipsd_1192] Client shall not request Initial Events if TTL not expired.
-///
-/// Initial events are only requested on first subscription, not renewals.
-#[test_log::test]
-fn initial_events_only_on_first_subscribe() {
-    covers!(feat_req_recentipsd_1191, feat_req_recentipsd_1192);
-
-    let events_received = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
-    let events_clone = Arc::clone(&events_received);
-
-    let mut sim = turmoil::Builder::new()
-        .simulation_duration(Duration::from_secs(30))
-        .build();
-
-    sim.host("server", || async {
-        let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .start_turmoil().await.unwrap();
-        let offering = runtime
-            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
-            .udp()
-            .start()
-            .await
-            .unwrap();
-
-        let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let event_id = EventId::new(0x8001).unwrap();
-        let event_handle = offering.event(event_id).eventgroup(eventgroup).create().await.unwrap();
-
-        // Wait for initial subscribe
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        event_handle.notify(b"initial").await.unwrap();
-
-        // Send updates
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        event_handle.notify(b"update1").await.unwrap();
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        Ok(())
-    });
-
-    sim.client("client", async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .start_turmoil().await.unwrap();
-        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
-            .await
-            .expect("Discovery timeout")
-            .expect("Service available");
-
-        let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
-
-        // Collect events
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-        while tokio::time::Instant::now() < deadline {
-            match tokio::time::timeout(Duration::from_millis(100), subscription.next()).await {
-                Ok(Some(event)) => events_clone.lock().unwrap().push(event.payload.to_vec()),
-                Ok(None) => break,
-                Err(_) => continue,
-            }
-        }
-        Ok(())
-    });
-
-    sim.run().unwrap();
-
-    let events = events_received.lock().unwrap();
-    assert!(!events.is_empty(), "Should receive at least initial event");
-    // First event should be the initial one
-    if !events.is_empty() {
-        assert_eq!(events[0], b"initial", "First event should be initial value");
-    }
-}
-
 // ============================================================================
 // 4. MULTIPLE EVENTGROUPS
 // ============================================================================
 
-/// [feat_req_recentipsd_1168] Server shall not send duplicate events for overlapping eventgroups.
-///
-/// If client subscribes to multiple eventgroups with same event, no duplicates sent.
 #[test_log::test]
-fn no_duplicate_events_for_overlapping_eventgroups() {
-    covers!(feat_req_recentipsd_1168);
-
-    let events_received = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
-    let events_clone = Arc::clone(&events_received);
+fn no_duplicate_events_for_overlapping_eventgroups_tcp() {
+    let events_received_sub1 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events_received_sub2 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events_clone_sub1 = Arc::clone(&events_received_sub1);
+    let events_clone_sub2 = Arc::clone(&events_received_sub2);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -698,10 +567,13 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
     sim.host("server", || async {
         let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .start_turmoil().await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
         let offering = runtime
-            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
-            .udp()
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
+            .tcp()
             .start()
             .await
             .unwrap();
@@ -709,10 +581,17 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
         // Wait for subscriptions
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        // Send event on eventgroup 1
+        // Send event on both eventgroups - server should de-duplicate at wire level
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
+        let eventgroup2 = EventgroupId::new(0x0002).unwrap();
         let event_id = EventId::new(0x8001).unwrap();
-        let event_handle = offering.event(event_id).eventgroup(eventgroup1).create().await.unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup1)
+            .eventgroup(eventgroup2)
+            .create()
+            .await
+            .unwrap();
         event_handle.notify(b"shared_event").await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -724,25 +603,52 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
 
         let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .start_turmoil().await.unwrap();
+            .start_turmoil()
+            .await
+            .unwrap();
         let proxy = runtime.find(PUB_SUB_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
 
-        // Subscribe to two eventgroups (conceptually overlapping)
+        // Subscribe to two eventgroups that share an event
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
         let eventgroup2 = EventgroupId::new(0x0002).unwrap();
 
-        let mut sub1 = proxy.subscribe(eventgroup1).await.unwrap();
-        let _sub2 = proxy.subscribe(eventgroup2).await; // May or may not succeed
+        let mut sub1 = proxy
+            .new_subscription()
+            .eventgroup(eventgroup1)
+            .subscribe()
+            .await
+            .unwrap();
+        let mut sub2 = proxy
+            .new_subscription()
+            .eventgroup(eventgroup2)
+            .subscribe()
+            .await
+            .unwrap();
 
         // Collect events from sub1
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while tokio::time::Instant::now() < deadline {
             match tokio::time::timeout(Duration::from_millis(100), sub1.next()).await {
-                Ok(Some(event)) => events_clone.lock().unwrap().push(event.payload.to_vec()),
+                Ok(Some(event)) => events_clone_sub1
+                    .lock()
+                    .unwrap()
+                    .push(event.payload.to_vec()),
+                Ok(None) => break,
+                Err(_) => continue,
+            }
+        }
+        // Collect events from sub2
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(100), sub2.next()).await {
+                Ok(Some(event)) => events_clone_sub2
+                    .lock()
+                    .unwrap()
+                    .push(event.payload.to_vec()),
                 Ok(None) => break,
                 Err(_) => continue,
             }
@@ -752,12 +658,507 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
 
     sim.run().unwrap();
 
-    let events = events_received.lock().unwrap();
-    // Should receive event exactly once, not duplicated
-    let shared_count = events.iter().filter(|e| e.as_slice() == b"shared_event").count();
-    assert!(shared_count <= 1, "Should not receive duplicate events: got {} copies", shared_count);
+    let events_sub1 = events_received_sub1.lock().unwrap();
+    let events_sub2 = events_received_sub2.lock().unwrap();
+
+    // Each subscription handle should receive the event exactly once
+    // (the server sends one packet, but the client delivers to both handles)
+    let count_sub1 = events_sub1
+        .iter()
+        .filter(|e| e.as_slice() == b"shared_event")
+        .count();
+    let count_sub2 = events_sub2
+        .iter()
+        .filter(|e| e.as_slice() == b"shared_event")
+        .count();
+
+    assert_eq!(
+        count_sub1, 1,
+        "Subscription 1 should receive event exactly once, got {}",
+        count_sub1
+    );
+    assert_eq!(
+        count_sub2, 1,
+        "Subscription 2 should receive event exactly once, got {}",
+        count_sub2
+    );
 }
 
+#[test_log::test]
+fn no_delivery_to_wrong_eg_tcp() {
+    let events_received_sub1 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events_received_sub2 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events_received_sub3 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events_clone_sub1 = Arc::clone(&events_received_sub1);
+    let events_clone_sub2 = Arc::clone(&events_received_sub2);
+    let events_clone_sub3 = Arc::clone(&events_received_sub3);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+        let offering = runtime
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
+            .tcp()
+            .start()
+            .await
+            .unwrap();
+
+        // Wait for subscriptions
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Send different events to different eventgroups
+        let eventgroup1 = EventgroupId::new(0x0001).unwrap();
+        let eventgroup2 = EventgroupId::new(0x0002).unwrap();
+        let eventgroup3 = EventgroupId::new(0x0003).unwrap();
+
+        // Event 0x8001 is shared between eventgroup1 and eventgroup2
+        let event1_handle = offering
+            .event(EventId::new(0x8001).unwrap())
+            .eventgroup(eventgroup1)
+            .eventgroup(eventgroup2)
+            .create()
+            .await
+            .unwrap();
+        event1_handle.notify(b"event_eg1_and_eg2").await.unwrap();
+
+        // Event 0x8002 is only in eventgroup3
+        let event2_handle = offering
+            .event(EventId::new(0x8002).unwrap())
+            .eventgroup(eventgroup3)
+            .create()
+            .await
+            .unwrap();
+        event2_handle.notify(b"event_eg3_only").await.unwrap();
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        // Subscribe to two eventgroups that share an event
+        let eventgroup1 = EventgroupId::new(0x0001).unwrap();
+        let eventgroup2 = EventgroupId::new(0x0002).unwrap();
+        let eventgroup3 = EventgroupId::new(0x0003).unwrap();
+
+        let mut sub1 = proxy
+            .new_subscription()
+            .eventgroup(eventgroup1)
+            .subscribe()
+            .await
+            .unwrap();
+        let mut sub2 = proxy
+            .new_subscription()
+            .eventgroup(eventgroup2)
+            .subscribe()
+            .await
+            .unwrap();
+        let mut sub3 = proxy
+            .new_subscription()
+            .eventgroup(eventgroup3)
+            .subscribe()
+            .await
+            .unwrap();
+
+        // Collect events from sub1
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(100), sub1.next()).await {
+                Ok(Some(event)) => events_clone_sub1
+                    .lock()
+                    .unwrap()
+                    .push(event.payload.to_vec()),
+                Ok(None) => break,
+                Err(_) => continue,
+            }
+        }
+        // Collect events from sub2
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(100), sub2.next()).await {
+                Ok(Some(event)) => events_clone_sub2
+                    .lock()
+                    .unwrap()
+                    .push(event.payload.to_vec()),
+                Ok(None) => break,
+                Err(_) => continue,
+            }
+        }
+        // Collect events from sub3
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(100), sub3.next()).await {
+                Ok(Some(event)) => events_clone_sub3
+                    .lock()
+                    .unwrap()
+                    .push(event.payload.to_vec()),
+                Ok(None) => break,
+                Err(_) => continue,
+            }
+        }
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let events_sub1 = events_received_sub1.lock().unwrap();
+    let events_sub2 = events_received_sub2.lock().unwrap();
+    let events_sub3 = events_received_sub3.lock().unwrap();
+
+    // Sub1 should receive exactly 1 event from eventgroups 1&2
+    assert_eq!(events_sub1.len(), 1, "Sub1 should receive exactly 1 event");
+    assert_eq!(
+        events_sub1[0].as_slice(),
+        b"event_eg1_and_eg2",
+        "Sub1 should receive event from eg1&2, not eg3"
+    );
+
+    // Sub2 should receive exactly 1 event from eventgroups 1&2
+    assert_eq!(events_sub2.len(), 1, "Sub2 should receive exactly 1 event");
+    assert_eq!(
+        events_sub2[0].as_slice(),
+        b"event_eg1_and_eg2",
+        "Sub2 should receive event from eg1&2, not eg3"
+    );
+
+    // Sub3 should receive exactly 1 event from eventgroup 3 only
+    assert_eq!(events_sub3.len(), 1, "Sub3 should receive exactly 1 event");
+    assert_eq!(
+        events_sub3[0].as_slice(),
+        b"event_eg3_only",
+        "Sub3 should receive event from eg3, not eg1&2"
+    );
+}
+
+/// API test: Client receives events on all subscription handles for overlapping eventgroups.
+///
+/// **Background**: The server correctly de-duplicates by subscriber endpoint (only one
+/// packet is sent on the wire). However, the SOME/IP wire format for events does NOT include
+/// eventgroup information - only service ID and event ID. Therefore, the client-side cannot
+/// determine which eventgroup an event belongs to, and delivers it to ALL subscription handles
+/// for that service.
+///
+/// This test verifies client API behavior:
+/// - Each subscription handle receives the event exactly once
+/// - Total delivery = one per handle (expected due to wire format limitation)
+#[test_log::test]
+fn no_duplicate_events_for_overlapping_eventgroups() {
+    let events_received_sub1 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events_received_sub2 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events_clone_sub1 = Arc::clone(&events_received_sub1);
+    let events_clone_sub2 = Arc::clone(&events_received_sub2);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+        let offering = runtime
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        // Wait for subscriptions
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Send event on both eventgroups - server should de-duplicate at wire level
+        let eventgroup1 = EventgroupId::new(0x0001).unwrap();
+        let eventgroup2 = EventgroupId::new(0x0002).unwrap();
+        let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup1)
+            .eventgroup(eventgroup2)
+            .create()
+            .await
+            .unwrap();
+        event_handle.notify(b"shared_event").await.unwrap();
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        // Subscribe to two eventgroups that share an event
+        let eventgroup1 = EventgroupId::new(0x0001).unwrap();
+        let eventgroup2 = EventgroupId::new(0x0002).unwrap();
+
+        let mut sub1 = proxy
+            .new_subscription()
+            .eventgroup(eventgroup1)
+            .subscribe()
+            .await
+            .unwrap();
+        let mut sub2 = proxy
+            .new_subscription()
+            .eventgroup(eventgroup2)
+            .subscribe()
+            .await
+            .unwrap();
+
+        // Collect events from sub1
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(100), sub1.next()).await {
+                Ok(Some(event)) => events_clone_sub1
+                    .lock()
+                    .unwrap()
+                    .push(event.payload.to_vec()),
+                Ok(None) => break,
+                Err(_) => continue,
+            }
+        }
+        // Collect events from sub2
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(100), sub2.next()).await {
+                Ok(Some(event)) => events_clone_sub2
+                    .lock()
+                    .unwrap()
+                    .push(event.payload.to_vec()),
+                Ok(None) => break,
+                Err(_) => continue,
+            }
+        }
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let events_sub1 = events_received_sub1.lock().unwrap();
+    let events_sub2 = events_received_sub2.lock().unwrap();
+
+    // Each subscription handle should receive the event exactly once
+    // (the server sends one packet, but the client delivers to both handles)
+    let count_sub1 = events_sub1
+        .iter()
+        .filter(|e| e.as_slice() == b"shared_event")
+        .count();
+    let count_sub2 = events_sub2
+        .iter()
+        .filter(|e| e.as_slice() == b"shared_event")
+        .count();
+
+    assert_eq!(
+        count_sub1, 1,
+        "Subscription 1 should receive event exactly once, got {}",
+        count_sub1
+    );
+    assert_eq!(
+        count_sub2, 1,
+        "Subscription 2 should receive event exactly once, got {}",
+        count_sub2
+    );
+}
+
+#[test_log::test]
+fn no_delivery_to_wrong_eg() {
+    let events_received_sub1 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events_received_sub2 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events_received_sub3 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events_clone_sub1 = Arc::clone(&events_received_sub1);
+    let events_clone_sub2 = Arc::clone(&events_received_sub2);
+    let events_clone_sub3 = Arc::clone(&events_received_sub3);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+        let offering = runtime
+            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        // Wait for subscriptions
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Send different events to different eventgroups
+        let eventgroup1 = EventgroupId::new(0x0001).unwrap();
+        let eventgroup2 = EventgroupId::new(0x0002).unwrap();
+        let eventgroup3 = EventgroupId::new(0x0003).unwrap();
+
+        // Event 0x8001 is shared between eventgroup1 and eventgroup2
+        let event1_handle = offering
+            .event(EventId::new(0x8001).unwrap())
+            .eventgroup(eventgroup1)
+            .eventgroup(eventgroup2)
+            .create()
+            .await
+            .unwrap();
+        event1_handle.notify(b"event_eg1_and_eg2").await.unwrap();
+
+        // Event 0x8002 is only in eventgroup3
+        let event2_handle = offering
+            .event(EventId::new(0x8002).unwrap())
+            .eventgroup(eventgroup3)
+            .create()
+            .await
+            .unwrap();
+        event2_handle.notify(b"event_eg3_only").await.unwrap();
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        // Subscribe to two eventgroups that share an event
+        let eventgroup1 = EventgroupId::new(0x0001).unwrap();
+        let eventgroup2 = EventgroupId::new(0x0002).unwrap();
+        let eventgroup3 = EventgroupId::new(0x0003).unwrap();
+
+        let mut sub1 = proxy
+            .new_subscription()
+            .eventgroup(eventgroup1)
+            .subscribe()
+            .await
+            .unwrap();
+        let mut sub2 = proxy
+            .new_subscription()
+            .eventgroup(eventgroup2)
+            .subscribe()
+            .await
+            .unwrap();
+        let mut sub3 = proxy
+            .new_subscription()
+            .eventgroup(eventgroup3)
+            .subscribe()
+            .await
+            .unwrap();
+
+        // Collect events from sub1
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(100), sub1.next()).await {
+                Ok(Some(event)) => events_clone_sub1
+                    .lock()
+                    .unwrap()
+                    .push(event.payload.to_vec()),
+                Ok(None) => break,
+                Err(_) => continue,
+            }
+        }
+        // Collect events from sub2
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(100), sub2.next()).await {
+                Ok(Some(event)) => events_clone_sub2
+                    .lock()
+                    .unwrap()
+                    .push(event.payload.to_vec()),
+                Ok(None) => break,
+                Err(_) => continue,
+            }
+        }
+        // Collect events from sub3
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(100), sub3.next()).await {
+                Ok(Some(event)) => events_clone_sub3
+                    .lock()
+                    .unwrap()
+                    .push(event.payload.to_vec()),
+                Ok(None) => break,
+                Err(_) => continue,
+            }
+        }
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let events_sub1 = events_received_sub1.lock().unwrap();
+    let events_sub2 = events_received_sub2.lock().unwrap();
+    let events_sub3 = events_received_sub3.lock().unwrap();
+
+    // Sub1 should receive exactly 1 event from eventgroups 1&2
+    assert_eq!(events_sub1.len(), 1, "Sub1 should receive exactly 1 event");
+    assert_eq!(
+        events_sub1[0].as_slice(),
+        b"event_eg1_and_eg2",
+        "Sub1 should receive event from eg1&2, not eg3"
+    );
+
+    // Sub2 should receive exactly 1 event from eventgroups 1&2
+    assert_eq!(events_sub2.len(), 1, "Sub2 should receive exactly 1 event");
+    assert_eq!(
+        events_sub2[0].as_slice(),
+        b"event_eg1_and_eg2",
+        "Sub2 should receive event from eg1&2, not eg3"
+    );
+
+    // Sub3 should receive exactly 1 event from eventgroup 3 only
+    assert_eq!(events_sub3.len(), 1, "Sub3 should receive exactly 1 event");
+    assert_eq!(
+        events_sub3[0].as_slice(),
+        b"event_eg3_only",
+        "Sub3 should receive event from eg3, not eg1&2"
+    );
+}
+
+/* WIP: To be reviewed
 /// [feat_req_recentipsd_1166] Server may optimize initial events for same field in same SD message.
 /// [feat_req_recentipsd_1167] Server shall send initial events separately for different SD messages.
 ///
@@ -810,7 +1211,7 @@ fn initial_events_for_multiple_eventgroups() {
             .expect("Service available");
 
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
-        let mut sub1 = proxy.subscribe(eventgroup1).await.unwrap();
+        let mut sub1 = proxy.new_subscription().eventgroup(eventgroup1).subscribe().await.unwrap();
 
         // Collect events
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
@@ -876,7 +1277,7 @@ fn server_deletes_subscription_on_error() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = proxy.subscribe(eventgroup).await.unwrap();
+        let _subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
@@ -978,7 +1379,7 @@ fn client_resubscribes_on_timeout() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = proxy.subscribe(eventgroup).await.unwrap();
+        let _subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
 
         // Client would resubscribe if no events received within timeout
         // (timeout-based resubscription is configurable per eventgroup)
@@ -1033,7 +1434,7 @@ fn client_subscribes_after_link_up() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let result = proxy.subscribe(eventgroup).await;
+        let result = proxy.new_subscription().eventgroup(eventgroup).subscribe().await;
         if result.is_ok() {
             *sub_flag.lock().unwrap() = true;
         }
@@ -1102,7 +1503,7 @@ fn client_udp_port_ready_before_subscribe() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
 
         // When subscribe() completes, client is ready to receive
-        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
+        let mut subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
 
         // Should receive event immediately (port was ready)
         let result = tokio::time::timeout(Duration::from_secs(2), subscription.next()).await;
@@ -1161,7 +1562,7 @@ fn client_tcp_ready_before_subscribe_reliable() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let result = proxy.subscribe(eventgroup).await;
+        let result = proxy.new_subscription().eventgroup(eventgroup).subscribe().await;
         if result.is_ok() {
             *sub_flag.lock().unwrap() = true;
         }
@@ -1232,7 +1633,7 @@ fn subscribe_timer_reset_on_offer() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
+        let mut subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
 
         // Collect events over time
         let mut event_count = 0;
@@ -1305,7 +1706,7 @@ fn no_cyclic_subscribe_if_not_configured() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
+        let mut subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
 
         let result = tokio::time::timeout(Duration::from_secs(2), subscription.next()).await;
         if let Ok(Some(_)) = result {
@@ -1365,7 +1766,7 @@ fn implicit_registration_supported() {
 
         // Explicit registration (implicit would happen automatically via config)
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let result = proxy.subscribe(eventgroup).await;
+        let result = proxy.new_subscription().eventgroup(eventgroup).subscribe().await;
         if result.is_ok() {
             *sub_flag.lock().unwrap() = true;
         }
@@ -1445,7 +1846,7 @@ fn pubsub_state_machine_flow() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
 
         // State: Subscribe -> Subscribed
-        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
+        let mut subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
 
         // State: Receiving events
         let mut event_count = 0;

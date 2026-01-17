@@ -3,7 +3,8 @@
 //! Handles for client-side SOME/IP operations:
 //! - [`FindBuilder`]: Builder for discovering services
 //! - [`ProxyHandle`]: Proxy to call methods on a remote service
-//! - [`Subscription`]: Handle to receive events from a subscribed eventgroup
+//! - [`SubscriptionBuilder`]: Builder for creating subscriptions
+//! - [`Subscription`]: Handle to receive events from subscribed eventgroups
 //! - [`StaticEventListener`]: Listen for events without Service Discovery
 
 mod find;
@@ -12,4 +13,4 @@ mod subscription;
 
 pub use find::FindBuilder;
 pub use proxy::OfferedService;
-pub use subscription::{StaticEventListener, Subscription};
+pub use subscription::{StaticEventListener, Subscription, SubscriptionBuilder};

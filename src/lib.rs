@@ -50,6 +50,18 @@
 //!     let response = proxy.call(method_id, b"").await?;
 //!     println!("Response: {:?}", response);
 //!
+//!     // Subscribe to events
+//!     let eg = EventgroupId::new(0x0001).unwrap();
+//!     let mut subscription = proxy
+//!         .new_subscription()
+//!         .eventgroup(eg)
+//!         .subscribe()
+//!         .await?;
+//!     
+//!     while let Some(event) = subscription.next().await {
+//!         println!("Event: {:?}", event);
+//!     }
+//!
 //!     Ok(())
 //! }
 //! ```
@@ -224,10 +236,17 @@
 //! use recentip::handle::OfferedService;
 //!
 //! async fn subscribe_example(proxy: &OfferedService) -> Result<()> {
-//!     let eventgroup = EventgroupId::new(0x0001).unwrap();
-//!     let mut events = proxy.subscribe(eventgroup).await?;
+//!     let eg1 = EventgroupId::new(0x0001).unwrap();
+//!     let eg2 = EventgroupId::new(0x0002).unwrap();
+//!     
+//!     let mut subscription = proxy
+//!         .new_subscription()
+//!         .eventgroup(eg1)
+//!         .eventgroup(eg2)  // Optional: subscribe to multiple eventgroups
+//!         .subscribe()
+//!         .await?;
 //!
-//!     while let Some(event) = events.next().await {
+//!     while let Some(event) = subscription.next().await {
 //!         println!("Event {}: {} bytes", event.event_id.value(), event.payload.len());
 //!     }
 //!     Ok(())
@@ -390,6 +409,7 @@ pub use handles::{
     ServiceOffering,
     StaticEventListener,
     Subscription,
+    SubscriptionBuilder,
 };
 
 // Re-export SD event types for monitoring API
@@ -692,6 +712,6 @@ pub mod prelude {
         configure, Error, Event, EventBuilder, EventHandle, EventId, EventgroupId, InstanceId,
         MajorVersion, MethodConfig, MethodId, MinorVersion, OfferedService, Response, Result,
         ReturnCode, Runtime, RuntimeConfig, ServiceId, ServiceOffering, SomeIp, SomeIpBuilder,
-        Transport,
+        Subscription, SubscriptionBuilder, Transport,
     };
 }

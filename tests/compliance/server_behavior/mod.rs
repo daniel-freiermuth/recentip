@@ -9,5 +9,6 @@
 
 mod helpers;
 pub mod sd_session;
+pub mod event_dedup;
 pub mod subscription_nack;
 pub mod transport_mismatch;

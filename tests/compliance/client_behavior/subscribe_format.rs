@@ -151,11 +151,13 @@ fn subscribe_format_udp_only_cyclic_offers() {
         eprintln!("[client] Service discovered");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed, staying alive for cyclic offers...");
 
@@ -298,11 +300,13 @@ fn subscribe_format_tcp_only_cyclic_offers() {
         eprintln!("[client] Service discovered via TCP");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed via TCP, staying alive...");
         tokio::time::sleep(Duration::from_secs(6)).await;
@@ -422,11 +426,13 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_secs(6)).await;
         Ok(())
@@ -560,11 +566,13 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_secs(6)).await;
         Ok(())
@@ -697,11 +705,13 @@ fn subscribe_format_client_adapts_to_available_transport() {
         );
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_secs(6)).await;
         Ok(())

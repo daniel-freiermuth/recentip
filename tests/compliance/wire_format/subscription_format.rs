@@ -106,11 +106,13 @@ fn subscribe_eventgroup_entry_type() {
 
         // Subscribe to eventgroup using public API
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -663,11 +665,13 @@ fn stop_subscribe_has_ttl_zero() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
 
         // Subscribe
-        let subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 

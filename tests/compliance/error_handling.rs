@@ -384,7 +384,12 @@ fn notification_message_type() {
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(1).unwrap();
-        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
+        let mut subscription = proxy
+            .new_subscription()
+            .eventgroup(eventgroup)
+            .subscribe()
+            .await
+            .unwrap();
 
         // Wait for event
         if let Ok(Some(event)) =

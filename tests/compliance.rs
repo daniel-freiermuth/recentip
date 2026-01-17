@@ -127,6 +127,11 @@ mod sd_pubsub;
 #[path = "compliance/sd_pubsub_offer_subscribe.rs"]
 mod sd_pubsub_offer_subscribe;
 
+// Subscription endpoint reuse tests
+#[cfg(feature = "turmoil")]
+#[path = "compliance/subscription_endpoint_reuse.rs"]
+mod subscription_endpoint_reuse;
+
 // Multi-protocol transport tests (TCP + UDP in same scenario)
 #[cfg(feature = "turmoil")]
 #[path = "compliance/multi_protocol.rs"]

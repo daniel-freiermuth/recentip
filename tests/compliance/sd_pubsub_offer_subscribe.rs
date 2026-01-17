@@ -358,11 +358,13 @@ fn offer_triggers_subscribe_renewal() {
 
         // Subscribe to eventgroup
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscription active, waiting for offer-triggered renewal...");
 
@@ -549,11 +551,13 @@ fn no_cyclic_subscribes_strict_631_compliance() {
         eprintln!("[client] Service discovered, subscribing...");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscription active, keeping alive for test duration...");
 
@@ -721,11 +725,13 @@ fn no_subscribe_without_offer() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
         Ok(())
     });
 
@@ -1012,11 +1018,13 @@ fn max_ttl_subscription_no_renewal_needed() {
         eprintln!("[client] Service discovered, subscribing with TTL=max...");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Subscribe timeout")
-                .expect("Subscribe should succeed");
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout")
+        .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscription active (TTL=max), waiting...");
 

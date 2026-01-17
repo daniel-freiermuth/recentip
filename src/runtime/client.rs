@@ -237,28 +237,36 @@ pub fn handle_fire_and_forget(
 /// For UDP subscriptions, this behaves identically to the sync version.
 /// For TCP subscriptions, it first establishes a TCP connection to the server,
 /// then uses that connection's local address in the subscribe message.
+/// Handle `Command::Subscribe` - subscribe to multiple eventgroups with shared endpoint
 pub async fn handle_subscribe_command<T: TcpStream>(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     major_version: u8,
-    eventgroup_id: u16,
+    eventgroup_ids: Vec<u16>,
     events: tokio::sync::mpsc::Sender<Event>,
     response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     state: &mut RuntimeState,
     tcp_pool: &TcpConnectionPool<T>,
 ) -> Option<Vec<Action>> {
+    if eventgroup_ids.is_empty() {
+        let _ = response.send(Err(crate::error::Error::Config(
+            crate::error::ConfigError::new("At least one eventgroup must be specified"),
+        )));
+        return None;
+    }
+
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
-    // Generate a unique subscription ID for this subscription handle
+    // Generate a single subscription ID for all eventgroups
     let subscription_id = state.next_subscription_id();
 
     let Some(discovered) = state.discovered.get(&key) else {
         tracing::debug!(
-            "Cannot subscribe to {:04x}:{:04x} v{} eventgroup {:04x}: service not discovered",
+            "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: service not discovered",
             service_id.value(),
             instance_id.value(),
             major_version,
-            eventgroup_id
+            eventgroup_ids
         );
         let _ = response.send(Err(crate::error::Error::ServiceUnavailable));
         return None;
@@ -267,8 +275,8 @@ pub async fn handle_subscribe_command<T: TcpStream>(
     let prefer_tcp = state.config.preferred_transport == Transport::Tcp;
     let Some((_method_endpoint, transport)) = discovered.method_endpoint(prefer_tcp) else {
         tracing::debug!(
-            "Trying to subscribe to eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no compatible transport endpoints",
-            eventgroup_id,
+            "Trying to subscribe to eventgroups {:?} on service {:04x} instance {:04x}, but server offers no compatible transport endpoints",
+            eventgroup_ids,
             service_id.value(),
             instance_id.value()
         );
@@ -279,9 +287,7 @@ pub async fn handle_subscribe_command<T: TcpStream>(
     };
 
     // For TCP subscriptions, establish connection BEFORE subscribing (feat_req_recentipsd_767)
-    // Use the actual TCP connection's local address in the subscribe message
     let endpoint_for_subscribe = if transport == Transport::Tcp {
-        // Get the server's TCP RPC endpoint
         let Some(tcp_endpoint) = discovered.tcp_endpoint else {
             tracing::error!(
                 "TCP transport selected but no TCP endpoint for {:04x}:{:04x}",
@@ -294,16 +300,15 @@ pub async fn handle_subscribe_command<T: TcpStream>(
             return None;
         };
 
-        // Establish TCP connection (or get existing connection's local address)
         match tcp_pool.ensure_connected(tcp_endpoint).await {
             Ok(local_addr) => {
                 tracing::debug!(
-                    "TCP connection established to {} (local addr: {}) for subscription to {:04x}:{:04x} eventgroup {:04x}",
+                    "TCP connection established to {} (local addr: {}) for subscription to {:04x}:{:04x} eventgroups {:?}",
                     tcp_endpoint,
                     local_addr,
                     service_id.value(),
                     instance_id.value(),
-                    eventgroup_id
+                    eventgroup_ids
                 );
                 local_addr
             }
@@ -318,14 +323,13 @@ pub async fn handle_subscribe_command<T: TcpStream>(
             }
         }
     } else {
-        // UDP: use our UDP RPC endpoint
         let Some(endpoint_ip) = get_endpoint_ip(state) else {
             tracing::error!(
-                "Cannot subscribe to {:04x}:{:04x} eventgroup {:04x}: \
+                "Cannot subscribe to {:04x}:{:04x} eventgroups {:?}: \
                     no valid IP address configured. Set RuntimeConfig::advertised_ip",
                 service_id.value(),
                 instance_id.value(),
-                eventgroup_id
+                eventgroup_ids
             );
             let _ = response.send(Err(crate::error::Error::Config(
                 crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
@@ -335,65 +339,73 @@ pub async fn handle_subscribe_command<T: TcpStream>(
         SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port())
     };
 
-    // Need to re-borrow discovered after the await
     let sd_endpoint = state.discovered.get(&key).unwrap().sd_endpoint;
 
-    state
-        .subscriptions
-        .entry(key)
-        .or_default()
-        .push(ClientSubscription {
+    // Track all eventgroups with a shared events channel (cloned sender)
+    let subs = state.subscriptions.entry(key).or_default();
+    for &eventgroup_id in &eventgroup_ids {
+        subs.push(ClientSubscription {
             subscription_id,
             eventgroup_id,
-            events_tx: events,
+            events_tx: events.clone(),
         });
+    }
 
-    // Store pending subscription - will be resolved when ACK/NACK is received
-    let pending_key = PendingSubscriptionKey {
-        service_id: service_id.value(),
-        instance_id: instance_id.value(),
-        major_version,
-        eventgroup_id,
-    };
-    let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
-    let is_first_waiter = pending_list.is_empty();
-    pending_list.push(PendingSubscription {
-        subscription_id,
-        response,
-    });
+    // Track pending subscriptions for all eventgroups
+    let mut actions = Vec::new();
+    let mut response_opt = Some(response);
 
-    // Only send SD Subscribe message if this is the first waiter
-    if is_first_waiter {
-        tracing::debug!(
-            "Subscribing to {:04x}:{:04x} v{} eventgroup {:04x} via {:?} (endpoint: {})",
-            service_id.value(),
-            instance_id.value(),
+    for &eventgroup_id in &eventgroup_ids {
+        let pending_key = PendingSubscriptionKey {
+            service_id: service_id.value(),
+            instance_id: instance_id.value(),
             major_version,
             eventgroup_id,
-            transport,
-            endpoint_for_subscribe
-        );
+        };
+        let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
+        let is_first_waiter = pending_list.is_empty();
 
-        let msg = build_subscribe_message(
-            service_id.value(),
-            instance_id.value(),
-            major_version,
-            eventgroup_id,
-            endpoint_for_subscribe,
-            endpoint_for_subscribe.port(),
-            state.sd_flags(true),
-            state.config.subscribe_ttl,
-            transport,
-        );
-
-        let mut actions = Vec::new();
-        actions.push(Action::SendSd {
-            message: msg,
-            target: sd_endpoint,
+        // Only add response channel for first eventgroup
+        pending_list.push(PendingSubscription {
+            subscription_id,
+            response: response_opt.take(),
         });
-        Some(actions)
-    } else {
+
+        // Send SD Subscribe message for each eventgroup (if first waiter)
+        if is_first_waiter {
+            tracing::debug!(
+                "Subscribing to {:04x}:{:04x} v{} eventgroup {:04x} via {:?} (endpoint: {})",
+                service_id.value(),
+                instance_id.value(),
+                major_version,
+                eventgroup_id,
+                transport,
+                endpoint_for_subscribe
+            );
+
+            let msg = build_subscribe_message(
+                service_id.value(),
+                instance_id.value(),
+                major_version,
+                eventgroup_id,
+                endpoint_for_subscribe,
+                endpoint_for_subscribe.port(),
+                state.sd_flags(true),
+                state.config.subscribe_ttl,
+                transport,
+            );
+
+            actions.push(Action::SendSd {
+                message: msg,
+                target: sd_endpoint,
+            });
+        }
+    }
+
+    if actions.is_empty() {
         None
+    } else {
+        Some(actions)
     }
 }
 

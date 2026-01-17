@@ -303,11 +303,13 @@ fn notification_delivery() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription =
-            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
-                .await
-                .expect("Timeout subscribing")
-                .expect("Subscribe should succeed");
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
+        )
+        .await
+        .expect("Timeout subscribing")
+        .expect("Subscribe should succeed");
 
         let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
             .await
