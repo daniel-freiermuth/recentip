@@ -32,7 +32,7 @@ fn get_git_commit() -> String {
 /// Run the Python script to extract coverage annotations from test files.
 fn run_extract_coverage(project_root: &Path) {
     let script_path = project_root.join("scripts/extract_coverage.py");
-    
+
     if !script_path.exists() {
         eprintln!("Warning: extract_coverage.py not found, skipping coverage extraction");
         return;
@@ -150,15 +150,24 @@ struct TestCoverage {
     ignore_reason: Option<String>,
 }
 
-fn generate_compliance_doc(requirements: &[Requirement], coverage: &Coverage, git_commit: &str) -> String {
+fn generate_compliance_doc(
+    requirements: &[Requirement],
+    coverage: &Coverage,
+    git_commit: &str,
+) -> String {
     let mut out = String::new();
 
     // Header
     out.push_str("# Specification Compliance\n\n");
-    out.push_str("This document provides traceability between the SOME/IP specification requirements\n");
+    out.push_str(
+        "This document provides traceability between the SOME/IP specification requirements\n",
+    );
     out.push_str("and the compliance test suite. **Auto-generated at build time.**\n\n");
-    out.push_str(&format!("*Git commit: [`{}`](https://github.com/daniel-freiermuth/recentip/commit/{})*\n\n", 
-        &git_commit[..git_commit.len().min(8)], git_commit));
+    out.push_str(&format!(
+        "*Git commit: [`{}`](https://github.com/daniel-freiermuth/recentip/commit/{})*\n\n",
+        &git_commit[..git_commit.len().min(8)],
+        git_commit
+    ));
 
     // Build test lookup: test_name -> TestCoverage
     let test_lookup: HashMap<&str, &TestCoverage> = coverage
@@ -168,10 +177,8 @@ fn generate_compliance_doc(requirements: &[Requirement], coverage: &Coverage, gi
         .collect();
 
     // Build set of requirement IDs by type
-    let all_req_ids: std::collections::HashSet<&str> = requirements
-        .iter()
-        .map(|r| r.id.as_str())
-        .collect();
+    let all_req_ids: std::collections::HashSet<&str> =
+        requirements.iter().map(|r| r.id.as_str()).collect();
     let testable_req_ids: std::collections::HashSet<&str> = requirements
         .iter()
         .filter(|r| r.reqtype == "Requirement")
@@ -182,7 +189,7 @@ fn generate_compliance_doc(requirements: &[Requirement], coverage: &Coverage, gi
     let total_reqs = requirements.len();
     let testable_count = testable_req_ids.len();
     let info_count = total_reqs - testable_count;
-    
+
     // Covered = requirement IDs that exist AND have tests
     let covered_testable = coverage
         .requirements_to_tests
@@ -196,7 +203,7 @@ fn generate_compliance_doc(requirements: &[Requirement], coverage: &Coverage, gi
         .filter(|id| all_req_ids.contains(id.as_str()) && !testable_req_ids.contains(id.as_str()))
         .count();
     let covered_all = covered_testable + covered_info;
-    
+
     // Coverage % only based on testable requirements
     let coverage_pct = if testable_count > 0 {
         (covered_testable as f64 / testable_count as f64) * 100.0
@@ -208,12 +215,21 @@ fn generate_compliance_doc(requirements: &[Requirement], coverage: &Coverage, gi
     out.push_str("| Metric | Count |\n");
     out.push_str("|--------|-------|\n");
     out.push_str(&format!("| Total Requirements | {} |\n", total_reqs));
-    out.push_str(&format!("| Requirements (testable) | {} |\n", testable_count));
-    out.push_str(&format!("| Information (non-testable) | {} |\n", info_count));
+    out.push_str(&format!(
+        "| Requirements (testable) | {} |\n",
+        testable_count
+    ));
+    out.push_str(&format!(
+        "| Information (non-testable) | {} |\n",
+        info_count
+    ));
     out.push_str(&format!("| Covered (testable) | {} |\n", covered_testable));
     out.push_str(&format!("| Covered (info) | {} |\n", covered_info));
     out.push_str(&format!("| **Total Covered** | **{}** |\n", covered_all));
-    out.push_str(&format!("| Not Yet Covered | {} |\n", testable_count.saturating_sub(covered_testable)));
+    out.push_str(&format!(
+        "| Not Yet Covered | {} |\n",
+        testable_count.saturating_sub(covered_testable)
+    ));
     out.push_str(&format!("| **Coverage** | **{:.1}%** |\n\n", coverage_pct));
 
     // Group requirements by source file
@@ -266,13 +282,13 @@ fn generate_compliance_doc(requirements: &[Requirement], coverage: &Coverage, gi
             .get(&req.id)
             .map(|t| t.len())
             .unwrap_or(0);
-        
+
         let is_info = req.reqtype == "Information";
         let is_covered = test_count > 0;
-        
+
         // Green if info or covered, red otherwise
         let status = if is_info || is_covered { "✅" } else { "❌" };
-        
+
         // Truncate summary to ~60 chars
         let summary = if req.text.len() > 60 {
             format!("{}...", &req.text.chars().take(60).collect::<String>())
@@ -281,18 +297,18 @@ fn generate_compliance_doc(requirements: &[Requirement], coverage: &Coverage, gi
         };
         // Escape pipes and clean up for table
         let safe_summary = summary.replace('|', "\\|").replace('\n', " ");
-        
+
         let req_type = if is_info { "Info" } else { "Req" };
-        
+
         let test_display = if test_count > 0 {
             format!("{}", test_count)
         } else {
             "—".to_string()
         };
-        
+
         // Link to detailed section
         let details_link = format!("[→](#{})", req.id);
-        
+
         out.push_str(&format!(
             "| {} | {} | {} | {} | {} | {} |\n",
             status, req.id, safe_summary, req_type, test_display, details_link
@@ -337,7 +353,11 @@ fn generate_compliance_doc(requirements: &[Requirement], coverage: &Coverage, gi
                 // Escape pipes for markdown compatibility
                 let safe_text = req.text.replace('|', "\\|");
 
-                let type_badge = if req.reqtype == "Information" { " *(Info)*" } else { "" };
+                let type_badge = if req.reqtype == "Information" {
+                    " *(Info)*"
+                } else {
+                    ""
+                };
                 out.push_str(&format!("<a id=\"{}\"></a>\n\n", req.id));
                 out.push_str(&format!("##### {}{}\n\n", req.id, type_badge));
                 out.push_str(&format!("> {}\n\n", safe_text));
@@ -368,14 +388,20 @@ fn generate_compliance_doc(requirements: &[Requirement], coverage: &Coverage, gi
     for (source, reqs) in by_source.iter() {
         let uncovered: Vec<_> = reqs
             .iter()
-            .filter(|r| r.reqtype == "Requirement" && !coverage.requirements_to_tests.contains_key(&r.id))
+            .filter(|r| {
+                r.reqtype == "Requirement" && !coverage.requirements_to_tests.contains_key(&r.id)
+            })
             .collect();
 
         if uncovered.is_empty() {
             continue;
         }
 
-        out.push_str(&format!("### {} ({} uncovered)\n\n", source, uncovered.len()));
+        out.push_str(&format!(
+            "### {} ({} uncovered)\n\n",
+            source,
+            uncovered.len()
+        ));
         out.push_str("<details>\n<summary>Click to expand</summary>\n\n");
 
         // Group by section
