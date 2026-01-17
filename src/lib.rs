@@ -367,6 +367,7 @@
 use std::net::SocketAddr;
 
 pub mod builder;
+pub mod examples;
 pub mod net;
 
 // Internal modules for runtime implementation (moved to runtime/)

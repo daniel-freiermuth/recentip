@@ -32,109 +32,14 @@ recentip = "0.1"
 
 ## Quick Start
 
-### Client: Find and Call a Service
+**📚 [See the full examples in the documentation](https://docs.rs/recentip/latest/recentip/examples/index.html)**
 
-```rust
-use recentip::prelude::*;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Create the SOME/IP runtime
-    let someip = recentip::configure().start().await?;
-
-    // Find a remote service (waits for SD announcement)
-    let proxy = someip.find(BRAKE_SERVICE_ID).await?;
-
-    // Call a method (RPC)
-    let method_id = MethodId::new(0x0001).unwrap();
-    let response = proxy.call(method_id, b"request payload").await?;
-    
-    if response.return_code == ReturnCode::Ok {
-        println!("Success: {} bytes", response.payload.len());
-    }
-
-    // Subscribe to events
-    let eg = EventgroupId::new(0x0001).unwrap();
-    let mut subscription = proxy
-        .new_subscription()
-        .eventgroup(eg)
-        .subscribe()
-        .await?;
-    
-    while let Some(event) = subscription.next().await {
-        println!("Event: {:?}", event);
-    }
-
-    Ok(())
-}
-```
-
-### Server: Offer a Service
-
-```rust
-use recentip::prelude::*;
-use recentip::handle::ServiceEvent;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
-
-    // Offer a service (announces via SD)
-    let mut offering = someip.offer(BRAKE_SERVICE_ID, InstanceId::Id(0x0001))
-        .version(BRAKE_VERSION.0, BRAKE_VERSION.1)
-        .start()
-        .await?;
-
-    // Handle incoming requests
-    while let Some(event) = offering.next().await {
-        match event {
-            ServiceEvent::Call { method, payload, responder, .. } => {
-                // Process request and send response
-                responder.reply(b"OK").await?;
-            }
-            ServiceEvent::Subscribe { eventgroup, client } => {
-                // Subscriptions are auto-accepted
-                println!("Client {:?} subscribed to {:?}", client, eventgroup);
-            }
-            _ => {}
-        }
-    }
-    Ok(())
-}
-```
-
-### Client: Subscribe to Events
-
-```rust
-use recentip::prelude::*;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
-    let proxy = someip.find(BRAKE_SERVICE_ID).await?;
-
-    // Subscribe to one or more eventgroups
-    let eg1 = EventgroupId::new(0x0001).unwrap();
-    let eg2 = EventgroupId::new(0x0002).unwrap();
-    
-    let mut subscription = proxy
-        .new_subscription()
-        .eventgroup(eg1)
-        .eventgroup(eg2)  // Optional: subscribe to multiple eventgroups
-        .subscribe()
-        .await?;
-    
-    // Receive events from all subscribed eventgroups
-    while let Some(event) = subscription.next().await {
-        println!("Event ID: 0x{:04x}, {} bytes", 
-                 event.event_id.value(), event.payload.len());
-    }
-    Ok(())
-}
-```
-
-## Examples
-Check the `examples` folder for examples.
+The documentation includes compile-checked examples covering:
+- **[Quickstart](https://docs.rs/recentip/latest/recentip/examples/quickstart/)** — Minimal client, server, pub/sub
+- **[RPC](https://docs.rs/recentip/latest/recentip/examples/rpc/)** — Request/response, fire-and-forget
+- **[Pub/Sub](https://docs.rs/recentip/latest/recentip/examples/pubsub/)** — Events, eventgroups, subscriptions
+- **[Transport](https://docs.rs/recentip/latest/recentip/examples/transport/)** — UDP, TCP, configuration
+- **[Monitoring](https://docs.rs/recentip/latest/recentip/examples/monitoring/)** — Service discovery events
 
 ## Configuration
 
