@@ -141,15 +141,16 @@ def extract_requirements(rst_path: Path) -> list[Requirement]:
     return requirements
 
 def main():
-    spec_dir = Path(__file__).parent.parent.parent / 'src'
-    output_dir = Path(__file__).parent.parent / 'spec-data'
+    # Use the specs submodule (specs/src contains RST files)
+    project_root = Path(__file__).parent.parent
+    spec_dir = project_root / 'specs' / 'src'
+    output_dir = project_root / 'spec-data'
     output_dir.mkdir(exist_ok=True)
     
     if not spec_dir.exists():
         print(f"Spec directory not found: {spec_dir}")
-        print("Looking for RST files...")
-        # Try alternative path
-        spec_dir = Path('/mnt/fedora/home/daniel/side-projects/recentIpSpec/src')
+        print("Did you initialize the specs submodule? Run: git submodule update --init")
+        sys.exit(1)
     
     rst_files = list(spec_dir.glob('*.rst'))
     print(f"Found {len(rst_files)} RST files in {spec_dir}")

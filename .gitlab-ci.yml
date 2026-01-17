@@ -90,6 +90,7 @@ doc-build:
   before_script:
     - apt-get update && apt-get install -y python3
     - rustup component add clippy rustfmt
+    - git submodule update --init
   script:
     - python3 tools/extract_requirements.py
     - python3 scripts/extract_coverage.py
@@ -140,6 +141,8 @@ build-qnx:
 requirement-coverage:
   stage: test
   image: python:3.11
+  before_script:
+    - git submodule update --init
   script:
     - python tools/extract_requirements.py
     - python scripts/extract_coverage.py
