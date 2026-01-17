@@ -10,10 +10,11 @@
 //! - feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
 //! - Client must propagate NACK as an error to the caller
 
-use super::helpers::{build_sd_offer, build_sd_subscribe_ack, covers, parse_sd_message};
+use super::helpers::{
+    build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers, parse_sd_message,
+};
 use recentip::prelude::*;
 use recentip::wire::{L4Protocol, SdOption};
-use recentip::{Runtime, RuntimeConfig};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -1131,5 +1132,378 @@ fn events_received_after_subscribe_ack() {
         event_count.load(Ordering::SeqCst),
         3,
         "Server should have sent 3 events"
+    );
+}
+
+/// Test that a multi-eventgroup subscription fails if ANY eventgroup is NACKed.
+///
+/// # Scenario
+/// - Server offers service with two eventgroups (EG1 and EG2)
+/// - Client creates ONE subscription to BOTH eventgroups
+/// - Server ACKs EG1 but NACKs EG2
+/// - The entire subscription should fail (not partially succeed)
+///
+/// This tests the "all or nothing" semantics for multi-eventgroup subscriptions.
+#[test_log::test]
+fn multi_eventgroup_subscription_fails_if_one_nacked() {
+    covers!(feat_req_recentipsd_1137);
+
+    const SERVICE_ID: u16 = 0x1234;
+    const INSTANCE_ID: u16 = 0x0001;
+    const MAJOR_VERSION: u8 = 1;
+    const EVENTGROUP_ACK: u16 = 0x0001; // This eventgroup will be ACKed
+    const EVENTGROUP_NACK: u16 = 0x0002; // This eventgroup will be NACKed
+
+    let ack_count = Arc::new(AtomicUsize::new(0));
+    let nack_count = Arc::new(AtomicUsize::new(0));
+    let ack_count_server = Arc::clone(&ack_count);
+    let nack_count_server = Arc::clone(&nack_count);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Wire-level server that offers one service with two eventgroups
+    // ACKs subscriptions to EG1, NACKs subscriptions to EG2
+    sim.host("wire_server", move || {
+        let ack_count = Arc::clone(&ack_count_server);
+        let nack_count = Arc::clone(&nack_count_server);
+
+        async move {
+            let my_ip: std::net::Ipv4Addr =
+                turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+            let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+            // Build offer for the service
+            let offer_bytes = build_sd_offer(
+                SERVICE_ID,
+                INSTANCE_ID,
+                MAJOR_VERSION,
+                0x00000001,
+                my_ip,
+                30509,
+                0xFFFFFF,
+            );
+
+            let mut buf = [0u8; 65535];
+            let mut offer_sent = false;
+
+            loop {
+                let (len, from) = sd_socket.recv_from(&mut buf).await?;
+
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        match entry.entry_type {
+                            recentip::wire::SdEntryType::FindService => {
+                                // Send offer on first FindService
+                                if !offer_sent {
+                                    sd_socket.send_to(&offer_bytes, sd_multicast).await?;
+                                    offer_sent = true;
+                                    eprintln!("[wire_server] Sent offer for service");
+                                }
+                            }
+                            recentip::wire::SdEntryType::SubscribeEventgroup => {
+                                let eventgroup_id = entry.eventgroup_id;
+                                eprintln!(
+                                    "[wire_server] Received subscribe for eventgroup 0x{:04X}",
+                                    eventgroup_id
+                                );
+
+                                if eventgroup_id == EVENTGROUP_ACK {
+                                    // ACK this eventgroup
+                                    let ack_bytes = build_sd_subscribe_ack(
+                                        SERVICE_ID,
+                                        INSTANCE_ID,
+                                        MAJOR_VERSION,
+                                        EVENTGROUP_ACK,
+                                        0xFFFFFF,
+                                    );
+                                    sd_socket.send_to(&ack_bytes, from).await?;
+                                    ack_count.fetch_add(1, Ordering::SeqCst);
+                                    eprintln!("[wire_server] Sent ACK for EG1");
+                                } else if eventgroup_id == EVENTGROUP_NACK {
+                                    // NACK this eventgroup
+                                    let nack_bytes = build_sd_subscribe_nack(
+                                        SERVICE_ID,
+                                        INSTANCE_ID,
+                                        MAJOR_VERSION,
+                                        EVENTGROUP_NACK,
+                                    );
+                                    sd_socket.send_to(&nack_bytes, from).await?;
+                                    nack_count.fetch_add(1, Ordering::SeqCst);
+                                    eprintln!("[wire_server] Sent NACK for EG2");
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Client flags
+    let subscription_failed = Arc::new(AtomicBool::new(false));
+    let subscription_failed_clone = Arc::clone(&subscription_failed);
+
+    // Client using our library
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Discover the service
+        let proxy = runtime
+            .find(SERVICE_ID)
+            .major_version(MAJOR_VERSION)
+            .instance(InstanceId::Id(INSTANCE_ID));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+        eprintln!("[client] Service discovered");
+
+        // Subscribe to BOTH eventgroups in a single subscription
+        let eg1 = EventgroupId::new(EVENTGROUP_ACK).unwrap();
+        let eg2 = EventgroupId::new(EVENTGROUP_NACK).unwrap();
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy
+                .new_subscription()
+                .eventgroup(eg1)
+                .eventgroup(eg2)
+                .subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout");
+
+        match result {
+            Ok(_subscription) => {
+                panic!("[client] Multi-eventgroup subscription succeeded unexpectedly (expected failure due to NACK on EG2)");
+            }
+            Err(e) => {
+                eprintln!(
+                    "[client] Multi-eventgroup subscription failed as expected: {:?}",
+                    e
+                );
+                subscription_failed_clone.store(true, Ordering::SeqCst);
+            }
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Verify results
+    assert!(
+        subscription_failed.load(Ordering::SeqCst),
+        "Multi-eventgroup subscription should have failed when one eventgroup was NACKed"
+    );
+    // The server must have sent at least one NACK (for EG2)
+    // Note: It may not have sent an ACK if the NACK arrived before the other subscribe
+    assert!(
+        nack_count.load(Ordering::SeqCst) >= 1,
+        "Server should have sent at least 1 NACK (for EG2)"
+    );
+}
+
+/// Test that a multi-eventgroup subscription over TCP fails if ANY eventgroup is NACKed.
+///
+/// Same as `multi_eventgroup_subscription_fails_if_one_nacked` but uses TCP transport.
+#[test_log::test]
+fn multi_eventgroup_subscription_fails_if_one_nacked_tcp() {
+    covers!(feat_req_recentipsd_1137);
+
+    const SERVICE_ID: u16 = 0x1234;
+    const INSTANCE_ID: u16 = 0x0001;
+    const MAJOR_VERSION: u8 = 1;
+    const EVENTGROUP_ACK: u16 = 0x0001; // This eventgroup will be ACKed
+    const EVENTGROUP_NACK: u16 = 0x0002; // This eventgroup will be NACKed
+    const TCP_PORT: u16 = 30509;
+
+    let ack_count = Arc::new(AtomicUsize::new(0));
+    let nack_count = Arc::new(AtomicUsize::new(0));
+    let ack_count_server = Arc::clone(&ack_count);
+    let nack_count_server = Arc::clone(&nack_count);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Wire-level server that offers one service with two eventgroups via TCP
+    // ACKs subscriptions to EG1, NACKs subscriptions to EG2
+    sim.host("wire_server", move || {
+        let ack_count = Arc::clone(&ack_count_server);
+        let nack_count = Arc::clone(&nack_count_server);
+
+        async move {
+            let my_ip: std::net::Ipv4Addr =
+                turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+            let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+            // TCP listener for the service (needed for client to connect before subscribing)
+            let tcp_listener =
+                turmoil::net::TcpListener::bind(format!("0.0.0.0:{}", TCP_PORT)).await?;
+
+            // Build offer for the service with TCP endpoint
+            let offer_bytes = build_sd_offer_tcp_only(
+                SERVICE_ID,
+                INSTANCE_ID,
+                MAJOR_VERSION,
+                0x00000001,
+                my_ip,
+                TCP_PORT,
+                0xFFFFFF,
+            );
+
+            let mut buf = [0u8; 65535];
+            let mut offer_sent = false;
+
+            // Spawn TCP accept task (just accept connections, don't need to do anything)
+            tokio::spawn(async move {
+                loop {
+                    if let Ok((stream, addr)) = tcp_listener.accept().await {
+                        eprintln!("[wire_server] TCP connection accepted from {}", addr);
+                        // Keep stream alive by holding it
+                        let _ = stream;
+                        tokio::time::sleep(Duration::from_secs(30)).await;
+                    }
+                }
+            });
+
+            loop {
+                let (len, from) = sd_socket.recv_from(&mut buf).await?;
+
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        match entry.entry_type {
+                            recentip::wire::SdEntryType::FindService => {
+                                // Send offer on first FindService
+                                if !offer_sent {
+                                    sd_socket.send_to(&offer_bytes, sd_multicast).await?;
+                                    offer_sent = true;
+                                    eprintln!("[wire_server] Sent TCP offer for service");
+                                }
+                            }
+                            recentip::wire::SdEntryType::SubscribeEventgroup => {
+                                let eventgroup_id = entry.eventgroup_id;
+                                eprintln!(
+                                    "[wire_server] Received subscribe for eventgroup 0x{:04X}",
+                                    eventgroup_id
+                                );
+
+                                if eventgroup_id == EVENTGROUP_ACK {
+                                    // ACK this eventgroup
+                                    let ack_bytes = build_sd_subscribe_ack(
+                                        SERVICE_ID,
+                                        INSTANCE_ID,
+                                        MAJOR_VERSION,
+                                        EVENTGROUP_ACK,
+                                        0xFFFFFF,
+                                    );
+                                    sd_socket.send_to(&ack_bytes, from).await?;
+                                    ack_count.fetch_add(1, Ordering::SeqCst);
+                                    eprintln!("[wire_server] Sent ACK for EG1");
+                                } else if eventgroup_id == EVENTGROUP_NACK {
+                                    // NACK this eventgroup
+                                    let nack_bytes = build_sd_subscribe_nack(
+                                        SERVICE_ID,
+                                        INSTANCE_ID,
+                                        MAJOR_VERSION,
+                                        EVENTGROUP_NACK,
+                                    );
+                                    sd_socket.send_to(&nack_bytes, from).await?;
+                                    nack_count.fetch_add(1, Ordering::SeqCst);
+                                    eprintln!("[wire_server] Sent NACK for EG2");
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Client flags
+    let subscription_failed = Arc::new(AtomicBool::new(false));
+    let subscription_failed_clone = Arc::clone(&subscription_failed);
+
+    // Client using our library
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Discover the service
+        let proxy = runtime
+            .find(SERVICE_ID)
+            .major_version(MAJOR_VERSION)
+            .instance(InstanceId::Id(INSTANCE_ID));
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+        eprintln!("[client] TCP service discovered");
+
+        // Subscribe to BOTH eventgroups in a single subscription
+        let eg1 = EventgroupId::new(EVENTGROUP_ACK).unwrap();
+        let eg2 = EventgroupId::new(EVENTGROUP_NACK).unwrap();
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy
+                .new_subscription()
+                .eventgroup(eg1)
+                .eventgroup(eg2)
+                .subscribe(),
+        )
+        .await
+        .expect("Subscribe timeout");
+
+        match result {
+            Ok(_subscription) => {
+                panic!("[client] Multi-eventgroup TCP subscription succeeded unexpectedly (expected failure due to NACK on EG2)");
+            }
+            Err(e) => {
+                eprintln!(
+                    "[client] Multi-eventgroup TCP subscription failed as expected: {:?}",
+                    e
+                );
+                subscription_failed_clone.store(true, Ordering::SeqCst);
+            }
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Verify results
+    assert!(
+        subscription_failed.load(Ordering::SeqCst),
+        "Multi-eventgroup TCP subscription should have failed when one eventgroup was NACKed"
+    );
+    assert!(
+        nack_count.load(Ordering::SeqCst) >= 1,
+        "Server should have sent at least 1 NACK (for EG2)"
     );
 }

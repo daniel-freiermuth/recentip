@@ -62,8 +62,8 @@ use tokio::time::Instant;
 
 use super::command::ServiceAvailability;
 use super::state::{
-    DiscoveredService, OfferedService, PendingServerResponse, PendingSubscriptionKey, RuntimeState,
-    ServerSubscription, ServiceKey, SubscriberKey,
+    DiscoveredService, MultiEventgroupSubscriptionKey, OfferedService, PendingServerResponse,
+    PendingSubscriptionKey, RuntimeState, ServerSubscription, ServiceKey, SubscriberKey,
 };
 use crate::config::{Transport, SD_TTL_INFINITE};
 use crate::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
@@ -250,9 +250,6 @@ pub fn handle_offer(
         return;
     };
 
-    let endpoint_for_subscribe =
-        std::net::SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
-    let client_rpc_port = state.client_rpc_endpoint.port();
     let sd_flags = state.sd_flags(true);
 
     if let Some(subscriptions) = state.subscriptions.get_mut(&key) {
@@ -268,13 +265,19 @@ pub fn handle_offer(
                 continue;
             }
 
+            // Use this subscription's local endpoint for renewal
+            let endpoint_for_subscribe =
+                std::net::SocketAddr::new(endpoint_ip, sub.local_endpoint.port());
+            let client_rpc_port = sub.local_endpoint.port();
+
             tracing::debug!(
-                "Offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroup {:04x} via {:?}",
+                "Offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroup {:04x} via {:?} (port {})",
                 entry.service_id,
                 entry.instance_id,
                 entry.major_version,
                 sub.eventgroup_id,
-                effective_transport
+                effective_transport,
+                client_rpc_port
             );
 
             // Build and send SubscribeEventgroup message
@@ -500,6 +503,7 @@ pub fn handle_subscribe_request(
         let sub_key = SubscriberKey {
             service_id: entry.service_id,
             instance_id: entry.instance_id,
+            major_version: entry.major_version,
             eventgroup_id: entry.eventgroup_id,
         };
 
@@ -670,6 +674,7 @@ pub fn handle_unsubscribe_request(
         let sub_key = SubscriberKey {
             service_id: entry.service_id,
             instance_id: entry.instance_id,
+            major_version: entry.major_version,
             eventgroup_id: entry.eventgroup_id,
         };
         if let Some(subscribers) = state.server_subscribers.get_mut(&sub_key) {
@@ -696,16 +701,46 @@ pub fn handle_subscribe_ack(entry: &SdEntry, state: &mut RuntimeState) {
         entry.eventgroup_id
     );
 
-    // Resolve ALL pending subscriptions for this eventgroup with success
+    // Get pending subscriptions for this eventgroup
     let pending_key = PendingSubscriptionKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
         major_version: entry.major_version,
         eventgroup_id: entry.eventgroup_id,
     };
+
     if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
         for pending in pending_list {
-            if let Some(response) = pending.response {
+            // Check if this is part of a multi-eventgroup subscription
+            let multi_key = MultiEventgroupSubscriptionKey {
+                service_id: entry.service_id,
+                instance_id: entry.instance_id,
+                major_version: entry.major_version,
+                subscription_id: pending.subscription_id,
+            };
+
+            if let Some(multi_sub) = state.multi_eventgroup_subscriptions.get_mut(&multi_key) {
+                // Mark this eventgroup as ACKed
+                multi_sub.acked_eventgroups.insert(entry.eventgroup_id);
+
+                // Check if ALL eventgroups in this subscription are now ACKed
+                let all_acked = multi_sub
+                    .eventgroup_ids
+                    .iter()
+                    .all(|eg| multi_sub.acked_eventgroups.contains(eg));
+
+                if all_acked {
+                    // Remove from multi_eventgroup_subscriptions and send success
+                    if let Some(completed) = state.multi_eventgroup_subscriptions.remove(&multi_key)
+                    {
+                        if let Some(response) = completed.response {
+                            let _ = response.send(Ok(pending.subscription_id));
+                        }
+                    }
+                }
+                // If not all ACKed yet, wait for more ACKs
+            } else if let Some(response) = pending.response {
+                // Single-eventgroup subscription - respond immediately
                 let _ = response.send(Ok(pending.subscription_id));
             }
         }
@@ -728,22 +763,60 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
         entry.eventgroup_id
     );
 
-    // Resolve ALL pending subscriptions for this eventgroup with error
+    // Get pending subscriptions for this eventgroup
     let pending_key = PendingSubscriptionKey {
         service_id: entry.service_id,
         instance_id: entry.instance_id,
         major_version: entry.major_version,
         eventgroup_id: entry.eventgroup_id,
     };
+
     if let Some(pending_list) = state.pending_subscriptions.remove(&pending_key) {
         for pending in pending_list {
-            if let Some(response) = pending.response {
+            // Check if this is part of a multi-eventgroup subscription
+            let multi_key = MultiEventgroupSubscriptionKey {
+                service_id: entry.service_id,
+                instance_id: entry.instance_id,
+                major_version: entry.major_version,
+                subscription_id: pending.subscription_id,
+            };
+
+            if let Some(multi_sub) = state.multi_eventgroup_subscriptions.remove(&multi_key) {
+                // NACK received - fail the entire multi-eventgroup subscription immediately
+                if let Some(response) = multi_sub.response {
+                    let _ = response.send(Err(crate::error::Error::SubscriptionRejected));
+                }
+
+                // Clean up any eventgroups that were already added to subscriptions
+                if let Some(subs) = state.subscriptions.get_mut(&key) {
+                    subs.retain(|s| s.subscription_id != pending.subscription_id);
+                }
+
+                // Remove remaining pending subscriptions for other eventgroups of this subscription
+                for &eg_id in &multi_sub.eventgroup_ids {
+                    if eg_id != entry.eventgroup_id {
+                        let other_pending_key = PendingSubscriptionKey {
+                            service_id: entry.service_id,
+                            instance_id: entry.instance_id,
+                            major_version: entry.major_version,
+                            eventgroup_id: eg_id,
+                        };
+                        if let Some(other_pending_list) =
+                            state.pending_subscriptions.get_mut(&other_pending_key)
+                        {
+                            other_pending_list
+                                .retain(|p| p.subscription_id != pending.subscription_id);
+                        }
+                    }
+                }
+            } else if let Some(response) = pending.response {
+                // Single-eventgroup subscription - respond with error
                 let _ = response.send(Err(crate::error::Error::SubscriptionRejected));
             }
         }
     }
 
-    // Also remove the client subscriptions if they were added
+    // Also remove the client subscriptions for this eventgroup if they were added
     if let Some(subs) = state.subscriptions.get_mut(&key) {
         subs.retain(|s| s.eventgroup_id != entry.eventgroup_id);
     }
