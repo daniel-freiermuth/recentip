@@ -20,6 +20,21 @@
 //! - **Dual transport**: UDP (default) and TCP with Magic Cookie support
 //! - **Spec compliance**: Extensive test coverage against SOME/IP specification
 //!
+//! ## Documentation
+//!
+//! | Resource | Description |
+//! |----------|-------------|
+//! | [Quick Start](#quick-start) | Get up and running in 5 minutes |
+//! | [`examples`] | In-depth guides: RPC, Pub/Sub, Transport, Monitoring |
+//! | [Architecture Overview](#architecture-overview) | Internal design for contributors |
+//! | [`compliance`] | Spec traceability: requirements → tests |
+//! | [`prelude`] | Common imports for getting started |
+//!
+//! **Key types:**
+//! - [`SomeIp`] — the runtime (start with [`configure()`])
+//! - [`handle::OfferedService`] — client proxy for calling methods and subscribing
+//! - [`handle::ServiceOffering`] — server handle for receiving requests and publishing events
+//!
 //! ## Quick Start
 //!
 //! Add to your `Cargo.toml`:
@@ -367,6 +382,7 @@
 use std::net::SocketAddr;
 
 pub mod builder;
+pub mod compliance;
 pub mod examples;
 pub mod net;
 

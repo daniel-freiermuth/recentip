@@ -40,15 +40,15 @@ def extract_covers_from_file(file_path: Path) -> list[TestCoverage]:
     coverages = []
     
     # Pattern to find test functions with optional doc comment and ignore attribute
-    # Handles both orderings: #[test] #[ignore] and #[ignore] #[test]
+    # Supports: #[test], #[test_log::test], #[tokio::test], etc.
     test_pattern = re.compile(
         r'(?:///\s*\[([^\]]+)\][^\n]*\n\s*)?'  # Optional /// [feat_req_xxx] doc comment
         r'(?:'
-        r'#\[test\]\s*\n\s*#\[ignore(?:\s*=\s*"([^"]+)")?\]\s*\n|'  # #[test] then #[ignore]
-        r'#\[ignore(?:\s*=\s*"([^"]+)")?\]\s*\n\s*#\[test\]\s*\n|'  # #[ignore] then #[test]
-        r'#\[test\]\s*\n'  # Just #[test]
+        r'#\[(?:test_log::test|tokio::test|test)\]\s*\n\s*#\[ignore(?:\s*=\s*"([^"]+)")?\]\s*\n|'  # test then ignore
+        r'#\[ignore(?:\s*=\s*"([^"]+)")?\]\s*\n\s*#\[(?:test_log::test|tokio::test|test)\]\s*\n|'  # ignore then test
+        r'#\[(?:test_log::test|tokio::test|test)\]\s*\n'  # Just test
         r')'
-        r'\s*fn\s+(\w+)\s*\(',
+        r'\s*(?:async\s+)?fn\s+(\w+)\s*\(',
         re.MULTILINE
     )
     
@@ -122,8 +122,8 @@ def build_coverage_report(test_dir: Path) -> CoverageReport:
     """Build a complete coverage report from all test files."""
     report = CoverageReport()
     
-    # Find all .rs files in compliance directory
-    for rs_file in sorted(test_dir.glob("*.rs")):
+    # Find all .rs files in compliance directory recursively
+    for rs_file in sorted(test_dir.rglob("*.rs")):
         if rs_file.name == "mod.rs":
             continue
         

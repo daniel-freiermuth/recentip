@@ -158,6 +158,8 @@ We aim for 100% coverage of the open SOME/IP 2025-12 specs.
 
 ## Not yet implemented
 - SOME/IP-TP
+- Encryption
+- De-/Serialization
 - Fields, Getter, Setter
 - Static services (without SD)
 - Configuration handling
