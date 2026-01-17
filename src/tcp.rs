@@ -99,18 +99,6 @@ struct TcpConnectionHandle {
     local_addr: SocketAddr,
 }
 
-impl<T: TcpStream> Clone for TcpConnectionPool<T> {
-    fn clone(&self) -> Self {
-        Self {
-            connections: Arc::clone(&self.connections),
-            senders: Arc::clone(&self.senders),
-            msg_tx: self.msg_tx.clone(),
-            magic_cookies: self.magic_cookies,
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
-
 impl<T: TcpStream> TcpConnectionPool<T> {
     /// Create a new connection pool with a message receiver channel
     pub fn new(msg_tx: mpsc::Sender<TcpMessage>, magic_cookies: bool) -> Self {
@@ -263,32 +251,11 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         Ok(local_addr)
     }
 
-    /// Get the local address for an existing connection to a peer.
-    ///
-    /// Returns `None` if no connection exists. Uses subscription_id 0 for RPC connections.
-    pub async fn get_local_addr(&self, target: &SocketAddr) -> Option<SocketAddr> {
-        let connections = self.connections.lock().await;
-        let key = (*target, 0);
-        connections.get(&key).map(|h| h.local_addr)
-    }
-
-    /// Check if we have an active connection to a peer (RPC connection, subscription_id 0)
-    pub async fn has_connection(&self, target: &SocketAddr) -> bool {
-        let key = (*target, 0);
-        self.connections.lock().await.contains_key(&key)
-    }
-
     /// Close connection to a peer (RPC connection, subscription_id 0)
     pub async fn close(&self, target: &SocketAddr) {
         let key = (*target, 0);
         self.connections.lock().await.remove(&key);
         self.senders.lock().await.remove(&key);
-    }
-
-    /// Close all connections
-    pub async fn close_all(&self) {
-        self.connections.lock().await.clear();
-        self.senders.lock().await.clear();
     }
 }
 
