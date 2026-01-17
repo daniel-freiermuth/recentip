@@ -123,6 +123,7 @@ requirement-coverage:
   stage: test
   image: python:3.11
   script:
+    - python tools/extract_requirements.py
     - python scripts/extract_coverage.py
     - python scripts/generate_compliance.py
     # Fail if requirement coverage drops (optional threshold)
