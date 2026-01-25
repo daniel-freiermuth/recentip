@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 
 use crate::handles::runtime::RuntimeInner;
 use crate::handles::server::event::EventBuilder;
@@ -181,10 +182,32 @@ impl ServiceOffering {
 
 impl Drop for ServiceOffering {
     fn drop(&mut self) {
-        let _ = self.inner.cmd_tx.try_send(Command::StopOffer {
+        // Stop offering (best-effort).
+        // If the channel is full or closed, the runtime will clean up on shutdown.
+        let cmd = Command::StopOffer {
             service_id: self.service_id,
             instance_id: self.instance_id,
             major_version: self.major_version,
-        });
+        };
+        if let Err(e) = self.inner.cmd_tx.try_send(cmd) {
+            match e {
+                TrySendError::Full(_) => {
+                    tracing::warn!(
+                        "Failed to send StopOffer for service {:04x}:{:04x}: \
+                         command channel full. Service will stop on runtime shutdown.",
+                        self.service_id.value(),
+                        self.instance_id.value()
+                    );
+                }
+                TrySendError::Closed(_) => {
+                    // Runtime already shut down - this is expected during shutdown
+                    tracing::debug!(
+                        "StopOffer skipped: runtime already shut down (service {:04x}:{:04x})",
+                        self.service_id.value(),
+                        self.instance_id.value()
+                    );
+                }
+            }
+        }
     }
 }

@@ -3,6 +3,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
 use crate::error::{Error, Result};
@@ -269,11 +270,32 @@ impl OfferedService {
 
 impl Drop for OfferedService {
     fn drop(&mut self) {
-        // Notify runtime to stop finding (best effort)
-        let _ = self.inner.cmd_tx.try_send(Command::StopFind {
+        // Stop finding (best-effort).
+        // If the channel is full or closed, the runtime will clean up on shutdown.
+        let cmd = Command::StopFind {
             service_id: self.service_id,
             instance_id: self.instance_id,
             major_version: MajorVersion::new(self.major_version),
-        });
+        };
+        if let Err(e) = self.inner.cmd_tx.try_send(cmd) {
+            match e {
+                TrySendError::Full(_) => {
+                    tracing::warn!(
+                        "Failed to send StopFind for service {:04x}:{:04x}: \
+                         command channel full. Find will stop on runtime shutdown.",
+                        self.service_id.value(),
+                        self.instance_id.value()
+                    );
+                }
+                TrySendError::Closed(_) => {
+                    // Runtime already shut down - this is expected during shutdown
+                    tracing::debug!(
+                        "StopFind skipped: runtime already shut down (service {:04x}:{:04x})",
+                        self.service_id.value(),
+                        self.instance_id.value()
+                    );
+                }
+            }
+        }
     }
 }

@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::{Error, Result};
@@ -178,15 +179,43 @@ impl Subscription {
 
 impl Drop for Subscription {
     fn drop(&mut self) {
-        // Unsubscribe from all eventgroups
+        // Unsubscribe from all eventgroups (best-effort).
+        //
+        // Note: We use try_send because Drop cannot be async. If the command channel
+        // is full (very unlikely - 64 item capacity), the unsubscribe will fail.
+        // In that case:
+        // - We log a warning for observability
+        // - The server will eventually clean up the subscription via TTL expiry
+        // - The specification's TTL mechanism serves as a backstop for exactly this case
         for eventgroup in &self.eventgroups {
-            let _ = self.inner.cmd_tx.try_send(Command::Unsubscribe {
+            let cmd = Command::Unsubscribe {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
                 major_version: self.major_version,
                 eventgroup_id: eventgroup.value(),
                 subscription_id: self.id,
-            });
+            };
+            if let Err(e) = self.inner.cmd_tx.try_send(cmd) {
+                match e {
+                    TrySendError::Full(_) => {
+                        tracing::warn!(
+                            "Failed to send unsubscribe for eventgroup {} (service {:04x}:{:04x}): \
+                             command channel full. Server will clean up via TTL.",
+                            eventgroup.value(),
+                            self.service_id.value(),
+                            self.instance_id.value()
+                        );
+                    }
+                    TrySendError::Closed(_) => {
+                        // Runtime already shut down - this is expected during shutdown
+                        tracing::debug!(
+                            "Unsubscribe skipped: runtime already shut down (service {:04x}:{:04x})",
+                            self.service_id.value(),
+                            self.instance_id.value()
+                        );
+                    }
+                }
+            }
         }
     }
 }
