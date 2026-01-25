@@ -390,6 +390,44 @@ pub fn handle_incoming_request(
     );
 
     if let Some((service_key, offered)) = offering {
+        // Validate method_id early: high bit set means event ID, not method ID
+        // Per SOME/IP spec: method IDs are 0x0000-0x7FFF, event IDs are 0x8000-0xFFFE
+        if header.method_id >= 0x8000 {
+            tracing::warn!(
+                "Received request with invalid method_id 0x{:04x} (high bit set = event ID, not method ID) from {}",
+                header.method_id,
+                from
+            );
+
+            // Determine transport for response
+            let rpc_transport = match transport {
+                crate::config::Transport::Tcp => offered.tcp_transport.clone(),
+                crate::config::Transport::Udp => offered.udp_transport.clone(),
+            };
+
+            // Send E_MALFORMED_MESSAGE (0x09) response
+            let response_data = build_response(
+                header.service_id,
+                header.method_id,
+                header.client_id,
+                header.session_id,
+                header.interface_version,
+                0x09, // E_MALFORMED_MESSAGE - method_id field contains an event ID
+                &[],
+                offered.method_config.uses_exception(header.method_id),
+            );
+
+            if rpc_transport.is_some() {
+                actions.push(Action::SendServerMessage {
+                    service_key: *service_key,
+                    data: response_data,
+                    target: from,
+                    transport,
+                });
+            }
+            return;
+        }
+
         // Create a response channel
         let (response_tx, response_rx) = oneshot::channel();
 

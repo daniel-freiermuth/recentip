@@ -55,10 +55,13 @@ impl ServiceOffering {
                     response,
                 } => {
                     let Some(method) = MethodId::new(method_id) else {
-                        tracing::error!(
-                            "BUG: runtime sent invalid method_id 0x{:04x} (high bit set = event, not method)",
+                        // Defense-in-depth: should be caught earlier in server.rs
+                        // If we get here, runtime already sent an error response
+                        tracing::debug!(
+                            "Dropping method call with invalid method_id 0x{:04x} (high bit set = event, not method)",
                             method_id
                         );
+                        // Response channel will be dropped, runtime handles cleanup
                         continue;
                     };
                     return Some(ServiceEvent::Call {
@@ -80,8 +83,9 @@ impl ServiceOffering {
                     transport,
                 } => {
                     let Some(method) = MethodId::new(method_id) else {
-                        tracing::error!(
-                            "BUG: runtime sent invalid method_id 0x{:04x} (high bit set = event, not method)",
+                        // Defense-in-depth: should be caught earlier in server.rs
+                        tracing::debug!(
+                            "Dropping fire-forget with invalid method_id 0x{:04x} (high bit set = event, not method)",
                             method_id
                         );
                         continue;
