@@ -28,3 +28,10 @@ Update `TODO.md` at the end of every work sessions. I.e. update completed tasks,
 
 # Knowledge base
 In the folder .notes-to-the-agent, you can keep notes to yourself. It would, e.g. be a good idea to note down the results of expensive researchs or solutions to problems you encountered. Also you should make yourself familiar with the contents of these files.
+
+# TODO file
+Some more instructions regarding the TODO.md file:
+- This file is for keeping track of tasks to todo, completed tasks should be removed.
+- It shall contain tasks of varying granularity, from small (e.g. "Implement feature X") to large (e.g. "Design module Y architecture"). At least the levels: next steps, tasks, epics and final goals should be present. They could also be interlinked or organized hierarchically. Make sure, that there are at least 5 next steps, 5 tasks, 3 epics and 1 final goal at any time.
+- Additionally, there might be a section for todos, that are not (yet) put in the organazition yet.
+- Whenever you context-switch or find a task that you do not complete right away, make sure to write it down in the TODO.md file.
