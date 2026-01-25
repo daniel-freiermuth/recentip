@@ -30,7 +30,7 @@ fn get_git_commit() -> String {
 }
 
 /// Run a Python script if it exists, returning true on success.
-fn run_python_script(project_root: &Path, script_name: &str) -> bool {
+fn run_python_script(project_root: &Path, script_name: &str, args: &[&str]) -> bool {
     let script_path = project_root.join(script_name);
 
     if !script_path.exists() {
@@ -40,6 +40,7 @@ fn run_python_script(project_root: &Path, script_name: &str) -> bool {
 
     let output = Command::new("python3")
         .arg(&script_path)
+        .args(args)
         .current_dir(project_root)
         .output();
 
@@ -64,28 +65,33 @@ fn run_python_script(project_root: &Path, script_name: &str) -> bool {
 }
 
 /// Run the Python script to extract coverage annotations from test files.
-fn run_extract_coverage(project_root: &Path) {
-    run_python_script(project_root, "scripts/extract_coverage.py");
+/// Outputs to the given directory (should be OUT_DIR).
+fn run_extract_coverage(project_root: &Path, out_dir: &Path) {
+    run_python_script(
+        project_root,
+        "scripts/extract_coverage.py",
+        &[out_dir.to_str().unwrap()],
+    );
 }
 
 /// Run the Python script to extract requirements from spec RST files.
-/// Only runs if requirements.json doesn't exist yet.
-fn run_extract_requirements(project_root: &Path) {
-    let requirements_path = project_root.join("spec-data/requirements.json");
-    if requirements_path.exists() {
-        return; // Already have requirements, no need to regenerate
-    }
-
+/// Outputs to the given directory (should be OUT_DIR).
+/// Returns true if requirements were generated fresh.
+fn run_extract_requirements(project_root: &Path, out_dir: &Path) -> bool {
     // Check if specs submodule is available
     let spec_dir = project_root.join("specs/src");
     if !spec_dir.exists() {
         eprintln!("Note: specs submodule not initialized, skipping requirements extraction");
         eprintln!("      Run: git submodule update --init");
-        return;
+        return false;
     }
 
     eprintln!("Generating requirements.json from spec files...");
-    run_python_script(project_root, "tools/extract_requirements.py");
+    run_python_script(
+        project_root,
+        "tools/extract_requirements.py",
+        &[out_dir.to_str().unwrap()],
+    )
 }
 
 fn main() {
@@ -101,18 +107,25 @@ fn main() {
     let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let project_root = Path::new(&project_root);
 
-    // Extract requirements from spec if not already present
-    run_extract_requirements(project_root);
-
-    // Run Python script to extract coverage from test files
-    run_extract_coverage(project_root);
-
-    let requirements_path = project_root.join("spec-data/requirements.json");
-    let coverage_path = project_root.join("spec-data/coverage.json");
-
-    // Write to OUT_DIR so include_str! can find it reliably
+    // Write to OUT_DIR so we don't modify the source directory
     let out_dir = std::env::var("OUT_DIR").unwrap();
-    let output_path = Path::new(&out_dir).join("compliance.md");
+    let out_dir = Path::new(&out_dir);
+    let output_path = out_dir.join("compliance.md");
+
+    // Extract requirements from spec files (outputs to OUT_DIR)
+    let fresh_requirements = run_extract_requirements(project_root, out_dir);
+
+    // Run Python script to extract coverage from test files (outputs to OUT_DIR)
+    run_extract_coverage(project_root, out_dir);
+
+    // Use freshly generated requirements if available, otherwise fall back to bundled spec-data
+    let requirements_path = if fresh_requirements {
+        out_dir.join("requirements.json")
+    } else {
+        // Fall back to bundled requirements (for published crate without specs submodule)
+        project_root.join("spec-data/requirements.json")
+    };
+    let coverage_path = out_dir.join("coverage.json");
 
     // Get git commit for stable links
     let git_commit = get_git_commit();
@@ -127,7 +140,7 @@ fn main() {
         return;
     };
 
-    // Load coverage
+    // Load coverage (from OUT_DIR where Python script wrote it)
     let coverage: Coverage = match fs::read_to_string(&coverage_path) {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
         Err(_) => Coverage::default(),

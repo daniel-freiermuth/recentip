@@ -144,8 +144,13 @@ def main():
     # Use the specs submodule (specs/src contains RST files)
     project_root = Path(__file__).parent.parent
     spec_dir = project_root / 'specs' / 'src'
-    output_dir = project_root / 'spec-data'
-    output_dir.mkdir(exist_ok=True)
+    
+    # Output directory from argv[1] if provided, else spec-data
+    if len(sys.argv) > 1:
+        output_dir = Path(sys.argv[1])
+    else:
+        output_dir = project_root / 'spec-data'
+    output_dir.mkdir(parents=True, exist_ok=True)
     
     if not spec_dir.exists():
         print(f"Spec directory not found: {spec_dir}")

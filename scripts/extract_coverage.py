@@ -164,8 +164,14 @@ def main():
         "requirements_to_tests": report.requirements_covered
     }
     
-    # Write to spec-data directory
-    output_path = project_root / "spec-data" / "coverage.json"
+    # Write to output directory (from argv[1] if provided, else spec-data)
+    if len(sys.argv) > 1:
+        output_dir = Path(sys.argv[1])
+    else:
+        output_dir = project_root / "spec-data"
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "coverage.json"
     output_path.write_text(json.dumps(output, indent=2))
     print(f"Coverage report written to: {output_path}")
     

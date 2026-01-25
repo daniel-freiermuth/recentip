@@ -7,6 +7,16 @@ license = "GPL-3.0-only"
 repository = "https://github.com/daniel-freiermuth/recentip"
 keywords = ["someip", "automotive", "rpc", "async", "tokio"]
 categories = ["asynchronous", "network-programming"]
+# Include bundled requirements for crate builds (specs submodule not available on crates.io)
+include = [
+    "src/**/*",
+    "build.rs",
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+    "spec-data/requirements.json",
+    "docs/examples/**/*",
+]
 
 [features]
 default = ["turmoil"]
