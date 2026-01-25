@@ -99,7 +99,10 @@ fn run_extract_requirements(project_root: &Path, out_dir: &Path) -> bool {
 /// - Converts angle-bracket URLs `<https://...>` to proper markdown links
 /// - Converts parenthesized URLs `(https://...)` to proper markdown links
 fn escape_for_rustdoc(text: &str) -> String {
-    let mut result = text.replace('|', "\\|").replace('[', "\\[").replace(']', "\\]");
+    let mut result = text
+        .replace('|', "\\|")
+        .replace('[', "\\[")
+        .replace(']', "\\]");
 
     // Convert <URL> to [URL](URL) for proper rustdoc link handling
     let mut start = 0;
@@ -109,7 +112,12 @@ fn escape_for_rustdoc(text: &str) -> String {
             let abs_close = abs_open + close;
             let url = &result[abs_open + 1..abs_close];
             let replacement = format!("[{url}]({url})");
-            result = format!("{}{}{}", &result[..abs_open], replacement, &result[abs_close + 1..]);
+            result = format!(
+                "{}{}{}",
+                &result[..abs_open],
+                replacement,
+                &result[abs_close + 1..]
+            );
             start = abs_open + replacement.len();
         } else {
             break;
@@ -127,7 +135,12 @@ fn escape_for_rustdoc(text: &str) -> String {
             // Only convert if it looks like a URL (contains ://)
             if url.contains("://") && !url.contains(' ') {
                 let replacement = format!("([{url}]({url}))");
-                result = format!("{}{}{}", &result[..abs_open], replacement, &result[abs_close + 1..]);
+                result = format!(
+                    "{}{}{}",
+                    &result[..abs_open],
+                    replacement,
+                    &result[abs_close + 1..]
+                );
                 start = abs_open + replacement.len();
             } else {
                 start = abs_close + 1;
@@ -187,10 +200,10 @@ fn main() {
     };
 
     // Load coverage (from OUT_DIR where Python script wrote it)
-    let coverage: Coverage = match fs::read_to_string(&coverage_path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => Coverage::default(),
-    };
+    let coverage: Coverage = fs::read_to_string(&coverage_path).map_or_else(
+        |_| Coverage::default(),
+        |content| serde_json::from_str(&content).unwrap_or_default(),
+    );
 
     // Generate markdown
     let markdown = generate_compliance_doc(&requirements, &coverage, &git_commit);
@@ -220,10 +233,6 @@ struct Requirement {
 
 #[derive(Debug, Default, serde::Deserialize)]
 struct Coverage {
-    #[allow(dead_code)]
-    total_tests_with_coverage: u32,
-    #[allow(dead_code)]
-    total_requirements_covered: u32,
     tests: Vec<TestCoverage>,
     requirements_to_tests: HashMap<String, Vec<String>>,
 }

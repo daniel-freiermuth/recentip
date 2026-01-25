@@ -916,7 +916,7 @@ pub fn build_find_message(
         service_id,
         instance_id,
         major_version,
-        0xFFFFFFFF, // Minor version is always ANY on wire per spec
+        0xFFFF_FFFF, // Minor version is always ANY on wire per spec
         ttl,
     ));
     msg

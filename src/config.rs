@@ -141,7 +141,7 @@ pub const DEFAULT_TTL: u32 = 3600;
 /// This is the maximum value that fits in the 24-bit TTL field.
 ///
 /// See: `feat_req_recentipsd_431`
-pub const SD_TTL_INFINITE: u32 = 0xFFFFFF;
+pub const SD_TTL_INFINITE: u32 = 0xFF_FFFF;
 
 /// Clamp a TTL value to the 24-bit maximum, logging a warning if truncation occurs.
 ///

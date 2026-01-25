@@ -66,6 +66,20 @@ too_many_arguments = "allow"
 
 # Allow for now
 cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cognitive_complexity = "allow"
+doc_markdown = "allow"
+format_push_string = "allow"
+future_not_send = "allow"
+large_stack_arrays = "allow"
+match_same_arms = "allow"
+match_wildcard_for_single_variants = "allow"
+needless_pass_by_ref_mut = "allow"
+nonminimal_bool = "allow"
+return_self_not_must_use = "allow"
+significant_drop_in_scrutinee = "allow"
+type_complexity = "allow"
+too_many_lines = "allow"
 
 # Disable doc-related lints for now
 missing_errors_doc = "allow"
