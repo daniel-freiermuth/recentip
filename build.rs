@@ -65,7 +65,7 @@ fn run_python_script(project_root: &Path, script_name: &str, args: &[&str]) -> b
 }
 
 /// Run the Python script to extract coverage annotations from test files.
-/// Outputs to the given directory (should be OUT_DIR).
+/// Outputs to the given directory (should be `OUT_DIR`).
 fn run_extract_coverage(project_root: &Path, out_dir: &Path) {
     run_python_script(
         project_root,
@@ -75,7 +75,7 @@ fn run_extract_coverage(project_root: &Path, out_dir: &Path) {
 }
 
 /// Run the Python script to extract requirements from spec RST files.
-/// Outputs to the given directory (should be OUT_DIR).
+/// Outputs to the given directory (should be `OUT_DIR`).
 /// Returns true if requirements were generated fresh.
 fn run_extract_requirements(project_root: &Path, out_dir: &Path) -> bool {
     // Check if specs submodule is available
@@ -92,6 +92,52 @@ fn run_extract_requirements(project_root: &Path, out_dir: &Path) -> bool {
         "tools/extract_requirements.py",
         &[out_dir.to_str().unwrap()],
     )
+}
+
+/// Escape text for rustdoc compatibility.
+/// - Escapes pipes and square brackets
+/// - Converts angle-bracket URLs `<https://...>` to proper markdown links
+/// - Converts parenthesized URLs `(https://...)` to proper markdown links
+fn escape_for_rustdoc(text: &str) -> String {
+    let mut result = text.replace('|', "\\|").replace('[', "\\[").replace(']', "\\]");
+
+    // Convert <URL> to [URL](URL) for proper rustdoc link handling
+    let mut start = 0;
+    while let Some(open) = result[start..].find("<http") {
+        let abs_open = start + open;
+        if let Some(close) = result[abs_open..].find('>') {
+            let abs_close = abs_open + close;
+            let url = &result[abs_open + 1..abs_close];
+            let replacement = format!("[{url}]({url})");
+            result = format!("{}{}{}", &result[..abs_open], replacement, &result[abs_close + 1..]);
+            start = abs_open + replacement.len();
+        } else {
+            break;
+        }
+    }
+
+    // Convert (URL) to ([URL](URL)) for proper rustdoc link handling
+    // Match pattern: "(http" ... ")"
+    start = 0;
+    while let Some(open) = result[start..].find("(http") {
+        let abs_open = start + open;
+        if let Some(close) = result[abs_open..].find(')') {
+            let abs_close = abs_open + close;
+            let url = &result[abs_open + 1..abs_close];
+            // Only convert if it looks like a URL (contains ://)
+            if url.contains("://") && !url.contains(' ') {
+                let replacement = format!("([{url}]({url}))");
+                result = format!("{}{}{}", &result[..abs_open], replacement, &result[abs_close + 1..]);
+                start = abs_open + replacement.len();
+            } else {
+                start = abs_close + 1;
+            }
+        } else {
+            break;
+        }
+    }
+
+    result
 }
 
 fn main() {
@@ -382,14 +428,14 @@ fn generate_compliance_doc(
             out.push_str(&format!("#### {section}\n\n"));
 
             for req in section_reqs {
-                // Escape pipes for markdown compatibility
-                let safe_text = req.text.replace('|', "\\|");
-
                 let type_badge = if req.reqtype == "Information" {
                     " *(Info)*"
                 } else {
                     ""
                 };
+                // Escape pipes and square brackets for markdown/rustdoc compatibility
+                // Also convert angle-bracket URLs to proper markdown links
+                let safe_text = escape_for_rustdoc(&req.text);
                 out.push_str(&format!("<a id=\"{}\"></a>\n\n", req.id));
                 out.push_str(&format!("##### {}{}\n\n", req.id, type_badge));
                 out.push_str(&format!("> {safe_text}\n\n"));
@@ -450,7 +496,8 @@ fn generate_compliance_doc(
             out.push_str(&format!("#### {section}\n\n"));
 
             for req in section_reqs {
-                let safe_text = req.text.replace('|', "\\|");
+                // Escape for markdown/rustdoc compatibility
+                let safe_text = escape_for_rustdoc(&req.text);
                 out.push_str(&format!("<a id=\"{}\"></a>\n\n", req.id));
                 out.push_str(&format!("##### {}\n\n", req.id));
                 out.push_str(&format!("> {safe_text}\n\n"));
