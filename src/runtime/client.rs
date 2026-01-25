@@ -52,13 +52,14 @@
 //! - Session IDs are allocated from `state.next_client_session_id()`
 
 use std::net::SocketAddr;
-use std::time::Duration;
 
 use bytes::Bytes;
 use tokio::time::Instant;
 
 use super::command::ServiceAvailability;
-use super::sd::{build_find_message, build_subscribe_message, build_unsubscribe_message, Action};
+use super::sd::{
+    build_find_message, build_subscribe_message_multi, build_unsubscribe_message, Action,
+};
 use super::state::{
     CallKey, ClientSubscription, FindRequest, MultiEventgroupSubscription,
     MultiEventgroupSubscriptionKey, PendingCall, PendingSubscription, PendingSubscriptionKey,
@@ -241,7 +242,7 @@ pub fn handle_find(
             FindRequest {
                 notify,
                 repetitions_left: DEFAULT_FIND_REPETITIONS,
-                last_find: Instant::now() - Duration::from_secs(10),
+                last_find: Instant::now(),
             },
         );
 
@@ -249,7 +250,7 @@ pub fn handle_find(
             service_id.value(),
             instance_id.value(),
             major_version.value(),
-            state.sd_flags(true),
+            state.sd_flags(false), // Multicast FindService, so FLAG_UNICAST=0
             state.config.find_ttl,
         );
 
@@ -284,7 +285,7 @@ pub fn handle_call(
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let session_id = state.next_session_id();
+    let session_id = state.next_payload_session_id();
     let client_id = state.client_id;
 
     // Build request message
@@ -323,7 +324,7 @@ pub fn handle_fire_and_forget(
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let session_id = state.next_session_id();
+    let session_id = 0;
     let client_id = state.client_id;
 
     // Build fire-and-forget message (no response tracking needed)
@@ -367,12 +368,12 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
     response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     state: &mut RuntimeState,
     tcp_pool: &TcpConnectionPool<T>,
-) -> Option<Vec<Action>> {
+) {
     if eventgroup_ids.is_empty() {
         let _ = response.send(Err(crate::error::Error::Config(
             crate::error::ConfigError::new("At least one eventgroup must be specified"),
         )));
-        return None;
+        return;
     }
 
     let key = ServiceKey::new(service_id, instance_id, major_version);
@@ -389,7 +390,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
             eventgroup_ids
         );
         let _ = response.send(Err(crate::error::Error::ServiceUnavailable));
-        return None;
+        return;
     };
 
     let prefer_tcp = state.config.preferred_transport == Transport::Tcp;
@@ -403,7 +404,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
         let _ = response.send(Err(crate::error::Error::Config(
             crate::error::ConfigError::new("Server offers no compatible transport endpoints"),
         )));
-        return None;
+        return;
     };
 
     // For TCP subscriptions, establish connection BEFORE subscribing (feat_req_recentipsd_767)
@@ -430,7 +431,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
             let _ = response.send(Err(crate::error::Error::Config(
                 crate::error::ConfigError::new("TCP transport selected but no TCP endpoint"),
             )));
-            return None;
+            return;
         };
 
         // Find the smallest unused conn_key (slot) for this service
@@ -487,7 +488,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
                     e
                 );
                 let _ = response.send(Err(crate::error::Error::Io(e)));
-                return None;
+                return;
             }
         }
     } else {
@@ -511,7 +512,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
             let _ = response.send(Err(crate::error::Error::Config(
                 crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
             )));
-            return None;
+            return;
         };
 
         // Check if this service already has a subscription - if so, need a different endpoint
@@ -562,9 +563,9 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
                 }
 
                 // Send subscribe messages
-                let mut actions = Vec::new();
                 let mut response_opt = Some(response);
 
+                let mut eventgroups_to_subscribe = Vec::new();
                 for &eventgroup_id in &eventgroup_ids {
                     let pending_key = PendingSubscriptionKey {
                         service_id: service_id.value(),
@@ -580,29 +581,37 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
                     });
 
                     if is_first_waiter {
-                        let msg = build_subscribe_message(
-                            service_id.value(),
-                            instance_id.value(),
-                            major_version,
-                            eventgroup_id,
-                            reused_endpoint,
-                            reused_endpoint.port(),
-                            state.sd_flags(true),
-                            state.config.subscribe_ttl,
-                            Transport::Udp,
-                        );
-                        actions.push(Action::SendSd {
-                            message: msg,
-                            target: sd_endpoint,
-                        });
+                        eventgroups_to_subscribe.push(eventgroup_id);
                     }
                 }
 
-                return if actions.is_empty() {
-                    None
-                } else {
-                    Some(actions)
-                };
+                // Queue subscribe for time-based clustering
+                if !eventgroups_to_subscribe.is_empty() {
+                    tracing::debug!(
+                        "Queueing subscribe to {:04x}:{:04x} v{} eventgroups {:?} via reused UDP endpoint {} for time-based clustering",
+                        service_id.value(),
+                        instance_id.value(),
+                        major_version,
+                        eventgroups_to_subscribe,
+                        reused_endpoint
+                    );
+
+                    let msg = build_subscribe_message_multi(
+                        service_id.value(),
+                        instance_id.value(),
+                        major_version,
+                        &eventgroups_to_subscribe,
+                        reused_endpoint,
+                        reused_endpoint.port(),
+                        state.sd_flags(true),
+                        state.config.subscribe_ttl,
+                        Transport::Udp,
+                    );
+                    state.queue_unicast_sd(msg, sd_endpoint);
+                }
+
+                // Return None since actions are queued for later flush
+                return;
             }
 
             // No reusable endpoint found - create a new dedicated socket
@@ -649,9 +658,9 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
                     }
 
                     // Track pending subscriptions and send subscribe messages
-                    let mut actions = Vec::new();
                     let mut response_opt = Some(response);
 
+                    let mut eventgroups_to_subscribe = Vec::new();
                     for &eventgroup_id in &eventgroup_ids {
                         let pending_key = PendingSubscriptionKey {
                             service_id: service_id.value(),
@@ -668,29 +677,37 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
                         });
 
                         if is_first_waiter {
-                            let msg = build_subscribe_message(
-                                service_id.value(),
-                                instance_id.value(),
-                                major_version,
-                                eventgroup_id,
-                                dedicated_endpoint,
-                                dedicated_endpoint.port(),
-                                state.sd_flags(true),
-                                state.config.subscribe_ttl,
-                                Transport::Udp,
-                            );
-                            actions.push(Action::SendSd {
-                                message: msg,
-                                target: sd_endpoint,
-                            });
+                            eventgroups_to_subscribe.push(eventgroup_id);
                         }
                     }
 
-                    return if actions.is_empty() {
-                        None
-                    } else {
-                        Some(actions)
-                    };
+                    // Queue subscribe for time-based clustering
+                    if !eventgroups_to_subscribe.is_empty() {
+                        tracing::debug!(
+                            "Queueing subscribe to {:04x}:{:04x} v{} eventgroups {:?} via dedicated UDP endpoint {} for time-based clustering",
+                            service_id.value(),
+                            instance_id.value(),
+                            major_version,
+                            eventgroups_to_subscribe,
+                            dedicated_endpoint
+                        );
+
+                        let msg = build_subscribe_message_multi(
+                            service_id.value(),
+                            instance_id.value(),
+                            major_version,
+                            &eventgroups_to_subscribe,
+                            dedicated_endpoint,
+                            dedicated_endpoint.port(),
+                            state.sd_flags(true),
+                            state.config.subscribe_ttl,
+                            Transport::Udp,
+                        );
+                        state.queue_unicast_sd(msg, sd_endpoint);
+                    }
+
+                    // Return None since actions are queued for later flush
+                    return;
                 }
                 Err(e) => {
                     tracing::error!(
@@ -698,7 +715,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
                         e
                     );
                     let _ = response.send(Err(crate::error::Error::Io(e)));
-                    return None;
+                    return;
                 }
             }
         } else {
@@ -734,7 +751,6 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
     }
 
     // Track pending subscriptions for all eventgroups
-    let mut actions = Vec::new();
 
     // For multi-eventgroup subscriptions, use "all or nothing" tracking
     // All eventgroups must ACK for success; any NACK fails the whole subscription
@@ -759,6 +775,9 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
         );
     }
 
+    // Collect eventgroups that need Subscribe messages (first waiter only)
+    let mut eventgroups_to_subscribe = Vec::new();
+
     for &eventgroup_id in &eventgroup_ids {
         let pending_key = PendingSubscriptionKey {
             service_id: service_id.value(),
@@ -780,41 +799,39 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
             },
         });
 
-        // Send SD Subscribe message for each eventgroup (if first waiter)
+        // Collect eventgroups that need Subscribe messages
         if is_first_waiter {
-            tracing::debug!(
-                "Subscribing to {:04x}:{:04x} v{} eventgroup {:04x} via {:?} (endpoint: {})",
-                service_id.value(),
-                instance_id.value(),
-                major_version,
-                eventgroup_id,
-                transport,
-                endpoint_for_subscribe
-            );
-
-            let msg = build_subscribe_message(
-                service_id.value(),
-                instance_id.value(),
-                major_version,
-                eventgroup_id,
-                endpoint_for_subscribe,
-                endpoint_for_subscribe.port(),
-                state.sd_flags(true),
-                state.config.subscribe_ttl,
-                transport,
-            );
-
-            actions.push(Action::SendSd {
-                message: msg,
-                target: sd_endpoint,
-            });
+            eventgroups_to_subscribe.push(eventgroup_id);
         }
     }
 
-    if actions.is_empty() {
-        None
-    } else {
-        Some(actions)
+    // Send ONE SD message with all SubscribeEventgroup entries
+    // This prevents duplicate session IDs and reboot detection issues
+    if !eventgroups_to_subscribe.is_empty() {
+        tracing::debug!(
+            "Queueing subscribe to {:04x}:{:04x} v{} eventgroups {:?} via {:?} (endpoint: {}) for time-based clustering",
+            service_id.value(),
+            instance_id.value(),
+            major_version,
+            eventgroups_to_subscribe,
+            transport,
+            endpoint_for_subscribe
+        );
+
+        let msg = build_subscribe_message_multi(
+            service_id.value(),
+            instance_id.value(),
+            major_version,
+            &eventgroups_to_subscribe,
+            endpoint_for_subscribe,
+            endpoint_for_subscribe.port(),
+            state.sd_flags(true),
+            state.config.subscribe_ttl,
+            transport,
+        );
+
+        // Queue action for time-based clustering instead of sending immediately
+        state.queue_unicast_sd(msg, sd_endpoint);
     }
 }
 
@@ -826,7 +843,6 @@ pub fn handle_unsubscribe(
     eventgroup_id: u16,
     subscription_id: u64,
     state: &mut RuntimeState,
-    actions: &mut Vec<Action>,
 ) {
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
@@ -845,13 +861,18 @@ pub fn handle_unsubscribe(
         };
 
         // Capture the local_endpoint of the subscription being removed (for endpoint reuse tracking)
+        // Note: A multi-eventgroup subscription has multiple entries (one per eventgroup),
+        // all sharing the same subscription_id but with different eventgroup_ids.
+        // We need to find and remove only the entry for this specific eventgroup.
         let removed_endpoint = subs
             .iter()
-            .find(|s| s.subscription_id == subscription_id)
+            .find(|s| s.subscription_id == subscription_id && s.eventgroup_id == eventgroup_id)
             .map(|s| s.local_endpoint);
 
-        // Remove the specific subscription by ID
-        subs.retain(|s| s.subscription_id != subscription_id);
+        // Remove only the entry for this specific eventgroup (not all entries with this subscription_id)
+        subs.retain(|s| {
+            !(s.subscription_id == subscription_id && s.eventgroup_id == eventgroup_id)
+        });
 
         // Check if this specific port is still used by any remaining subscription for this service
         let port_still_in_use = if let Some(endpoint) = &removed_endpoint {
@@ -906,6 +927,18 @@ pub fn handle_unsubscribe(
         return;
     }
 
+    // Must have the removed endpoint to build the StopSubscribe message
+    let Some(subscription_endpoint) = removed_endpoint else {
+        tracing::error!(
+            "Cannot send StopSubscribe for {:04x}:{:04x} eventgroup {:04x}: \
+             subscription endpoint was not captured",
+            service_id.value(),
+            instance_id.value(),
+            eventgroup_id
+        );
+        return;
+    };
+
     if let Some(discovered) = state.discovered.get(&key) {
         let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
         let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
@@ -940,8 +973,10 @@ pub fn handle_unsubscribe(
             return;
         };
 
-        let endpoint_for_unsubscribe =
-            SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port());
+        // Use the same endpoint that was used for the subscription
+        // Per feat_req_recentipsd_1177: StopSubscribeEventgroup shall reference the same
+        // options the SubscribeEventgroup Entry referenced
+        let endpoint_for_unsubscribe = SocketAddr::new(endpoint_ip, subscription_endpoint.port());
 
         let msg = build_unsubscribe_message(
             service_id.value(),
@@ -949,15 +984,13 @@ pub fn handle_unsubscribe(
             major_version,
             eventgroup_id,
             endpoint_for_unsubscribe,
-            state.client_rpc_endpoint.port(),
+            subscription_endpoint.port(),
             state.sd_flags(true),
             transport,
         );
 
-        actions.push(Action::SendSd {
-            message: msg,
-            target: discovered.sd_endpoint, // Send to SD socket, not RPC socket
-        });
+        // Queue unsubscribe for time-based clustering with other SD messages
+        state.queue_unicast_sd(msg, discovered.sd_endpoint);
     } else {
         tracing::warn!(
             "Trying to unsubscribe from eventgroup {:04x} on service {:04x} instance {:04x}, but service not discovered",

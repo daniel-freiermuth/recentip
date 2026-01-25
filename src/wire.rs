@@ -89,6 +89,7 @@
 //! - SD always uses UDP port 30490
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use std::fmt::Display;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 /// SOME/IP protocol version
@@ -548,6 +549,38 @@ pub struct SdEntry {
     pub num_options_1: u8,
     /// Number of options in run 2
     pub num_options_2: u8,
+}
+
+impl Display for SdEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.entry_type {
+            SdEntryType::FindService | SdEntryType::OfferService => {
+                write!(
+                    f,
+                    "{:?} Service {}:{}, v{}.{} TTL={}",
+                    self.entry_type,
+                    self.service_id,
+                    self.instance_id,
+                    self.major_version,
+                    self.minor_version,
+                    self.ttl
+                )
+            }
+            SdEntryType::SubscribeEventgroup | SdEntryType::SubscribeEventgroupAck => {
+                write!(
+                    f,
+                    "{:?} Evtgrp {} Service {}:{}, v{}. TTL={} #{}",
+                    self.entry_type,
+                    self.eventgroup_id,
+                    self.service_id,
+                    self.instance_id,
+                    self.major_version,
+                    self.ttl,
+                    self.counter
+                )
+            }
+        }
+    }
 }
 
 impl SdEntry {

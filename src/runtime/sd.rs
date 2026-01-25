@@ -108,6 +108,9 @@ pub enum Action {
     EmitSdEvent { event: crate::SdEvent },
     /// Reset TCP connections to a peer (due to reboot detection)
     ResetPeerTcpConnections { peer: std::net::IpAddr },
+    /// Expire all subscriptions from/to a peer (due to reboot detection)
+    /// Per feat_req_someipsd_871: On peer reboot, cancel subscriptions
+    ExpirePeerSubscriptions { peer: std::net::IpAddr },
 }
 
 // ============================================================================
@@ -252,8 +255,10 @@ pub fn handle_offer(
 
     let sd_flags = state.sd_flags(true);
 
-    if let Some(subscriptions) = state.subscriptions.get_mut(&key) {
-        for sub in subscriptions.iter_mut() {
+    let mut sd_messages_to_be_queued = Vec::new();
+
+    if let Some(subscriptions) = state.subscriptions.get(&key) {
+        for sub in subscriptions.iter() {
             // Skip if TTL is infinite (0xFFFFFF) - no renewal needed
             if state.config.subscribe_ttl == SD_TTL_INFINITE {
                 tracing::trace!(
@@ -268,35 +273,34 @@ pub fn handle_offer(
             // Use this subscription's local endpoint for renewal
             let endpoint_for_subscribe =
                 std::net::SocketAddr::new(endpoint_ip, sub.local_endpoint.port());
-            let client_rpc_port = sub.local_endpoint.port();
-
             tracing::debug!(
-                "Offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroup {:04x} via {:?} (port {})",
+                "Queueing offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroups {:?} via {:?} (port {}) for time-based clustering",
                 entry.service_id,
                 entry.instance_id,
                 entry.major_version,
                 sub.eventgroup_id,
                 effective_transport,
-                client_rpc_port
+                endpoint_for_subscribe.port()
             );
 
-            // Build and send SubscribeEventgroup message
+            // Build SubscribeEventgroup message with all eventgroups
             let msg = build_subscribe_message(
                 entry.service_id,
                 entry.instance_id,
-                entry.major_version, // Use version from key/entry
+                entry.major_version,
                 sub.eventgroup_id,
                 endpoint_for_subscribe,
-                client_rpc_port,
+                endpoint_for_subscribe.port(),
                 sd_flags,
                 state.config.subscribe_ttl,
                 effective_transport,
             );
 
-            actions.push(Action::SendSd {
-                message: msg,
-                target: from, // Send to the SD source of the offer
-            });
+            // Queue for time-based clustering instead of sending immediately
+            sd_messages_to_be_queued.push((msg, from));
+        }
+        for (message, target) in sd_messages_to_be_queued {
+            state.queue_unicast_sd(message, target);
         }
     }
 }
@@ -333,33 +337,33 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
 }
 
 /// Handle a `FindService` request (we may need to respond with an offer)
-pub fn handle_find_request(
-    entry: &SdEntry,
-    from: SocketAddr,
-    state: &mut RuntimeState,
-    actions: &mut Vec<Action>,
-) {
-    for (key, offered) in &state.offered {
-        // Only respond if the service is actively announcing
-        if !offered.is_announcing {
-            continue;
-        }
-
-        if entry.service_id == key.service_id
-            && (entry.instance_id == 0xFFFF || entry.instance_id == key.instance_id)
-        {
-            let response = build_offer_message(
+///
+/// Responses are queued for time-based clustering to prevent session ID collisions
+/// when multiple FindService requests arrive close together.
+pub fn handle_find_request(entry: &SdEntry, from: SocketAddr, state: &mut RuntimeState) {
+    // Collect responses first to avoid borrowing issues
+    let responses: Vec<SdMessage> = state
+        .offered
+        .iter()
+        .filter(|(_, offered)| offered.is_announcing)
+        .filter(|(key, _)| {
+            entry.service_id == key.service_id
+                && (entry.instance_id == 0xFFFF || entry.instance_id == key.instance_id)
+        })
+        .map(|(key, offered)| {
+            build_offer_message(
                 key,
                 offered,
                 state.sd_flags(true),
                 state.config.offer_ttl,
                 state.config.advertised_ip,
-            );
-            actions.push(Action::SendSd {
-                message: response,
-                target: from,
-            });
-        }
+            )
+        })
+        .collect();
+
+    // Queue all responses for time-based clustering
+    for response in responses {
+        state.queue_unicast_sd(response, from);
     }
 }
 
@@ -367,12 +371,13 @@ pub fn handle_find_request(
 ///
 /// Per `feat_req_recentipsd_1144`: If options are in conflict, respond negatively (NACK)
 /// Per `feat_req_recentipsd_1137`: Respond with `SubscribeEventgroupNack` for invalid subscribe
+///
+/// ACKs and NACKs are queued for time-based clustering to prevent session ID collisions.
 pub fn handle_subscribe_request(
     entry: &SdEntry,
     sd_message: &SdMessage,
     from: SocketAddr,
     state: &mut RuntimeState,
-    actions: &mut Vec<Action>,
 ) {
     let key = ServiceKey {
         service_id: entry.service_id,
@@ -407,10 +412,7 @@ pub fn handle_subscribe_request(
                 entry.counter,
             ));
 
-            actions.push(Action::SendSd {
-                message: nack,
-                target: from,
-            });
+            state.queue_unicast_sd(nack, from);
             return;
         }
     }
@@ -434,10 +436,7 @@ pub fn handle_subscribe_request(
                 entry.counter,
             ));
 
-            actions.push(Action::SendSd {
-                message: nack,
-                target: from,
-            });
+            state.queue_unicast_sd(nack, from);
             return;
         }
     }
@@ -475,20 +474,9 @@ pub fn handle_subscribe_request(
                 entry.counter,
             ));
 
-            actions.push(Action::SendSd {
-                message: nack,
-                target: from,
-            });
+            state.queue_unicast_sd(nack, from);
             return;
         };
-
-        let _ = offered
-            .requests_tx
-            .try_send(super::command::ServiceRequest::Subscribe {
-                eventgroup_id: entry.eventgroup_id,
-                client: client_endpoint,
-                transport,
-            });
 
         // Track the subscriber - use the endpoint from the option for event delivery
         // Calculate expiration based on client's TTL from the Subscribe message
@@ -509,6 +497,8 @@ pub fn handle_subscribe_request(
 
         // Check if this client already has a subscription - if so, update the expiration
         let subscribers = state.server_subscribers.entry(sub_key).or_default();
+        let is_new_subscription = !subscribers.iter().any(|s| s.endpoint == client_endpoint);
+
         if let Some(existing) = subscribers
             .iter_mut()
             .find(|s| s.endpoint == client_endpoint)
@@ -543,6 +533,18 @@ pub fn handle_subscribe_request(
             );
         }
 
+        // Only notify the application of NEW subscriptions, not renewals
+        // This prevents spurious ServiceEvent::Subscribe for offer-triggered renewals
+        if is_new_subscription {
+            let _ = offered
+                .requests_tx
+                .try_send(super::command::ServiceRequest::Subscribe {
+                    eventgroup_id: entry.eventgroup_id,
+                    client: client_endpoint,
+                    transport,
+                });
+        }
+
         let mut ack = SdMessage::new(state.sd_flags(true));
         // Per feat_req_recentipsd_614: TTL shall be the same as in the SubscribeEventgroup
         ack.add_entry(SdEntry::subscribe_eventgroup_ack(
@@ -554,11 +556,8 @@ pub fn handle_subscribe_request(
             entry.counter,
         ));
 
-        // Send ACK to the SD source (not the event endpoint)
-        actions.push(Action::SendSd {
-            message: ack,
-            target: from,
-        });
+        // Queue ACK for time-based clustering
+        state.queue_unicast_sd(ack, from);
     } else {
         tracing::warn!(
             "Received SubscribeEventgroup for unknown service {:04x}:{:04x} eventgroup {:04x} from {}",
@@ -577,10 +576,7 @@ pub fn handle_subscribe_request(
             entry.counter,
         ));
 
-        actions.push(Action::SendSd {
-            message: nack,
-            target: from,
-        });
+        state.queue_unicast_sd(nack, from);
     }
 }
 
@@ -934,6 +930,34 @@ pub fn build_subscribe_message(
     ttl: u32,
     transport: Transport,
 ) -> SdMessage {
+    build_subscribe_message_multi(
+        service_id,
+        instance_id,
+        major_version,
+        &[eventgroup_id],
+        local_endpoint,
+        client_rpc_port,
+        sd_flags,
+        ttl,
+        transport,
+    )
+}
+
+/// Build a Subscribe SD message with multiple eventgroups
+///
+/// Clusters multiple SubscribeEventgroup entries into ONE SD message
+/// to prevent duplicate session IDs and reboot detection issues.
+pub fn build_subscribe_message_multi(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    eventgroup_ids: &[u16],
+    local_endpoint: SocketAddr,
+    client_rpc_port: u16,
+    sd_flags: u8,
+    ttl: u32,
+    transport: Transport,
+) -> SdMessage {
     let protocol = match transport {
         Transport::Tcp => L4Protocol::Tcp,
         Transport::Udp => L4Protocol::Udp,
@@ -948,17 +972,21 @@ pub fn build_subscribe_message(
         port: client_rpc_port,
         protocol,
     });
-    let mut entry = SdEntry::subscribe_eventgroup(
-        service_id,
-        instance_id,
-        major_version,
-        eventgroup_id,
-        ttl,
-        0,
-    );
-    entry.index_1st_option = opt_idx;
-    entry.num_options_1 = 1;
-    msg.add_entry(entry);
+
+    // Add one SubscribeEventgroup entry per eventgroup, all sharing the same endpoint option
+    for &eventgroup_id in eventgroup_ids {
+        let mut entry = SdEntry::subscribe_eventgroup(
+            service_id,
+            instance_id,
+            major_version,
+            eventgroup_id,
+            ttl,
+            0,
+        );
+        entry.index_1st_option = opt_idx;
+        entry.num_options_1 = 1;
+        msg.add_entry(entry);
+    }
     msg
 }
 
@@ -968,6 +996,32 @@ pub fn build_unsubscribe_message(
     instance_id: u16,
     major_version: u8,
     eventgroup_id: u16,
+    local_endpoint: SocketAddr,
+    client_rpc_port: u16,
+    sd_flags: u8,
+    transport: Transport,
+) -> SdMessage {
+    build_unsubscribe_message_multi(
+        service_id,
+        instance_id,
+        major_version,
+        &[eventgroup_id],
+        local_endpoint,
+        client_rpc_port,
+        sd_flags,
+        transport,
+    )
+}
+
+/// Build an Unsubscribe SD message with multiple eventgroups
+///
+/// Clusters multiple StopSubscribeEventgroup entries into ONE SD message
+/// to prevent duplicate session IDs and reboot detection issues.
+pub fn build_unsubscribe_message_multi(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    eventgroup_ids: &[u16],
     local_endpoint: SocketAddr,
     client_rpc_port: u16,
     sd_flags: u8,
@@ -988,16 +1042,20 @@ pub fn build_unsubscribe_message(
         port: client_rpc_port,
         protocol,
     });
-    let mut entry = SdEntry::subscribe_eventgroup(
-        service_id,
-        instance_id,
-        major_version,
-        eventgroup_id,
-        0, // TTL=0 indicates unsubscribe
-        0,
-    );
-    entry.index_1st_option = opt_idx;
-    entry.num_options_1 = 1;
-    msg.add_entry(entry);
+
+    // Add one StopSubscribeEventgroup entry per eventgroup, all sharing the same endpoint option
+    for &eventgroup_id in eventgroup_ids {
+        let mut entry = SdEntry::subscribe_eventgroup(
+            service_id,
+            instance_id,
+            major_version,
+            eventgroup_id,
+            0, // TTL=0 indicates unsubscribe
+            0,
+        );
+        entry.index_1st_option = opt_idx;
+        entry.num_options_1 = 1;
+        msg.add_entry(entry);
+    }
     msg
 }

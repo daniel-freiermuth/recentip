@@ -181,7 +181,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
             major_version,
             minor_version,
             requests_tx,
-            last_offer: Instant::now() - Duration::from_secs(10),
+            last_offer: Instant::now(),
             udp_endpoint,
             udp_transport,
             tcp_endpoint,
@@ -191,19 +191,50 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
         },
     );
 
-    // Build and send the initial offer message (reuse sd.rs helper)
-    let offered = state.offered.get(&key).expect("just inserted");
-    let msg = build_offer_message(
-        &key,
-        offered,
-        state.sd_flags(true),
-        config.offer_ttl,
-        config.advertised_ip,
-    );
-    actions.push(Action::SendSd {
-        message: msg,
-        target: config.sd_multicast,
-    });
+    // Queue this offer for time-based clustered sending (within ~50ms)
+    // This prevents multiple session IDs when starting multiple services quickly
+    state.pending_initial_offers.push(key);
+    if state.pending_offers_deadline.is_none() {
+        // Set deadline for first pending offer - but only if it won't be too close to periodic cycle
+        const MIN_SD_MSG_DISTANCE: Duration = Duration::from_millis(150);
+
+        let proposed_deadline = Instant::now() + MIN_SD_MSG_DISTANCE;
+
+        // Check if proposed deadline would be too close to the next (or last) periodic cycle
+        let should_set_deadline = state.last_periodic_cycle.is_some_and(|last_cycle| {
+            let cycle_interval = Duration::from_millis(state.config.cyclic_offer_delay);
+            let next_cycle = last_cycle + cycle_interval;
+
+            proposed_deadline + MIN_SD_MSG_DISTANCE < next_cycle
+        });
+
+        if should_set_deadline {
+            state.pending_offers_deadline = Some(proposed_deadline);
+            tracing::debug!(
+                "[OFFER] {:#?} Queued initial offer for {}:{:04X} v{} (will flush clustered within {:#?})",
+                tokio::time::Instant::now(),
+                key.service_id,
+                key.instance_id,
+                major_version,
+                MIN_SD_MSG_DISTANCE
+            );
+        } else {
+            tracing::debug!(
+                "[{:?}] [OFFER] Queued initial offer for {}:{:04X} v{} (will flush at next periodic cycle)",
+                tokio::time::Instant::now(),
+                key.service_id,
+                key.instance_id,
+                major_version
+            );
+        }
+    } else {
+        tracing::debug!(
+            "[OFFER] Queued initial offer for {}:{:04X} v{} (already scheduled for flush)",
+            key.service_id,
+            key.instance_id,
+            major_version
+        );
+    }
 
     let _ = response.send(Ok(requests_rx));
     Some(actions)
@@ -322,7 +353,7 @@ pub fn handle_notify(
             service_id.value(),
             event_id,
             state.client_id,
-            state.next_session_id(),
+            0,
             1, // interface version
             &payload,
         );

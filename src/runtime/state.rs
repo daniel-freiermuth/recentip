@@ -47,9 +47,12 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
 use super::command::ServiceRequest;
+use super::sd::Action;
 use crate::config::{MethodConfig, RuntimeConfig};
 use crate::error::Result;
-use crate::tcp::TcpSendMessage;
+use crate::net::TcpStream;
+use crate::runtime::event_loop::cluster_sd_actions;
+use crate::tcp::{TcpConnectionPool, TcpSendMessage};
 use crate::wire::SdMessage;
 use crate::{InstanceId, ServiceId};
 
@@ -121,6 +124,106 @@ pub struct ServerSubscription {
 pub struct CallKey {
     pub(crate) client_id: u16,
     pub(crate) session_id: u16,
+}
+
+// ============================================================================
+// PEER SESSION TRACKING (Reboot Detection)
+// ============================================================================
+
+/// Tracks session state for a remote peer on a specific channel (multicast or unicast).
+///
+/// Per SOME/IP-SD spec (feat_req_someipsd_765), each peer has separate session counters
+/// for multicast and unicast SD messages. Reboot detection must track these independently.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct PeerChannelSession {
+    /// Last observed session ID from this peer on this channel
+    pub(crate) last_session_id: Option<u16>,
+    /// Last observed reboot flag from this peer on this channel
+    pub(crate) last_reboot_flag: bool,
+}
+
+impl PeerChannelSession {
+    /// Check if the new message indicates a peer reboot.
+    ///
+    /// Per feat_req_someipsd_764, reboot is detected when:
+    /// 1. Reboot flag transitions from 0 to 1 (explicit reboot), OR
+    /// 2. Reboot flag is 1 AND session ID regresses (session_id < last_session_id)
+    ///
+    /// Returns true if reboot detected.
+    pub(crate) fn check_and_update(&mut self, session_id: u16, reboot_flag: bool) -> bool {
+        tracing::debug!(
+            "check_and_update: incoming session_id={}, reboot_flag={}, stored last_session_id={:?}, last_reboot_flag={}",
+            session_id,
+            reboot_flag,
+            self.last_session_id,
+            self.last_reboot_flag
+        );
+
+        let reboot_detected = match (self.last_session_id, self.last_reboot_flag) {
+            // First message from this peer on this channel - establish baseline
+            (None, _) => {
+                tracing::debug!("  => First contact - establishing baseline, no reboot");
+                false
+            }
+
+            // Case 1: Reboot flag transition 0 → 1
+            (Some(_), false) if reboot_flag => {
+                tracing::warn!(
+                    "  => REBOOT DETECTED: Case 1 - reboot flag transitioned false → true"
+                );
+                true
+            }
+
+            // Case 2: Reboot flag stays 1, but session ID regressed
+            (Some(last_session), true) if reboot_flag && session_id <= last_session => {
+                tracing::warn!(
+                    "  => REBOOT DETECTED: Case 2 - session regression {} → {} with reboot flag still set",
+                    last_session,
+                    session_id
+                );
+                true
+            }
+
+            // Normal case: flag 1 → 0 is wraparound completion, not reboot
+            // Normal case: session incrementing normally
+            _ => {
+                tracing::debug!("  => Normal case - no reboot");
+                false
+            }
+        };
+
+        // Update stored state
+        self.last_session_id = Some(session_id);
+        self.last_reboot_flag = reboot_flag;
+
+        tracing::debug!(
+            "  => Updated stored state: last_session_id={:?}, last_reboot_flag={}",
+            self.last_session_id,
+            self.last_reboot_flag
+        );
+
+        reboot_detected
+    }
+}
+
+/// Tracks session state for both multicast and unicast channels from a peer.
+///
+/// Per feat_req_someipsd_765:
+/// - Multicast channel: FindService, OfferService
+/// - Unicast channel: SubscribeEventgroup, SubscribeEventgroupAck, StopSubscribeEventgroup
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PeerSessionState {
+    /// Session tracking for multicast SD messages
+    pub(crate) multicast: PeerChannelSession,
+    /// Session tracking for unicast SD messages
+    pub(crate) unicast: PeerChannelSession,
+}
+
+/// Identifies whether an SD message is on the multicast or unicast channel
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SdChannel {
+    Multicast,
+    Unicast,
 }
 
 // ============================================================================
@@ -362,16 +465,30 @@ pub struct RuntimeState {
         HashMap<MultiEventgroupSubscriptionKey, MultiEventgroupSubscription>,
     /// Client ID for outgoing requests
     pub(crate) client_id: u16,
-    /// SD session ID counter
-    session_id: u16,
-    /// Reboot flag - set to true after startup, cleared after first session wraparound
-    reboot_flag: bool,
-    /// Whether the session ID has wrapped around at least once
-    has_wrapped_once: bool,
+    /// SD session ID counter for multicast messages (per feat_req_someipsd_41)
+    multicast_session_id: u16,
+    /// SD session ID counter for unicast messages (per feat_req_someipsd_41)
+    unicast_session_id: u16,
+    /// Whether the multicast session ID has wrapped around at least once
+    multicast_has_wrapped_once: bool,
+    /// Whether the unicast session ID has wrapped around at least once
+    unicast_has_wrapped_once: bool,
+    /// Pending initial offers waiting to be clustered and sent (time-based batching)
+    pub(crate) pending_initial_offers: Vec<ServiceKey>,
+    /// Deadline for flushing pending initial offers (None if no pending offers)
+    pub(crate) pending_offers_deadline: Option<Instant>,
+    /// Last time the periodic cycle ran (for coordination with pending offer flush)
+    pub(crate) last_periodic_cycle: Option<Instant>,
+    /// Pending outward unicast SD actions waiting to be clustered and sent (time-based batching)
+    /// This includes: initial subscribes, offer-triggered subscribes, find-triggered offers, subscribe ACKs/NACKs
+    pending_unicast_sd: Vec<Action>,
+    /// Deadline for flushing pending unicast SD actions (None if no pending actions)
+    pending_unicast_sd_deadline: Option<Instant>,
     /// Configuration
     pub(crate) config: RuntimeConfig,
-    /// Last known reboot flag state for each peer (by IP) for reboot detection
-    pub(crate) peer_reboot_flags: HashMap<std::net::IpAddr, bool>,
+    /// Session tracking per peer for reboot detection (feat_req_someipsd_764, feat_req_someipsd_765)
+    /// Tracks both multicast and unicast session counters independently per peer
+    pub(crate) peer_sessions: HashMap<std::net::IpAddr, PeerSessionState>,
     /// SD event monitors - channels to send all SD events to
     pub(crate) sd_monitors: Vec<mpsc::Sender<crate::SdEvent>>,
     /// Next subscription ID for client-side subscriptions (unique per handle)
@@ -381,6 +498,7 @@ pub struct RuntimeState {
     /// within the SAME service (events can be routed by service_id in header, but not by eventgroup).
     /// Key: port number, Value: set of (service_id, instance_id) using that port
     pub(crate) subscription_endpoint_usage: HashMap<u16, HashSet<(u16, u16)>>,
+    payload_session_id: u16,
 }
 
 impl RuntimeState {
@@ -407,14 +525,68 @@ impl RuntimeState {
             pending_subscriptions: HashMap::new(),
             multi_eventgroup_subscriptions: HashMap::new(),
             client_id,
-            session_id: 1,
-            reboot_flag: true,
-            has_wrapped_once: false,
+            multicast_session_id: 1,
+            unicast_session_id: 1,
+            multicast_has_wrapped_once: false,
+            unicast_has_wrapped_once: false,
+            payload_session_id: 1,
+            pending_initial_offers: Vec::new(),
+            pending_offers_deadline: None,
+            last_periodic_cycle: None,
+            pending_unicast_sd: Vec::new(),
+            pending_unicast_sd_deadline: None,
             config,
-            peer_reboot_flags: HashMap::new(),
+            peer_sessions: HashMap::new(),
             sd_monitors: Vec::new(),
             next_subscription_id: 1,
             subscription_endpoint_usage: HashMap::new(),
+        }
+    }
+
+    /// Queue an SD message for time-based clustering before sending.
+    ///
+    /// This batches outward unicast SD traffic (subscribes, ACKs, NACKs, find-triggered offers)
+    /// to prevent session ID collisions when multiple messages need to be sent close together.
+    pub(crate) fn queue_unicast_sd(&mut self, message: SdMessage, target: SocketAddr) {
+        self.pending_unicast_sd
+            .push(Action::SendSd { message, target });
+
+        // Set deadline if not already set (50ms from now)
+        if self.pending_unicast_sd_deadline.is_none() {
+            // Experimentally determined interval to ensure sequential packet delivery
+            // and prevent reordering in our test environment.
+            // good: 100ms
+            // bad: 93ms
+            let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_millis(100);
+            self.pending_unicast_sd_deadline = Some(deadline);
+            tracing::debug!("Set unicast SD flush deadline to {:?}", deadline);
+        }
+    }
+
+    /// Flush pending unicast SD actions (time-based clustering)
+    /// Clusters all pending SD actions by target and sends them together
+    /// This handles: initial subscribes, offer-triggered subscribes, find-triggered offers, subscribe ACKs/NACKs
+    pub(crate) async fn flush_pending_unicast_sd<T: TcpStream>(
+        &mut self,
+        _tcp_pool: &TcpConnectionPool<T>,
+    ) -> Vec<Action> {
+        self.pending_unicast_sd_deadline = None;
+
+        tracing::debug!(
+            "Flushing {} pending unicast SD actions (clustering by target)",
+            self.pending_unicast_sd.len()
+        );
+
+        // Cluster actions by target using existing cluster_sd_actions logic
+        let actions = std::mem::take(&mut self.pending_unicast_sd);
+        cluster_sd_actions(actions)
+    }
+
+    pub(crate) async fn await_pending_unicast_sd_flush_deadline(&self) {
+        if let Some(deadline) = self.pending_unicast_sd_deadline {
+            tokio::time::sleep_until(deadline.into()).await;
+        } else {
+            std::future::pending::<()>().await;
         }
     }
 
@@ -426,16 +598,33 @@ impl RuntimeState {
         id
     }
 
-    pub(crate) fn next_session_id(&mut self) -> u16 {
-        let id = self.session_id;
-        self.session_id = self.session_id.wrapping_add(1);
-        if self.session_id == 0 {
-            self.session_id = 1;
-            // After first wraparound, clear the reboot flag
-            if !self.has_wrapped_once {
-                self.has_wrapped_once = true;
-                self.reboot_flag = false;
-            }
+    /// Get next session ID for multicast SD messages
+    pub(crate) fn next_multicast_session_id(&mut self) -> u16 {
+        let id = self.multicast_session_id;
+        self.multicast_session_id = self.multicast_session_id.wrapping_add(1);
+        if self.multicast_session_id == 0 {
+            self.multicast_session_id = 1;
+            self.multicast_has_wrapped_once = true;
+        }
+        id
+    }
+
+    /// Get next session ID for unicast SD messages
+    pub(crate) fn next_unicast_session_id(&mut self) -> u16 {
+        let id = self.unicast_session_id;
+        self.unicast_session_id = self.unicast_session_id.wrapping_add(1);
+        if self.unicast_session_id == 0 {
+            self.unicast_session_id = 1;
+            self.unicast_has_wrapped_once = true;
+        }
+        id
+    }
+
+    pub(crate) fn next_payload_session_id(&mut self) -> u16 {
+        let id = self.payload_session_id;
+        self.payload_session_id = self.payload_session_id.wrapping_add(1);
+        if self.payload_session_id == 0 {
+            self.payload_session_id = 1;
         }
         id
     }
@@ -443,11 +632,15 @@ impl RuntimeState {
     /// Get the SD flags byte with reboot flag based on current state
     pub(crate) fn sd_flags(&self, unicast: bool) -> u8 {
         let mut flags = 0u8;
-        if self.reboot_flag {
-            flags |= SdMessage::FLAG_REBOOT;
-        }
         if unicast {
             flags |= SdMessage::FLAG_UNICAST;
+            if !self.unicast_has_wrapped_once {
+                flags |= SdMessage::FLAG_REBOOT;
+            }
+        } else {
+            if !self.multicast_has_wrapped_once {
+                flags |= SdMessage::FLAG_REBOOT;
+            }
         }
         flags
     }
@@ -552,22 +745,26 @@ mod tests {
         );
 
         // First session should be 1
-        assert_eq!(state.next_session_id(), 1, "Session ID should start at 1");
+        assert_eq!(
+            state.next_multicast_session_id(),
+            1,
+            "Session ID should start at 1"
+        );
 
         // Iterate through all possible session IDs
         for expected in 2..=0xFFFFu16 {
-            let id = state.next_session_id();
+            let id = state.next_multicast_session_id();
             assert_eq!(id, expected, "Session ID should be {}", expected);
             assert_ne!(id, 0, "Session ID should never be 0");
         }
 
         // After 0xFFFF, should wrap to 1 (not 0)
-        let wrapped = state.next_session_id();
+        let wrapped = state.next_multicast_session_id();
         assert_eq!(wrapped, 1, "Session ID should wrap to 1 after 0xFFFF");
 
         // Continue a few more to verify
-        assert_eq!(state.next_session_id(), 2);
-        assert_eq!(state.next_session_id(), 3);
+        assert_eq!(state.next_multicast_session_id(), 2);
+        assert_eq!(state.next_multicast_session_id(), 3);
     }
 
     /// feat_req_recentipsd_41: Reboot flag is cleared after first wraparound
@@ -584,34 +781,29 @@ mod tests {
         );
 
         // Initially reboot flag should be set
-        assert!(state.reboot_flag, "Reboot flag should be true initially");
         assert!(
-            !state.has_wrapped_once,
-            "has_wrapped_once should be false initially"
+            !state.multicast_has_wrapped_once,
+            "multicast_has_wrapped_once should be false initially"
         );
 
         // Iterate through all session IDs until wraparound
         for _ in 1..=0xFFFFu16 {
-            state.next_session_id();
+            state.next_multicast_session_id();
         }
 
         // After wraparound, reboot flag should be cleared
         assert!(
-            !state.reboot_flag,
-            "Reboot flag should be false after wraparound"
-        );
-        assert!(
-            state.has_wrapped_once,
-            "has_wrapped_once should be true after wraparound"
+            state.multicast_has_wrapped_once,
+            "multicast_has_wrapped_once should be true after wraparound"
         );
 
         // Second wraparound should not change anything
         for _ in 1..=0xFFFFu16 {
-            state.next_session_id();
+            state.next_multicast_session_id();
         }
         assert!(
-            !state.reboot_flag,
-            "Reboot flag should stay false after second wraparound"
+            state.multicast_has_wrapped_once,
+            "multicast_has_wrapped_once should be true after second wraparound"
         );
     }
 
@@ -630,7 +822,7 @@ mod tests {
 
         // Iterate through 2 full cycles + some extra
         for _ in 0..(0xFFFF * 2 + 1000) {
-            let id = state.next_session_id();
+            let id = state.next_unicast_session_id();
             assert_ne!(id, 0, "Session ID must never be 0");
         }
     }

@@ -97,6 +97,8 @@ pub struct TcpConnectionPool<T: TcpStream> {
 struct TcpConnectionHandle {
     /// The local address of this connection (what the peer sees us as)
     local_addr: SocketAddr,
+    /// Handle to abort the reader task
+    task_handle: tokio::task::AbortHandle,
 }
 
 impl<T: TcpStream> TcpConnectionPool<T> {
@@ -144,24 +146,13 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         // Create channel for sending data to this connection
         let (send_tx, send_rx) = mpsc::channel::<Vec<u8>>(32);
 
-        // Store the sender (use subscription_id 0 for RPC)
-        let key = (target, 0);
-        {
-            let mut senders = self.senders.lock().await;
-            senders.insert(key, send_tx.clone());
-        }
-        {
-            let mut connections = self.connections.lock().await;
-            connections.insert(key, TcpConnectionHandle { local_addr });
-        }
-
         // Spawn connection handler task
         let msg_tx = self.msg_tx.clone();
         let senders = Arc::clone(&self.senders);
         let connections = Arc::clone(&self.connections);
         let magic_cookies = self.magic_cookies;
 
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             handle_client_tcp_connection(
                 stream,
                 target,
@@ -174,6 +165,23 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             )
             .await;
         });
+
+        // Store the sender and connection handle (use subscription_id 0 for RPC)
+        let key = (target, 0);
+        {
+            let mut senders = self.senders.lock().await;
+            senders.insert(key, send_tx.clone());
+        }
+        {
+            let mut connections = self.connections.lock().await;
+            connections.insert(
+                key,
+                TcpConnectionHandle {
+                    local_addr,
+                    task_handle: task.abort_handle(),
+                },
+            );
+        }
 
         // Send the data via the new connection
         send_tx
@@ -218,23 +226,13 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         // Create channel for sending data to this connection
         let (send_tx, send_rx) = mpsc::channel::<Vec<u8>>(32);
 
-        // Store the sender and connection handle
-        {
-            let mut senders = self.senders.lock().await;
-            senders.insert(key, send_tx);
-        }
-        {
-            let mut connections = self.connections.lock().await;
-            connections.insert(key, TcpConnectionHandle { local_addr });
-        }
-
         // Spawn connection handler task
         let msg_tx = self.msg_tx.clone();
         let senders = Arc::clone(&self.senders);
         let connections = Arc::clone(&self.connections);
         let magic_cookies = self.magic_cookies;
 
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             handle_client_tcp_connection(
                 stream,
                 target,
@@ -248,14 +246,71 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             .await;
         });
 
+        // Store the sender and connection handle
+        {
+            let mut senders = self.senders.lock().await;
+            senders.insert(key, send_tx);
+        }
+        {
+            let mut connections = self.connections.lock().await;
+            connections.insert(
+                key,
+                TcpConnectionHandle {
+                    local_addr,
+                    task_handle: task.abort_handle(),
+                },
+            );
+        }
+
         Ok(local_addr)
     }
 
     /// Close connection to a peer (RPC connection, subscription_id 0)
     pub async fn close(&self, target: &SocketAddr) {
+        tracing::debug!("Closing TCP connection to {}", target);
         let key = (*target, 0);
-        self.connections.lock().await.remove(&key);
+
+        // Abort the task to force TCP connection closure
+        if let Some(handle) = self.connections.lock().await.remove(&key) {
+            handle.task_handle.abort();
+        }
+
+        // Remove the sender (will close when all clones are dropped)
         self.senders.lock().await.remove(&key);
+    }
+
+    /// Close ALL connections to a peer IP address (for reboot handling)
+    ///
+    /// This closes all connections to the given peer IP, regardless of port or
+    /// subscription_id. Used when a peer reboot is detected per `feat_req_someipsd_872`.
+    pub async fn close_all_to_peer(&self, peer_ip: std::net::IpAddr) {
+        // Collect keys to close
+        let keys_to_close: Vec<_> = {
+            let connections = self.connections.lock().await;
+            connections
+                .keys()
+                .filter(|(addr, _)| addr.ip() == peer_ip)
+                .cloned()
+                .collect()
+        };
+
+        if keys_to_close.is_empty() {
+            return;
+        }
+
+        tracing::debug!(
+            "Closing {} TCP connection(s) to peer {}",
+            keys_to_close.len(),
+            peer_ip
+        );
+
+        // Close each connection
+        for key in keys_to_close {
+            if let Some(handle) = self.connections.lock().await.remove(&key) {
+                handle.task_handle.abort();
+            }
+            self.senders.lock().await.remove(&key);
+        }
     }
 }
 

@@ -17,7 +17,6 @@ use bytes::Bytes;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use tokio::sync::mpsc;
-use tokio::time::interval;
 
 use crate::config::{RuntimeConfig, Transport};
 use crate::error::Result;
@@ -30,13 +29,15 @@ use crate::runtime::{
         handle_subscribe_request, handle_unsubscribe_request, Action,
     },
     server::{self, build_response},
-    state::{PendingServerResponse, RpcMessage, RpcSendMessage, RuntimeState, ServiceKey},
+    state::{
+        PendingServerResponse, RpcMessage, RpcSendMessage, RuntimeState, SdChannel, ServiceKey,
+    },
     Command,
 };
 use crate::tcp::{TcpConnectionPool, TcpMessage};
 use crate::wire::{
-    validate_protocol_version, Header, MessageType, SdEntry, SdEntryType, SdMessage, SD_METHOD_ID,
-    SD_SERVICE_ID,
+    validate_protocol_version, Header, L4Protocol, MessageType, SdEntry, SdEntryType, SdMessage,
+    SdOption, SD_METHOD_ID, SD_SERVICE_ID,
 };
 
 // ============================================================================
@@ -57,7 +58,9 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
     tcp_pool: TcpConnectionPool<T>,
 ) {
     let mut buf = [0u8; 65535];
-    let mut ticker = interval(Duration::from_millis(config.cyclic_offer_delay));
+    let cycle_interval = Duration::from_millis(config.cyclic_offer_delay);
+    let mut next_periodic_cycle_at = tokio::time::Instant::now() + cycle_interval;
+    state.last_periodic_cycle = Some(next_periodic_cycle_at);
 
     // Track pending server responses
     let mut pending_responses: FuturesUnordered<
@@ -169,6 +172,28 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                 }
             }
 
+            // Flush pending initial offers if deadline has passed AND we're not too close to periodic cycle
+            _ = async {
+                if let Some(deadline) = state.pending_offers_deadline {
+                    tokio::time::sleep_until(deadline.into()).await;
+                } else {
+                    std::future::pending::<()>().await;
+                }
+            } => {
+                if let Some(actions) = flush_pending_initial_offers(&config, &mut state) {
+                    for action in actions {
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                    }
+                }
+            }
+
+            // Flush pending unicast SD actions when deadline is reached
+            _ = state.await_pending_unicast_sd_flush_deadline() => {
+                for action in state.flush_pending_unicast_sd(&tcp_pool).await {
+                    execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                }
+            }
+
             // Handle commands from handles
             cmd = cmd_rx.recv() => {
                 match cmd {
@@ -224,14 +249,10 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     }
                     // Special handling for Subscribe - handles multiple eventgroups with shared endpoint
                     Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response }) => {
-                        if let Some(actions) = client::handle_subscribe_command::<U, T>(
+                        client::handle_subscribe_command::<U, T>(
                             service_id, instance_id, major_version, eventgroup_ids, events, response,
                             &mut state, &tcp_pool
-                        ).await {
-                            for action in actions {
-                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
-                            }
-                        }
+                        ).await;
                     }
                     Some(cmd) => {
                         if let Some(actions) = handle_command(cmd, &mut state) {
@@ -244,7 +265,21 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             }
 
             // Periodic tasks (cyclic offers, find retries)
-            _ = ticker.tick() => {
+            _ = tokio::time::sleep_until(next_periodic_cycle_at) => {
+                let now = tokio::time::Instant::now();
+                // Track when periodic cycle runs (use the scheduled time, not now)
+                state.last_periodic_cycle = Some(next_periodic_cycle_at.into());
+
+                // Schedule next cycle
+                next_periodic_cycle_at = now + cycle_interval;
+
+                // Also flush any pending initial offers at this time
+                if let Some(actions) = flush_pending_initial_offers(&config, &mut state) {
+                    for action in actions {
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                    }
+                }
+
                 if let Some(actions) = handle_periodic(&mut state) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
@@ -302,7 +337,33 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
 ) {
     match action {
         Action::SendSd { message, target } => {
-            let session_id = state.next_session_id();
+            // Determine if this is multicast or unicast based on the FLAG_UNICAST bit in the message
+            // Per feat_req_someipsd_41, use separate session counters
+            let is_unicast = (message.flags & SdMessage::FLAG_UNICAST) != 0;
+            let session_id = if is_unicast {
+                state.next_unicast_session_id()
+            } else {
+                state.next_multicast_session_id()
+            };
+            let entry_types: Vec<String> = message
+                .entries
+                .iter()
+                .map(|e| {
+                    format!(
+                        "{:?} {}:{:04X} v{} EG:{:04X}",
+                        e.entry_type, e.service_id, e.instance_id, e.major_version, e.eventgroup_id
+                    )
+                })
+                .collect();
+            tracing::debug!(
+                "[{:?}] Sending SD to {} ({}): session_id={}, {} entries: {:?}",
+                tokio::time::Instant::now(),
+                target,
+                if is_unicast { "unicast" } else { "multicast" },
+                session_id,
+                message.entries.len(),
+                entry_types
+            );
             let data = message.serialize(session_id);
             if let Err(e) = sd_socket.send_to(&data, target).await {
                 tracing::error!("Failed to send SD message: {}", e);
@@ -398,17 +459,92 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                 peer
             );
 
-            // Find all socket addresses for this peer and close them
-            // Client-side connections are managed by the TCP pool
-            let addresses_to_close: Vec<SocketAddr> = state
-                .discovered
-                .values()
-                .filter_map(|svc| svc.tcp_endpoint)
-                .filter(|addr| addr.ip() == peer)
+            // Close ALL TCP connections to this peer (both RPC and subscription connections)
+            // Per feat_req_someipsd_872: reset TCP state on peer reboot
+            tcp_pool.close_all_to_peer(peer).await;
+        }
+        Action::ExpirePeerSubscriptions { peer } => {
+            // Per feat_req_someipsd_871: On peer reboot, expire all subscriptions
+            // This includes:
+            // 1. Server-side: Remove subscriptions FROM the rebooted client
+            // 2. Client-side: Mark our subscriptions TO the rebooted server as expired
+
+            tracing::info!("Expiring subscriptions for rebooted peer {}", peer);
+
+            // Server-side: Remove subscribers from this peer
+            // Collect keys to avoid borrow issues
+            let subscriber_keys: Vec<_> = state.server_subscribers.keys().cloned().collect();
+            for key in subscriber_keys {
+                if let Some(subs) = state.server_subscribers.get_mut(&key) {
+                    let before_count = subs.len();
+                    subs.retain(|sub| sub.endpoint.ip() != peer);
+                    let removed = before_count - subs.len();
+                    if removed > 0 {
+                        tracing::debug!(
+                            "Removed {} subscription(s) from peer {} for service {:04X}:{:04X}",
+                            removed,
+                            peer,
+                            key.service_id,
+                            key.instance_id
+                        );
+                    }
+                }
+            }
+            // Clean up empty entries
+            state.server_subscribers.retain(|_, subs| !subs.is_empty());
+
+            // Client-side: Expire subscriptions to services from the rebooted peer
+            // This causes subscription handles to be dropped, which closes TCP connections
+            let subscriptions_to_remove: Vec<_> = state
+                .subscriptions
+                .iter()
+                .filter_map(|(key, _subs)| {
+                    // Check if this subscription is to the rebooted peer
+                    if let Some(svc) = state.discovered.get(key) {
+                        let is_from_peer = svc.udp_endpoint.map_or(false, |addr| addr.ip() == peer)
+                            || svc.tcp_endpoint.map_or(false, |addr| addr.ip() == peer);
+                        if is_from_peer {
+                            return Some(*key);
+                        }
+                    }
+                    None
+                })
                 .collect();
 
-            for addr in addresses_to_close {
-                tcp_pool.close(&addr).await;
+            for key in subscriptions_to_remove {
+                // Expire the subscription - this drops handles which closes TCP
+                if let Some(subs) = state.subscriptions.remove(&key) {
+                    let count = subs.len();
+                    tracing::debug!(
+                        "Expired {} subscription(s) to {:04X}:{:04X} (peer {} rebooted)",
+                        count,
+                        key.service_id,
+                        key.instance_id,
+                        peer
+                    );
+                }
+            }
+
+            // Remove discovered services from this peer after expiring subscriptions
+            let services_to_remove: Vec<_> = state
+                .discovered
+                .iter()
+                .filter(|(_, svc)| {
+                    svc.udp_endpoint.map_or(false, |addr| addr.ip() == peer)
+                        || svc.tcp_endpoint.map_or(false, |addr| addr.ip() == peer)
+                })
+                .map(|(key, _)| *key)
+                .collect();
+
+            for key in services_to_remove {
+                if state.discovered.remove(&key).is_some() {
+                    tracing::debug!(
+                        "Removed discovered service {:04X}:{:04X} from rebooted peer {}",
+                        key.service_id,
+                        key.instance_id,
+                        peer
+                    );
+                }
             }
         }
         Action::EmitSdEvent { event } => {
@@ -423,7 +559,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
 
 /// Handle an SD message
 fn handle_sd_message(
-    _header: &Header,
+    header: &Header,
     cursor: &mut &[u8],
     from: SocketAddr,
     state: &mut RuntimeState,
@@ -439,23 +575,53 @@ fn handle_sd_message(
 
     let mut actions = Vec::new();
 
-    // Check for peer reboot detection (feat_req_recentipsd_872)
-    // If we've seen this peer before with reboot_flag=false, and now it's true, they rebooted
+    // Extract session info for reboot detection (feat_req_someipsd_764, feat_req_someipsd_765)
     let peer_reboot_flag = (sd_message.flags & SdMessage::FLAG_REBOOT) != 0;
+    let peer_unicast_flag = (sd_message.flags & SdMessage::FLAG_UNICAST) != 0;
+    let session_id = header.session_id; // Session ID comes from the SOME/IP header
     let peer_ip = from.ip();
 
-    if let Some(&last_reboot_flag) = state.peer_reboot_flags.get(&peer_ip) {
-        if !last_reboot_flag && peer_reboot_flag {
-            // Peer rebooted: they went from reboot_flag=false to reboot_flag=true
-            tracing::debug!(
-                "Detected reboot of peer {} (reboot flag transitioned false → true)",
-                peer_ip
-            );
-            actions.push(Action::ResetPeerTcpConnections { peer: peer_ip });
-        }
+    // Determine the channel type based on the UNICAST flag in the SD message
+    // Per feat_req_someipsd_765, each peer has separate session counters for:
+    // - Multicast channel (FLAG_UNICAST = 0)
+    // - Unicast channel (FLAG_UNICAST = 1)
+    let channel = if peer_unicast_flag {
+        SdChannel::Unicast
+    } else {
+        SdChannel::Multicast
+    };
+
+    tracing::debug!(
+        "[{:?}] SD from {} on {:?} channel: session_id={}, reboot_flag={}, entries: {:}",
+        tokio::time::Instant::now(),
+        peer_ip,
+        channel,
+        session_id,
+        peer_reboot_flag,
+        sd_message
+            .entries
+            .iter()
+            .map(|e| format!("{e}"))
+            .collect::<Vec<_>>()
+            .join(", "),
+    );
+
+    // Check for peer reboot using proper session tracking
+    let peer_state = state.peer_sessions.entry(peer_ip).or_default();
+    let reboot_detected = match channel {
+        SdChannel::Multicast => peer_state
+            .multicast
+            .check_and_update(session_id, peer_reboot_flag),
+        SdChannel::Unicast => peer_state
+            .unicast
+            .check_and_update(session_id, peer_reboot_flag),
+    };
+
+    if reboot_detected {
+        tracing::info!("Detected reboot of peer {}", peer_ip);
+        actions.push(Action::ResetPeerTcpConnections { peer: peer_ip });
+        actions.push(Action::ExpirePeerSubscriptions { peer: peer_ip });
     }
-    // Update the stored reboot flag for this peer
-    state.peer_reboot_flags.insert(peer_ip, peer_reboot_flag);
 
     for entry in &sd_message.entries {
         match entry.entry_type {
@@ -467,13 +633,13 @@ fn handle_sd_message(
                 }
             }
             SdEntryType::FindService => {
-                handle_find_request(entry, from, state, &mut actions);
+                handle_find_request(entry, from, state);
             }
             SdEntryType::SubscribeEventgroup => {
                 if entry.is_stop() {
                     handle_unsubscribe_request(entry, &sd_message, from, state);
                 } else {
-                    handle_subscribe_request(entry, &sd_message, from, state, &mut actions);
+                    handle_subscribe_request(entry, &sd_message, from, state);
                 }
             }
             SdEntryType::SubscribeEventgroupAck => {
@@ -486,11 +652,75 @@ fn handle_sd_message(
         }
     }
 
+    // Cluster multiple SendSd actions with SD messages going to the same target
+    // This prevents duplicate session IDs and reboot detection issues
+    actions = cluster_sd_actions(actions);
+
     if actions.is_empty() {
         None
     } else {
         Some(actions)
     }
+}
+
+/// Cluster multiple SendSd actions going to the same target into a single SD message
+///
+/// This prevents duplicate session IDs when responding to multi-entry SD messages
+/// (e.g., client sends Subscribe for multiple eventgroups, server responds with
+/// multiple Acks in ONE SD message instead of separate messages with different session IDs)
+///
+/// **Important:** When merging messages, option indices in entries are recalculated to point
+/// to the correct positions in the merged option array.
+pub fn cluster_sd_actions(actions: Vec<Action>) -> Vec<Action> {
+    use std::collections::HashMap;
+
+    let mut sd_by_target: HashMap<SocketAddr, SdMessage> = HashMap::new();
+    let mut other_actions = Vec::new();
+
+    for action in actions {
+        match action {
+            Action::SendSd { message, target } => {
+                // Merge this SD message into the existing message for this target
+                let clustered = sd_by_target.entry(target).or_insert_with(|| {
+                    // Create new message with same flags as the first message to this target
+                    SdMessage::new(message.flags)
+                });
+
+                // Calculate the option offset for this message's entries
+                // All options added so far determine the new base index
+                let option_offset = clustered.options.len() as u8;
+
+                // First, add all options from this message to the clustered message
+                for opt in &message.options {
+                    clustered.add_option(opt.clone());
+                }
+
+                // Then add all entries, adjusting their option indices to account for the offset
+                for mut sd_entry in message.entries.clone() {
+                    // Adjust option indices to account for previously added options
+                    if sd_entry.num_options_1 > 0 {
+                        sd_entry.index_1st_option =
+                            sd_entry.index_1st_option.saturating_add(option_offset);
+                    }
+                    if sd_entry.num_options_2 > 0 {
+                        sd_entry.index_2nd_option =
+                            sd_entry.index_2nd_option.saturating_add(option_offset);
+                    }
+                    clustered.add_entry(sd_entry);
+                }
+            }
+            other => other_actions.push(other),
+        }
+    }
+
+    // Convert clustered SD messages back to actions
+    other_actions.extend(
+        sd_by_target
+            .into_iter()
+            .map(|(target, message)| Action::SendSd { message, target }),
+    );
+
+    other_actions
 }
 
 /// Handle an RPC message (Request, Response, etc.)
@@ -661,7 +891,6 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
                 eventgroup_id,
                 subscription_id,
                 state,
-                &mut actions,
             );
         }
 
@@ -726,7 +955,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
     let offer_interval = Duration::from_millis(state.config.cyclic_offer_delay);
 
     // Capture values before mutable borrow
-    let sd_flags = state.sd_flags(true);
+    let sd_flags = state.sd_flags(false); // Multicast periodic messages, so FLAG_UNICAST=0
     let offer_ttl = state.config.offer_ttl;
     let find_ttl = state.config.find_ttl;
     let sd_multicast = state.config.sd_multicast;
@@ -738,8 +967,26 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
             continue;
         }
 
-        if now.duration_since(offered.last_offer) >= offer_interval {
+        let elapsed = now.duration_since(offered.last_offer);
+        tracing::debug!(
+            "[{:?}] [OFFER] Checking cyclic offer for {}:{:04X} v{}: elapsed={:?}ms, interval={:?}ms",
+            now,
+            key.service_id,
+            key.instance_id,
+            offered.major_version,
+            elapsed.as_millis(),
+            offer_interval.as_millis()
+        );
+
+        if elapsed >= offer_interval - Duration::from_millis(state.config.cyclic_offer_delay / 2) {
             offered.last_offer = now;
+            tracing::debug!(
+                "[OFFER] [{:?}] Sending cyclic offer for {}:{:04X} v{}",
+                now,
+                key.service_id,
+                key.instance_id,
+                offered.major_version
+            );
 
             let msg = build_offer_message(
                 key,
@@ -831,11 +1078,98 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         .server_subscribers
         .retain(|_, subscribers| !subscribers.is_empty());
 
+    // Cluster SD actions going to the same target to prevent duplicate session IDs
+    // This is especially important for cyclic offers when multiple services are offered
+    actions = cluster_sd_actions(actions);
+
     if actions.is_empty() {
         None
     } else {
         Some(actions)
     }
+}
+
+/// Flush pending initial offers - sends all queued offers in one clustered message
+///
+/// This is called when the flush deadline is reached (~50ms after first offer).
+/// Clustering prevents multiple session IDs when starting multiple services quickly.
+fn flush_pending_initial_offers(
+    config: &RuntimeConfig,
+    state: &mut RuntimeState,
+) -> Option<Vec<Action>> {
+    if state.pending_initial_offers.is_empty() {
+        state.pending_offers_deadline = None;
+        return None;
+    }
+
+    let mut msg = SdMessage::new(state.sd_flags(false)); // Multicast
+
+    // Helper to get the IP address - use advertised_ip if set, otherwise use endpoint IP
+    let get_ip = |ep: SocketAddr| -> std::net::Ipv4Addr {
+        if let Some(std::net::IpAddr::V4(ip)) = config.advertised_ip {
+            ip
+        } else {
+            match ep {
+                SocketAddr::V4(v4) => *v4.ip(),
+                _ => std::net::Ipv4Addr::LOCALHOST,
+            }
+        }
+    };
+
+    // Build clustered offer message for all pending offers
+    for key in &state.pending_initial_offers {
+        if let Some(offered) = state.offered.get_mut(key) {
+            offered.last_offer = tokio::time::Instant::now();
+            let mut option_indices = Vec::new();
+
+            // Add UDP endpoint option if present
+            if let Some(ep) = offered.udp_endpoint {
+                let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
+                    addr: get_ip(ep),
+                    port: ep.port(),
+                    protocol: L4Protocol::Udp,
+                });
+                option_indices.push(opt_idx);
+            }
+
+            // Add TCP endpoint option if present
+            if let Some(ep) = offered.tcp_endpoint {
+                let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
+                    addr: get_ip(ep),
+                    port: ep.port(),
+                    protocol: L4Protocol::Tcp,
+                });
+                option_indices.push(opt_idx);
+            }
+
+            let first_opt_idx = option_indices.first().copied().unwrap_or(0);
+            let num_options = option_indices.len() as u8;
+
+            let entry = SdEntry::offer_service(
+                key.service_id,
+                key.instance_id,
+                offered.major_version,
+                offered.minor_version,
+                config.offer_ttl,
+                first_opt_idx,
+                num_options,
+            );
+            msg.add_entry(entry);
+        }
+    }
+
+    tracing::debug!(
+        "[OFFER] Flushing {} pending initial offers (clustered into one SD message)",
+        state.pending_initial_offers.len()
+    );
+
+    state.pending_initial_offers.clear();
+    state.pending_offers_deadline = None;
+
+    Some(vec![Action::SendSd {
+        message: msg,
+        target: config.sd_multicast,
+    }])
 }
 
 /// Send `StopOffer` for all offered services (on shutdown)
@@ -858,7 +1192,7 @@ async fn send_stop_offers<U: UdpSocket>(
         ));
     }
 
-    let session_id = state.next_session_id();
+    let session_id = state.next_multicast_session_id();
     let data = msg.serialize(session_id);
     let _ = sd_socket.send_to(&data, config.sd_multicast).await;
 }
