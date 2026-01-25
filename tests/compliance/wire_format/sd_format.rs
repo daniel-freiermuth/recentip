@@ -10,6 +10,8 @@
 //! - TTL field encoding (24-bit)
 //! - SubscribeEventgroupAck TTL echoing
 
+use crate::client_behavior::helpers::{build_sd_offer_with_session, build_sd_subscribe_ack_with_session};
+
 use super::helpers::*;
 
 /// feat_req_recentipsd_141: SD Service ID is 0xFFFF
@@ -335,13 +337,17 @@ fn subscribe_eventgroup_ttl_on_wire() {
         sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
         let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-        let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
-
         let mut buf = [0u8; 1500];
         let mut found_subscribe = false;
 
+        let mut next_unicast_session_id: u16 = 1;
+        let mut next_multicast_session_id: u16 = 1;
+
         for _ in 0..30 {
+            let offer = build_sd_offer_with_session(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600, next_multicast_session_id, true, false);
             sd_socket.send_to(&offer, sd_multicast).await?;
+            next_multicast_session_id = next_multicast_session_id.wrapping_add(1);
+            tokio::time::sleep(Duration::from_millis(100)).await;
 
 
             while let Ok(Ok((len, from))) = tokio::time::timeout(Duration::from_millis(50), sd_socket.recv_from(&mut buf))
@@ -357,14 +363,17 @@ fn subscribe_eventgroup_ttl_on_wire() {
                             );
 
                             // Send ACK back via SD socket
-                            let ack = build_sd_subscribe_ack(
+                            let ack = build_sd_subscribe_ack_with_session(
                                 entry.service_id,
                                 entry.instance_id,
                                 entry.major_version,
                                 entry.eventgroup_id,
                                 CUSTOM_SUBSCRIBE_TTL, // Echo client's TTL per spec
+                                next_unicast_session_id
                             );
+                            next_unicast_session_id = next_unicast_session_id.wrapping_add(1);
                             sd_socket.send_to(&ack, from).await?;
+                            tokio::time::sleep(Duration::from_millis(100)).await;
                         }
                     }
                 }

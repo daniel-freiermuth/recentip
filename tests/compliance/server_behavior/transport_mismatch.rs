@@ -103,6 +103,7 @@ fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
             0x1234, 0x0001, 1, 0x0001, // eventgroup
             3600,   // TTL
             client_ip, 40000, // TCP port we're "listening" on
+            1,
         );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
@@ -231,8 +232,9 @@ fn subscribe_udp_endpoint_to_tcp_only_server_should_nack() {
         };
 
         // Send SubscribeEventgroup with UDP endpoint (mismatch - server is TCP only!)
-        let subscribe =
-            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40000);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40000, 1,
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for response - should be NACK

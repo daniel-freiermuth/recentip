@@ -3,9 +3,11 @@
 //! Tests event delivery when subscribing to multiple instances of the same service.
 //! This is a critical scenario that exposes bugs in event routing logic.
 
+use core::panic;
 use recentip::prelude::*;
-use recentip::Runtime;
 use std::time::Duration;
+
+use crate::helpers::wait_for_subscription;
 
 /// Type alias for turmoil-based runtime
 
@@ -46,7 +48,7 @@ fn subscribe_to_multiple_instances() {
             .await
             .unwrap();
 
-        let offering = runtime
+        let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
@@ -55,7 +57,10 @@ fn subscribe_to_multiple_instances() {
             .unwrap();
 
         // Wait for subscription
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::timeout(Duration::from_secs(5), wait_for_subscription(&mut offering))
+            .await
+            .expect("Timeout waiting for subscription to instance 1")
+            .expect("Failed while waiting for subscription to instance 1");
 
         // Send events from instance 1
         let eventgroup = EventgroupId::new(0x0001).unwrap();
@@ -68,6 +73,7 @@ fn subscribe_to_multiple_instances() {
             .unwrap();
 
         for i in 0..3 {
+            tracing::info!("Server1 sending event {}", i);
             let event_data = format!("instance1_event{}", i);
             event_handle.notify(event_data.as_bytes()).await.unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -85,7 +91,7 @@ fn subscribe_to_multiple_instances() {
             .await
             .unwrap();
 
-        let offering = runtime
+        let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002))
             .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
@@ -94,7 +100,10 @@ fn subscribe_to_multiple_instances() {
             .unwrap();
 
         // Wait for subscription
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::timeout(Duration::from_secs(5), wait_for_subscription(&mut offering))
+            .await
+            .expect("Timeout waiting for subscription to instance 2")
+            .expect("Failed while waiting for subscription to instance 2");
 
         // Send events from instance 2
         let eventgroup = EventgroupId::new(0x0001).unwrap();
@@ -107,6 +116,7 @@ fn subscribe_to_multiple_instances() {
             .unwrap();
 
         for i in 0..3 {
+            tracing::info!("Server2 sending event {}", i);
             let event_data = format!("instance2_event{}", i);
             event_handle.notify(event_data.as_bytes()).await.unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -160,6 +170,8 @@ fn subscribe_to_multiple_instances() {
         .await
         .expect("Subscribe timeout for instance 2")
         .expect("Subscribe to instance 2 should succeed");
+
+        tracing::info!("Both subscriptions established");
 
         // Collect events from both subscriptions
         let mut events1 = Vec::new();

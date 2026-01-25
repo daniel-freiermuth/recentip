@@ -15,9 +15,10 @@ use bytes::Bytes;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 use recentip::wire::{Header, SD_SERVICE_ID};
-use recentip::{Runtime, RuntimeConfig};
 use std::net::SocketAddr;
 use std::time::Duration;
+
+use crate::helpers::wait_for_subscription;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -518,7 +519,7 @@ fn udp_multicast_eventgroup_with_initial_events() {
             .unwrap();
 
         let eventgroup = EventgroupId::new(0x01).unwrap();
-        let offering = runtime
+        let mut offering = runtime
             .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
             .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
             .udp()
@@ -527,7 +528,10 @@ fn udp_multicast_eventgroup_with_initial_events() {
             .unwrap();
 
         // Wait for client to subscribe
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        tokio::time::timeout(Duration::from_secs(5), wait_for_subscription(&mut offering))
+            .await
+            .expect("Timeout waiting for subscription")
+            .expect("Sub expected");
 
         // Send initial event (unicast to subscriber)
         let event_id = EventId::new(0x8001).unwrap();
@@ -537,14 +541,22 @@ fn udp_multicast_eventgroup_with_initial_events() {
             .create()
             .await
             .unwrap();
+        tracing::info!("Sending initial event");
         event_handle.notify(b"initial value").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         // Send subsequent event (could be multicast in full implementation)
+        tracing::info!("Sending update event");
         event_handle.notify(b"update").await.unwrap();
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // Unfortunately, SOME/IP doesn't define a way to end subscriptions
+        // with guaranteed delivery of last event, so we just wait a bit before
+        // sending StopOffer.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        tracing::info!("Server done");
+        drop(event_handle);
+        drop(offering);
         Ok(())
     });
 
@@ -580,7 +592,10 @@ fn udp_multicast_eventgroup_with_initial_events() {
 
         assert!(initial.is_some(), "Should receive initial event");
         let initial_event = initial.unwrap();
-        assert_eq!(initial_event.payload.as_ref(), b"initial value");
+        assert_eq!(
+            String::from_utf8_lossy(&initial_event.payload),
+            "initial value"
+        );
 
         // Should receive subsequent event
         let update = tokio::time::timeout(Duration::from_secs(5), subscription.next())

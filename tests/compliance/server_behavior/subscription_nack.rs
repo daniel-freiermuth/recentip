@@ -85,8 +85,9 @@ fn subscribe_to_unknown_service_id_should_nack() {
             turmoil::lookup("raw_client").to_string().parse().unwrap();
 
         // Subscribe to SERVICE 0x9999 (NOT 0x1234!)
-        let subscribe =
-            build_sd_subscribe_with_udp_endpoint(0x9999, 0x0001, 1, 0x0001, 3600, client_ip, 40000);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x9999, 0x0001, 1, 0x0001, 3600, client_ip, 40000, 1,
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for NACK
@@ -167,8 +168,9 @@ fn subscribe_to_unknown_service_id_should_nack() {
             .unwrap();
 
         // Subscribe with CORRECT service ID 0x1234
-        let subscribe =
-            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40001);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40001, 1,
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for ACK
@@ -277,8 +279,9 @@ fn subscribe_to_unknown_instance_id_should_nack() {
             turmoil::lookup("raw_client").to_string().parse().unwrap();
 
         // Subscribe to INSTANCE 0x0099 (NOT 0x0001!)
-        let subscribe =
-            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0099, 1, 0x0001, 3600, client_ip, 40000);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0099, 1, 0x0001, 3600, client_ip, 40000, 1,
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for NACK
@@ -363,8 +366,9 @@ fn subscribe_to_unknown_instance_id_should_nack() {
             .unwrap();
 
         // Subscribe with CORRECT instance ID 0x0001
-        let subscribe =
-            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40001);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40001, 1,
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for ACK
@@ -480,8 +484,9 @@ fn subscribe_to_unknown_eventgroup_should_nack() {
             turmoil::lookup("raw_client").to_string().parse().unwrap();
 
         // Subscribe to EVENTGROUP 0x0099 (NOT 0x0001!)
-        let subscribe =
-            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 1, 0x0099, 3600, client_ip, 40000);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0099, 3600, client_ip, 40000, 1,
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for NACK
@@ -562,8 +567,9 @@ fn subscribe_to_unknown_eventgroup_should_nack() {
             .unwrap();
 
         // Subscribe with CORRECT eventgroup 0x0001
-        let subscribe =
-            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40001);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40001, 1,
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for ACK
@@ -673,7 +679,7 @@ fn subscribe_to_wrong_major_version_should_nack() {
 
         // Subscribe with MAJOR VERSION 99 (NOT 1!)
         let subscribe = build_sd_subscribe_with_udp_endpoint(
-            0x1234, 0x0001, 99, 0x0001, 3600, client_ip, 40000,
+            0x1234, 0x0001, 99, 0x0001, 3600, client_ip, 40000, 1,
         );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
@@ -760,8 +766,9 @@ fn subscribe_to_wrong_major_version_should_nack() {
             .unwrap();
 
         // Subscribe with CORRECT major version 1
-        let subscribe =
-            build_sd_subscribe_with_udp_endpoint(0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40001);
+        let subscribe = build_sd_subscribe_with_udp_endpoint(
+            0x1234, 0x0001, 1, 0x0001, 3600, client_ip, 40001, 1,
+        );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
         // Wait for ACK

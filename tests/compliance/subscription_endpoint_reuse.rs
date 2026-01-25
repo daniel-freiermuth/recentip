@@ -35,6 +35,9 @@ fn build_sd_offer(
     endpoint_port: u16,
     protocol: u8, // 0x11=UDP, 0x06=TCP
     ttl: u32,
+    session_id: u16,
+    reboot_flag: bool,
+    unicast_flag: bool,
 ) -> Vec<u8> {
     let mut packet = Vec::with_capacity(56);
 
@@ -44,14 +47,18 @@ fn build_sd_offer(
     let length_offset = packet.len();
     packet.extend_from_slice(&0u32.to_be_bytes()); // Length placeholder
     packet.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
-    packet.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
+    packet.extend_from_slice(&session_id.to_be_bytes()); // Session ID
     packet.push(0x01); // Protocol Version
     packet.push(0x01); // Interface Version
     packet.push(0x02); // Message Type = NOTIFICATION
     packet.push(0x00); // Return Code = E_OK
 
     // === SD Payload ===
-    packet.push(0xC0); // Flags: Unicast + Reboot
+    let mut flags = if unicast_flag { 0x40u8 } else { 0x00u8 };
+    if reboot_flag {
+        flags |= 0x80;
+    }
+    packet.push(flags);
     packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
 
     // Entries array length (16 bytes for one entry)
@@ -95,6 +102,8 @@ fn build_sd_subscribe_ack(
     major_version: u8,
     eventgroup_id: u16,
     ttl: u32,
+    session_id: u16,
+    reboot_flag: bool,
 ) -> Vec<u8> {
     let mut packet = Vec::with_capacity(48);
 
@@ -104,14 +113,18 @@ fn build_sd_subscribe_ack(
     let length_offset = packet.len();
     packet.extend_from_slice(&0u32.to_be_bytes()); // Length placeholder
     packet.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
-    packet.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
+    packet.extend_from_slice(&session_id.to_be_bytes()); // Session ID
     packet.push(0x01); // Protocol Version
     packet.push(0x01); // Interface Version
     packet.push(0x02); // Message Type = NOTIFICATION
     packet.push(0x00); // Return Code = E_OK
 
     // === SD Payload ===
-    packet.push(0xC0); // Flags: Unicast + Reboot
+    let mut flags = 0x40u8;
+    if reboot_flag {
+        flags |= 0x80;
+    }
+    packet.push(flags);
     packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
 
     // Entries array length (16 bytes for one entry)
@@ -222,6 +235,8 @@ fn udp_different_services_reuse_endpoint() {
             let mut buf = vec![0u8; 65535];
             // Track unique services subscribed (using bitmask: bit 0 = service 0x1111, bit 1 = service 0x2222)
             let mut services_subscribed: u32 = 0;
+            let mut next_multicast_session_id = 1;
+            let mut next_unicast_session_id = 1;
 
             // Handle SD messages
             loop {
@@ -270,8 +285,13 @@ fn udp_different_services_reuse_endpoint() {
                             30491,
                             0x11, // UDP
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer1, from).await;
+                        tokio::time::sleep(Duration::from_millis(100)).await;
 
                         let offer2 = build_sd_offer(
                             0x2222,
@@ -282,8 +302,13 @@ fn udp_different_services_reuse_endpoint() {
                             30492,
                             0x11, // UDP
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer2, from).await;
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                     }
                     0x06 => {
                         // SubscribeEventgroup - extract endpoint and send ACK
@@ -312,8 +337,12 @@ fn udp_different_services_reuse_endpoint() {
                                 major_version,
                                 eventgroup_id,
                                 ttl,
+                                next_unicast_session_id,
+                                true, // reboot_flag
                             );
+                            next_unicast_session_id += 1;
                             let _ = sd_socket.send_to(&ack, from).await;
+                            tokio::time::sleep(Duration::from_millis(93)).await;
                         }
                     }
                     _ => {}
@@ -417,6 +446,8 @@ fn udp_different_instances_reuse_endpoint() {
             let mut buf = vec![0u8; 65535];
             // Track unique instances subscribed (using bitmask: bit 0 = instance 0x0001, bit 1 = instance 0x0002)
             let mut instances_subscribed: u32 = 0;
+            let mut next_multicast_session_id = 1;
+            let mut next_unicast_session_id = 1;
 
             loop {
                 let (len, from) = match tokio::time::timeout(
@@ -462,8 +493,13 @@ fn udp_different_instances_reuse_endpoint() {
                             30491,
                             0x11,
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer1, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
 
                         let offer2 = build_sd_offer(
                             0x4444,
@@ -474,8 +510,13 @@ fn udp_different_instances_reuse_endpoint() {
                             30492,
                             0x11,
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer2, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
                     }
                     0x06 => {
                         if let Some(endpoint) = extract_ipv4_endpoint(data) {
@@ -501,8 +542,12 @@ fn udp_different_instances_reuse_endpoint() {
                                 major_version,
                                 eventgroup_id,
                                 ttl,
+                                next_unicast_session_id,
+                                true, // reboot_flag
                             );
+                            next_unicast_session_id += 1;
                             let _ = sd_socket.send_to(&ack, from).await;
+                            tokio::time::sleep(Duration::from_millis(93)).await;
                         }
                     }
                     _ => {}
@@ -594,6 +639,8 @@ fn udp_different_major_versions_reuse_endpoint() {
             let mut buf = vec![0u8; 65535];
             // Track unique major versions subscribed (bitmask: bit 0 = v1, bit 1 = v2)
             let mut versions_subscribed: u32 = 0;
+            let mut next_multicast_session_id = 1;
+            let mut next_unicast_session_id = 1;
 
             loop {
                 let (len, from) = match tokio::time::timeout(
@@ -639,8 +686,13 @@ fn udp_different_major_versions_reuse_endpoint() {
                             30491,
                             0x11,
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer1, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
 
                         let offer2 = build_sd_offer(
                             0x5555,
@@ -651,8 +703,13 @@ fn udp_different_major_versions_reuse_endpoint() {
                             30491, // Same port as v1
                             0x11,
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer2, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
                     }
                     0x06 => {
                         if let Some(endpoint) = extract_ipv4_endpoint(data) {
@@ -678,8 +735,12 @@ fn udp_different_major_versions_reuse_endpoint() {
                                 major_version,
                                 eventgroup_id,
                                 ttl,
+                                next_unicast_session_id,
+                                true, // reboot_flag
                             );
+                            next_unicast_session_id += 1;
                             let _ = sd_socket.send_to(&ack, from).await;
+                            tokio::time::sleep(Duration::from_millis(93)).await;
                         }
                     }
                     _ => {}
@@ -764,6 +825,7 @@ fn udp_different_major_versions_reuse_endpoint() {
 fn tcp_different_services_reuse_connection() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(10))
+        .max_message_latency(Duration::from_millis(85))
         .build();
 
     let connections_observed = Arc::new(Mutex::new(HashSet::new()));
@@ -803,6 +865,8 @@ fn tcp_different_services_reuse_connection() {
             let mut buf = vec![0u8; 65535];
             // Track unique services subscribed (using bitmask: bit 0 = service 0x6666, bit 1 = service 0x7777)
             let mut services_subscribed: u32 = 0;
+            let mut next_multicast_session_id = 1;
+            let mut next_unicast_session_id = 1;
 
             loop {
                 let (len, from) = match tokio::time::timeout(
@@ -847,8 +911,13 @@ fn tcp_different_services_reuse_connection() {
                             30500,
                             0x06,
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer1, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
 
                         let offer2 = build_sd_offer(
                             0x7777,
@@ -859,8 +928,13 @@ fn tcp_different_services_reuse_connection() {
                             30500,
                             0x06,
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer2, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
                     }
                     0x06 => {
                         let service_id = u16::from_be_bytes([data[28], data[29]]);
@@ -883,8 +957,12 @@ fn tcp_different_services_reuse_connection() {
                             major_version,
                             eventgroup_id,
                             ttl,
+                            next_unicast_session_id,
+                            true, // reboot_flag
                         );
+                        next_unicast_session_id += 1;
                         let _ = sd_socket.send_to(&ack, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
                     }
                     _ => {}
                 }
@@ -1004,6 +1082,8 @@ fn tcp_different_instances_reuse_connection() {
             let mut buf = vec![0u8; 65535];
             // Track unique instances subscribed (using bitmask: bit 0 = instance 0x0001, bit 1 = instance 0x0002)
             let mut instances_subscribed: u32 = 0;
+            let mut next_multicast_session_id = 1;
+            let mut next_unicast_session_id = 1;
 
             loop {
                 let (len, from) = match tokio::time::timeout(
@@ -1048,8 +1128,13 @@ fn tcp_different_instances_reuse_connection() {
                             30500,
                             0x06,
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer1, from).await;
+                        tokio::time::sleep(Duration::from_millis(100)).await;
 
                         let offer2 = build_sd_offer(
                             0x8888,
@@ -1060,8 +1145,13 @@ fn tcp_different_instances_reuse_connection() {
                             30500,
                             0x06,
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer2, from).await;
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                     }
                     0x06 => {
                         let service_id = u16::from_be_bytes([data[28], data[29]]);
@@ -1084,8 +1174,12 @@ fn tcp_different_instances_reuse_connection() {
                             major_version,
                             eventgroup_id,
                             ttl,
+                            next_unicast_session_id,
+                            true, // reboot_flag
                         );
+                        next_unicast_session_id += 1;
                         let _ = sd_socket.send_to(&ack, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
                     }
                     _ => {}
                 }
@@ -1200,6 +1294,8 @@ fn tcp_different_major_versions_reuse_connection() {
             let mut buf = vec![0u8; 65535];
             // Track unique major versions subscribed (using bitmask: bit 0 = version 1, bit 1 = version 2)
             let mut versions_subscribed: u32 = 0;
+            let mut next_multicast_session_id = 1;
+            let mut next_unicast_session_id = 1;
 
             loop {
                 let (len, from) = match tokio::time::timeout(
@@ -1245,8 +1341,13 @@ fn tcp_different_major_versions_reuse_connection() {
                             30500,
                             0x06,
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer_v1, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
 
                         let offer_v2 = build_sd_offer(
                             0x9999,
@@ -1257,8 +1358,13 @@ fn tcp_different_major_versions_reuse_connection() {
                             30500, // Same port as v1
                             0x06,
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer_v2, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
                     }
                     0x06 => {
                         let service_id = u16::from_be_bytes([data[28], data[29]]);
@@ -1281,8 +1387,12 @@ fn tcp_different_major_versions_reuse_connection() {
                             major_version,
                             eventgroup_id,
                             ttl,
+                            next_unicast_session_id,
+                            true, // reboot_flag
                         );
+                        next_unicast_session_id += 1;
                         let _ = sd_socket.send_to(&ack, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
                     }
                     _ => {}
                 }
@@ -1403,6 +1513,8 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
                 .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
             let mut buf = vec![0u8; 65535];
+            let mut next_multicast_session_id = 1;
+            let mut next_unicast_session_id = 1;
 
             loop {
                 let (len, from) = match tokio::time::timeout(
@@ -1448,8 +1560,13 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
                             30491,
                             0x11, // UDP
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer_s1, from).await;
+                        tokio::time::sleep(Duration::from_millis(100)).await;
 
                         let offer_s2 = build_sd_offer(
                             0x2222, // S2
@@ -1460,8 +1577,13 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
                             30492,
                             0x11, // UDP
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer_s2, from).await;
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                     }
                     0x06 => {
                         // SubscribeEventgroup
@@ -1492,8 +1614,12 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
                                 major_version,
                                 eventgroup_id,
                                 ttl,
+                                next_unicast_session_id,
+                                true, // reboot_flag
                             );
+                            next_unicast_session_id += 1;
                             let _ = sd_socket.send_to(&ack, from).await;
+                            tokio::time::sleep(Duration::from_millis(100)).await;
                         }
                     }
                     _ => {}
@@ -1634,6 +1760,7 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
 fn tcp_multiple_eventgroups_per_service_share_connection() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(10))
+        .max_message_latency(Duration::from_millis(90))
         .build();
 
     let connections_observed = Arc::new(Mutex::new(HashSet::new()));
@@ -1677,6 +1804,8 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
             });
 
             let mut buf = vec![0u8; 65535];
+            let mut next_multicast_session_id = 1;
+            let mut next_unicast_session_id = 1;
 
             loop {
                 let (len, from) = match tokio::time::timeout(
@@ -1722,8 +1851,13 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
                             30500,
                             0x06, // TCP
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer_s1, from).await;
+                        tokio::time::sleep(Duration::from_millis(93)).await;
 
                         let offer_s2 = build_sd_offer(
                             0x2222, // S2
@@ -1734,8 +1868,13 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
                             30500,
                             0x06, // TCP
                             0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast)
                         );
+                        next_multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer_s2, from).await;
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                     }
                     0x06 => {
                         // SubscribeEventgroup
@@ -1763,8 +1902,12 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
                             major_version,
                             eventgroup_id,
                             ttl,
+                            next_unicast_session_id,
+                            true, // reboot_flag
                         );
+                        next_unicast_session_id += 1;
                         let _ = sd_socket.send_to(&ack, from).await;
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                     }
                     _ => {}
                 }

@@ -161,6 +161,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
             3600,   // TTL
             client_ip,
             local_port, // our TCP connection's local port
+            1,
         );
         sd_socket.send_to(&subscribe1, server_sd_ep).await?;
 
@@ -176,6 +177,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
             3600,   // TTL
             client_ip,
             local_port, // same TCP connection
+            2,
         );
         sd_socket.send_to(&subscribe2, server_sd_ep).await?;
 
@@ -377,6 +379,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_udp() {
             3600,   // TTL
             client_ip,
             40000,  // our event port
+            1,
         );
         sd_socket.send_to(&subscribe1, server_ep).await?;
 
@@ -392,6 +395,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_udp() {
             3600,   // TTL
             client_ip,
             40000,  // same event port
+            2,
         );
         sd_socket.send_to(&subscribe2, server_ep).await?;
 
@@ -574,6 +578,7 @@ fn server_sends_events_to_each_unique_endpoint() {
             3600,
             client_ip,
             40001, // client1's event port
+            1,
         );
         sd_socket.send_to(&subscribe, server_ep).await?;
 
@@ -683,6 +688,7 @@ fn server_sends_events_to_each_unique_endpoint() {
             3600,
             client_ip,
             40002, // client2's event port
+            1,
         );
         sd_socket.send_to(&subscribe, server_ep).await?;
 

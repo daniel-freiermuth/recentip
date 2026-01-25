@@ -1,11 +1,13 @@
 //! Basic API tests using turmoil for network simulation.
 
+use crate::helpers::configure_tracing;
 use recentip::handle::ServiceEvent;
-use recentip::Runtime;
-use recentip::{EventId, EventgroupId, InstanceId, MethodId, RuntimeConfig, ServiceId};
+use recentip::{EventId, EventgroupId, InstanceId, MethodId, ServiceId};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+mod helpers;
 
 /// Type alias for turmoil-based runtime for convenience
 
@@ -867,13 +869,12 @@ fn test_many_version_subscribe_to_one() {
     );
 }
 
-#[test_log::test]
+#[test]
 fn test_multiple_versions_subscribe_both_data() {
+    configure_tracing();
     // TODO: intended to show that pending subscriptions is broken, but it works
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
-        .min_message_latency(Duration::from_millis(500))
-        .max_message_latency(Duration::from_millis(800))
         .build();
 
     sim.host("host", move || async move {

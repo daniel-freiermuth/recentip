@@ -20,6 +20,7 @@
 
 #[path = "compliance/api_types.rs"]
 mod api_types;
+mod helpers;
 
 // Async compliance tests using turmoil
 #[cfg(feature = "turmoil")]

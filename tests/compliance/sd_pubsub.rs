@@ -537,6 +537,7 @@ fn client_deregisters_with_stop_subscribe() {
         }
 
         // Give time for StopSubscribe to be sent
+        tokio::time::sleep(Duration::from_millis(500)).await;
         runtime.shutdown().await;
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
@@ -579,7 +580,7 @@ fn no_duplicate_events_for_overlapping_eventgroups_tcp() {
             .unwrap();
 
         // Wait for subscriptions
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(1500)).await;
 
         // Send event on both eventgroups - server should de-duplicate at wire level
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
@@ -712,7 +713,7 @@ fn no_delivery_to_wrong_eg_tcp() {
             .unwrap();
 
         // Wait for subscriptions
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(1500)).await;
 
         // Send different events to different eventgroups
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
@@ -887,7 +888,7 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
             .unwrap();
 
         // Wait for subscriptions
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(1500)).await;
 
         // Send event on both eventgroups - server should de-duplicate at wire level
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
@@ -900,6 +901,7 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
             .create()
             .await
             .unwrap();
+        tracing::info!("Server sending shared_event on both eventgroups");
         event_handle.notify(b"shared_event").await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -936,6 +938,7 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
             .subscribe()
             .await
             .unwrap();
+        tracing::info!("Client subscribed to both eventgroups");
 
         // Collect events from sub1
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
@@ -1020,12 +1023,14 @@ fn no_delivery_to_wrong_eg() {
             .unwrap();
 
         // Wait for subscriptions
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(1500)).await;
 
         // Send different events to different eventgroups
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
         let eventgroup2 = EventgroupId::new(0x0002).unwrap();
         let eventgroup3 = EventgroupId::new(0x0003).unwrap();
+
+        tracing::info!("Server sending events to different eventgroups");
 
         // Event 0x8001 is shared between eventgroup1 and eventgroup2
         let event1_handle = offering
@@ -1087,6 +1092,8 @@ fn no_delivery_to_wrong_eg() {
             .subscribe()
             .await
             .unwrap();
+
+        tracing::info!("Client subscribed to all three eventgroups");
 
         // Collect events from sub1
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
@@ -1159,77 +1166,6 @@ fn no_delivery_to_wrong_eg() {
 }
 
 /* WIP: To be reviewed
-/// [feat_req_recentipsd_1166] Server may optimize initial events for same field in same SD message.
-/// [feat_req_recentipsd_1167] Server shall send initial events separately for different SD messages.
-///
-/// Initial events behavior for multiple eventgroups.
-#[test_log::test]
-fn initial_events_for_multiple_eventgroups() {
-    covers!(feat_req_recentipsd_1166, feat_req_recentipsd_1167);
-
-    let events_received = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
-    let events_clone = Arc::clone(&events_received);
-
-    let mut sim = turmoil::Builder::new()
-        .simulation_duration(Duration::from_secs(30))
-        .build();
-
-    sim.host("server", || async {
-        let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-            .start_turmoil().await.unwrap();
-        let offering = runtime
-            .offer(PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001)).version(PUB_SUB_SERVICE_VERSION.0, PUB_SUB_SERVICE_VERSION.1)
-            .udp()
-            .start()
-            .await
-            .unwrap();
-
-        // Wait for subscriptions
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        // Send initial events for subscribed eventgroups
-        let eventgroup1 = EventgroupId::new(0x0001).unwrap();
-        let event_id = EventId::new(0x8001).unwrap();
-        let event_handle = offering.event(event_id).eventgroup(eventgroup1).create().await.unwrap();
-        event_handle.notify(b"initial_eg1").await.unwrap();
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        Ok(())
-    });
-
-    sim.client("client", async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .start_turmoil().await.unwrap();
-        let proxy = runtime.find(PUB_SUB_SERVICE_ID);
-        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
-            .await
-            .expect("Discovery timeout")
-            .expect("Service available");
-
-        let eventgroup1 = EventgroupId::new(0x0001).unwrap();
-        let mut sub1 = proxy.new_subscription().eventgroup(eventgroup1).subscribe().await.unwrap();
-
-        // Collect events
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-        while tokio::time::Instant::now() < deadline {
-            match tokio::time::timeout(Duration::from_millis(100), sub1.next()).await {
-                Ok(Some(event)) => events_clone.lock().unwrap().push(event.payload.to_vec()),
-                Ok(None) => break,
-                Err(_) => continue,
-            }
-        }
-        Ok(())
-    });
-
-    sim.run().unwrap();
-
-    let events = events_received.lock().unwrap();
-    assert!(!events.is_empty(), "Should receive initial events for eventgroup");
-}
 
 // ============================================================================
 // 5. LINK LOSS AND ERROR HANDLING

@@ -52,9 +52,8 @@ fn multiple_clients_call_same_server() {
         .build();
 
     // Server handles requests from multiple clients
-    sim.host("server", move || {
-        let flag = Arc::clone(&exec_flag);
-        async move {
+    let flag = Arc::clone(&exec_flag);
+    sim.client("server", async move {
             let runtime = recentip::configure().start_turmoil().await.unwrap();
 
             let mut offering = runtime
@@ -88,11 +87,10 @@ fn multiple_clients_call_same_server() {
 
             tokio::time::sleep(Duration::from_millis(100)).await;
             Ok(())
-        }
     });
 
     // Client 1
-    sim.host("client1", || async {
+    sim.client("client1", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
@@ -120,7 +118,7 @@ fn multiple_clients_call_same_server() {
     });
 
     // Client 2
-    sim.host("client2", || async {
+    sim.client("client2", async {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
         let runtime = recentip::configure()
@@ -148,7 +146,7 @@ fn multiple_clients_call_same_server() {
     });
 
     // Client 3
-    sim.host("client3", || async {
+    sim.client("client3", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
@@ -172,11 +170,6 @@ fn multiple_clients_call_same_server() {
         .expect("Call should succeed");
 
         assert_eq!(response.payload.as_ref(), b"response_to_client3");
-        Ok(())
-    });
-
-    sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
     });
 
@@ -624,38 +617,36 @@ fn multiple_servers_different_instances() {
     let exec_flag = Arc::clone(&executed);
 
     // Server 1 - Instance 0x0001
-    sim.host("server1", move || {
-        let flag = Arc::clone(&exec_flag);
-        async move {
-            let runtime = recentip::configure().start_turmoil().await.unwrap();
+    let flag = Arc::clone(&exec_flag);
+    sim.client("server1", async move {
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
-            let mut offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
-                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
-                .udp()
-                .start()
-                .await
-                .unwrap();
+        let mut offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
 
-            // Handle one request
-            if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
-                .await
-                .ok()
-                .flatten()
-            {
-                if let ServiceEvent::Call { responder, .. } = event {
-                    responder.reply(b"from_instance_1").await.unwrap();
-                }
+        // Handle one request
+        if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
+            .await
+            .ok()
+            .flatten()
+        {
+            if let ServiceEvent::Call { responder, .. } = event {
+                responder.reply(b"from_instance_1").await.unwrap();
             }
-
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            *flag.lock().unwrap() = true;
-            Ok(())
         }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        *flag.lock().unwrap() = true;
+        Ok(())
     });
 
     // Server 2 - Instance 0x0002
-    sim.host("server2", || async {
+    sim.client("server2", async {
         let runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server2").to_string().parse().unwrap())
             .start_turmoil()
@@ -686,7 +677,7 @@ fn multiple_servers_different_instances() {
     });
 
     // Client calls both instances
-    sim.host("client", || async {
+    sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
@@ -733,11 +724,6 @@ fn multiple_servers_different_instances() {
 
         assert_eq!(response2.payload.as_ref(), b"from_instance_2");
 
-        Ok(())
-    });
-
-    sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
     });
 

@@ -142,7 +142,7 @@ fn client_opens_tcp_connection() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -226,7 +226,7 @@ fn single_tcp_connection_reused() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -310,7 +310,7 @@ fn client_reestablishes_connection() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -407,7 +407,7 @@ fn each_message_has_own_header() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -490,7 +490,7 @@ fn multiple_messages_per_segment_parsed() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -567,7 +567,7 @@ fn connection_lost_fails_pending_requests() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -655,7 +655,7 @@ fn magic_cookie_recognized() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
             .start_turmoil()
@@ -734,7 +734,7 @@ fn tcp_segment_starts_with_magic_cookie() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
             .start_turmoil()
@@ -819,7 +819,7 @@ fn only_one_magic_cookie_per_segment() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
             .start_turmoil()
@@ -902,7 +902,7 @@ fn tcp_header_format_matches_udp() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -990,7 +990,7 @@ fn tcp_loss_does_not_reset_session_id() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -1097,7 +1097,7 @@ fn reboot_detection_resets_tcp_connections() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await

@@ -10,8 +10,10 @@
 //! - feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
 //! - Client must propagate NACK as an error to the caller
 
+use crate::client_behavior::helpers::build_sd_offer_with_session;
+
 use super::helpers::{
-    build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers, parse_sd_message,
+    build_sd_offer_tcp_only, build_sd_subscribe_ack_with_session, covers, parse_sd_message,
 };
 use recentip::prelude::*;
 use recentip::wire::{L4Protocol, SdOption};
@@ -26,9 +28,17 @@ fn build_sd_subscribe_nack(
     instance_id: u16,
     major_version: u8,
     eventgroup_id: u16,
+    session_id: u16,
 ) -> Vec<u8> {
     // NACK is just an ACK with TTL=0
-    build_sd_subscribe_ack(service_id, instance_id, major_version, eventgroup_id, 0)
+    build_sd_subscribe_ack_with_session(
+        service_id,
+        instance_id,
+        major_version,
+        eventgroup_id,
+        0,
+        session_id,
+    )
 }
 
 /// Build a raw SOME/IP event notification message
@@ -118,25 +128,37 @@ fn subscribe_nack_then_ack() {
             // RPC socket for sending events (v1 endpoint)
             let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
 
-            // Build offers for both versions
-            let offer_v1 = build_sd_offer(SERVICE_ID, INSTANCE_ID, VERSION_ACK, 0, my_ip, 30509, 3600);
-            let offer_v2 = build_sd_offer(SERVICE_ID, INSTANCE_ID, VERSION_NACK, 0, my_ip, 30510, 3600);
-
             let mut buf = [0u8; 1500];
             let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
             let mut v1_client_endpoint: Option<SocketAddr> = None;
+            let mut next_unicast_session_id = 1u16;
+            let mut next_multicast_session_id = 1u16;
+            let mut first_offer = true;
 
-            let mut ack : Option<Vec<u8>> = None;
-            let mut nack : Option<Vec<u8>> = None;
+            let mut ack = None;
+            let mut nack = None;
 
             while tokio::time::Instant::now() < deadline {
                 // Send offers periodically
                 if last_offer.elapsed() >= Duration::from_millis(500) {
+                    let offer_v1 = build_sd_offer_with_session(
+                        SERVICE_ID, INSTANCE_ID, VERSION_ACK, 0, my_ip, 30509, 3600,
+                        next_multicast_session_id, first_offer, false,
+                    );
+                    next_multicast_session_id += 1;
                     sd_socket.send_to(&offer_v1, sd_multicast).await?;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    let offer_v2 = build_sd_offer_with_session(
+                        SERVICE_ID, INSTANCE_ID, VERSION_NACK, 0, my_ip, 30510, 3600,
+                        next_multicast_session_id, first_offer, false,
+                    );
+                    next_multicast_session_id = next_multicast_session_id.wrapping_add(1);
                     sd_socket.send_to(&offer_v2, sd_multicast).await?;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                     eprintln!("[wire_server] Sent offers for v1 and v2");
                     last_offer = tokio::time::Instant::now();
+                    first_offer = false;
                 }
 
                 // Check for incoming messages
@@ -165,14 +187,7 @@ fn subscribe_nack_then_ack() {
                                     }
 
                                     // ACK for v1
-                                    let ack_bytes = build_sd_subscribe_ack(
-                                        entry.service_id,
-                                        entry.instance_id,
-                                        entry.major_version,
-                                        entry.eventgroup_id,
-                                        entry.ttl,
-                                    );
-                                    ack = Some(ack_bytes);
+                                    ack = Some(());
                                     ack_count.fetch_add(1, Ordering::SeqCst);
                                     eprintln!("[wire_server] Sent ACK for v1");
 
@@ -192,19 +207,32 @@ fn subscribe_nack_then_ack() {
                                     }
                                 } else if entry.major_version == VERSION_NACK {
                                     // NACK for v2
-                                    let nack_bytes = build_sd_subscribe_nack(
-                                        entry.service_id,
-                                        entry.instance_id,
-                                        entry.major_version,
-                                        entry.eventgroup_id,
-                                    );
-                                    nack = Some(nack_bytes);
+                                    nack = Some(());
                                     nack_count.fetch_add(1, Ordering::SeqCst);
                                     eprintln!("[wire_server] Sent NACK for v2");
                                 }
-                                if let (Some(ack), Some(nack)) = (&ack, &nack) {
+                                if let (Some(_), Some(_)) = (&ack, &nack) {
+                                    let nack = build_sd_subscribe_nack(
+                                        SERVICE_ID,
+                                        INSTANCE_ID,
+                                        VERSION_NACK,
+                                        EVENTGROUP_ID,
+                                        next_unicast_session_id,
+                                    );
+                                    next_unicast_session_id += 1;
                                     sd_socket.send_to(&nack, from).await?;
+                                    tokio::time::sleep(Duration::from_millis(100)).await;
+                                    let ack = build_sd_subscribe_ack_with_session(
+                                        SERVICE_ID,
+                                        INSTANCE_ID,
+                                        VERSION_ACK,
+                                        EVENTGROUP_ID,
+                                        entry.ttl,
+                                        next_unicast_session_id,
+                                    );
+                                    next_unicast_session_id += 1;
                                     sd_socket.send_to(&ack, from).await?;
+                                    tokio::time::sleep(Duration::from_millis(10)).await;
                                 }
                             }
                         }
@@ -392,25 +420,37 @@ fn subscribe_ack_then_nack() {
             // RPC socket for sending events (v1 endpoint)
             let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
 
-            // Build offers for both versions
-            let offer_v1 = build_sd_offer(SERVICE_ID, INSTANCE_ID, VERSION_ACK, 0, my_ip, 30509, 3600);
-            let offer_v2 = build_sd_offer(SERVICE_ID, INSTANCE_ID, VERSION_NACK, 0, my_ip, 30510, 3600);
-
             let mut buf = [0u8; 1500];
             let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
             let mut v1_client_endpoint: Option<SocketAddr> = None;
+            let mut next_unicast_session_id = 1u16;
+            let mut next_multicast_session_id = 1u16;
+            let mut first_offer = true;
 
-            let mut ack : Option<Vec<u8>> = None;
-            let mut nack : Option<Vec<u8>> = None;
+            let mut ack = None;
+            let mut nack = None;
 
             while tokio::time::Instant::now() < deadline {
                 // Send offers periodically
                 if last_offer.elapsed() >= Duration::from_millis(500) {
+                    let offer_v1 = build_sd_offer_with_session(
+                        SERVICE_ID, INSTANCE_ID, VERSION_ACK, 0, my_ip, 30509, 3600,
+                        next_multicast_session_id, first_offer, false,
+                    );
+                    next_multicast_session_id += 1;
                     sd_socket.send_to(&offer_v1, sd_multicast).await?;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    let offer_v2 = build_sd_offer_with_session(
+                        SERVICE_ID, INSTANCE_ID, VERSION_NACK, 0, my_ip, 30510, 3600,
+                        next_multicast_session_id, first_offer, false,
+                    );
+                    next_multicast_session_id = next_multicast_session_id.wrapping_add(1);
                     sd_socket.send_to(&offer_v2, sd_multicast).await?;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                     eprintln!("[wire_server] Sent offers for v1 and v2");
                     last_offer = tokio::time::Instant::now();
+                    first_offer = false;
                 }
 
                 // Check for incoming messages
@@ -438,15 +478,7 @@ fn subscribe_ack_then_nack() {
                                         eprintln!("[wire_server] v1 client endpoint: {:?}", v1_client_endpoint);
                                     }
 
-                                    // ACK for v1
-                                    let ack_bytes = build_sd_subscribe_ack(
-                                        entry.service_id,
-                                        entry.instance_id,
-                                        entry.major_version,
-                                        entry.eventgroup_id,
-                                        entry.ttl,
-                                    );
-                                    ack = Some(ack_bytes);
+                                    ack = Some(());
                                     ack_count.fetch_add(1, Ordering::SeqCst);
                                     eprintln!("[wire_server] Sent ACK for v1");
 
@@ -465,20 +497,34 @@ fn subscribe_ack_then_nack() {
                                         eprintln!("[wire_server] Sent event to v1 subscriber at {:?}", endpoint);
                                     }
                                 } else if entry.major_version == VERSION_NACK {
-                                    // NACK for v2
-                                    let nack_bytes = build_sd_subscribe_nack(
-                                        entry.service_id,
-                                        entry.instance_id,
-                                        entry.major_version,
-                                        entry.eventgroup_id,
-                                    );
-                                    nack = Some(nack_bytes);
+                                    nack = Some(());
                                     nack_count.fetch_add(1, Ordering::SeqCst);
                                     eprintln!("[wire_server] Sent NACK for v2");
                                 }
-                                if let (Some(ack), Some(nack)) = (&ack, &nack) {
-                                    sd_socket.send_to(&ack, from).await?;
-                                    sd_socket.send_to(&nack, from).await?;
+                                if let (Some(_), Some(_)) = (&ack, &nack) {
+                                    // ACK for v1
+                                    let ack_bytes = build_sd_subscribe_ack_with_session(
+                                        SERVICE_ID,
+                                        INSTANCE_ID,
+                                        VERSION_ACK,
+                                        EVENTGROUP_ID,
+                                        entry.ttl,
+                                        next_unicast_session_id,
+                                    );
+                                    next_unicast_session_id += 1;
+                                    sd_socket.send_to(&ack_bytes, from).await?;
+                                    tokio::time::sleep(Duration::from_millis(100)).await;
+                                    // NACK for v2
+                                    let nack_bytes = build_sd_subscribe_nack(
+                                        SERVICE_ID,
+                                        INSTANCE_ID,
+                                        VERSION_NACK,
+                                        EVENTGROUP_ID,
+                                        next_unicast_session_id,
+                                    );
+                                    next_unicast_session_id += 1;
+                                    sd_socket.send_to(&nack_bytes, from).await?;
+                                    tokio::time::sleep(Duration::from_millis(10)).await;
                                 }
                             }
                         }
@@ -677,22 +723,34 @@ fn subscribe_ack_and_nack_different_services() {
             // RPC socket for sending events (v1 endpoint)
             let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
 
-            // Build offers for both versions
-            let offer_v1 = build_sd_offer(SERVICE_ID, INSTANCE_ID, VERSION_ACK, 0, my_ip, 30509, 3600);
-            let offer_v2 = build_sd_offer(SERVICE_ID, INSTANCE_ID, VERSION_NACK, 0, my_ip, 30510, 3600);
-
             let mut buf = [0u8; 1500];
             let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
             let mut v1_client_endpoint: Option<SocketAddr> = None;
+            let mut next_unicast_session_id = 1u16;
+            let mut next_multicast_session_id = 1u16;
+            let mut first_offer = true;
 
             while tokio::time::Instant::now() < deadline {
                 // Send offers periodically
                 if last_offer.elapsed() >= Duration::from_millis(500) {
+                    let offer_v1 = build_sd_offer_with_session(
+                        SERVICE_ID, INSTANCE_ID, VERSION_ACK, 0, my_ip, 30509, 3600,
+                        next_multicast_session_id, first_offer, false,
+                    );
+                    next_multicast_session_id += 1;
                     sd_socket.send_to(&offer_v1, sd_multicast).await?;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    let offer_v2 = build_sd_offer_with_session(
+                        SERVICE_ID, INSTANCE_ID, VERSION_NACK, 0, my_ip, 30510, 3600,
+                        next_multicast_session_id, first_offer, false,
+                    );
+                    next_multicast_session_id = next_multicast_session_id.wrapping_add(1);
                     sd_socket.send_to(&offer_v2, sd_multicast).await?;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                     eprintln!("[wire_server] Sent offers for v1 and v2");
                     last_offer = tokio::time::Instant::now();
+                    first_offer = false;
                 }
 
                 // Check for incoming messages
@@ -721,14 +779,17 @@ fn subscribe_ack_and_nack_different_services() {
                                     }
 
                                     // ACK for v1
-                                    let ack = build_sd_subscribe_ack(
+                                    let ack = build_sd_subscribe_ack_with_session(
                                         entry.service_id,
                                         entry.instance_id,
                                         entry.major_version,
                                         entry.eventgroup_id,
                                         entry.ttl,
+                                        next_unicast_session_id,
                                     );
+                                    next_unicast_session_id += 1;
                                     sd_socket.send_to(&ack, from).await?;
+                                    tokio::time::sleep(Duration::from_millis(10)).await;
                                     ack_count.fetch_add(1, Ordering::SeqCst);
                                     eprintln!("[wire_server] Sent ACK for v1");
 
@@ -753,8 +814,11 @@ fn subscribe_ack_and_nack_different_services() {
                                         entry.instance_id,
                                         entry.major_version,
                                         entry.eventgroup_id,
+                                        next_unicast_session_id,
                                     );
+                                    next_unicast_session_id += 1;
                                     sd_socket.send_to(&nack, from).await?;
+                                    tokio::time::sleep(Duration::from_millis(10)).await;
                                     nack_count.fetch_add(1, Ordering::SeqCst);
                                     eprintln!("[wire_server] Sent NACK for v2");
                                 }
@@ -963,26 +1027,33 @@ fn events_received_after_subscribe_ack() {
             // RPC socket to send events (same port as advertised in offer)
             let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
 
-            // Build offer
-            let offer = build_sd_offer(
-                SERVICE_ID,
-                INSTANCE_ID,
-                MAJOR_VERSION,
-                0,
-                my_ip,
-                30509,
-                3600,
-            );
-
             let mut buf = [0u8; 1500];
             let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
             let mut client_endpoint: Option<SocketAddr> = None;
             let mut events_sent = 0;
 
+            let mut next_unicast_session_id = 1u16;
+            let mut next_multicast_session_id = 1u16;
+
             while tokio::time::Instant::now() < deadline {
                 // Send offers periodically
                 if last_offer.elapsed() >= Duration::from_millis(500) {
+                    // Build offer
+                    let offer = build_sd_offer_with_session(
+                        SERVICE_ID,
+                        INSTANCE_ID,
+                        MAJOR_VERSION,
+                        0,
+                        my_ip,
+                        30509,
+                        3600,
+                        next_multicast_session_id,
+                        true,
+                        false,
+                    );
+                    next_multicast_session_id += 1;
+
                     sd_socket.send_to(&offer, sd_multicast).await?;
                     eprintln!("[wire_server] Sent offer");
                     last_offer = tokio::time::Instant::now();
@@ -1015,14 +1086,17 @@ fn events_received_after_subscribe_ack() {
                                 }
 
                                 // ACK the subscription
-                                let ack = build_sd_subscribe_ack(
+                                let ack = build_sd_subscribe_ack_with_session(
                                     entry.service_id,
                                     entry.instance_id,
                                     entry.major_version,
                                     entry.eventgroup_id,
                                     entry.ttl,
+                                    next_unicast_session_id,
                                 );
+                                next_unicast_session_id += 1;
                                 sd_socket.send_to(&ack, from).await?;
+                                tokio::time::sleep(Duration::from_millis(100)).await;
                                 eprintln!("[wire_server] Sent ACK");
                             }
                         }
@@ -1178,8 +1252,8 @@ fn multi_eventgroup_subscription_fails_if_one_nacked() {
                 .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
             let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-            // Build offer for the service
-            let offer_bytes = build_sd_offer(
+            // Build offer for the service (multicast, not unicast)
+            let offer_bytes = build_sd_offer_with_session(
                 SERVICE_ID,
                 INSTANCE_ID,
                 MAJOR_VERSION,
@@ -1187,10 +1261,14 @@ fn multi_eventgroup_subscription_fails_if_one_nacked() {
                 my_ip,
                 30509,
                 0xFFFFFF,
+                1,     // session_id
+                true,  // reboot_flag
+                false, // unicast_flag (multicast offer)
             );
 
             let mut buf = [0u8; 65535];
             let mut offer_sent = false;
+            let mut next_unicast_session_id = 1u16;
 
             loop {
                 let (len, from) = sd_socket.recv_from(&mut buf).await?;
@@ -1215,14 +1293,17 @@ fn multi_eventgroup_subscription_fails_if_one_nacked() {
 
                                 if eventgroup_id == EVENTGROUP_ACK {
                                     // ACK this eventgroup
-                                    let ack_bytes = build_sd_subscribe_ack(
+                                    let ack_bytes = build_sd_subscribe_ack_with_session(
                                         SERVICE_ID,
                                         INSTANCE_ID,
                                         MAJOR_VERSION,
                                         EVENTGROUP_ACK,
                                         0xFFFFFF,
+                                        next_unicast_session_id,
                                     );
+                                    next_unicast_session_id += 1;
                                     sd_socket.send_to(&ack_bytes, from).await?;
+                                    tokio::time::sleep(Duration::from_millis(100)).await;
                                     ack_count.fetch_add(1, Ordering::SeqCst);
                                     eprintln!("[wire_server] Sent ACK for EG1");
                                 } else if eventgroup_id == EVENTGROUP_NACK {
@@ -1232,10 +1313,13 @@ fn multi_eventgroup_subscription_fails_if_one_nacked() {
                                         INSTANCE_ID,
                                         MAJOR_VERSION,
                                         EVENTGROUP_NACK,
+                                        next_unicast_session_id,
                                     );
+                                    next_unicast_session_id += 1;
                                     sd_socket.send_to(&nack_bytes, from).await?;
                                     nack_count.fetch_add(1, Ordering::SeqCst);
                                     eprintln!("[wire_server] Sent NACK for EG2");
+                                    tokio::time::sleep(Duration::from_millis(100)).await;
                                 }
                             }
                             _ => {}
@@ -1299,6 +1383,8 @@ fn multi_eventgroup_subscription_fails_if_one_nacked() {
             }
         }
 
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
         Ok(())
     });
 
@@ -1359,7 +1445,7 @@ fn multi_eventgroup_subscription_fails_if_one_nacked_tcp() {
             let tcp_listener =
                 turmoil::net::TcpListener::bind(format!("0.0.0.0:{}", TCP_PORT)).await?;
 
-            // Build offer for the service with TCP endpoint
+            // Build offer for the service with TCP endpoint (multicast, not unicast)
             let offer_bytes = build_sd_offer_tcp_only(
                 SERVICE_ID,
                 INSTANCE_ID,
@@ -1368,10 +1454,14 @@ fn multi_eventgroup_subscription_fails_if_one_nacked_tcp() {
                 my_ip,
                 TCP_PORT,
                 0xFFFFFF,
+                1,     // session_id
+                true,  // reboot_flag
+                false, // unicast_flag (multicast offer)
             );
 
             let mut buf = [0u8; 65535];
             let mut offer_sent = false;
+            let mut next_unicast_session_id = 1u16;
 
             // Spawn TCP accept task (just accept connections, don't need to do anything)
             tokio::spawn(async move {
@@ -1408,14 +1498,17 @@ fn multi_eventgroup_subscription_fails_if_one_nacked_tcp() {
 
                                 if eventgroup_id == EVENTGROUP_ACK {
                                     // ACK this eventgroup
-                                    let ack_bytes = build_sd_subscribe_ack(
+                                    let ack_bytes = build_sd_subscribe_ack_with_session(
                                         SERVICE_ID,
                                         INSTANCE_ID,
                                         MAJOR_VERSION,
                                         EVENTGROUP_ACK,
                                         0xFFFFFF,
+                                        next_unicast_session_id,
                                     );
+                                    next_unicast_session_id += 1;
                                     sd_socket.send_to(&ack_bytes, from).await?;
+                                    tokio::time::sleep(Duration::from_millis(10)).await;
                                     ack_count.fetch_add(1, Ordering::SeqCst);
                                     eprintln!("[wire_server] Sent ACK for EG1");
                                 } else if eventgroup_id == EVENTGROUP_NACK {
@@ -1425,9 +1518,12 @@ fn multi_eventgroup_subscription_fails_if_one_nacked_tcp() {
                                         INSTANCE_ID,
                                         MAJOR_VERSION,
                                         EVENTGROUP_NACK,
+                                        next_unicast_session_id,
                                     );
+                                    next_unicast_session_id += 1;
                                     sd_socket.send_to(&nack_bytes, from).await?;
                                     nack_count.fetch_add(1, Ordering::SeqCst);
+                                    tokio::time::sleep(Duration::from_millis(10)).await;
                                     eprintln!("[wire_server] Sent NACK for EG2");
                                 }
                             }

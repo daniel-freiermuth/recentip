@@ -13,6 +13,7 @@
 //! - Session ID increment behavior
 
 use super::helpers::*;
+use crate::client_behavior::helpers::build_sd_offer_with_session;
 
 /// feat_req_recentip_103: REQUEST (0x00) message type on wire
 /// feat_req_recentip_60: Message ID = Service ID || Method ID
@@ -614,14 +615,26 @@ fn session_id_increment_on_wire() {
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
         let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-        let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
-
         let mut buf = [0u8; 1500];
         let mut session_ids = Vec::new();
+        let mut next_multicast_session_id = 1u16;
 
         // Send offers and receive requests
         for _ in 0..30 {
             // Send an offer periodically
+            let offer = build_sd_offer_with_session(
+                0x1234,
+                0x0001,
+                1,
+                0,
+                my_ip,
+                30509,
+                3600,
+                next_multicast_session_id,
+                true,
+                false,
+            );
+            next_multicast_session_id += 1;
             sd_socket.send_to(&offer, sd_multicast).await?;
 
             // Check for RPC request

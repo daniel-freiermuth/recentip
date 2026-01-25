@@ -190,6 +190,75 @@ pub fn build_sd_offer(
     packet
 }
 
+/// Build a raw SOME/IP-SD OfferService message with configurable session ID and flags
+pub fn build_sd_offer_with_session(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    minor_version: u32,
+    endpoint_ip: std::net::Ipv4Addr,
+    endpoint_port: u16,
+    ttl: u32,
+    session_id: u16,
+    reboot_flag: bool,
+    unicast_flag: bool,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(56);
+
+    // === SOME/IP Header (16 bytes) ===
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes()); // Service ID = SD
+    packet.extend_from_slice(&0x8100u16.to_be_bytes()); // Method ID = SD
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes()); // placeholder
+    packet.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
+    packet.extend_from_slice(&session_id.to_be_bytes()); // Session ID (configurable)
+    packet.push(0x01); // Protocol Version
+    packet.push(0x01); // Interface Version
+    packet.push(0x02); // Message Type = NOTIFICATION
+    packet.push(0x00); // Return Code = E_OK
+
+    // === SD Payload ===
+    let mut flags = if unicast_flag { 0x40u8 } else { 0x00u8 }; // Unicast flag
+    if reboot_flag {
+        flags |= 0x80; // Reboot flag
+    }
+    packet.push(flags);
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
+
+    // Entries array length (16 bytes for one entry)
+    packet.extend_from_slice(&16u32.to_be_bytes());
+
+    // === OfferService Entry (16 bytes) ===
+    packet.push(0x01); // Type = OfferService
+    packet.push(0x00); // Index 1st options
+    packet.push(0x00); // Index 2nd options
+    packet.push(0x10); // # of opt 1 | # of opt 2 = 1 option in run 1
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    packet.push(major_version);
+    let ttl_bytes = ttl.to_be_bytes();
+    packet.extend_from_slice(&ttl_bytes[1..4]); // TTL (24-bit)
+    packet.extend_from_slice(&minor_version.to_be_bytes());
+
+    // Options array length (12 bytes for IPv4 endpoint)
+    packet.extend_from_slice(&12u32.to_be_bytes());
+
+    // === IPv4 Endpoint Option (12 bytes) ===
+    packet.extend_from_slice(&9u16.to_be_bytes()); // Length
+    packet.push(0x04); // Type = IPv4 Endpoint
+    packet.push(0x00); // Reserved
+    packet.extend_from_slice(&endpoint_ip.octets());
+    packet.push(0x00); // Reserved
+    packet.push(0x11); // L4 Protocol = UDP
+    packet.extend_from_slice(&endpoint_port.to_be_bytes());
+
+    // Fix up length field
+    let length = (packet.len() - 8) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
+
+    packet
+}
+
 /// Build a raw SOME/IP-SD OfferService message with TCP endpoint only
 pub fn build_sd_offer_tcp_only(
     service_id: u16,
@@ -199,6 +268,9 @@ pub fn build_sd_offer_tcp_only(
     endpoint_ip: std::net::Ipv4Addr,
     endpoint_port: u16,
     ttl: u32,
+    session_id: u16,
+    reboot_flag: bool,
+    unicast_flag: bool,
 ) -> Vec<u8> {
     let mut packet = Vec::with_capacity(56);
 
@@ -207,13 +279,17 @@ pub fn build_sd_offer_tcp_only(
     let length_offset = packet.len();
     packet.extend_from_slice(&0u32.to_be_bytes());
     packet.extend_from_slice(&0x0000u16.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.extend_from_slice(&session_id.to_be_bytes());
     packet.push(0x01);
     packet.push(0x01);
     packet.push(0x02);
     packet.push(0x00);
 
-    packet.push(0xC0);
+    let mut flags = if unicast_flag { 0x40u8 } else { 0x00u8 };
+    if reboot_flag {
+        flags |= 0x80;
+    }
+    packet.push(flags);
     packet.extend_from_slice(&[0x00, 0x00, 0x00]);
     packet.extend_from_slice(&16u32.to_be_bytes());
 
@@ -269,6 +345,80 @@ pub fn build_sd_offer_dual_stack(
     packet.push(0x00);
 
     packet.push(0xC0);
+    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+    packet.extend_from_slice(&16u32.to_be_bytes());
+
+    packet.push(0x01);
+    packet.push(0x00);
+    packet.push(0x00);
+    packet.push(0x20); // 2 options in run 1
+    packet.extend_from_slice(&service_id.to_be_bytes());
+    packet.extend_from_slice(&instance_id.to_be_bytes());
+    packet.push(major_version);
+    let ttl_bytes = ttl.to_be_bytes();
+    packet.extend_from_slice(&ttl_bytes[1..4]);
+    packet.extend_from_slice(&minor_version.to_be_bytes());
+
+    // 24 bytes for 2 endpoints
+    packet.extend_from_slice(&24u32.to_be_bytes());
+
+    // UDP endpoint
+    packet.extend_from_slice(&9u16.to_be_bytes());
+    packet.push(0x04);
+    packet.push(0x00);
+    packet.extend_from_slice(&endpoint_ip.octets());
+    packet.push(0x00);
+    packet.push(0x11); // UDP
+    packet.extend_from_slice(&udp_port.to_be_bytes());
+
+    // TCP endpoint
+    packet.extend_from_slice(&9u16.to_be_bytes());
+    packet.push(0x04);
+    packet.push(0x00);
+    packet.extend_from_slice(&endpoint_ip.octets());
+    packet.push(0x00);
+    packet.push(0x06); // TCP
+    packet.extend_from_slice(&tcp_port.to_be_bytes());
+
+    let length = (packet.len() - 8) as u32;
+    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
+
+    packet
+}
+
+/// Build a raw SOME/IP-SD OfferService message with both UDP and TCP endpoints
+/// and configurable session ID and flags
+pub fn build_sd_offer_dual_stack_with_session(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    minor_version: u32,
+    endpoint_ip: std::net::Ipv4Addr,
+    udp_port: u16,
+    tcp_port: u16,
+    ttl: u32,
+    session_id: u16,
+    reboot_flag: bool,
+    unicast_flag: bool,
+) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(68);
+
+    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
+    packet.extend_from_slice(&0x8100u16.to_be_bytes());
+    let length_offset = packet.len();
+    packet.extend_from_slice(&0u32.to_be_bytes());
+    packet.extend_from_slice(&0x0000u16.to_be_bytes());
+    packet.extend_from_slice(&session_id.to_be_bytes());
+    packet.push(0x01);
+    packet.push(0x01);
+    packet.push(0x02);
+    packet.push(0x00);
+
+    let mut flags = if unicast_flag { 0x40u8 } else { 0x00u8 };
+    if reboot_flag {
+        flags |= 0x80;
+    }
+    packet.push(flags);
     packet.extend_from_slice(&[0x00, 0x00, 0x00]);
     packet.extend_from_slice(&16u32.to_be_bytes());
 
@@ -477,6 +627,25 @@ pub fn build_sd_subscribe_ack(
     eventgroup_id: u16,
     ttl: u32,
 ) -> Vec<u8> {
+    build_sd_subscribe_ack_with_session(
+        service_id,
+        instance_id,
+        major_version,
+        eventgroup_id,
+        ttl,
+        0x0001,
+    )
+}
+
+/// Build a raw SOME/IP-SD SubscribeEventgroupAck message with explicit session ID
+pub fn build_sd_subscribe_ack_with_session(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    eventgroup_id: u16,
+    ttl: u32,
+    session_id: u16,
+) -> Vec<u8> {
     let mut packet = Vec::with_capacity(64);
 
     packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
@@ -484,7 +653,7 @@ pub fn build_sd_subscribe_ack(
     let length_offset = packet.len();
     packet.extend_from_slice(&0u32.to_be_bytes());
     packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
+    packet.extend_from_slice(&session_id.to_be_bytes());
     packet.push(0x01);
     packet.push(0x01);
     packet.push(0x02);

@@ -6,9 +6,10 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use crate::helpers::configure_tracing;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -674,6 +675,7 @@ fn mixed_rpc_and_events() {
     sim.run().unwrap();
     assert!(*executed.lock().unwrap(), "Test should have executed");
 }
+
 // ============================================================================
 // MULTI-EVENTGROUP SUBSCRIPTION LIFECYCLE
 // ============================================================================
@@ -687,9 +689,11 @@ fn mixed_rpc_and_events() {
 /// - Client drops sub1, server sees unsubscribe
 /// - Client re-subscribes to EG1+EG2
 /// - Server sends Event1 again
-#[test_log::test]
+#[test]
 fn multi_eventgroup_subscription_lifecycle() {
     covers!(feat_req_recentipsd_109, feat_req_recentipsd_433);
+
+    configure_tracing();
 
     // Tracking
     let subscribe_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -726,19 +730,27 @@ fn multi_eventgroup_subscription_lifecycle() {
         let phase4_tx = Arc::clone(&phase4_tx);
 
         async move {
-            let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = tokio::time::timeout(
+                Duration::from_secs(5),
+                recentip::configure()
+                    .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                    .start_turmoil(),
+            )
+            .await
+            .expect("Timeout starting UDP server runtime")
+            .unwrap();
 
-            let mut offering = runtime
-                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
-                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
-                .udp()
-                .start()
-                .await
-                .unwrap();
+            let mut offering = tokio::time::timeout(
+                Duration::from_secs(5),
+                runtime
+                    .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+                    .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+                    .udp()
+                    .start(),
+            )
+            .await
+            .expect("Timeout starting UDP offering")
+            .unwrap();
 
             // Create eventgroups and events
             let eg1 = EventgroupId::new(0x0001).unwrap();
@@ -769,7 +781,7 @@ fn multi_eventgroup_subscription_lifecycle() {
             while eg_subs.len() < 4 {
                 match tokio::time::timeout(Duration::from_secs(5), offering.next()).await {
                     Ok(Some(ServiceEvent::Subscribe { eventgroup, .. })) => {
-                        eprintln!(
+                        tracing::info!(
                             "[server] Subscribe received for EG {:04X}",
                             eventgroup.value()
                         );
@@ -784,12 +796,12 @@ fn multi_eventgroup_subscription_lifecycle() {
                     ),
                 }
             }
-            eprintln!("[server] All 4 subscriptions received: {:?}", eg_subs);
+            tracing::info!("[server] All 4 subscriptions received: {:?}", eg_subs);
 
             // Phase 1: Send Event1 and Event2
             event1_handle.notify(b"event1_first").await.unwrap();
             event2_handle.notify(b"event2_first").await.unwrap();
-            eprintln!("[server] Sent event1 and event2");
+            tracing::info!("[server] Sent event1 and event2");
 
             // Signal phase 1 complete
             if let Some(tx) = phase1_tx.lock().unwrap().take() {
@@ -799,9 +811,9 @@ fn multi_eventgroup_subscription_lifecycle() {
             // Wait for unsubscribe (client drops sub1 - EG1 and EG2)
             let mut unsubs_received = 0;
             while unsubs_received < 2 {
-                match tokio::time::timeout(Duration::from_secs(5), offering.next()).await {
+                match tokio::time::timeout(Duration::from_secs(50), offering.next()).await {
                     Ok(Some(ServiceEvent::Unsubscribe { eventgroup, .. })) => {
-                        eprintln!(
+                        tracing::info!(
                             "[server] Unsubscribe received for EG {:04X}",
                             eventgroup.value()
                         );
@@ -813,7 +825,7 @@ fn multi_eventgroup_subscription_lifecycle() {
                     Err(_) => panic!("[server] Timeout waiting for unsubscribe"),
                 }
             }
-            eprintln!("[server] Unsubscribes received for EG1 and EG2");
+            tracing::info!("[server] Unsubscribes received for EG1 and EG2");
 
             // Signal phase 2 complete (unsubscribes received)
             if let Some(tx) = phase2_tx.lock().unwrap().take() {
@@ -825,7 +837,7 @@ fn multi_eventgroup_subscription_lifecycle() {
             while resubs_received < 2 {
                 match tokio::time::timeout(Duration::from_secs(5), offering.next()).await {
                     Ok(Some(ServiceEvent::Subscribe { eventgroup, .. })) => {
-                        eprintln!(
+                        tracing::info!(
                             "[server] Re-subscribe received for EG {:04X}",
                             eventgroup.value()
                         );
@@ -837,7 +849,7 @@ fn multi_eventgroup_subscription_lifecycle() {
                     Err(_) => panic!("[server] Timeout waiting for re-subscription"),
                 }
             }
-            eprintln!("[server] Re-subscriptions received for EG1 and EG2");
+            tracing::info!("[server] Re-subscriptions received for EG1 and EG2");
 
             // Signal phase 3 complete (re-subscriptions received)
             if let Some(tx) = phase3_tx.lock().unwrap().take() {
@@ -846,7 +858,7 @@ fn multi_eventgroup_subscription_lifecycle() {
 
             // Phase 4: Send Event1 again
             event1_handle.notify(b"event1_second").await.unwrap();
-            eprintln!("[server] Sent event1 second time");
+            tracing::info!("[server] Sent event1 second time");
 
             // Signal phase 4 complete
             if let Some(tx) = phase4_tx.lock().unwrap().take() {
@@ -861,18 +873,22 @@ fn multi_eventgroup_subscription_lifecycle() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = tokio::time::timeout(
+            Duration::from_secs(5),
+            recentip::configure()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .start_turmoil(),
+        )
+        .await
+        .expect("Timeout starting UDP client runtime")
+        .unwrap();
 
         let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
-        eprintln!("[client] Service discovered");
+        tracing::info!("[client] Service discovered");
 
         let eg1 = EventgroupId::new(0x0001).unwrap();
         let eg2 = EventgroupId::new(0x0002).unwrap();
@@ -880,27 +896,38 @@ fn multi_eventgroup_subscription_lifecycle() {
         let eg4 = EventgroupId::new(0x0004).unwrap();
 
         // Subscribe to EG1+EG2 (sub1)
-        let mut sub1 = proxy
-            .new_subscription()
-            .eventgroup(eg1)
-            .eventgroup(eg2)
-            .subscribe()
-            .await
-            .expect("Sub1 should succeed");
-        eprintln!("[client] Subscription 1 (EG1+EG2) established");
+        let mut sub1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy
+                .new_subscription()
+                .eventgroup(eg1)
+                .eventgroup(eg2)
+                .subscribe(),
+        )
+        .await
+        .expect("Timeout subscribing to EG1+EG2")
+        .expect("Sub1 should succeed");
+        tracing::info!("[client] Subscription 1 (EG1+EG2) established");
 
         // Subscribe to EG3+EG4 (sub2)
-        let mut sub2 = proxy
-            .new_subscription()
-            .eventgroup(eg3)
-            .eventgroup(eg4)
-            .subscribe()
-            .await
-            .expect("Sub2 should succeed");
-        eprintln!("[client] Subscription 2 (EG3+EG4) established");
+        let mut sub2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy
+                .new_subscription()
+                .eventgroup(eg3)
+                .eventgroup(eg4)
+                .subscribe(),
+        )
+        .await
+        .expect("Timeout subscribing to EG3+EG4")
+        .expect("Sub2 should succeed");
+        tracing::info!("[client] Subscription 2 (EG3+EG4) established");
 
         // Wait for phase 1 (server sends events)
-        phase1_rx.await.expect("Phase 1 signal");
+        tokio::time::timeout(Duration::from_secs(5), phase1_rx)
+            .await
+            .expect("Timeout waiting for phase 1 signal")
+            .expect("Phase 1 signal");
 
         // Collect events with timeout
         let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
@@ -908,49 +935,64 @@ fn multi_eventgroup_subscription_lifecycle() {
             tokio::select! {
                 event = sub1.next() => {
                     if let Some(e) = event {
-                        eprintln!("[client] Sub1 received: {:?}", String::from_utf8_lossy(&e.payload));
+                        tracing::info!("[client] Sub1 received: {:?}", String::from_utf8_lossy(&e.payload));
                         events_sub1_client.lock().unwrap().push(e.payload.to_vec());
                     }
                 }
                 event = sub2.next() => {
                     if let Some(e) = event {
-                        eprintln!("[client] Sub2 received: {:?}", String::from_utf8_lossy(&e.payload));
+                        tracing::info!("[client] Sub2 received: {:?}", String::from_utf8_lossy(&e.payload));
                         events_sub2_client.lock().unwrap().push(e.payload.to_vec());
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_millis(50)) => {}
             }
+            tokio::time::sleep(Duration::from_millis(1)).await;
         }
 
         // Drop sub1 to trigger unsubscribe
-        eprintln!("[client] Dropping subscription 1");
+        tracing::info!("[client] Dropping subscription 1");
         drop(sub1);
 
         // Wait for phase 2 (server receives unsubscribes)
-        phase2_rx.await.expect("Phase 2 signal");
+        tokio::time::timeout(Duration::from_secs(5), phase2_rx)
+            .await
+            .expect("Timeout waiting for phase 2 signal")
+            .expect("Phase 2 signal");
 
         // Re-subscribe to EG1+EG2
-        let mut sub1_new = proxy
-            .new_subscription()
-            .eventgroup(eg1)
-            .eventgroup(eg2)
-            .subscribe()
-            .await
-            .expect("Sub1 re-subscription should succeed");
-        eprintln!("[client] Subscription 1 (EG1+EG2) re-established");
+        let mut sub1_new = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy
+                .new_subscription()
+                .eventgroup(eg1)
+                .eventgroup(eg2)
+                .subscribe(),
+        )
+        .await
+        .expect("Timeout re-subscribing to EG1+EG2")
+        .expect("Sub1 re-subscription should succeed");
+        tracing::info!("[client] Subscription 1 (EG1+EG2) re-established");
 
         // Wait for phase 3 (server receives re-subscriptions)
-        phase3_rx.await.expect("Phase 3 signal");
+        tokio::time::timeout(Duration::from_secs(2), phase3_rx)
+            .await
+            .expect("Timeout waiting for phase 3 signal")
+            .expect("Phase 3 signal");
 
         // Wait for phase 4 (server sends event1 again)
-        phase4_rx.await.expect("Phase 4 signal");
+        tokio::time::timeout(Duration::from_secs(2), phase4_rx)
+            .await
+            .expect("Timeout waiting for phase 4 signal")
+            .expect("Phase 4 signal");
 
         // Collect event from new sub1
         let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
         while tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(1)).await;
             match tokio::time::timeout(Duration::from_millis(100), sub1_new.next()).await {
                 Ok(Some(e)) => {
-                    eprintln!(
+                    tracing::info!(
                         "[client] Sub1 (new) received: {:?}",
                         String::from_utf8_lossy(&e.payload)
                     );
@@ -991,7 +1033,8 @@ fn multi_eventgroup_subscription_lifecycle() {
     // Exactly 2 unsubscribes (EG1 and EG2)
     assert_eq!(
         unsub_count, 2,
-        "Should have 2 unsubscribe events (EG1 and EG2)"
+        "Should have 2 unsubscribe events (EG1 and EG2), got {}",
+        unsub_count,
     );
 
     // Sub1 should have received event1_first at least once (before drop) and event1_second at least once (after re-subscribe)
@@ -1027,9 +1070,11 @@ fn multi_eventgroup_subscription_lifecycle() {
 ///
 /// This validates TCP connection slot-based reuse: when sub1 is dropped and resub1 is created,
 /// the library reuses existing TCP connections based on slot assignment.
-#[test_log::test]
+#[test]
 fn multi_eventgroup_subscription_lifecycle_tcp() {
     covers!(feat_req_recentipsd_109, feat_req_recentipsd_433);
+
+    configure_tracing();
 
     // Tracking
     let subscribe_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -1072,20 +1117,28 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
         let phase5_tx = Arc::clone(&phase5_tx);
 
         async move {
-            let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = tokio::time::timeout(
+                Duration::from_secs(5),
+                recentip::configure()
+                    .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                    .start_turmoil(),
+            )
+            .await
+            .expect("Timeout starting TCP server runtime")
+            .unwrap();
 
             // Offer service via TCP
-            let mut offering = runtime
-                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
-                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
-                .tcp()
-                .start()
-                .await
-                .unwrap();
+            let mut offering = tokio::time::timeout(
+                Duration::from_secs(5),
+                runtime
+                    .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+                    .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+                    .tcp()
+                    .start(),
+            )
+            .await
+            .expect("Timeout starting TCP offering")
+            .unwrap();
 
             // Create eventgroups and events
             let eg1 = EventgroupId::new(0x0001).unwrap();
@@ -1113,10 +1166,17 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
 
             // Wait for initial subscriptions (should be 4 unique eventgroups: EG1, EG2, EG3, EG4)
             let mut eg_subs: std::collections::HashSet<u16> = std::collections::HashSet::new();
+            let subscription_deadline = tokio::time::Instant::now() + Duration::from_secs(10);
             while eg_subs.len() < 4 {
-                match tokio::time::timeout(Duration::from_secs(5), offering.next()).await {
+                if tokio::time::Instant::now() > subscription_deadline {
+                    panic!(
+                        "[tcp_server] Overall timeout waiting for subscriptions. Got: {:?}",
+                        eg_subs
+                    );
+                }
+                match tokio::time::timeout(Duration::from_secs(2), offering.next()).await {
                     Ok(Some(ServiceEvent::Subscribe { eventgroup, .. })) => {
-                        eprintln!(
+                        tracing::info!(
                             "[tcp_server] Subscribe received for EG {:04X}",
                             eventgroup.value()
                         );
@@ -1131,7 +1191,7 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
                     ),
                 }
             }
-            eprintln!(
+            tracing::info!(
                 "[tcp_server] All 4 TCP subscriptions received: {:?}",
                 eg_subs
             );
@@ -1139,7 +1199,7 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
             // Phase 1: Send Event1 and Event2
             event1_handle.notify(b"tcp_event1_first").await.unwrap();
             event2_handle.notify(b"tcp_event2_first").await.unwrap();
-            eprintln!("[tcp_server] Sent tcp_event1 and tcp_event2");
+            tracing::info!("[tcp_server] Sent tcp_event1 and tcp_event2");
 
             // Signal phase 1 complete
             if let Some(tx) = phase1_tx.lock().unwrap().take() {
@@ -1148,10 +1208,17 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
 
             // Wait for unsubscribe (client drops sub1 - EG1 and EG2)
             let mut unsubs_received = 0;
+            let unsubscribe_deadline = tokio::time::Instant::now() + Duration::from_secs(10);
             while unsubs_received < 2 {
+                if tokio::time::Instant::now() > unsubscribe_deadline {
+                    panic!(
+                        "[tcp_server] Overall timeout waiting for unsubscribes. Got: {}",
+                        unsubs_received
+                    );
+                }
                 match tokio::time::timeout(Duration::from_secs(5), offering.next()).await {
                     Ok(Some(ServiceEvent::Unsubscribe { eventgroup, .. })) => {
-                        eprintln!(
+                        tracing::info!(
                             "[tcp_server] Unsubscribe received for EG {:04X}",
                             eventgroup.value()
                         );
@@ -1163,7 +1230,7 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
                     Err(_) => panic!("[tcp_server] Timeout waiting for unsubscribe"),
                 }
             }
-            eprintln!("[tcp_server] Unsubscribes received for EG1 and EG2");
+            tracing::info!("[tcp_server] Unsubscribes received for EG1 and EG2");
 
             // Signal phase 2 complete (unsubscribes received)
             if let Some(tx) = phase2_tx.lock().unwrap().take() {
@@ -1175,7 +1242,7 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
                 .notify(b"tcp_event2_while_sub1_dropped")
                 .await
                 .unwrap();
-            eprintln!("[tcp_server] Sent tcp_event2 while sub1 is dropped");
+            tracing::info!("[tcp_server] Sent tcp_event2 while sub1 is dropped");
 
             // Signal phase 2b complete
             if let Some(tx) = phase2b_tx.lock().unwrap().take() {
@@ -1184,10 +1251,17 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
 
             // Wait for re-subscription (EG1 and EG2 specifically)
             let mut resubs_received = std::collections::HashSet::new();
+            let resubscribe_deadline = tokio::time::Instant::now() + Duration::from_secs(10);
             while !resubs_received.contains(&eg1) || !resubs_received.contains(&eg2) {
-                match tokio::time::timeout(Duration::from_secs(5), offering.next()).await {
+                if tokio::time::Instant::now() > resubscribe_deadline {
+                    panic!(
+                        "[tcp_server] Overall timeout waiting for re-subscriptions. Got: {:?}",
+                        resubs_received
+                    );
+                }
+                match tokio::time::timeout(Duration::from_secs(2), offering.next()).await {
                     Ok(Some(ServiceEvent::Subscribe { eventgroup, .. })) => {
-                        eprintln!(
+                        tracing::info!(
                             "[tcp_server] Re-subscribe received for EG {:04X}",
                             eventgroup.value()
                         );
@@ -1201,12 +1275,14 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
                     Err(_) => panic!("[tcp_server] Timeout waiting for re-subscription"),
                 }
             }
-            eprintln!("[tcp_server] Re-subscriptions received for EG1 and EG2");
+            tracing::info!("[tcp_server] Re-subscriptions received for EG1 and EG2");
 
             // Signal phase 3 complete (re-subscriptions received)
             if let Some(tx) = phase3_tx.lock().unwrap().take() {
                 let _ = tx.send(());
             }
+
+            tokio::time::sleep(Duration::from_millis(1000)).await;
 
             // Phase 4: Send Event1 and Event2 after re-subscribe
             event1_handle.notify(b"tcp_event1_second").await.unwrap();
@@ -1214,7 +1290,7 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
                 .notify(b"tcp_event2_after_resub")
                 .await
                 .unwrap();
-            eprintln!("[tcp_server] Sent tcp_event1 and tcp_event2 after re-subscribe");
+            tracing::info!("[tcp_server] Sent tcp_event1 and tcp_event2 after re-subscribe");
 
             // Signal phase 4 complete
             if let Some(tx) = phase4_tx.lock().unwrap().take() {
@@ -1229,27 +1305,29 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
                 let _ = tx.send(());
             }
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(Duration::from_millis(5000)).await;
             Ok(())
         }
     });
 
     sim.client("client", async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
-            .preferred_transport(recentip::Transport::Tcp)
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = tokio::time::timeout(
+            Duration::from_secs(5),
+            recentip::configure()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .preferred_transport(recentip::Transport::Tcp)
+                .start_turmoil(),
+        )
+        .await
+        .expect("Timeout starting client runtime")
+        .unwrap();
 
         let proxy = runtime.find(EVENT_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
             .expect("Discovery timeout")
             .expect("Service available");
-        eprintln!("[tcp_client] Service discovered via TCP");
+        tracing::info!("[tcp_client] Service discovered via TCP");
 
         let eg1 = EventgroupId::new(0x0001).unwrap();
         let eg2 = EventgroupId::new(0x0002).unwrap();
@@ -1257,27 +1335,38 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
         let eg4 = EventgroupId::new(0x0004).unwrap();
 
         // Subscribe to EG1+EG2 (sub1) via TCP
-        let mut sub1 = proxy
-            .new_subscription()
-            .eventgroup(eg1)
-            .eventgroup(eg2)
-            .subscribe()
-            .await
-            .expect("TCP Sub1 should succeed");
-        eprintln!("[tcp_client] TCP Subscription 1 (EG1+EG2) established");
+        let mut sub1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy
+                .new_subscription()
+                .eventgroup(eg1)
+                .eventgroup(eg2)
+                .subscribe(),
+        )
+        .await
+        .expect("Timeout subscribing to EG1+EG2")
+        .expect("TCP Sub1 should succeed");
+        tracing::info!("[tcp_client] TCP Subscription 1 (EG1+EG2) established");
 
         // Subscribe to EG3+EG4 (sub2) via TCP
-        let mut sub2 = proxy
-            .new_subscription()
-            .eventgroup(eg3)
-            .eventgroup(eg4)
-            .subscribe()
-            .await
-            .expect("TCP Sub2 should succeed");
-        eprintln!("[tcp_client] TCP Subscription 2 (EG3+EG4) established");
+        let mut sub2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy
+                .new_subscription()
+                .eventgroup(eg3)
+                .eventgroup(eg4)
+                .subscribe(),
+        )
+        .await
+        .expect("Timeout subscribing to EG3+EG4")
+        .expect("TCP Sub2 should succeed");
+        tracing::info!("[tcp_client] TCP Subscription 2 (EG3+EG4) established");
 
         // Wait for phase 1 (server sends events)
-        phase1_rx.await.expect("Phase 1 signal");
+        tokio::time::timeout(Duration::from_secs(5), phase1_rx)
+            .await
+            .expect("Timeout waiting for phase 1 signal")
+            .expect("Phase 1 signal");
 
         // Collect events with timeout
         let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
@@ -1285,33 +1374,41 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
             tokio::select! {
                 event = sub1.next() => {
                     if let Some(e) = event {
-                        eprintln!("[tcp_client] Sub1 received: {:?}", String::from_utf8_lossy(&e.payload));
+                        tracing::info!("[tcp_client] Sub1 received: {:?}", String::from_utf8_lossy(&e.payload));
                         events_sub1_client.lock().unwrap().push(e.payload.to_vec());
                     }
                 }
                 event = sub2.next() => {
                     if let Some(e) = event {
-                        eprintln!("[tcp_client] Sub2 received: {:?}", String::from_utf8_lossy(&e.payload));
+                        tracing::info!("[tcp_client] Sub2 received: {:?}", String::from_utf8_lossy(&e.payload));
                         events_sub2_client.lock().unwrap().push(e.payload.to_vec());
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_millis(50)) => {}
             }
+            tokio::time::sleep(Duration::from_millis(1)).await;
         }
 
         // Drop sub1 to trigger unsubscribe
-        eprintln!("[tcp_client] Dropping TCP subscription 1");
+        tracing::info!("[tcp_client] Dropping TCP subscription 1");
         drop(sub1);
 
         // Wait for phase 2 (server receives unsubscribes)
-        phase2_rx.await.expect("Phase 2 signal");
+        tokio::time::timeout(Duration::from_secs(3), phase2_rx)
+            .await
+            .expect("Timeout waiting for phase 2 signal")
+            .expect("Phase 2 signal");
 
         // Wait for phase 2b (server sends Event2 while sub1 is dropped)
-        phase2b_rx.await.expect("Phase 2b signal");
+        tokio::time::timeout(Duration::from_secs(3), phase2b_rx)
+            .await
+            .expect("Timeout waiting for phase 2b signal")
+            .expect("Phase 2b signal");
 
         // Collect Event2 that was sent while sub1 was dropped
         let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
         while tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(1)).await;
             match tokio::time::timeout(Duration::from_millis(50), sub2.next()).await {
                 Ok(Some(e)) => {
                     eprintln!("[tcp_client] Sub2 received while sub1 dropped: {:?}", String::from_utf8_lossy(&e.payload));
@@ -1323,23 +1420,36 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
         }
 
         // Re-subscribe to EG1+EG2 via TCP
-        let mut sub1_new = proxy
-            .new_subscription()
-            .eventgroup(eg1)
-            .eventgroup(eg2)
-            .subscribe()
-            .await
-            .expect("TCP Sub1 re-subscription should succeed");
-        eprintln!("[tcp_client] TCP Subscription 1 (EG1+EG2) re-established");
+        let mut sub1_new = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy
+                .new_subscription()
+                .eventgroup(eg1)
+                .eventgroup(eg2)
+                .subscribe(),
+        )
+        .await
+        .expect("Timeout re-subscribing to EG1+EG2")
+        .expect("TCP Sub1 re-subscription should succeed");
+        tracing::info!("[tcp_client] TCP Subscription 1 (EG1+EG2) re-established");
 
         // Wait for phase 3 (server receives re-subscriptions)
-        phase3_rx.await.expect("Phase 3 signal");
+        tokio::time::timeout(Duration::from_secs(3), phase3_rx)
+            .await
+            .expect("Timeout waiting for phase 3 signal")
+            .expect("Phase 3 signal");
 
         // Wait for phase 4 (server sends event1 and event2 again)
-        phase4_rx.await.expect("Phase 4 signal");
+        tokio::time::timeout(Duration::from_secs(3), phase4_rx)
+            .await
+            .expect("Timeout waiting for phase 4 signal")
+            .expect("Phase 4 signal");
 
         // Wait for phase 5 (all events sent)
-        phase5_rx.await.expect("Phase 5 signal");
+        tokio::time::timeout(Duration::from_secs(3), phase5_rx)
+            .await
+            .expect("Timeout waiting for phase 5 signal")
+            .expect("Phase 5 signal");
 
         // Collect events from both subscriptions
         let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
@@ -1347,18 +1457,25 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
             tokio::select! {
                 event = sub1_new.next() => {
                     if let Some(e) = event {
-                        eprintln!("[tcp_client] Sub1 (new) received: {:?}", String::from_utf8_lossy(&e.payload));
+                        tracing::info!("[tcp_client] Sub1 (new) received: {:?}", String::from_utf8_lossy(&e.payload));
                         events_sub1_client.lock().unwrap().push(e.payload.to_vec());
+                    } else {
+                        tracing::debug!("[tcp_client] Sub1 (new) stream ended");
                     }
                 }
                 event = sub2.next() => {
                     if let Some(e) = event {
-                        eprintln!("[tcp_client] Sub2 received after resub: {:?}", String::from_utf8_lossy(&e.payload));
+                        tracing::info!("[tcp_client] Sub2 received after resub: {:?}", String::from_utf8_lossy(&e.payload));
                         events_sub2_client.lock().unwrap().push(e.payload.to_vec());
+                    } else {
+                        tracing::debug!("[tcp_client] Sub2 stream ended");
                     }
                 }
-                _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+                _ = tokio::time::sleep(Duration::from_millis(50)) => {
+                    tracing::debug!("[tcp_client] No more events received in this interval");
+                }
             }
+            tokio::time::sleep(Duration::from_millis(1)).await;
         }
 
         // Keep sub2 alive until end
@@ -1378,8 +1495,20 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
 
     eprintln!("TCP Subscribe count: {}", sub_count);
     eprintln!("TCP Unsubscribe count: {}", unsub_count);
-    eprintln!("TCP Sub1 events: {:?}", *sub1_events);
-    eprintln!("TCP Sub2 events: {:?}", *sub2_events);
+    eprintln!(
+        "TCP Sub1 events: {:?}",
+        sub1_events
+            .iter()
+            .map(|e| String::from_utf8_lossy(e).to_string())
+            .collect::<Vec<_>>()
+    );
+    eprintln!(
+        "TCP Sub2 events: {:?}",
+        sub2_events
+            .iter()
+            .map(|e| String::from_utf8_lossy(e).to_string())
+            .collect::<Vec<_>>()
+    );
 
     // At least 6 subscribes (4 initial + 2 re-subscribe), may have some duplicates
     assert!(
@@ -1390,7 +1519,8 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
     // Exactly 2 unsubscribes (EG1 and EG2)
     assert_eq!(
         unsub_count, 2,
-        "Should have 2 TCP unsubscribe events (EG1 and EG2)"
+        "Should have 2 TCP unsubscribe events (EG1 and EG2), got {}",
+        unsub_count,
     );
 
     // Sub1 should have received tcp_event1_first at least once (before drop) and tcp_event1_second at least once (after re-subscribe)

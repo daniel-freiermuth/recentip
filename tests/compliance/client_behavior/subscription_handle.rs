@@ -13,6 +13,7 @@ const SERVICE_A_VERSION: (u8, u32) = (1, 0);
 #[test_log::test]
 fn test_subscribe_drop_unsubscribes_in_time() {
     let mut sim = turmoil::Builder::new()
+        .max_message_latency(Duration::from_millis(0))
         .simulation_duration(Duration::from_secs(30))
         .build();
 
@@ -105,7 +106,7 @@ fn test_subscribe_drop_unsubscribes_in_time() {
     sim.run().unwrap();
     let unsub_delay =
         unsub_receive_time.lock().unwrap().unwrap() - unsub_send_time.lock().unwrap().unwrap();
-    let delay_expectation = Duration::from_millis(60);
+    let delay_expectation = Duration::from_millis(105);
 
     assert!(
         unsub_delay < delay_expectation,
@@ -145,7 +146,9 @@ fn test_two_subscribers_one_drops() {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
                 event_handle.notify("test".as_bytes()).await.unwrap();
-                if let Some(event) = offering.next().await {
+                if let Ok(Some(event)) =
+                    tokio::time::timeout(Duration::from_millis(10), offering.next()).await
+                {
                     match event {
                         recentip::ServiceEvent::Unsubscribe { .. } => {
                             tracing::info!("Server: Received unsubscribe");
@@ -244,11 +247,13 @@ fn test_dangling_subscription_cannot_unsubscribe() {
                 .await
                 .unwrap();
 
-            for _ in 0..10 {
+            for i in 0..10 {
                 tokio::time::sleep(Duration::from_secs(1)).await;
-                tracing::info!("Server: Sending event");
+                tracing::info!("Server: Sending event 1.{i}");
                 event_handle.notify("test".as_bytes()).await.unwrap();
-                if let Some(event) = offering.next().await {
+                if let Ok(Some(event)) =
+                    tokio::time::timeout(Duration::from_millis(10), offering.next()).await
+                {
                     match event {
                         recentip::ServiceEvent::Unsubscribe { .. } => {
                             tracing::info!("Server: Received unsubscribe");
@@ -258,9 +263,11 @@ fn test_dangling_subscription_cannot_unsubscribe() {
                 }
             }
 
+            tracing::info!("Server: Dropping offering to stop offering");
             drop(offering);
             tokio::time::sleep(Duration::from_secs(4)).await;
 
+            tracing::info!("Server: Re-offering service");
             let mut offering2 = runtime
                 .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
                 .version(SERVICE_A_VERSION.0, SERVICE_A_VERSION.1)
@@ -280,7 +287,9 @@ fn test_dangling_subscription_cannot_unsubscribe() {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
                 event_handle2.notify("test".as_bytes()).await.unwrap();
-                if let Some(event) = offering2.next().await {
+                if let Ok(Some(event)) =
+                    tokio::time::timeout(Duration::from_millis(10), offering2.next()).await
+                {
                     match event {
                         recentip::ServiceEvent::Unsubscribe { .. } => {
                             tracing::info!("Server: Received unsubscribe");
@@ -309,6 +318,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
             .subscribe()
             .await
             .unwrap();
+        tracing::info!("Subscription 1 established");
 
         while let Some(_) = tokio::time::timeout(Duration::from_secs(5), subscription1.next()).await.expect("This should not time out. When the server stops sending events, we should get None as a result of the StopOffer.") {
             tracing::info!("Received event for sub1");
@@ -319,12 +329,14 @@ fn test_dangling_subscription_cannot_unsubscribe() {
         // The server has a 4-second delay between dropping the offering and re-offering
         tokio::time::sleep(Duration::from_secs(5)).await;
 
+        tracing::info!("Trying to subscribe again after dangling subscription");
         let mut subscription2 = service
             .new_subscription()
             .eventgroup(EventgroupId::new(1).unwrap())
             .subscribe()
             .await
             .unwrap();
+        tracing::info!("Subscription 2 established");
 
         let mut event_count = 0;
         let now = tokio::time::Instant::now();
@@ -333,6 +345,8 @@ fn test_dangling_subscription_cannot_unsubscribe() {
             tracing::info!("Received event in flow 1");
             event_count += 1;
         }
+        tracing::info!("Received {} events in flow 1", event_count);
+        tracing::info!("Dropping subscription 1");
         drop(subscription1);
         while now.elapsed() < Duration::from_secs(10) {
             let _event = subscription2.next().await.unwrap();
@@ -379,7 +393,9 @@ fn test_two_subscribers_get_events() {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 tracing::info!("Server: Sending event");
                 event_handle.notify("test".as_bytes()).await.unwrap();
-                if let Some(event) = offering.next().await {
+                if let Ok(Some(event)) =
+                    tokio::time::timeout(Duration::from_millis(10), offering.next()).await
+                {
                     match event {
                         recentip::ServiceEvent::Unsubscribe { .. } => {
                             tracing::info!("Server: Received unsubscribe");

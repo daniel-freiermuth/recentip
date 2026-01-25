@@ -234,7 +234,8 @@ fn tcp_connection_established_before_subscribe_767() {
             let tcp_listener = turmoil::net::TcpListener::bind("0.0.0.0:30509").await?;
             eprintln!("[wire_server] TCP listener bound on port 30509");
 
-            let offer = build_sd_offer_tcp_only(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
+            let offer =
+                build_sd_offer_tcp_only(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600, 1, true, false);
             let mut sd_buf = [0u8; 1500];
 
             // Track if we've seen a TCP connection

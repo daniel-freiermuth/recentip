@@ -9,6 +9,10 @@
 //! - StopSubscribeEventgroup (TTL=0)
 //! - TTL field behavior (max TTL, expiration)
 
+use crate::client_behavior::helpers::{
+    build_sd_offer_with_session, build_sd_subscribe_ack_with_session,
+};
+
 use super::helpers::*;
 
 /// feat_req_recentipsd_576: SubscribeEventgroup entry type is 0x06
@@ -35,13 +39,17 @@ fn subscribe_eventgroup_entry_type() {
         sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
         let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-        let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
 
         let mut buf = [0u8; 1500];
         let mut found_subscribe = false;
 
+        let mut next_unicast_session_id: u16 = 1;
+        let mut next_multicast_session_id: u16 = 1;
+
         // Send offers and wait for subscribe
         for _ in 0..30 {
+            let offer = build_sd_offer_with_session(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600, next_multicast_session_id, false, false);
+            next_multicast_session_id = next_multicast_session_id.wrapping_add(1);
             sd_socket.send_to(&offer, sd_multicast).await?;
 
             while let Ok(Ok((len, from))) = tokio::time::timeout(
@@ -64,13 +72,15 @@ fn subscribe_eventgroup_entry_type() {
                             assert!(entry.ttl > 0, "Subscribe TTL should be > 0");
 
                             // Send SubscribeAck back via SD socket
-                            let ack = build_sd_subscribe_ack(
+                            let ack = build_sd_subscribe_ack_with_session(
                                 entry.service_id,
                                 entry.instance_id,
                                 entry.major_version,
                                 entry.eventgroup_id,
                                 entry.ttl, // Echo TTL
+                                next_unicast_session_id,
                             );
+                            next_unicast_session_id = next_unicast_session_id.wrapping_add(1);
                             sd_socket.send_to(&ack, from).await?;
                         }
                     }

@@ -12,11 +12,10 @@
 //! - feat_req_recentip_324: Client adapts to available transport
 
 use super::helpers::{
-    build_sd_offer, build_sd_offer_dual_stack, build_sd_offer_tcp_only, build_sd_subscribe_ack,
-    covers, parse_sd_message, TEST_SERVICE_ID,
+    build_sd_offer_dual_stack_with_session, build_sd_offer_tcp_only, build_sd_offer_with_session,
+    build_sd_subscribe_ack_with_session, covers, parse_sd_message, TEST_SERVICE_ID,
 };
 use recentip::prelude::*;
-use recentip::{Runtime, RuntimeConfig};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -55,16 +54,30 @@ fn subscribe_format_udp_only_cyclic_offers() {
                 .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
             let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-            let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3);
             let mut buf = [0u8; 1500];
 
             // Send offers cyclically and collect subscribes
             let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+            let mut next_multicast_session_id: u16 = 1;
+            let mut next_unicast_session_id: u16 = 1;
 
             while tokio::time::Instant::now() < deadline {
                 // Send offer every 1 second (simulating cyclic offer with short TTL)
                 if last_offer.elapsed() >= Duration::from_millis(1000) {
+                    let offer = build_sd_offer_with_session(
+                        0x1234,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30509,
+                        3,
+                        next_multicast_session_id,
+                        next_multicast_session_id == 1, // reboot_flag only on first
+                        false,                          // unicast_flag (multicast)
+                    );
+                    next_multicast_session_id += 1;
                     sd_socket.send_to(&offer, sd_multicast).await?;
                     eprintln!("[wire_server] Sent offer");
                     last_offer = tokio::time::Instant::now();
@@ -110,13 +123,15 @@ fn subscribe_format_udp_only_cyclic_offers() {
                                 );
 
                                 // Send ACK
-                                let ack = build_sd_subscribe_ack(
+                                let ack = build_sd_subscribe_ack_with_session(
                                     entry.service_id,
                                     entry.instance_id,
                                     entry.major_version,
                                     entry.eventgroup_id,
                                     entry.ttl,
+                                    next_unicast_session_id,
                                 );
+                                next_unicast_session_id += 1;
                                 sd_socket.send_to(&ack, from).await?;
                             }
                         }
@@ -224,14 +239,28 @@ fn subscribe_format_tcp_only_cyclic_offers() {
                 .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
             let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-            let offer = build_sd_offer_tcp_only(0x1234, 0x0001, 1, 0, my_ip, 30509, 3);
             let mut buf = [0u8; 1500];
 
             let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+            let mut next_multicast_session_id: u16 = 1;
+            let mut next_unicast_session_id: u16 = 1;
 
             while tokio::time::Instant::now() < deadline {
                 if last_offer.elapsed() >= Duration::from_millis(1000) {
+                    let offer = build_sd_offer_tcp_only(
+                        0x1234,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30509,
+                        3,
+                        next_multicast_session_id,
+                        next_multicast_session_id == 1, // reboot_flag only on first
+                        false,                          // unicast_flag (multicast)
+                    );
+                    next_multicast_session_id += 1;
                     sd_socket.send_to(&offer, sd_multicast).await?;
                     eprintln!("[wire_server] Sent TCP-only offer");
                     last_offer = tokio::time::Instant::now();
@@ -259,13 +288,15 @@ fn subscribe_format_tcp_only_cyclic_offers() {
                                 );
 
                                 // Send ACK
-                                let ack = build_sd_subscribe_ack(
+                                let ack = build_sd_subscribe_ack_with_session(
                                     entry.service_id,
                                     entry.instance_id,
                                     entry.major_version,
                                     entry.eventgroup_id,
                                     entry.ttl,
+                                    next_unicast_session_id,
                                 );
+                                next_unicast_session_id += 1;
                                 sd_socket.send_to(&ack, from).await?;
                             }
                         }
@@ -349,14 +380,29 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
                 .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
             let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-            let offer = build_sd_offer_dual_stack(0x1234, 0x0001, 1, 0, my_ip, 30509, 30510, 3);
             let mut buf = [0u8; 1500];
 
             let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+            let mut next_multicast_session_id: u16 = 1;
+            let mut next_unicast_session_id: u16 = 1;
 
             while tokio::time::Instant::now() < deadline {
                 if last_offer.elapsed() >= Duration::from_millis(1000) {
+                    let offer = build_sd_offer_dual_stack_with_session(
+                        0x1234,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30509,
+                        30510,
+                        3,
+                        next_multicast_session_id,
+                        next_multicast_session_id == 1, // reboot_flag only on first
+                        false,                          // unicast_flag (multicast)
+                    );
+                    next_multicast_session_id += 1;
                     sd_socket.send_to(&offer, sd_multicast).await?;
                     eprintln!("[wire_server] Sent dual-stack offer");
                     last_offer = tokio::time::Instant::now();
@@ -387,13 +433,15 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
                                     count
                                 );
 
-                                let ack = build_sd_subscribe_ack(
+                                let ack = build_sd_subscribe_ack_with_session(
                                     entry.service_id,
                                     entry.instance_id,
                                     entry.major_version,
                                     entry.eventgroup_id,
                                     entry.ttl,
+                                    next_unicast_session_id,
                                 );
+                                next_unicast_session_id += 1;
                                 sd_socket.send_to(&ack, from).await?;
                             }
                         }
@@ -490,14 +538,29 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
                 .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
             let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-            let offer = build_sd_offer_dual_stack(0x1234, 0x0001, 1, 0, my_ip, 30509, 30510, 3);
             let mut buf = [0u8; 1500];
 
             let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+            let mut next_multicast_session_id: u16 = 1;
+            let mut next_unicast_session_id: u16 = 1;
 
             while tokio::time::Instant::now() < deadline {
                 if last_offer.elapsed() >= Duration::from_millis(1000) {
+                    let offer = build_sd_offer_dual_stack_with_session(
+                        0x1234,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30509,
+                        30510,
+                        3,
+                        next_multicast_session_id,
+                        next_multicast_session_id == 1, // reboot_flag only on first
+                        false,                          // unicast_flag (multicast)
+                    );
+                    next_multicast_session_id += 1;
                     sd_socket.send_to(&offer, sd_multicast).await?;
                     eprintln!("[wire_server] Sent dual-stack offer");
                     last_offer = tokio::time::Instant::now();
@@ -528,13 +591,15 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
                                     count
                                 );
 
-                                let ack = build_sd_subscribe_ack(
+                                let ack = build_sd_subscribe_ack_with_session(
                                     entry.service_id,
                                     entry.instance_id,
                                     entry.major_version,
                                     entry.eventgroup_id,
                                     entry.ttl,
+                                    next_unicast_session_id,
                                 );
+                                next_unicast_session_id += 1;
                                 sd_socket.send_to(&ack, from).await?;
                             }
                         }
@@ -613,15 +678,29 @@ fn subscribe_format_client_adapts_to_available_transport() {
                 .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
             let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-            // Offer UDP ONLY
-            let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3);
             let mut buf = [0u8; 1500];
 
             let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+            let mut next_multicast_session_id: u16 = 1;
+            let mut next_unicast_session_id: u16 = 1;
 
             while tokio::time::Instant::now() < deadline {
                 if last_offer.elapsed() >= Duration::from_millis(1000) {
+                    // Offer UDP ONLY with incrementing session ID
+                    let offer = build_sd_offer_with_session(
+                        0x1234,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30509,
+                        3,
+                        next_multicast_session_id,
+                        next_multicast_session_id == 1, // reboot_flag only on first
+                        false,                          // unicast_flag (multicast)
+                    );
+                    next_multicast_session_id += 1;
                     sd_socket.send_to(&offer, sd_multicast).await?;
                     eprintln!("[wire_server] Sent UDP-only offer");
                     last_offer = tokio::time::Instant::now();
@@ -659,13 +738,15 @@ fn subscribe_format_client_adapts_to_available_transport() {
                                     count
                                 );
 
-                                let ack = build_sd_subscribe_ack(
+                                let ack = build_sd_subscribe_ack_with_session(
                                     entry.service_id,
                                     entry.instance_id,
                                     entry.major_version,
                                     entry.eventgroup_id,
                                     entry.ttl,
+                                    next_unicast_session_id,
                                 );
+                                next_unicast_session_id += 1;
                                 sd_socket.send_to(&ack, from).await?;
                             }
                         }
@@ -789,7 +870,6 @@ fn subscribe_reuses_endpoint_port_after_resubscribe() {
             let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
             // Offer service with 4 eventgroups
-            let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 10);
             let mut buf = [0u8; 1500];
 
             // Phase 1: Send offers cyclically until we receive 4 unique initial subscriptions
@@ -798,9 +878,24 @@ fn subscribe_reuses_endpoint_port_after_resubscribe() {
                 std::collections::HashSet::new();
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
             let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+            let mut next_multicast_session_id = 1;
+            let mut next_unicast_session_id = 1;
             while initial_eg_set.len() < 4 && tokio::time::Instant::now() < deadline {
                 // Send offer every 500ms
                 if last_offer.elapsed() >= Duration::from_millis(500) {
+                    let offer = build_sd_offer_with_session(
+                        0x1234,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30509,
+                        10,
+                        next_multicast_session_id,
+                        true,  // reboot_flag
+                        false, // unicast_flag (multicast)
+                    );
+                    next_multicast_session_id += 1;
                     sd_socket.send_to(&offer, sd_multicast).await?;
                     eprintln!("[wire_server] Sent offer");
                     last_offer = tokio::time::Instant::now();
@@ -834,14 +929,19 @@ fn subscribe_reuses_endpoint_port_after_resubscribe() {
                                     }
 
                                     // Send ACK
-                                    let ack = build_sd_subscribe_ack(
+                                    let ack = build_sd_subscribe_ack_with_session(
                                         entry.service_id,
                                         entry.instance_id,
                                         entry.major_version,
                                         entry.eventgroup_id,
                                         entry.ttl,
+                                        next_unicast_session_id,
                                     );
+                                    next_unicast_session_id += 1;
                                     sd_socket.send_to(&ack, from).await?;
+                                    // Sleep here so that the messages don't arrive at the same time
+                                    // This spares us having to deal with clustering
+                                    tokio::time::sleep(Duration::from_millis(100)).await;
                                 }
                             }
                         }
@@ -899,6 +999,19 @@ fn subscribe_reuses_endpoint_port_after_resubscribe() {
             }
 
             // Phase 3: Send another offer to trigger re-subscription of EG1+EG2
+            let offer = build_sd_offer_with_session(
+                0x1234,
+                0x0001,
+                1,
+                0,
+                my_ip,
+                30509,
+                10,
+                next_multicast_session_id,
+                true,  // reboot_flag
+                false, // unicast_flag (multicast)
+            );
+            next_multicast_session_id += 1;
             sd_socket.send_to(&offer, sd_multicast).await?;
             eprintln!("[wire_server] Sent offer for re-subscription");
 
@@ -931,14 +1044,19 @@ fn subscribe_reuses_endpoint_port_after_resubscribe() {
                                         }
 
                                         // Send ACK
-                                        let ack = build_sd_subscribe_ack(
+                                        let ack = build_sd_subscribe_ack_with_session(
                                             entry.service_id,
                                             entry.instance_id,
                                             entry.major_version,
                                             entry.eventgroup_id,
                                             entry.ttl,
+                                            next_unicast_session_id,
                                         );
+                                        next_unicast_session_id += 1;
                                         sd_socket.send_to(&ack, from).await?;
+                                        // Sleep here so that the messages don't arrive at the same time
+                                        // This spares us having to deal with clustering
+                                        tokio::time::sleep(Duration::from_millis(100)).await;
                                     }
                                 }
                             }
@@ -1158,15 +1276,18 @@ fn subscribe_tcp_reuses_endpoint_port_after_resubscribe() {
             let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
             // Offer TCP-only service with 4 eventgroups
-            let offer = build_sd_offer_tcp_only(0x1234, 0x0001, 1, 0, my_ip, 30509, 10);
             let mut buf = [0u8; 1500];
 
             // Phase 1: Send offers cyclically until we receive 4 unique initial subscriptions
             let mut initial_eg_set: std::collections::HashSet<u16> = std::collections::HashSet::new();
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
             let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+            let mut next_unicast_session_id = 1;
+            let mut next_multicast_session_id = 1;
             while initial_eg_set.len() < 4 && tokio::time::Instant::now() < deadline {
                 if last_offer.elapsed() >= Duration::from_millis(500) {
+                    let offer = build_sd_offer_tcp_only(0x1234, 0x0001, 1, 0, my_ip, 30509, 10, next_multicast_session_id, true, false);
+                    next_multicast_session_id += 1;
                     sd_socket.send_to(&offer, sd_multicast).await?;
                     eprintln!("[wire_server] Sent TCP-only offer");
                     last_offer = tokio::time::Instant::now();
@@ -1201,14 +1322,17 @@ fn subscribe_tcp_reuses_endpoint_port_after_resubscribe() {
                                     }
 
                                     // Send ACK
-                                    let ack = build_sd_subscribe_ack(
+                                    let ack = build_sd_subscribe_ack_with_session(
                                         entry.service_id,
                                         entry.instance_id,
                                         entry.major_version,
                                         entry.eventgroup_id,
                                         entry.ttl,
+                                        next_unicast_session_id,
                                     );
+                                    next_unicast_session_id += 1;
                                     sd_socket.send_to(&ack, from).await?;
+                                    tokio::time::sleep(Duration::from_millis(100)).await;
                                 }
                             }
                         }
@@ -1260,7 +1384,9 @@ fn subscribe_tcp_reuses_endpoint_port_after_resubscribe() {
             }
 
             // Phase 3: Send another offer to trigger re-subscription of EG1+EG2
+            let offer = build_sd_offer_tcp_only(0x1234, 0x0001, 1, 0, my_ip, 30509, 10, next_multicast_session_id, true, false);
             sd_socket.send_to(&offer, sd_multicast).await?;
+            next_multicast_session_id += 1;
             eprintln!("[wire_server] Sent offer for TCP re-subscription");
 
             // Wait for re-subscriptions (only EG1 and EG2)
@@ -1291,14 +1417,17 @@ fn subscribe_tcp_reuses_endpoint_port_after_resubscribe() {
                                             resub1_ports.lock().unwrap().push(port);
                                         }
 
-                                        let ack = build_sd_subscribe_ack(
+                                        let ack = build_sd_subscribe_ack_with_session(
                                             entry.service_id,
                                             entry.instance_id,
                                             entry.major_version,
                                             entry.eventgroup_id,
                                             entry.ttl,
+                                            next_unicast_session_id,
                                         );
+                                        next_unicast_session_id += 1;
                                         sd_socket.send_to(&ack, from).await?;
+                                        tokio::time::sleep(Duration::from_millis(100)).await;
                                     }
                                 }
                             }
