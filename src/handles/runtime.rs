@@ -7,8 +7,8 @@
 //!
 //! The runtime implements an **event loop pattern** where:
 //!
-//! 1. All state lives in a single [`RuntimeState`](crate::runtime::state::RuntimeState) struct
-//! 2. Handles send [`Command`](crate::runtime::command::Command) messages via channels
+//! 1. All state lives in a single `RuntimeState` struct
+//! 2. Handles send `Command` messages via channels
 //! 3. The event loop processes commands and I/O events in a `tokio::select!` loop
 //! 4. Responses flow back through oneshot channels or notification channels
 //!
@@ -75,8 +75,7 @@ pub(crate) struct RuntimeInner {
 /// # Lifecycle
 ///
 /// The runtime spawns a background task that runs until:
-/// 1. All handles ([`OfferedService`](crate::handle::OfferedService),
-///    [`ServiceOffering`](crate::handle::ServiceOffering)) are dropped
+/// 1. All handles (`OfferedService`, `ServiceOffering`) are dropped
 /// 2. An unrecoverable error occurs
 ///
 /// When the `SomeIp` is dropped, it signals shutdown and waits for cleanup.

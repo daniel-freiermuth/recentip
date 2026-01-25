@@ -146,7 +146,7 @@ impl ServiceOffering {
     /// Create an event that can send notifications to subscribers.
     ///
     /// Events declare which eventgroups they belong to via the builder.
-    /// When `notify()` is called on the returned [`EventHandle`], the
+    /// When `notify()` is called on the returned [`EventHandle`](crate::handles::server::EventHandle), the
     /// notification is sent to subscribers of all configured eventgroups.
     ///
     /// # Example

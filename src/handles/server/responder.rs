@@ -42,7 +42,7 @@ pub struct Responder {
 impl Responder {
     /// Send a successful response with the given payload.
     ///
-    /// This sends a RESPONSE message with return code E_OK (0x00).
+    /// This sends a RESPONSE message with return code `E_OK` (0x00).
     pub fn reply(mut self, payload: &[u8]) -> Result<()> {
         if let Some(tx) = self.response.take() {
             let _ = tx.send(Ok(bytes::Bytes::copy_from_slice(payload)));

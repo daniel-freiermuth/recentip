@@ -102,7 +102,7 @@ pub struct OfferedService {
     major_version: u8,
     endpoint: SocketAddr,
     transport: crate::config::Transport,
-    /// Original find criteria - used for StopFind on drop
+    /// Original find criteria - used for `StopFind` on drop
     /// If None, this proxy was created without discovery (static deployment)
     find_criteria: Option<(InstanceId, MajorVersion)>,
 }
@@ -125,7 +125,7 @@ impl OfferedService {
     /// Create a new `OfferedService` (for static deployments or after discovery).
     ///
     /// # Parameters
-    /// - `find_criteria`: Original (instance_id, major_version) used in the find request.
+    /// - `find_criteria`: Original (`instance_id`, `major_version`) used in the find request.
     ///   Used for `StopFind` on drop. Pass `None` for static deployments.
     pub(crate) fn new(
         inner: Arc<RuntimeInner>,

@@ -10,7 +10,7 @@
 //! |--------|------|-------|
 //! | [`OfferedService`] | Client: call methods, subscribe to events | Created via `SomeIp::find()` |
 //! | [`ServiceOffering`] | Server: receive requests, send responses | — |
-//! | [`ServiceInstance`] | Server (advanced): typestate for bind/announce | `Bound` → `Announced` |
+//! | `ServiceInstance` | Server (advanced): typestate for bind/announce | `Bound` → `Announced` |
 //! | [`Subscription`] | Client: receive events from a subscribed eventgroup | — |
 //! | [`Responder`] | Server: reply to a specific RPC request | Consumed on reply |
 //!
@@ -119,8 +119,8 @@
 //!
 //! This module uses **type-state patterns** to enforce correct API usage at compile time:
 //!
-//! - [`ServiceInstance<Bound>`] can only call `.announce()` or handle static requests
-//! - [`ServiceInstance<Announced>`] can call `.stop_announcing()` or handle SD requests
+//! - `ServiceInstance<Bound>` can only call `.announce()` or handle static requests
+//! - `ServiceInstance<Announced>` can call `.stop_announcing()` or handle SD requests
 //!
 //! This prevents common bugs like:
 //! - Announcing a service that hasn't bound to a socket

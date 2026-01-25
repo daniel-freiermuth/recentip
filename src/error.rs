@@ -109,7 +109,7 @@ pub enum Error {
     /// Service/instance is already offered or bound.
     ///
     /// A service can only be offered once per instance ID. Use the
-    /// existing [`OfferingHandle`](crate::handle::OfferingHandle).
+    /// existing `ServiceOffering` handle.
     AlreadyOffered,
 
     /// Subscription was rejected by the server.
@@ -120,8 +120,8 @@ pub enum Error {
 
     /// Service discovery failed - the service could not be found.
     ///
-    /// Returned by [`ProxyHandle::available()`](crate::handle::ProxyHandle::available)
-    /// when the find request expires without locating the service.
+    /// Returned by `OfferedService::available()` when the find request
+    /// expires without locating the service.
     ///
     /// Causes:
     /// - No server is offering the requested service/instance
