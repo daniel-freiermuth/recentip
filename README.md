@@ -1,7 +1,7 @@
 # RecentIP
 
-> Warning! This is an alpha stage toy project for exploration.
-The goal is to create a solid, easy-to-use and performant middleware implementation that is easily and fearlessly maintainable. One of the side-results is a comprehensive documentation.
+> Warning! This is an alpha stage hobby project for exploration.
+The goal is to create a solid, easy-to-use and performant middleware implementation that is easily and fearlessly maintainable.
 
 [![Crate](https://img.shields.io/crates/v/recentip.svg)](https://crates.io/crates/recentip)
 [![Docs](https://docs.rs/recentip/badge.svg)](https://docs.rs/recentip)
