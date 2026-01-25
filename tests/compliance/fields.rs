@@ -3,11 +3,11 @@
 //! Fields are combinations of getters, setters, and notifiers per SOME/IP spec.
 //!
 //! Key requirements tested:
-//! - feat_req_recentip_631: Field is combination of getter/setter/notifier
-//! - feat_req_recentip_632: Field without getter/setter/notifier shall not exist
-//! - feat_req_recentip_633: Getter is request/response with empty request payload
-//! - feat_req_recentip_634: Setter is request/response with value as request payload
-//! - feat_req_recentip_635: Notifier sends notification event with updated value
+//! - feat_req_someip_631: Field is combination of getter/setter/notifier
+//! - feat_req_someip_632: Field without getter/setter/notifier shall not exist
+//! - feat_req_someip_633: Getter is request/response with empty request payload
+//! - feat_req_someip_634: Setter is request/response with value as request payload
+//! - feat_req_someip_635: Notifier sends notification event with updated value
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
@@ -30,13 +30,13 @@ const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 // Field Getter Tests
 // ============================================================================
 
-/// feat_req_recentip_633: Getter has empty request payload, value in response
+/// feat_req_someip_633: Getter has empty request payload, value in response
 ///
 /// The getter of a field shall be a request/response call that has an empty
 /// payload for the request and the current value as payload of the response.
 #[test_log::test]
 fn field_getter_empty_request_payload() {
-    covers!(feat_req_recentip_633);
+    covers!(feat_req_someip_633);
 
     let server_called = Arc::new(Mutex::new(false));
     let client_called = Arc::new(Mutex::new(false));
@@ -81,7 +81,7 @@ fn field_getter_empty_request_payload() {
                     );
                     assert!(
                         payload.is_empty(),
-                        "Getter request should have empty payload (feat_req_recentip_633)"
+                        "Getter request should have empty payload (feat_req_someip_633)"
                     );
 
                     // Respond with current field value
@@ -145,10 +145,10 @@ fn field_getter_empty_request_payload() {
     );
 }
 
-/// feat_req_recentip_633: Getter returns current value in response
+/// feat_req_someip_633: Getter returns current value in response
 #[test_log::test]
 fn field_getter_returns_current_value() {
-    covers!(feat_req_recentip_633);
+    covers!(feat_req_someip_633);
 
     let server_called = Arc::new(Mutex::new(false));
     let client_called = Arc::new(Mutex::new(false));
@@ -247,13 +247,13 @@ fn field_getter_returns_current_value() {
 // Field Setter Tests
 // ============================================================================
 
-/// feat_req_recentip_634: Setter has desired value in request payload
+/// feat_req_someip_634: Setter has desired value in request payload
 ///
 /// The setter of a field shall be a request/response call that has the
 /// desired value as payload for the request.
 #[test_log::test]
 fn field_setter_sends_value_in_request() {
-    covers!(feat_req_recentip_634);
+    covers!(feat_req_someip_634);
 
     let server_called = Arc::new(Mutex::new(false));
     let client_called = Arc::new(Mutex::new(false));
@@ -300,7 +300,7 @@ fn field_setter_sends_value_in_request() {
                     let new_value = u16::from_be_bytes([payload[0], payload[1]]);
                     assert_eq!(
                         new_value, 42,
-                        "Setter payload should contain new value (feat_req_recentip_634)"
+                        "Setter payload should contain new value (feat_req_someip_634)"
                     );
 
                     // Acknowledge setter
@@ -364,10 +364,10 @@ fn field_setter_sends_value_in_request() {
     );
 }
 
-/// feat_req_recentip_634: Setter is request/response (not fire&forget)
+/// feat_req_someip_634: Setter is request/response (not fire&forget)
 #[test_log::test]
 fn field_setter_gets_response() {
-    covers!(feat_req_recentip_634);
+    covers!(feat_req_someip_634);
 
     let server_called = Arc::new(Mutex::new(false));
     let client_called = Arc::new(Mutex::new(false));
@@ -433,7 +433,7 @@ fn field_setter_gets_response() {
             // Should receive response (proving it's request/response, not fire-and-forget)
             assert!(
                 result.is_ok(),
-                "Setter should receive response (feat_req_recentip_634)"
+                "Setter should receive response (feat_req_someip_634)"
             );
             *flag.lock().unwrap() = true;
 
@@ -463,13 +463,13 @@ fn field_setter_gets_response() {
 // Field Notifier Tests
 // ============================================================================
 
-/// feat_req_recentip_635: Notifier sends notification event with updated value
+/// feat_req_someip_635: Notifier sends notification event with updated value
 ///
 /// The notifier shall send a notification event message that communicates
 /// the updated value of the field.
 #[test_log::test]
 fn field_notifier_sends_updated_value() {
-    covers!(feat_req_recentip_635);
+    covers!(feat_req_someip_635);
 
     let server_called = Arc::new(Mutex::new(false));
     let client_called = Arc::new(Mutex::new(false));
@@ -559,7 +559,7 @@ fn field_notifier_sends_updated_value() {
                 ]);
                 assert_eq!(
                     value, 100,
-                    "Notification should contain updated field value (feat_req_recentip_635)"
+                    "Notification should contain updated field value (feat_req_someip_635)"
                 );
                 *flag.lock().unwrap() = true;
             } else {
@@ -591,12 +591,12 @@ fn field_notifier_sends_updated_value() {
 // Field Combination Tests
 // ============================================================================
 
-/// feat_req_recentip_631: Field is combination of getter/setter/notifier
+/// feat_req_someip_631: Field is combination of getter/setter/notifier
 ///
 /// A field is a combination of a getter method, setter method, and notifier event.
 #[test_log::test]
 fn field_combines_getter_setter_notifier() {
-    covers!(feat_req_recentip_631);
+    covers!(feat_req_someip_631);
 
     let server_called = Arc::new(Mutex::new(false));
     let client_called = Arc::new(Mutex::new(false));
@@ -772,7 +772,7 @@ fn field_combines_getter_setter_notifier() {
 /// Setter can reject invalid values with error response
 #[test_log::test]
 fn field_setter_can_reject_invalid_value() {
-    covers!(feat_req_recentip_634);
+    covers!(feat_req_someip_634);
 
     let server_called = Arc::new(Mutex::new(false));
     let client_called = Arc::new(Mutex::new(false));

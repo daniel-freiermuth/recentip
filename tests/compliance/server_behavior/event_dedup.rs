@@ -8,7 +8,7 @@
 //! - Raw socket: Acts as **client** (subscribes via raw SD, counts event packets)
 //!
 //! # Requirements Covered
-//! - feat_req_recentipsd_1168: Server shall not send duplicate events for overlapping eventgroups
+//! - feat_req_someipsd_1168: Server shall not send duplicate events for overlapping eventgroups
 
 use super::helpers::{
     build_sd_subscribe_with_tcp_endpoint, build_sd_subscribe_with_udp_endpoint, covers,
@@ -24,7 +24,7 @@ use tokio::io::AsyncReadExt;
 /// Wire-level event ID for our test event (0x8001)
 const TEST_EVENT_ID: u16 = 0x8001;
 
-/// feat_req_recentipsd_1168: Server shall not send duplicate events for overlapping eventgroups (TCP).
+/// feat_req_someipsd_1168: Server shall not send duplicate events for overlapping eventgroups (TCP).
 ///
 /// Per spec: "With TCP the client needs to open a connection to this port before subscription,
 /// because this is the TCP connection the server uses for sending events."
@@ -37,7 +37,7 @@ const TEST_EVENT_ID: u16 = 0x8001;
 /// 5. Client should receive exactly ONE event packet (deduplicated)
 #[test_log::test]
 fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
-    covers!(feat_req_recentipsd_1168);
+    covers!(feat_req_someipsd_1168);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -248,7 +248,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
         assert_eq!(
             event_packets_received, 1,
             "Server should send exactly ONE event packet despite client subscribing to 2 eventgroups. \
-             Per feat_req_recentipsd_1168: server de-duplicates by subscriber endpoint. \
+             Per feat_req_someipsd_1168: server de-duplicates by subscriber endpoint. \
              Got {} packets.",
             event_packets_received
         );
@@ -259,7 +259,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_1168: Server shall not send duplicate events for overlapping eventgroups.
+/// feat_req_someipsd_1168: Server shall not send duplicate events for overlapping eventgroups.
 ///
 /// When a client subscribes to multiple eventgroups that share the same event,
 /// the server MUST send only ONE event packet to that client (per notify call),
@@ -272,7 +272,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
 /// 4. Raw socket should receive exactly ONE packet containing the event
 #[test_log::test]
 fn server_deduplicates_events_for_overlapping_eventgroups_udp() {
-    covers!(feat_req_recentipsd_1168);
+    covers!(feat_req_someipsd_1168);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -453,7 +453,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_udp() {
         assert_eq!(
             event_packets_received, 1,
             "Server should send exactly ONE event packet despite client subscribing to 2 eventgroups. \
-             Per feat_req_recentipsd_1168: server de-duplicates by subscriber endpoint. \
+             Per feat_req_someipsd_1168: server de-duplicates by subscriber endpoint. \
              Got {} packets.",
             event_packets_received
         );
@@ -477,7 +477,7 @@ fn server_deduplicates_events_for_overlapping_eventgroups_udp() {
 /// 4. Both clients receive exactly ONE packet each (2 total packets sent)
 #[test_log::test]
 fn server_sends_events_to_each_unique_endpoint() {
-    covers!(feat_req_recentipsd_1168);
+    covers!(feat_req_someipsd_1168);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

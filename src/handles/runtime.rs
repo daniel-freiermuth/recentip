@@ -160,7 +160,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
             TcpConnectionPool::new(tcp_client_tx, config.magic_cookies);
 
         // Create dedicated client RPC socket (ephemeral port)
-        // Per feat_req_recentip_676: Port 30490 is only for SD, not for RPC
+        // Per feat_req_someip_676: Port 30490 is only for SD, not for RPC
         // Clients need their own socket for sending RPC requests, separate from SD
         let client_method_socket = U::bind(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,

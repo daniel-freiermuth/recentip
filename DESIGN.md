@@ -187,8 +187,8 @@ let config = ServerConfig::builder()
 
 **Rationale**:
 - The SOME/IP-SD spec clearly separates **network binding** (listening on endpoint) from **availability state** (up/down announced via SD)
-- Per `feat_req_recentipsd_184`: "service instance locations are commonly known; therefore, the state of the service instance is of primary concern"
-- Per `feat_req_recentipsd_444`: "implicit registration of a client to receive notifications from a server shall be supported" (pre-configured/static mode)
+- Per `feat_req_someipsd_184`: "service instance locations are commonly known; therefore, the state of the service instance is of primary concern"
+- Per `feat_req_someipsd_444`: "implicit registration of a client to receive notifications from a server shall be supported" (pre-configured/static mode)
 - Enables initialization before announcing availability
 - Enables graceful shutdown (stop announcing before closing sockets)
 - Enables static/pre-configured deployments without SD
@@ -755,7 +755,7 @@ impl ServiceInstance<Bound> {
     pub async fn announce(self) -> Result<ServiceInstance<Announced>, Error>;
     
     /// Send events to pre-configured (static) subscribers
-    /// For deployments without SD (per feat_req_recentipsd_444)
+    /// For deployments without SD (per feat_req_someipsd_444)
     pub async fn notify_static(
         &self, 
         eventgroup: EventgroupId, 

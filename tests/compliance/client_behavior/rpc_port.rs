@@ -8,10 +8,10 @@
 //! - Raw socket: Acts as **server** (sends offers, captures client behavior)
 //!
 //! # Requirements Covered
-//! - feat_req_recentip_676: Port 30490 is only for SD, not for RPC
-//! - feat_req_recentipsd_779: Service endpoint denotes where service is reachable
-//! - feat_req_recentipsd_758: UDP endpoint used for source port of events
-//! - feat_req_recentipsd_767: TCP connection before subscribe
+//! - feat_req_someip_676: Port 30490 is only for SD, not for RPC
+//! - feat_req_someipsd_779: Service endpoint denotes where service is reachable
+//! - feat_req_someipsd_758: UDP endpoint used for source port of events
+//! - feat_req_someipsd_767: TCP connection before subscribe
 
 use super::helpers::{
     build_response, build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers,
@@ -24,9 +24,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 
-/// feat_req_recentip_676: Port 30490 is only for SD, not for RPC
-/// feat_req_recentipsd_779: Service endpoint denotes where service is reachable
-/// feat_req_recentipsd_758: UDP endpoint used for source port of events
+/// feat_req_someip_676: Port 30490 is only for SD, not for RPC
+/// feat_req_someipsd_779: Service endpoint denotes where service is reachable
+/// feat_req_someipsd_758: UDP endpoint used for source port of events
 ///
 /// **BUG DEMONSTRATION TEST**
 ///
@@ -36,9 +36,9 @@ use tokio::sync::Notify;
 /// ephemeral or configured ports.
 ///
 /// Per the specification:
-/// - feat_req_recentip_676: Port 30490 shall be only used for SOME/IP-SD
-/// - feat_req_recentipsd_779: Endpoint options denote where service is reachable
-/// - feat_req_recentipsd_758: UDP endpoint is used for source port (for events)
+/// - feat_req_someip_676: Port 30490 shall be only used for SOME/IP-SD
+/// - feat_req_someipsd_779: Endpoint options denote where service is reachable
+/// - feat_req_someipsd_758: UDP endpoint is used for source port (for events)
 /// - Servers use announced ports as source for both responses and events
 /// - Clients should similarly use dedicated RPC sockets, not SD socket
 ///
@@ -52,9 +52,9 @@ use tokio::sync::Notify;
 #[test_log::test]
 fn client_rpc_must_not_use_sd_port() {
     covers!(
-        feat_req_recentip_676,
-        feat_req_recentipsd_779,
-        feat_req_recentipsd_758
+        feat_req_someip_676,
+        feat_req_someipsd_779,
+        feat_req_someipsd_758
     );
 
     let mut sim = turmoil::Builder::new()
@@ -111,7 +111,7 @@ fn client_rpc_must_not_use_sd_port() {
                 assert_ne!(
                     from.port(),
                     30490,
-                    "Client RPC request MUST NOT originate from SD port 30490 (feat_req_recentip_676). \
+                    "Client RPC request MUST NOT originate from SD port 30490 (feat_req_someip_676). \
                      SD port is reserved exclusively for Service Discovery. \
                      RPC communication requires dedicated RPC socket with ephemeral port."
                 );
@@ -181,7 +181,7 @@ fn client_rpc_must_not_use_sd_port() {
 // TCP CONNECTION TIMING TESTS
 // ============================================================================
 
-/// [feat_req_recentipsd_767] Client opens TCP connection BEFORE sending SubscribeEventgroup.
+/// [feat_req_someipsd_767] Client opens TCP connection BEFORE sending SubscribeEventgroup.
 ///
 /// This wire-level test verifies the timing requirement:
 /// - Raw server offers TCP-only service
@@ -193,7 +193,7 @@ fn client_rpc_must_not_use_sd_port() {
 /// ready to send events as soon as it ACKs the subscription.
 #[test_log::test]
 fn tcp_connection_established_before_subscribe_767() {
-    covers!(feat_req_recentipsd_767);
+    covers!(feat_req_someipsd_767);
 
     let tcp_connected_before_subscribe = Arc::new(AtomicBool::new(false));
     let tcp_connected = Arc::clone(&tcp_connected_before_subscribe);
@@ -309,7 +309,7 @@ fn tcp_connection_established_before_subscribe_767() {
                                     was_connected
                                 );
 
-                                // Per feat_req_recentipsd_767, client MUST connect BEFORE subscribing
+                                // Per feat_req_someipsd_767, client MUST connect BEFORE subscribing
                                 tcp_connected.store(was_connected, Ordering::SeqCst);
                                 subscribe_flag.store(true, Ordering::SeqCst);
 
@@ -387,7 +387,7 @@ fn tcp_connection_established_before_subscribe_767() {
     // THE KEY ASSERTION: TCP connection must be established BEFORE subscribe
     assert!(
         tcp_connected_before_subscribe.load(Ordering::SeqCst),
-        "[feat_req_recentipsd_767] TCP connection MUST be established BEFORE \
+        "[feat_req_someipsd_767] TCP connection MUST be established BEFORE \
          sending SubscribeEventgroup. The client did not connect to TCP before subscribing."
     );
 

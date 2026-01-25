@@ -3,10 +3,10 @@
 //! Integration tests for scenarios with multiple participants using turmoil.
 //!
 //! Key requirements tested:
-//! - feat_req_recentip_354: Multiple subscribers on same ECU
-//! - feat_req_recentip_636: Multiple instances of same service
-//! - feat_req_recentip_804: Event delivery to multiple subscribers
-//! - feat_req_recentipsd_109: SD multicast reaches all participants
+//! - feat_req_someip_354: Multiple subscribers on same ECU
+//! - feat_req_someip_636: Multiple instances of same service
+//! - feat_req_someip_804: Event delivery to multiple subscribers
+//! - feat_req_someipsd_109: SD multicast reaches all participants
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
@@ -35,13 +35,13 @@ const SERVICE_B_VERSION: (u8, u32) = (1, 0);
 // MULTIPLE CLIENTS TO ONE SERVER
 // ============================================================================
 
-/// [feat_req_recentip_103] Multiple clients can call methods on the same server
+/// [feat_req_someip_103] Multiple clients can call methods on the same server
 ///
 /// Three clients connect to one server and make concurrent RPC calls.
 /// All clients should receive correct responses.
 #[test_log::test]
 fn multiple_clients_call_same_server() {
-    covers!(feat_req_recentip_103);
+    covers!(feat_req_someip_103);
 
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
@@ -180,13 +180,13 @@ fn multiple_clients_call_same_server() {
 // MULTIPLE SUBSCRIBERS TO EVENTS
 // ============================================================================
 
-/// [feat_req_recentip_354, feat_req_recentip_804] Multiple clients subscribing to events
+/// [feat_req_someip_354, feat_req_someip_804] Multiple clients subscribing to events
 ///
 /// Three clients subscribe to the same eventgroup. When the server sends an event,
 /// all three subscribers should receive it.
 #[test_log::test]
 fn multiple_clients_subscribe_to_events() {
-    covers!(feat_req_recentip_354, feat_req_recentip_804);
+    covers!(feat_req_someip_354, feat_req_someip_804);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -347,13 +347,13 @@ fn multiple_clients_subscribe_to_events() {
 // SERVICE DISCOVERY REACHES ALL PARTICIPANTS
 // ============================================================================
 
-/// [feat_req_recentipsd_109] SD announcements reach all participants
+/// [feat_req_someipsd_109] SD announcements reach all participants
 ///
 /// When a server offers a service, all clients on the network should be able
 /// to discover it via SD multicast.
 #[test_log::test]
 fn sd_reaches_all_participants() {
-    covers!(feat_req_recentipsd_109);
+    covers!(feat_req_someipsd_109);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -472,14 +472,14 @@ fn sd_reaches_all_participants() {
 // MIXED CLIENT/SERVER ROLES
 // ============================================================================
 
-/// [feat_req_recentip_103] Nodes can be both client and server
+/// [feat_req_someip_103] Nodes can be both client and server
 ///
 /// Node A offers ServiceA and requires ServiceB.
 /// Node B offers ServiceB and requires ServiceA.
 /// Both should successfully discover each other and communicate.
 #[test_log::test]
 fn nodes_with_mixed_client_server_roles() {
-    covers!(feat_req_recentip_103);
+    covers!(feat_req_someip_103);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -600,13 +600,13 @@ fn nodes_with_mixed_client_server_roles() {
 // MULTIPLE SERVERS WITH DIFFERENT INSTANCES
 // ============================================================================
 
-/// [feat_req_recentip_636] Multiple servers offering different instances
+/// [feat_req_someip_636] Multiple servers offering different instances
 ///
 /// Two servers offer the same service with different instance IDs.
 /// Client should be able to discover and call both instances.
 #[test_log::test]
 fn multiple_servers_different_instances() {
-    covers!(feat_req_recentip_636);
+    covers!(feat_req_someip_636);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

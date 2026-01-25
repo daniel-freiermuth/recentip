@@ -6,10 +6,10 @@
 //! ## SOME/IP TCP Requirements
 //!
 //! Per specification:
-//! - **`feat_req_recentip_644`**: Single TCP connection per client-server pair
-//! - **`feat_req_recentip_646`**: Client opens connection on first request
-//! - **`feat_req_recentip_647`**: Client reestablishes after failure
-//! - **`feat_req_recentip_586`**: Optional Magic Cookies for resynchronization
+//! - **`feat_req_someip_644`**: Single TCP connection per client-server pair
+//! - **`feat_req_someip_646`**: Client opens connection on first request
+//! - **`feat_req_someip_647`**: Client reestablishes after failure
+//! - **`feat_req_someip_586`**: Optional Magic Cookies for resynchronization
 //!
 //! ## Connection Pool
 //!
@@ -87,7 +87,7 @@ pub struct TcpConnectionPool<T: TcpStream> {
     senders: Arc<Mutex<HashMap<(SocketAddr, u64), mpsc::Sender<Vec<u8>>>>>,
     /// Channel to forward received messages to the runtime
     msg_tx: mpsc::Sender<TcpMessage>,
-    /// Enable Magic Cookies for TCP resync (`feat_req_recentip_586`)
+    /// Enable Magic Cookies for TCP resync (`feat_req_someip_586`)
     magic_cookies: bool,
     /// Phantom data for the stream type - use `fn()` -> T for Send+Sync
     _phantom: std::marker::PhantomData<fn() -> T>,
@@ -116,8 +116,8 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// Send data to a peer, establishing connection if needed.
     ///
     /// This implements:
-    /// - `feat_req_recentip_646`: Opens connection on first request
-    /// - `feat_req_recentip_644`: Reuses existing connection
+    /// - `feat_req_someip_646`: Opens connection on first request
+    /// - `feat_req_someip_644`: Reuses existing connection
     ///
     /// When a new connection is established, a reader task is spawned to receive
     /// responses and forward them to the runtime via the `msg_tx` channel.
@@ -195,7 +195,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// Ensure a connection exists to a peer and return our local address on that connection.
     ///
     /// This is used for TCP pub/sub: the client must connect to the server BEFORE
-    /// subscribing (per `feat_req_recentipsd_767`), and must advertise the correct
+    /// subscribing (per `feat_req_someipsd_767`), and must advertise the correct
     /// endpoint (our local address on the TCP connection) so the server can send
     /// events back on the same connection.
     ///
@@ -217,7 +217,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 
         // Establish new connection
         tracing::debug!(
-            "Establishing TCP connection to {} for subscription (feat_req_recentipsd_767)",
+            "Establishing TCP connection to {} for subscription (feat_req_someipsd_767)",
             target
         );
         let stream = T::connect(target).await?;
@@ -317,8 +317,8 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 /// Handle a client-side TCP connection - both reading and writing
 ///
 /// When `magic_cookies` is enabled:
-/// - Each write is prepended with a Magic Cookie (`feat_req_recentip_591`)
-/// - Magic Cookies in received data are skipped (`feat_req_recentip_586`)
+/// - Each write is prepended with a Magic Cookie (`feat_req_someip_591`)
+/// - Magic Cookies in received data are skipped (`feat_req_someip_586`)
 async fn handle_client_tcp_connection<T: TcpStream>(
     mut stream: T,
     peer_addr: SocketAddr,
@@ -347,7 +347,7 @@ async fn handle_client_tcp_connection<T: TcpStream>(
 
                         // Try to parse complete messages
                         while read_buffer.len() >= Header::SIZE {
-                            // Skip Magic Cookies (feat_req_recentip_586)
+                            // Skip Magic Cookies (feat_req_someip_586)
                             if is_magic_cookie(&read_buffer) {
                                 let length = u32::from_be_bytes([
                                     read_buffer[4], read_buffer[5], read_buffer[6], read_buffer[7]
@@ -394,7 +394,7 @@ async fn handle_client_tcp_connection<T: TcpStream>(
 
             // Write to the stream
             Some(data) = send_rx.recv() => {
-                // Prepend Magic Cookie if enabled (feat_req_recentip_591)
+                // Prepend Magic Cookie if enabled (feat_req_someip_591)
                 if magic_cookies {
                     let cookie = magic_cookie_client();
                     if let Err(e) = stream.write_all(&cookie).await {
@@ -589,8 +589,8 @@ impl<T: TcpStream> TcpServer<T> {
 /// handling outgoing responses.
 ///
 /// When `magic_cookies` is enabled:
-/// - Each write is prepended with a Magic Cookie (`feat_req_recentip_591`)
-/// - Magic Cookies in received data are skipped (`feat_req_recentip_586`)
+/// - Each write is prepended with a Magic Cookie (`feat_req_someip_591`)
+/// - Magic Cookies in received data are skipped (`feat_req_someip_586`)
 async fn handle_tcp_connection<T: TcpStream>(
     mut stream: T,
     peer_addr: SocketAddr,
@@ -620,7 +620,7 @@ async fn handle_tcp_connection<T: TcpStream>(
 
                         // Try to parse complete messages
                         while read_buffer.len() >= Header::SIZE {
-                            // Skip Magic Cookies (feat_req_recentip_586)
+                            // Skip Magic Cookies (feat_req_someip_586)
                             if is_magic_cookie(&read_buffer) {
                                 let length = u32::from_be_bytes([
                                     read_buffer[4], read_buffer[5], read_buffer[6], read_buffer[7]
@@ -668,7 +668,7 @@ async fn handle_tcp_connection<T: TcpStream>(
 
             // Write responses to client
             Some(data) = response_rx.recv() => {
-                // Prepend Magic Cookie if enabled (feat_req_recentip_591)
+                // Prepend Magic Cookie if enabled (feat_req_someip_591)
                 if magic_cookies {
                     let cookie = magic_cookie_server();
                     if let Err(e) = stream.write_all(&cookie).await {

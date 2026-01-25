@@ -106,7 +106,7 @@ pub struct SubscriberKey {
 
 /// Server-side subscription with TTL expiration tracking
 ///
-/// Per SOME/IP-SD spec (`feat_req_recentipsd_445`), subscriptions have a TTL
+/// Per SOME/IP-SD spec (`feat_req_someipsd_445`), subscriptions have a TTL
 /// and must be cleaned up when the TTL expires without renewal.
 #[derive(Debug, Clone)]
 pub struct ServerSubscription {
@@ -115,7 +115,7 @@ pub struct ServerSubscription {
     /// Transport protocol for sending events to this subscriber
     pub(crate) transport: crate::config::Transport,
     /// When this subscription expires (based on client's TTL).
-    /// `None` means infinite TTL (0xFFFFFF) - never expires per `feat_req_recentipsd_431`.
+    /// `None` means infinite TTL (0xFFFFFF) - never expires per `feat_req_someipsd_431`.
     pub(crate) expires_at: Option<tokio::time::Instant>,
 }
 
@@ -436,7 +436,7 @@ pub struct RuntimeState {
     /// SD endpoint (port 30490) - only for Service Discovery
     pub(crate) local_endpoint: SocketAddr,
     /// Client RPC endpoint (ephemeral port) - for sending client RPC requests
-    /// Per `feat_req_recentip_676`: Port 30490 is only for SD, not for RPC
+    /// Per `feat_req_someip_676`: Port 30490 is only for SD, not for RPC
     pub(crate) client_rpc_endpoint: SocketAddr,
     /// Sender for client RPC messages (sends to `client_rpc_socket` task)
     pub(crate) client_rpc_tx: mpsc::Sender<RpcSendMessage>,
@@ -451,7 +451,7 @@ pub struct RuntimeState {
     /// Active subscriptions (client-side)
     pub(crate) subscriptions: HashMap<ServiceKey, Vec<ClientSubscription>>,
     /// Server-side subscribers (clients subscribed to our offered services)
-    /// Each subscription includes TTL expiration for cleanup per `feat_req_recentipsd_445`
+    /// Each subscription includes TTL expiration for cleanup per `feat_req_someipsd_445`
     pub(crate) server_subscribers: HashMap<SubscriberKey, Vec<ServerSubscription>>,
     /// Static event listeners (client-side, no SD)
     pub(crate) static_listeners: HashMap<SubscriberKey, mpsc::Sender<crate::Event>>,
@@ -724,8 +724,8 @@ mod tests {
     use super::*;
     use tokio::sync::mpsc;
 
-    /// feat_req_recentip_677: Session ID wraps from 0xFFFF to 0x0001
-    /// feat_req_recentip_649: Session ID starts at 0x0001
+    /// feat_req_someip_677: Session ID wraps from 0xFFFF to 0x0001
+    /// feat_req_someip_649: Session ID starts at 0x0001
     ///
     /// Session ID 0x0000 is reserved for "session handling disabled" and must never be used.
     #[test_log::test]
@@ -763,7 +763,7 @@ mod tests {
         assert_eq!(state.next_multicast_session_id(), 3);
     }
 
-    /// feat_req_recentipsd_41: Reboot flag is cleared after first wraparound
+    /// feat_req_someipsd_41: Reboot flag is cleared after first wraparound
     #[test_log::test]
     fn reboot_flag_clears_after_wraparound() {
         let addr = "127.0.0.1:30490".parse().unwrap();

@@ -9,7 +9,7 @@
 //!
 //! **NOTE**: TCP event delivery for pub/sub is not yet fully implemented.
 //! The server-to-client event path over TCP requires the client to establish
-//! a TCP connection to the server BEFORE subscribing (per feat_req_recentipsd_767),
+//! a TCP connection to the server BEFORE subscribing (per feat_req_someipsd_767),
 //! and the server sends events back on that connection.
 //!
 //! These tests are marked `#[ignore]` until TCP pub/sub is implemented.
@@ -46,11 +46,11 @@ const TCP_PUB_SUB_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 /// Basic test: Server offers TCP, client subscribes and receives events.
 ///
-/// [feat_req_recentipsd_767] Client opens TCP connection before SubscribeEventgroup.
-/// [feat_req_recentipsd_786] SubscribeEventgroup can reference TCP endpoint option.
+/// [feat_req_someipsd_767] Client opens TCP connection before SubscribeEventgroup.
+/// [feat_req_someipsd_786] SubscribeEventgroup can reference TCP endpoint option.
 #[test_log::test]
 fn tcp_basic_subscribe_and_receive_events() {
-    covers!(feat_req_recentipsd_767, feat_req_recentipsd_786);
+    covers!(feat_req_someipsd_767, feat_req_someipsd_786);
 
     let events_received = Arc::new(AtomicUsize::new(0));
     let events_clone = Arc::clone(&events_received);
@@ -156,10 +156,10 @@ fn tcp_basic_subscribe_and_receive_events() {
 
 /// Test that multiple clients can subscribe to the same TCP eventgroup.
 ///
-/// [feat_req_recentipsd_432] Server tracks subscription state per client.
+/// [feat_req_someipsd_432] Server tracks subscription state per client.
 #[test_log::test]
 fn tcp_multiple_subscribers_receive_events() {
-    covers!(feat_req_recentipsd_432);
+    covers!(feat_req_someipsd_432);
 
     let client1_events = Arc::new(AtomicUsize::new(0));
     let client2_events = Arc::new(AtomicUsize::new(0));
@@ -430,7 +430,7 @@ fn tcp_large_payload_events() {
 
 /// Test that clients can subscribe to different eventgroups via TCP.
 ///
-/// [feat_req_recentipsd_432] Server tracks subscription state for each eventgroup.
+/// [feat_req_someipsd_432] Server tracks subscription state for each eventgroup.
 #[test_log::test]
 fn tcp_different_eventgroups() {
     let eg1_events = Arc::new(AtomicUsize::new(0));
@@ -603,10 +603,10 @@ fn tcp_different_eventgroups() {
 
 /// Test service offering both TCP and UDP, client selects based on preference.
 ///
-/// [feat_req_recentipsd_786] SubscribeEventgroup can reference UDP and/or TCP endpoint.
+/// [feat_req_someipsd_786] SubscribeEventgroup can reference UDP and/or TCP endpoint.
 #[test_log::test]
 fn dual_stack_service_client_prefers_tcp() {
-    covers!(feat_req_recentipsd_786);
+    covers!(feat_req_someipsd_786);
 
     let events_received = Arc::new(AtomicUsize::new(0));
     let events_clone = Arc::clone(&events_received);

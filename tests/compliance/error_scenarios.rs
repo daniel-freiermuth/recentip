@@ -3,12 +3,12 @@
 //! Tests error scenarios, return codes, and error message handling.
 //!
 //! Key requirements tested:
-//! - feat_req_recentip_597: No error response for events/notifications
-//! - feat_req_recentip_654: No error response for fire&forget methods
-//! - feat_req_recentip_655: Error message copies request header fields (wire format test)
-//! - feat_req_recentip_727: Error message has return code != 0x00
-//! - feat_req_recentip_798: Messages with length < 8 shall be ignored (wire format test)
-//! - feat_req_recentip_703: Use known protocol version (wire format test)
+//! - feat_req_someip_597: No error response for events/notifications
+//! - feat_req_someip_654: No error response for fire&forget methods
+//! - feat_req_someip_655: Error message copies request header fields (wire format test)
+//! - feat_req_someip_727: Error message has return code != 0x00
+//! - feat_req_someip_798: Messages with length < 8 shall be ignored (wire format test)
+//! - feat_req_someip_703: Use known protocol version (wire format test)
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
@@ -30,13 +30,13 @@ const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 // No Error Response for Events/Fire&Forget Tests
 // ============================================================================
 
-/// feat_req_recentip_597: No error response for events/notifications
+/// feat_req_someip_597: No error response for events/notifications
 ///
 /// The system shall not return an error message for events/notifications.
 /// Events are one-way - there's no mechanism to send errors back.
 #[test_log::test]
 fn no_error_response_for_events() {
-    covers!(feat_req_recentip_597);
+    covers!(feat_req_someip_597);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -117,13 +117,13 @@ fn no_error_response_for_events() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_654: No error response for fire&forget methods
+/// feat_req_someip_654: No error response for fire&forget methods
 ///
 /// The system shall not return an error message for fire&forget methods.
 /// Fire&forget is one-way - no response or error is expected.
 #[test_log::test]
 fn no_error_response_for_fire_and_forget() {
-    covers!(feat_req_recentip_654);
+    covers!(feat_req_someip_654);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -194,12 +194,12 @@ fn no_error_response_for_fire_and_forget() {
 // Return Code Tests
 // ============================================================================
 
-/// feat_req_recentip_683: All defined return codes are valid
+/// feat_req_someip_683: All defined return codes are valid
 ///
 /// Test that all defined return codes can be used.
 #[test_log::test]
 fn all_return_codes_are_valid() {
-    covers!(feat_req_recentip_683);
+    covers!(feat_req_someip_683);
 
     // Test that all defined return codes can be used
     let codes = [
@@ -230,13 +230,13 @@ fn all_return_codes_are_valid() {
     assert_eq!(ReturnCode::Ok as u8, 0x00);
 }
 
-/// feat_req_recentip_727: Error message has return code != 0x00
-/// feat_req_recentip_683: Server can return any valid return code
+/// feat_req_someip_727: Error message has return code != 0x00
+/// feat_req_someip_683: Server can return any valid return code
 ///
 /// Server responds with various error codes, and client receives them.
 #[test_log::test]
 fn server_returns_various_error_codes() {
-    covers!(feat_req_recentip_683, feat_req_recentip_727);
+    covers!(feat_req_someip_683, feat_req_someip_727);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -375,7 +375,7 @@ fn server_returns_various_error_codes() {
                     ReturnCode::NotOk,
                     "Should receive NotOk"
                 );
-                // Verify return code is != 0x00 (feat_req_recentip_727)
+                // Verify return code is != 0x00 (feat_req_someip_727)
                 assert_ne!(
                     response.return_code as u8, 0x00,
                     "Error code must be != 0x00"
@@ -425,7 +425,7 @@ fn parse_sd_message(data: &[u8]) -> Option<(recentip::wire::Header, recentip::wi
     }
 }
 
-/// feat_req_recentip_655: Error response copies request header fields
+/// feat_req_someip_655: Error response copies request header fields
 ///
 /// For request/response methods the error message shall copy over the
 /// fields of the header from the request.
@@ -438,7 +438,7 @@ fn error_response_copies_request_header() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    covers!(feat_req_recentip_655);
+    covers!(feat_req_someip_655);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -551,42 +551,42 @@ fn error_response_copies_request_header() {
         if let Ok(Ok((len, _))) = result {
             if let Some(error_header) = parse_header_wire(&buf[..len]) {
                 // With default MethodConfig (no exception methods configured),
-                // errors use RESPONSE (0x80) per feat_req_recentip_726
+                // errors use RESPONSE (0x80) per feat_req_someip_726
                 assert_eq!(
                     error_header.message_type,
                     MessageType::Response,
-                    "Error response should be RESPONSE (0x80) when EXCEPTION is not configured (feat_req_recentip_726)"
+                    "Error response should be RESPONSE (0x80) when EXCEPTION is not configured (feat_req_someip_726)"
                 );
 
-                // Verify return code is not OK (feat_req_recentip_727)
+                // Verify return code is not OK (feat_req_someip_727)
                 // This is what makes it an "error message" even with RESPONSE type
                 assert_ne!(
                     error_header.return_code, 0x00,
-                    "Error message must have return code != 0x00 (feat_req_recentip_727)"
+                    "Error message must have return code != 0x00 (feat_req_someip_727)"
                 );
 
                 // Verify Service ID copied from request
                 assert_eq!(
                     error_header.service_id, 0x1234,
-                    "Error should copy Service ID from request (feat_req_recentip_655)"
+                    "Error should copy Service ID from request (feat_req_someip_655)"
                 );
 
                 // Verify Method ID copied from request
                 assert_eq!(
                     error_header.method_id, 0x0001,
-                    "Error should copy Method ID from request (feat_req_recentip_655)"
+                    "Error should copy Method ID from request (feat_req_someip_655)"
                 );
 
                 // Verify Client ID copied from request (Request ID part 1)
                 assert_eq!(
                     error_header.client_id, 0x0042,
-                    "Error should copy Client ID from request (feat_req_recentip_655)"
+                    "Error should copy Client ID from request (feat_req_someip_655)"
                 );
 
                 // Verify Session ID copied from request (Request ID part 2)
                 assert_eq!(
                     error_header.session_id, 0x1337,
-                    "Error should copy Session ID from request (feat_req_recentip_655)"
+                    "Error should copy Session ID from request (feat_req_someip_655)"
                 );
             } else {
                 panic!("Failed to parse error response header");
@@ -601,7 +601,7 @@ fn error_response_copies_request_header() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_106: EXCEPTION (0x81) is used when configured per-method
+/// feat_req_someip_106: EXCEPTION (0x81) is used when configured per-method
 ///
 /// When a method is configured to use EXCEPTION for errors via MethodConfig,
 /// the error response must use message type 0x81 instead of 0x80.
@@ -614,7 +614,7 @@ fn exception_message_type_when_configured() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    covers!(feat_req_recentip_106);
+    covers!(feat_req_someip_106);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -730,7 +730,7 @@ fn exception_message_type_when_configured() {
                 assert_eq!(
                     error_header.message_type,
                     MessageType::Error,
-                    "Error response should be EXCEPTION (0x81) when configured (feat_req_recentip_106)"
+                    "Error response should be EXCEPTION (0x81) when configured (feat_req_someip_106)"
                 );
 
                 assert_ne!(
@@ -750,7 +750,7 @@ fn exception_message_type_when_configured() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_106, feat_req_recentip_726: Mixed config - some methods EXCEPTION, some RESPONSE
+/// feat_req_someip_106, feat_req_someip_726: Mixed config - some methods EXCEPTION, some RESPONSE
 ///
 /// When some methods are configured for EXCEPTION and others are not,
 /// each method should use the appropriate message type.
@@ -763,7 +763,7 @@ fn mixed_exception_config_per_method() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    covers!(feat_req_recentip_106, feat_req_recentip_726);
+    covers!(feat_req_someip_106, feat_req_someip_726);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -936,7 +936,7 @@ fn internal_unknown_service_error_uses_response() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    covers!(feat_req_recentip_726);
+    covers!(feat_req_someip_726);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1050,7 +1050,7 @@ fn internal_unknown_service_error_uses_response() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_798: Messages with length < 8 shall be ignored
+/// feat_req_someip_798: Messages with length < 8 shall be ignored
 ///
 /// SOME/IP messages with a length value < 8 bytes shall be ignored.
 /// Length field indicates payload + 8 (for the header tail), so minimum is 8.
@@ -1061,7 +1061,7 @@ fn messages_with_short_length_ignored() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    covers!(feat_req_recentip_798);
+    covers!(feat_req_someip_798);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1087,10 +1087,10 @@ fn messages_with_short_length_ignored() {
         let result = tokio::time::timeout(Duration::from_secs(2), offering.next()).await;
 
         // Should timeout - no valid event should be received
-        // The message with Length < 8 should be rejected at parse time (feat_req_recentip_798)
+        // The message with Length < 8 should be rejected at parse time (feat_req_someip_798)
         assert!(
             result.is_err(),
-            "Malformed message with Length < 8 should be ignored (feat_req_recentip_798)"
+            "Malformed message with Length < 8 should be ignored (feat_req_someip_798)"
         );
 
         Ok(())
@@ -1163,7 +1163,7 @@ fn messages_with_short_length_ignored() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_703: Implementation shall use known protocol version
+/// feat_req_someip_703: Implementation shall use known protocol version
 ///
 /// All messages sent by the library must use protocol version 0x01.
 #[test_log::test]
@@ -1173,7 +1173,7 @@ fn uses_known_protocol_version() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    covers!(feat_req_recentip_703);
+    covers!(feat_req_someip_703);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1308,7 +1308,7 @@ fn uses_known_protocol_version() {
         for header in &captured_messages {
             assert_eq!(
                 header.protocol_version, 0x01,
-                "All messages must use protocol version 0x01 (feat_req_recentip_703)"
+                "All messages must use protocol version 0x01 (feat_req_someip_703)"
             );
         }
 
@@ -1318,7 +1318,7 @@ fn uses_known_protocol_version() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_703, feat_req_recentip_818:
+/// feat_req_someip_703, feat_req_someip_818:
 /// Wrong protocol version returns E_WRONG_PROTOCOL_VERSION or is ignored
 ///
 /// When receiving a message with wrong protocol version, the implementation
@@ -1331,7 +1331,7 @@ fn wrong_protocol_version_returns_error() {
     use std::net::SocketAddr;
     use std::time::Duration;
 
-    covers!(feat_req_recentip_703, feat_req_recentip_818);
+    covers!(feat_req_someip_703, feat_req_someip_818);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1440,11 +1440,11 @@ fn wrong_protocol_version_returns_error() {
                 assert_eq!(
                     header.return_code,
                     ReturnCode::WrongProtocolVersion as u8,
-                    "Should return E_WRONG_PROTOCOL_VERSION (feat_req_recentip_703)"
+                    "Should return E_WRONG_PROTOCOL_VERSION (feat_req_someip_703)"
                 );
             }
         }
-        // Note: Not receiving a response is also valid (feat_req_recentip_818 - may ignore)
+        // Note: Not receiving a response is also valid (feat_req_someip_818 - may ignore)
 
         Ok(())
     });

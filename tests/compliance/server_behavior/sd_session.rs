@@ -115,13 +115,13 @@ fn build_sd_offer_with_session(
 //   old.reboot=0, new.reboot=0           → Normal operation
 // ============================================================================
 
-/// feat_req_recentipsd_41: SD Reboot flag is set after startup
+/// feat_req_someipsd_41: SD Reboot flag is set after startup
 ///
 /// When a runtime starts, it must set the reboot flag (bit 7 of SD flags)
 /// to 1 in all SD messages until the session ID wraps around.
 #[test_log::test]
 fn sd_reboot_flag_set_after_startup() {
-    covers!(feat_req_recentipsd_41);
+    covers!(feat_req_someipsd_41);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -192,8 +192,8 @@ fn sd_reboot_flag_set_after_startup() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_41: Session ID starts at 1 after startup
-/// feat_req_recentip_649: Session ID must start at 1
+/// feat_req_someipsd_41: Session ID starts at 1 after startup
+/// feat_req_someip_649: Session ID must start at 1
 ///
 /// Verify that the first SD message has session_id=1
 ///
@@ -202,7 +202,7 @@ fn sd_reboot_flag_set_after_startup() {
 /// few captured messages, which proves the runtime started counting at 1.
 #[test_log::test]
 fn sd_session_starts_at_one() {
-    covers!(feat_req_recentipsd_41, feat_req_recentip_649);
+    covers!(feat_req_someipsd_41, feat_req_someip_649);
 
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -366,7 +366,7 @@ fn sd_session_zero_rejected() {
     );
 }
 
-/// feat_req_recentipsd_41: Reboot flag is cleared after session wraparound
+/// feat_req_someipsd_41: Reboot flag is cleared after session wraparound
 ///
 /// After 65535 SD messages (session wraps 0xFFFF → 1), the reboot flag
 /// must transition from 1 to 0. This indicates normal operation, not reboot.
@@ -375,7 +375,7 @@ fn sd_session_zero_rejected() {
 /// state. Full integration would require 65535 actual messages.
 #[test_log::test]
 fn sd_reboot_flag_clears_after_wraparound() {
-    covers!(feat_req_recentipsd_41, feat_req_recentipsd_764);
+    covers!(feat_req_someipsd_41, feat_req_someipsd_764);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(60))
@@ -442,14 +442,14 @@ fn sd_reboot_flag_clears_after_wraparound() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_765: SD uses separate session counters for multicast vs unicast
+/// feat_req_someipsd_765: SD uses separate session counters for multicast vs unicast
 ///
 /// Per the specification, session ID counters must be maintained separately
 /// for multicast and unicast SD messages. A peer receiving both types
 /// should see independent session sequences.
 #[test_log::test]
 fn sd_separate_multicast_unicast_sessions() {
-    covers!(feat_req_recentipsd_765);
+    covers!(feat_req_someipsd_765);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -549,7 +549,7 @@ fn sd_separate_multicast_unicast_sessions() {
 /// - Verifies unicast sessions: 1, 2, 3, 4, ... (independent from multicast)
 #[test_log::test]
 fn server_session_ids_start_at_one_and_increment_independently() {
-    covers!(feat_req_someip_649, feat_req_recentipsd_765);
+    covers!(feat_req_someip_649, feat_req_someipsd_765);
 
     use std::sync::{Arc, Mutex};
 
@@ -708,7 +708,7 @@ fn server_session_ids_start_at_one_and_increment_independently() {
 /// - Verifies unicast SubscribeAck sessions: 1, 2, 3, 4, ...
 #[test_log::test]
 fn server_unicast_session_ids_start_at_one_and_increment() {
-    covers!(feat_req_someip_649, feat_req_recentipsd_765);
+    covers!(feat_req_someip_649, feat_req_someipsd_765);
 
     use std::sync::{Arc, Mutex};
 

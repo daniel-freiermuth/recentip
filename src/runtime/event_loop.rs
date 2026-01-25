@@ -398,7 +398,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                 }
             } else {
                 // Client messages use dedicated client RPC socket (NOT SD socket)
-                // Per feat_req_recentip_676: Port 30490 is only for SD, not for RPC
+                // Per feat_req_someip_676: Port 30490 is only for SD, not for RPC
                 if let Err(e) = state
                     .client_rpc_tx
                     .send(RpcSendMessage {
@@ -1055,9 +1055,9 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         }
     }
 
-    // Expire stale server-side subscriptions (feat_req_recentipsd_445)
+    // Expire stale server-side subscriptions (feat_req_someipsd_445)
     // Remove subscriptions whose TTL has elapsed without renewal
-    // Note: expires_at=None means infinite TTL (0xFFFFFF) per feat_req_recentipsd_431
+    // Note: expires_at=None means infinite TTL (0xFFFFFF) per feat_req_someipsd_431
     for subscribers in state.server_subscribers.values_mut() {
         let before_count = subscribers.len();
         subscribers.retain(|sub| match sub.expires_at {

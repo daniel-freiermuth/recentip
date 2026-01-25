@@ -29,22 +29,22 @@ const VERSIONED_SERVICE_VERSION: (u8, u32) = (2, 3);
 // SD HEADER COMPLIANCE
 // ============================================================================
 
-/// feat_req_recentipsd_26: SD messages must be NOTIFICATION type
-/// feat_req_recentipsd_27: SD uses UDP only (never TCP)
-/// feat_req_recentipsd_141: Service ID must be 0xFFFF
-/// feat_req_recentipsd_142: Method ID must be 0x8100
-/// feat_req_recentipsd_144: Protocol and Interface Version must be 0x01
+/// feat_req_someipsd_26: SD messages must be NOTIFICATION type
+/// feat_req_someipsd_27: SD uses UDP only (never TCP)
+/// feat_req_someipsd_141: Service ID must be 0xFFFF
+/// feat_req_someipsd_142: Method ID must be 0x8100
+/// feat_req_someipsd_144: Protocol and Interface Version must be 0x01
 ///
 /// This test verifies that when a service is offered, it can be discovered,
 /// which implies correct SD message format.
 #[test_log::test]
 fn sd_offer_discovery_works() {
     covers!(
-        feat_req_recentipsd_26,
-        feat_req_recentipsd_27,
-        feat_req_recentipsd_141,
-        feat_req_recentipsd_142,
-        feat_req_recentipsd_144
+        feat_req_someipsd_26,
+        feat_req_someipsd_27,
+        feat_req_someipsd_141,
+        feat_req_someipsd_142,
+        feat_req_someipsd_144
     );
 
     let executed = Arc::new(Mutex::new(false));
@@ -105,13 +105,13 @@ fn sd_offer_discovery_works() {
     assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
-/// feat_req_recentipsd_47: OfferService entry contains correct service/instance IDs
-/// feat_req_recentipsd_39: SD flags field follows header
+/// feat_req_someipsd_47: OfferService entry contains correct service/instance IDs
+/// feat_req_someipsd_39: SD flags field follows header
 ///
 /// Test that specific instance IDs are correctly transmitted in offers.
 #[test_log::test]
 fn sd_offer_with_specific_instance() {
-    covers!(feat_req_recentipsd_47, feat_req_recentipsd_39);
+    covers!(feat_req_someipsd_47, feat_req_someipsd_39);
 
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
@@ -176,12 +176,12 @@ fn sd_offer_with_specific_instance() {
     assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
-/// feat_req_recentipsd_47: Version information in OfferService entry
+/// feat_req_someipsd_47: Version information in OfferService entry
 ///
 /// Test that service versions are correctly communicated.
 #[test_log::test]
 fn sd_offer_with_version_info() {
-    covers!(feat_req_recentipsd_47);
+    covers!(feat_req_someipsd_47);
 
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
@@ -251,13 +251,13 @@ fn sd_offer_with_version_info() {
 // STOP OFFER BEHAVIOR
 // ============================================================================
 
-/// feat_req_recentipsd_47: StopOffer uses TTL=0
+/// feat_req_someipsd_47: StopOffer uses TTL=0
 ///
 /// When an offering handle is dropped, a StopOffer (OfferService with TTL=0)
 /// should be sent. Clients should then lose availability.
 #[test_log::test]
 fn sd_stop_offer_on_drop() {
-    covers!(feat_req_recentipsd_47);
+    covers!(feat_req_someipsd_47);
 
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
@@ -330,10 +330,10 @@ fn sd_stop_offer_on_drop() {
 // MULTIPLE SERVICES
 // ============================================================================
 
-/// feat_req_recentipsd_47: Multiple services can be offered simultaneously
+/// feat_req_someipsd_47: Multiple services can be offered simultaneously
 #[test_log::test]
 fn sd_multiple_service_offers() {
-    covers!(feat_req_recentipsd_47);
+    covers!(feat_req_someipsd_47);
 
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
@@ -401,14 +401,14 @@ fn sd_multiple_service_offers() {
     assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
-/// feat_req_recentipsd_47: Same service, multiple instances
-/// feat_req_recentipsd_782: Multiple instances use different endpoints
+/// feat_req_someipsd_47: Same service, multiple instances
+/// feat_req_someipsd_782: Multiple instances use different endpoints
 ///
 /// With proper RPC socket architecture, multiple instances of the same service
 /// can now run on the same host, each with its own dedicated RPC socket.
 #[test_log::test]
 fn sd_multiple_instances_same_service() {
-    covers!(feat_req_recentipsd_47, feat_req_recentipsd_782);
+    covers!(feat_req_someipsd_47, feat_req_someipsd_782);
 
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
@@ -492,12 +492,12 @@ fn sd_multiple_instances_same_service() {
 // FIND SERVICE BEHAVIOR
 // ============================================================================
 
-/// feat_req_recentipsd_207: FindService entry for client-initiated discovery
+/// feat_req_someipsd_207: FindService entry for client-initiated discovery
 ///
 /// Client sends Findserver responds with OfferService.
 #[test_log::test]
 fn sd_find_service_discovery() {
-    covers!(feat_req_recentipsd_207);
+    covers!(feat_req_someipsd_207);
 
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
@@ -566,13 +566,13 @@ fn sd_find_service_discovery() {
 // SD SESSION HANDLING
 // ============================================================================
 
-/// feat_req_recentipsd_26: SD messages use incrementing Session ID
-/// feat_req_recentip_649: Session ID starts at 1
+/// feat_req_someipsd_26: SD messages use incrementing Session ID
+/// feat_req_someip_649: Session ID starts at 1
 ///
 /// Each SD message should have an incrementing session ID.
 #[test_log::test]
 fn sd_session_id_increments() {
-    covers!(feat_req_recentipsd_26, feat_req_recentip_649);
+    covers!(feat_req_someipsd_26, feat_req_someip_649);
 
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
@@ -646,14 +646,14 @@ fn sd_session_id_increments() {
 // MULTICAST vs UNICAST
 // ============================================================================
 
-/// feat_req_recentipsd_40: Unicast flag should be set
-/// feat_req_recentipsd_453: Unicast flag value
+/// feat_req_someipsd_40: Unicast flag should be set
+/// feat_req_someipsd_453: Unicast flag value
 ///
 /// SD messages typically use multicast for initial discovery
 /// but unicast flag indicates unicast capability.
 #[test_log::test]
 fn sd_unicast_flag_handling() {
-    covers!(feat_req_recentipsd_40, feat_req_recentipsd_453);
+    covers!(feat_req_someipsd_40, feat_req_someipsd_453);
 
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
@@ -717,9 +717,9 @@ fn sd_unicast_flag_handling() {
 #[test_log::test]
 fn sd_discovery_then_rpc() {
     covers!(
-        feat_req_recentipsd_26,
-        feat_req_recentipsd_47,
-        feat_req_recentip_103
+        feat_req_someipsd_26,
+        feat_req_someipsd_47,
+        feat_req_someip_103
     );
 
     let executed = Arc::new(Mutex::new(false));

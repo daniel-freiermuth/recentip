@@ -6,18 +6,18 @@
 //! fully implemented in the runtime. They serve as TDD targets for future implementation.
 //!
 //! Key requirements tested:
-//! - feat_req_recentip_324: TCP binding is based on UDP binding
-//! - feat_req_recentip_325: Nagle's algorithm disabled
-//! - feat_req_recentip_326: Connection lost handling (requests timeout, NOT reboot)
-//! - feat_req_recentip_585: Every payload has its own header
-//! - feat_req_recentip_586: Magic Cookies allow resync in testing
-//! - feat_req_recentip_591: TCP segment starts with Magic Cookie
-//! - feat_req_recentip_592: Only one Magic Cookie per segment
-//! - feat_req_recentip_644: Single TCP connection per client-server pair
-//! - feat_req_recentip_646: Client opens TCP connection
-//! - feat_req_recentip_647: Client reestablishes connection
-//! - feat_req_recentip_702: Multiple messages per segment supported
-//! - feat_req_recentipsd_872: Reboot detection triggers TCP reset
+//! - feat_req_someip_324: TCP binding is based on UDP binding
+//! - feat_req_someip_325: Nagle's algorithm disabled
+//! - feat_req_someip_326: Connection lost handling (requests timeout, NOT reboot)
+//! - feat_req_someip_585: Every payload has its own header
+//! - feat_req_someip_586: Magic Cookies allow resync in testing
+//! - feat_req_someip_591: TCP segment starts with Magic Cookie
+//! - feat_req_someip_592: Only one Magic Cookie per segment
+//! - feat_req_someip_644: Single TCP connection per client-server pair
+//! - feat_req_someip_646: Client opens TCP connection
+//! - feat_req_someip_647: Client reestablishes connection
+//! - feat_req_someip_702: Multiple messages per segment supported
+//! - feat_req_someipsd_872: Reboot detection triggers TCP reset
 
 use bytes::Bytes;
 use recentip::handle::ServiceEvent;
@@ -96,13 +96,13 @@ fn is_magic_cookie(data: &[u8]) -> bool {
 // TCP Connection Lifecycle Tests
 // ============================================================================
 
-/// feat_req_recentip_646: Client opens TCP connection when first request sent
+/// feat_req_someip_646: Client opens TCP connection when first request sent
 ///
 /// The TCP connection shall be opened by the client, when the first
 /// request is to be sent to the server.
 #[test_log::test]
 fn client_opens_tcp_connection() {
-    covers!(feat_req_recentip_646);
+    covers!(feat_req_someip_646);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -176,13 +176,13 @@ fn client_opens_tcp_connection() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_644: Single TCP connection for all messages between client-server
+/// feat_req_someip_644: Single TCP connection for all messages between client-server
 ///
 /// The client and server shall use a single TCP connection for
 /// all SOME/IP messages between them.
 #[test_log::test]
 fn single_tcp_connection_reused() {
-    covers!(feat_req_recentip_644);
+    covers!(feat_req_someip_644);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -262,14 +262,14 @@ fn single_tcp_connection_reused() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_647: Client reestablishes connection after failure
+/// feat_req_someip_647: Client reestablishes connection after failure
 ///
 /// The client is responsible for reestablishing the TCP connection
 /// after it has been closed or lost.
 #[test_log::test]
 
 fn client_reestablishes_connection() {
-    covers!(feat_req_recentip_647);
+    covers!(feat_req_someip_647);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -355,14 +355,14 @@ fn client_reestablishes_connection() {
 // TCP Message Framing Tests
 // ============================================================================
 
-/// feat_req_recentip_585: Every SOME/IP payload has its own header
+/// feat_req_someip_585: Every SOME/IP payload has its own header
 ///
 /// Every SOME/IP payload shall have its own SOME/IP header (no batching
 /// of payloads under single header).
 #[test_log::test]
 
 fn each_message_has_own_header() {
-    covers!(feat_req_recentip_585);
+    covers!(feat_req_someip_585);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -440,14 +440,14 @@ fn each_message_has_own_header() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_702: Multiple messages can be in one TCP segment
+/// feat_req_someip_702: Multiple messages can be in one TCP segment
 ///
 /// All Transport Protocol Bindings shall support transporting more than one
 /// SOME/IP message in a single TCP segment.
 #[test_log::test]
 
 fn multiple_messages_per_segment_parsed() {
-    covers!(feat_req_recentip_702);
+    covers!(feat_req_someip_702);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -525,14 +525,14 @@ fn multiple_messages_per_segment_parsed() {
 // TCP Connection Lost Handling
 // ============================================================================
 
-/// feat_req_recentip_326: Outstanding requests fail when connection lost
+/// feat_req_someip_326: Outstanding requests fail when connection lost
 ///
 /// When the TCP connection is lost, outstanding requests shall be
 /// handled as if a timeout occurred.
 #[test_log::test]
 
 fn connection_lost_fails_pending_requests() {
-    covers!(feat_req_recentip_326);
+    covers!(feat_req_someip_326);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -613,13 +613,13 @@ fn connection_lost_fails_pending_requests() {
 // Magic Cookie Tests (TCP Resync)
 // ============================================================================
 
-/// feat_req_recentip_586: Magic Cookies allow resync in testing
+/// feat_req_someip_586: Magic Cookies allow resync in testing
 ///
 /// In order to allow resynchronization to SOME/IP over TCP in testing and
 /// debugging scenarios, implementations shall support Magic Cookies.
 #[test_log::test]
 fn magic_cookie_recognized() {
-    covers!(feat_req_recentip_586);
+    covers!(feat_req_someip_586);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -687,13 +687,13 @@ fn magic_cookie_recognized() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_591: TCP segment starts with Magic Cookie
+/// feat_req_someip_591: TCP segment starts with Magic Cookie
 ///
 /// Each TCP segment shall start with a SOME/IP Magic Cookie Message
 /// (when magic cookies are enabled).
 #[test_log::test]
 fn tcp_segment_starts_with_magic_cookie() {
-    covers!(feat_req_recentip_591);
+    covers!(feat_req_someip_591);
 
     // This test verifies that when magic_cookies(true) is set,
     // communication still works correctly. The implementation prepends
@@ -770,13 +770,13 @@ fn tcp_segment_starts_with_magic_cookie() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_592: Only one Magic Cookie per segment
+/// feat_req_someip_592: Only one Magic Cookie per segment
 ///
 /// The implementation shall only include up to one SOME/IP Magic Cookie
 /// Message per TCP segment.
 #[test_log::test]
 fn only_one_magic_cookie_per_segment() {
-    covers!(feat_req_recentip_592);
+    covers!(feat_req_someip_592);
 
     // This test verifies that even with multiple messages, the
     // implementation only prepends one Magic Cookie per write operation.
@@ -861,14 +861,14 @@ fn only_one_magic_cookie_per_segment() {
 // Wire Format Consistency (TCP vs UDP)
 // ============================================================================
 
-/// feat_req_recentip_324: TCP binding based on UDP binding
+/// feat_req_someip_324: TCP binding based on UDP binding
 ///
 /// The TCP binding of SOME/IP is heavily based on the UDP binding.
 /// The header format is identical.
 #[test_log::test]
 
 fn tcp_header_format_matches_udp() {
-    covers!(feat_req_recentip_324);
+    covers!(feat_req_someip_324);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -947,9 +947,9 @@ fn tcp_header_format_matches_udp() {
 
 fn tcp_loss_does_not_reset_session_id() {
     // This test verifies the distinction between:
-    // - feat_req_recentip_326: TCP loss → requests timeout (no session reset)
-    // - feat_req_recentipsd_872: Reboot detected → TCP reset (session DOES reset)
-    covers!(feat_req_recentip_326, feat_req_recentip_647);
+    // - feat_req_someip_326: TCP loss → requests timeout (no session reset)
+    // - feat_req_someipsd_872: Reboot detected → TCP reset (session DOES reset)
+    covers!(feat_req_someip_326, feat_req_someip_647);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1036,7 +1036,7 @@ fn tcp_loss_does_not_reset_session_id() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_872: Reboot detection triggers TCP connection reset
+/// feat_req_someipsd_872: Reboot detection triggers TCP connection reset
 ///
 /// When the system detects the reboot of a peer (via SD Reboot Flag),
 /// it shall reset the state of TCP connections to that peer.
@@ -1046,7 +1046,7 @@ fn tcp_loss_does_not_reset_session_id() {
 /// previously saw reboot=0.
 #[test_log::test]
 fn reboot_detection_resets_tcp_connections() {
-    covers!(feat_req_recentipsd_872);
+    covers!(feat_req_someipsd_872);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(60))
@@ -1141,13 +1141,13 @@ fn reboot_detection_resets_tcp_connections() {
 // Nagle's Algorithm Tests
 // ============================================================================
 
-/// feat_req_recentip_325: Nagle's algorithm disabled
+/// feat_req_someip_325: Nagle's algorithm disabled
 ///
 /// Nagle's algorithm shall be disabled on TCP connections to reduce latency.
 #[test_log::test]
 
 fn tcp_nodelay_enabled() {
-    covers!(feat_req_recentip_325);
+    covers!(feat_req_someip_325);
 
     // This would verify that TCP_NODELAY socket option is set.
     // With turmoil, we'd need to check the socket configuration

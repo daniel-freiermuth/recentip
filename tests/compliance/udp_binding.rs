@@ -3,13 +3,13 @@
 //! Tests for SOME/IP over UDP transport binding.
 //!
 //! Key requirements tested:
-//! - feat_req_recentip_318: UDP binding is straightforward transport
-//! - feat_req_recentip_319: Multiple messages per UDP datagram
-//! - feat_req_recentip_584: Each payload has its own header
-//! - feat_req_recentip_585: Same as 584 (every payload has its own header)
-//! - feat_req_recentip_811: UDP supports unicast and multicast
-//! - feat_req_recentip_812: Multicast eventgroups with initial events
-//! - feat_req_recentip_814: Clients receive via unicast and/or multicast
+//! - feat_req_someip_318: UDP binding is straightforward transport
+//! - feat_req_someip_319: Multiple messages per UDP datagram
+//! - feat_req_someip_584: Each payload has its own header
+//! - feat_req_someip_585: Same as 584 (every payload has its own header)
+//! - feat_req_someip_811: UDP supports unicast and multicast
+//! - feat_req_someip_812: Multicast eventgroups with initial events
+//! - feat_req_someip_814: Clients receive via unicast and/or multicast
 
 use bytes::Bytes;
 use recentip::handle::ServiceEvent;
@@ -83,13 +83,13 @@ fn is_multicast(addr: &SocketAddr) -> bool {
 // Basic UDP Transport Tests
 // ============================================================================
 
-/// feat_req_recentip_318: UDP binding is straightforward
+/// feat_req_someip_318: UDP binding is straightforward
 ///
 /// The UDP binding of SOME/IP is straight forward by transporting SOME/IP
 /// messages in UDP datagrams.
 #[test_log::test]
 fn udp_binding_transports_someip_messages() {
-    covers!(feat_req_recentip_318);
+    covers!(feat_req_someip_318);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -158,13 +158,13 @@ fn udp_binding_transports_someip_messages() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_584: Each SOME/IP payload has its own header
+/// feat_req_someip_584: Each SOME/IP payload has its own header
 ///
 /// Each SOME/IP payload shall have its own SOME/IP header.
-/// (Same concept as TCP requirement feat_req_recentip_585)
+/// (Same concept as TCP requirement feat_req_someip_585)
 #[test_log::test]
 fn udp_each_message_has_own_header() {
-    covers!(feat_req_recentip_584, feat_req_recentip_585);
+    covers!(feat_req_someip_584, feat_req_someip_585);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -243,7 +243,7 @@ fn udp_each_message_has_own_header() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_319: Multiple messages per UDP datagram
+/// feat_req_someip_319: Multiple messages per UDP datagram
 ///
 /// The header format allows transporting more than one SOME/IP message
 /// in a single UDP datagram.
@@ -253,7 +253,7 @@ fn udp_each_message_has_own_header() {
 /// raw UDP traffic.
 #[test_log::test]
 fn udp_multiple_messages_format_supported() {
-    covers!(feat_req_recentip_319);
+    covers!(feat_req_someip_319);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -368,13 +368,13 @@ fn udp_multiple_messages_format_supported() {
 // Unicast and Multicast Tests
 // ============================================================================
 
-/// feat_req_recentip_811: UDP supports unicast and multicast
+/// feat_req_someip_811: UDP supports unicast and multicast
 ///
 /// The UDP Binding shall support unicast and multicast transmission
 /// depending on the use case.
 #[test_log::test]
 fn udp_supports_unicast_and_multicast() {
-    covers!(feat_req_recentip_811);
+    covers!(feat_req_someip_811);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -440,13 +440,13 @@ fn udp_supports_unicast_and_multicast() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_814: Clients receive via unicast and/or multicast
+/// feat_req_someip_814: Clients receive via unicast and/or multicast
 ///
 /// SOME/IP clients shall support receiving via unicast and/or via multicast
 /// depending on configuration.
 #[test_log::test]
 fn udp_client_receives_multicast_offers() {
-    covers!(feat_req_recentip_814);
+    covers!(feat_req_someip_814);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -499,13 +499,13 @@ fn udp_client_receives_multicast_offers() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_812: Multicast eventgroups with initial events
+/// feat_req_someip_812: Multicast eventgroups with initial events
 ///
 /// The UDP Binding shall support multicast eventgroups with initial events
 /// of fields transported via UDP unicast.
 #[test_log::test]
 fn udp_multicast_eventgroup_with_initial_events() {
-    covers!(feat_req_recentip_812);
+    covers!(feat_req_someip_812);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -619,7 +619,7 @@ fn udp_multicast_eventgroup_with_initial_events() {
 /// Verify UDP request/response works correctly with varying payload sizes
 #[test_log::test]
 fn udp_handles_various_payload_sizes() {
-    covers!(feat_req_recentip_318, feat_req_recentip_584);
+    covers!(feat_req_someip_318, feat_req_someip_584);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -707,7 +707,7 @@ fn udp_handles_various_payload_sizes() {
 /// Verify default transport is UDP (not TCP)
 #[test_log::test]
 fn default_transport_is_udp() {
-    covers!(feat_req_recentip_318);
+    covers!(feat_req_someip_318);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

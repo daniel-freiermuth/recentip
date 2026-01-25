@@ -5,9 +5,9 @@
 //!
 //! # Covered Requirements
 //!
-//! - `feat_req_recentipsd_428`: OfferService shall be used as trigger for Subscriptions
-//! - `feat_req_recentipsd_431`: Client shall respond to OfferService with SubscribeEventgroup
-//! - `feat_req_recentipsd_631`: Subscriptions shall NOT be triggered cyclically but by OfferService
+//! - `feat_req_someipsd_428`: OfferService shall be used as trigger for Subscriptions
+//! - `feat_req_someipsd_431`: Client shall respond to OfferService with SubscribeEventgroup
+//! - `feat_req_someipsd_631`: Subscriptions shall NOT be triggered cyclically but by OfferService
 //!
 //! # Test Summary
 //!
@@ -15,8 +15,8 @@
 //! |------|--------|-------------|
 //! | `no_subscribe_without_offer` | ✅ Pass | Implicit - subscribes only after offer |
 //! | `available_returns_error_when_service_not_found` | ✅ Pass | Find request expiry behavior |
-//! | `offer_triggers_subscribe_renewal` | ✅ Pass | `feat_req_recentipsd_428/431` |
-//! | `no_cyclic_subscribes_strict_631_compliance` | ✅ Pass | `feat_req_recentipsd_631` |
+//! | `offer_triggers_subscribe_renewal` | ✅ Pass | `feat_req_someipsd_428/431` |
+//! | `no_cyclic_subscribes_strict_631_compliance` | ✅ Pass | `feat_req_someipsd_631` |
 //! | `max_ttl_subscription_no_renewal_needed` | ✅ Pass | Infinite TTL needs no renewal |
 //!
 //! # Test Strategy
@@ -325,8 +325,8 @@ fn find_subscribe_entry(data: &[u8]) -> Option<(u16, u16, u16, u32)> {
 // TESTS
 // ============================================================================
 
-/// feat_req_recentipsd_428: OfferService shall be used as trigger for Subscriptions
-/// feat_req_recentipsd_431: Client shall respond to OfferService with SubscribeEventgroup
+/// feat_req_someipsd_428: OfferService shall be used as trigger for Subscriptions
+/// feat_req_someipsd_431: Client shall respond to OfferService with SubscribeEventgroup
 ///
 /// When a client has an active subscription and receives an OfferService,
 /// it should send a SubscribeEventgroup in response.
@@ -343,8 +343,8 @@ fn find_subscribe_entry(data: &[u8]) -> Option<(u16, u16, u16, u32)> {
 /// that needs to be addressed. See PUBSUB_REQUIREMENTS.md for details.
 #[test_log::test]
 fn offer_triggers_subscribe_renewal() {
-    covers!(feat_req_recentipsd_428);
-    covers!(feat_req_recentipsd_431);
+    covers!(feat_req_someipsd_428);
+    covers!(feat_req_someipsd_431);
 
     let subscribe_count = Arc::new(AtomicUsize::new(0));
     let subscribe_count_clone = Arc::clone(&subscribe_count);
@@ -423,7 +423,7 @@ fn offer_triggers_subscribe_renewal() {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Phase 2: Send another offer - client should re-subscribe
-        // per feat_req_recentipsd_428 and feat_req_recentipsd_431
+        // per feat_req_someipsd_428 and feat_req_someipsd_431
         let initial_count = subscribe_count2.load(Ordering::SeqCst);
         eprintln!("[raw_server] Sending renewal OfferService (subscribe count before: {})", initial_count);
 
@@ -473,7 +473,7 @@ fn offer_triggers_subscribe_renewal() {
         // expected behavior per the spec.
         assert!(
             final_count > initial_count,
-            "Client should send SubscribeEventgroup in response to OfferService (feat_req_recentipsd_428/431). \
+            "Client should send SubscribeEventgroup in response to OfferService (feat_req_someipsd_428/431). \
                 Got {} subscribes total, expected > {} after renewal offer.",
             final_count, initial_count
         );
@@ -530,7 +530,7 @@ fn offer_triggers_subscribe_renewal() {
     );
 }
 
-/// feat_req_recentipsd_631: Subscriptions shall NOT be triggered cyclically but SHALL
+/// feat_req_someipsd_631: Subscriptions shall NOT be triggered cyclically but SHALL
 /// be triggered by OfferService entries.
 ///
 /// This is the strict 631-compliant test: the client must NEVER send a subscribe
@@ -550,7 +550,7 @@ fn offer_triggers_subscribe_renewal() {
 #[test_log::test]
 #[cfg(feature = "slow-tests")]
 fn no_cyclic_subscribes_strict_631_compliance() {
-    covers!(feat_req_recentipsd_631);
+    covers!(feat_req_someipsd_631);
 
     // Track: (timestamp_ms, was_offer_sent_recently)
     let subscribe_events = Arc::new(std::sync::Mutex::new(Vec::<(u64, bool)>::new()));
@@ -766,7 +766,7 @@ fn no_cyclic_subscribes_strict_631_compliance() {
     // ANY subscribes outside the window are 631 violations
     assert_eq!(
         subscribes_outside_window, 0,
-        "feat_req_recentipsd_631 VIOLATION: Client sent {} SubscribeEventgroup messages \
+        "feat_req_someipsd_631 VIOLATION: Client sent {} SubscribeEventgroup messages \
          without a preceding OfferService. Subscriptions shall NOT be triggered cyclically \
          but SHALL be triggered by OfferService entries.",
         subscribes_outside_window

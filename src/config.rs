@@ -140,7 +140,7 @@ pub const DEFAULT_TTL: u32 = 3600;
 /// the subscription or offer should never expire due to TTL timeout.
 /// This is the maximum value that fits in the 24-bit TTL field.
 ///
-/// See: `feat_req_recentipsd_431`
+/// See: `feat_req_someipsd_431`
 pub const SD_TTL_INFINITE: u32 = 0xFF_FFFF;
 
 /// Clamp a TTL value to the 24-bit maximum, logging a warning if truncation occurs.
@@ -234,7 +234,7 @@ pub struct RuntimeConfig {
     pub preferred_transport: Transport,
     /// Enable Magic Cookies for TCP resynchronization (default: false)
     ///
-    /// When enabled (`feat_req_recentip_586`, `feat_req_recentip_591`, `feat_req_recentip_592)`:
+    /// When enabled (`feat_req_someip_586`, `feat_req_someip_591`, `feat_req_someip_592)`:
     /// - Each TCP segment starts with a Magic Cookie message
     /// - Only one Magic Cookie per segment
     /// - Allows resync in testing/debugging scenarios
@@ -442,7 +442,7 @@ impl RuntimeConfigBuilder {
     /// Enable or disable Magic Cookies for TCP (default: false)
     ///
     /// Magic Cookies allow resynchronization in testing/debugging scenarios.
-    /// See `feat_req_recentip_586`, `feat_req_recentip_591`, `feat_req_recentip_592`.
+    /// See `feat_req_someip_586`, `feat_req_someip_591`, `feat_req_someip_592`.
     pub fn magic_cookies(mut self, enabled: bool) -> Self {
         self.config.magic_cookies = enabled;
         self
@@ -462,7 +462,7 @@ impl RuntimeConfigBuilder {
 
 /// Configuration for how a service handles error responses.
 ///
-/// Per SOME/IP specification (`feat_req_recentip_106`, `feat_req_recentip_726)`:
+/// Per SOME/IP specification (`feat_req_someip_106`, `feat_req_someip_726)`:
 /// - By default, errors use RESPONSE (0x80) with non-OK return code
 /// - EXCEPTION (0x81) is optional and must be explicitly configured per-method
 ///

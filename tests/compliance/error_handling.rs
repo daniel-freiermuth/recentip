@@ -3,12 +3,12 @@
 //! Tests the error handling behavior per SOME/IP specification.
 //!
 //! Key requirements tested:
-//! - feat_req_recentip_371: Return code definitions (E_OK, E_NOT_OK, etc.)
-//! - feat_req_recentip_144: Return code usage per message type
-//! - feat_req_recentip_141: Request/Response message type mapping
-//! - feat_req_recentip_704: No error responses to error messages
-//! - feat_req_recentip_816: Optional E_UNKNOWN_SERVICE/E_UNKNOWN_METHOD
-//! - feat_req_recentip_684: Message type definitions
+//! - feat_req_someip_371: Return code definitions (E_OK, E_NOT_OK, etc.)
+//! - feat_req_someip_144: Return code usage per message type
+//! - feat_req_someip_141: Request/Response message type mapping
+//! - feat_req_someip_704: No error responses to error messages
+//! - feat_req_someip_816: Optional E_UNKNOWN_SERVICE/E_UNKNOWN_METHOD
+//! - feat_req_someip_684: Message type definitions
 
 use std::time::Duration;
 
@@ -25,7 +25,7 @@ macro_rules! covers {
 }
 
 // ============================================================================
-// Return Code Constants (per feat_req_recentip_371)
+// Return Code Constants (per feat_req_someip_371)
 // ============================================================================
 
 /// Return codes as defined in the specification
@@ -46,7 +46,7 @@ pub mod return_codes {
 }
 
 // ============================================================================
-// Message Type Constants (per feat_req_recentip_684)
+// Message Type Constants (per feat_req_someip_684)
 // ============================================================================
 
 pub mod message_types {
@@ -154,14 +154,14 @@ const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 // Integration Tests (turmoil-based)
 // ============================================================================
 
-/// feat_req_recentip_141: REQUEST answered by RESPONSE on success
+/// feat_req_someip_141: REQUEST answered by RESPONSE on success
 ///
 /// Regular request (message type 0x00) shall be answered by a response
 /// (message type 0x80) when no error occurred.
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 fn request_answered_by_response() {
-    covers!(feat_req_recentip_141);
+    covers!(feat_req_someip_141);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -228,14 +228,14 @@ fn request_answered_by_response() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_141: Error can be in RESPONSE or ERROR message
+/// feat_req_someip_141: Error can be in RESPONSE or ERROR message
 ///
 /// If an error occurs, response message with return code not equal to 0x00
 /// shall be sent.
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 fn error_response_has_nonzero_return_code() {
-    covers!(feat_req_recentip_141, feat_req_recentip_726);
+    covers!(feat_req_someip_141, feat_req_someip_726);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -312,13 +312,13 @@ fn error_response_has_nonzero_return_code() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_684: NOTIFICATION is fire-and-forget from server
+/// feat_req_someip_684: NOTIFICATION is fire-and-forget from server
 ///
 /// Events/notifications use message type NOTIFICATION (0x02).
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 fn notification_message_type() {
-    covers!(feat_req_recentip_684);
+    covers!(feat_req_someip_684);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -415,7 +415,7 @@ fn notification_message_type() {
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 fn response_ids_match_request() {
-    covers!(feat_req_recentip_141);
+    covers!(feat_req_someip_141);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -497,7 +497,7 @@ fn response_ids_match_request() {
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 fn protocol_version_is_one() {
-    covers!(feat_req_recentip_369);
+    covers!(feat_req_someip_369);
 
     // Protocol version is a constant in the wire format
     assert_eq!(recentip::wire::PROTOCOL_VERSION, 0x01);
@@ -507,7 +507,7 @@ fn protocol_version_is_one() {
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 fn successful_response_has_e_ok() {
-    covers!(feat_req_recentip_144);
+    covers!(feat_req_someip_144);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

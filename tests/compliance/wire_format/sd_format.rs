@@ -16,17 +16,17 @@ use crate::client_behavior::helpers::{
 
 use super::helpers::*;
 
-/// feat_req_recentipsd_141: SD Service ID is 0xFFFF
-/// feat_req_recentipsd_142: SD Method ID is 0x8100
-/// feat_req_recentipsd_144: SD Client ID is 0x0000
-/// feat_req_recentip_103: SD uses NOTIFICATION (0x02) message type
+/// feat_req_someipsd_141: SD Service ID is 0xFFFF
+/// feat_req_someipsd_142: SD Method ID is 0x8100
+/// feat_req_someipsd_144: SD Client ID is 0x0000
+/// feat_req_someip_103: SD uses NOTIFICATION (0x02) message type
 #[test_log::test]
 fn sd_offer_wire_format() {
     covers!(
-        feat_req_recentipsd_141,
-        feat_req_recentipsd_142,
-        feat_req_recentipsd_144,
-        feat_req_recentip_103
+        feat_req_someipsd_141,
+        feat_req_someipsd_142,
+        feat_req_someipsd_144,
+        feat_req_someip_103
     );
 
     let mut sim = turmoil::Builder::new()
@@ -84,20 +84,20 @@ fn sd_offer_wire_format() {
             // Verify SD header constants per specification
             assert_eq!(
                 header.service_id, 0xFFFF,
-                "SD Service ID must be 0xFFFF (feat_req_recentipsd_141)"
+                "SD Service ID must be 0xFFFF (feat_req_someipsd_141)"
             );
             assert_eq!(
                 header.method_id, 0x8100,
-                "SD Method ID must be 0x8100 (feat_req_recentipsd_142)"
+                "SD Method ID must be 0x8100 (feat_req_someipsd_142)"
             );
             assert_eq!(
                 header.client_id, 0x0000,
-                "SD Client ID must be 0x0000 (feat_req_recentipsd_144)"
+                "SD Client ID must be 0x0000 (feat_req_someipsd_144)"
             );
             assert_eq!(
                 header.message_type,
                 MessageType::Notification,
-                "SD uses NOTIFICATION message type (feat_req_recentip_103)"
+                "SD uses NOTIFICATION message type (feat_req_someip_103)"
             );
             assert_eq!(
                 header.protocol_version, 0x01,
@@ -111,10 +111,10 @@ fn sd_offer_wire_format() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_27: SD uses UDP port 30490
+/// feat_req_someipsd_27: SD uses UDP port 30490
 #[test_log::test]
 fn sd_uses_port_30490() {
-    covers!(feat_req_recentipsd_27);
+    covers!(feat_req_someipsd_27);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -174,10 +174,10 @@ fn sd_uses_port_30490() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_147: OfferService entry type = 0x01
+/// feat_req_someipsd_147: OfferService entry type = 0x01
 #[test_log::test]
 fn sd_offer_entry_type_wire_format() {
-    covers!(feat_req_recentipsd_147);
+    covers!(feat_req_someipsd_147);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -241,13 +241,13 @@ fn sd_offer_entry_type_wire_format() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_47: Service Entry Type Format (includes TTL field)
-/// feat_req_recentipsd_252: OfferService entry type shall be used to offer a service
+/// feat_req_someipsd_47: Service Entry Type Format (includes TTL field)
+/// feat_req_someipsd_252: OfferService entry type shall be used to offer a service
 ///
 /// Verify OfferService entry contains configured offer_ttl on the wire
 #[test_log::test]
 fn offer_service_ttl_on_wire() {
-    covers!(feat_req_recentipsd_47, feat_req_recentipsd_252);
+    covers!(feat_req_someipsd_47, feat_req_someipsd_252);
     const CUSTOM_OFFER_TTL: u32 = 1800; // 30 minutes
 
     let mut sim = turmoil::Builder::new()
@@ -318,13 +318,13 @@ fn offer_service_ttl_on_wire() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_109: Eventgroup Entry Type Format (includes TTL field)
-/// feat_req_recentipsd_431: Client sends SubscribeEventgroup entries
+/// feat_req_someipsd_109: Eventgroup Entry Type Format (includes TTL field)
+/// feat_req_someipsd_431: Client sends SubscribeEventgroup entries
 ///
 /// Verify SubscribeEventgroup entry contains configured subscribe_ttl on the wire
 #[test_log::test]
 fn subscribe_eventgroup_ttl_on_wire() {
-    covers!(feat_req_recentipsd_109, feat_req_recentipsd_431);
+    covers!(feat_req_someipsd_109, feat_req_someipsd_431);
     const CUSTOM_SUBSCRIBE_TTL: u32 = 900; // 15 minutes
 
     let mut sim = turmoil::Builder::new()
@@ -425,13 +425,13 @@ fn subscribe_eventgroup_ttl_on_wire() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_47: Service Entry Type Format (includes TTL field)
-/// feat_req_recentipsd_238: FindService entry type shall be used for finding service instances
+/// feat_req_someipsd_47: Service Entry Type Format (includes TTL field)
+/// feat_req_someipsd_238: FindService entry type shall be used for finding service instances
 ///
 /// Verify FindService entry contains configured find_ttl on the wire
 #[test_log::test]
 fn find_service_ttl_on_wire() {
-    covers!(feat_req_recentipsd_47, feat_req_recentipsd_238);
+    covers!(feat_req_someipsd_47, feat_req_someipsd_238);
     const CUSTOM_FIND_TTL: u32 = 600; // 10 minutes
 
     let mut sim = turmoil::Builder::new()
@@ -505,11 +505,11 @@ fn find_service_ttl_on_wire() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
+/// feat_req_someipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
 /// Verify that the server echoes the client's TTL in the Ack, not the server's offer_ttl
 #[test_log::test]
 fn subscribe_ack_echoes_client_ttl_123() {
-    covers!(feat_req_recentipsd_614);
+    covers!(feat_req_someipsd_614);
     const CLIENT_SUBSCRIBE_TTL: u32 = 123; // Unusual value to ensure it's echoed, not server's default
 
     let mut sim = turmoil::Builder::new()
@@ -600,7 +600,7 @@ fn subscribe_ack_echoes_client_ttl_123() {
                             found_ack = true;
                             assert_eq!(
                                 entry.ttl, CLIENT_SUBSCRIBE_TTL,
-                                "feat_req_recentipsd_614: SubscribeEventgroupAck TTL should echo client's TTL (expected {}, got {})",
+                                "feat_req_someipsd_614: SubscribeEventgroupAck TTL should echo client's TTL (expected {}, got {})",
                                 CLIENT_SUBSCRIBE_TTL, entry.ttl
                             );
                         }
@@ -620,11 +620,11 @@ fn subscribe_ack_echoes_client_ttl_123() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
+/// feat_req_someipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
 /// Verify that the server echoes the client's TTL in the Ack, not the server's offer_ttl
 #[test_log::test]
 fn subscribe_ack_echoes_client_ttl_1000_000() {
-    covers!(feat_req_recentipsd_614);
+    covers!(feat_req_someipsd_614);
     const CLIENT_SUBSCRIBE_TTL: u32 = 1000_000; // Unusual value to ensure it's echoed, not server's default
 
     let mut sim = turmoil::Builder::new()
@@ -715,7 +715,7 @@ fn subscribe_ack_echoes_client_ttl_1000_000() {
                             found_ack = true;
                             assert_eq!(
                                 entry.ttl, CLIENT_SUBSCRIBE_TTL,
-                                "feat_req_recentipsd_614: SubscribeEventgroupAck TTL should echo client's TTL (expected {}, got {})",
+                                "feat_req_someipsd_614: SubscribeEventgroupAck TTL should echo client's TTL (expected {}, got {})",
                                 CLIENT_SUBSCRIBE_TTL, entry.ttl
                             );
                         }
@@ -735,11 +735,11 @@ fn subscribe_ack_echoes_client_ttl_1000_000() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
+/// feat_req_someipsd_614: SubscribeEventgroupAck TTL shall be the same as in SubscribeEventgroup
 /// Verify that the server echoes the client's TTL in the Ack, not the server's offer_ttl
 #[test_log::test]
 fn subscribe_ack_echoes_client_ttl_1() {
-    covers!(feat_req_recentipsd_614);
+    covers!(feat_req_someipsd_614);
     const CLIENT_SUBSCRIBE_TTL: u32 = 1; // Unusual value to ensure it's echoed, not server's default
 
     let mut sim = turmoil::Builder::new()
@@ -830,7 +830,7 @@ fn subscribe_ack_echoes_client_ttl_1() {
                             found_ack = true;
                             assert_eq!(
                                 entry.ttl, CLIENT_SUBSCRIBE_TTL,
-                                "feat_req_recentipsd_614: SubscribeEventgroupAck TTL should echo client's TTL (expected {}, got {})",
+                                "feat_req_someipsd_614: SubscribeEventgroupAck TTL should echo client's TTL (expected {}, got {})",
                                 CLIENT_SUBSCRIBE_TTL, entry.ttl
                             );
                         }

@@ -27,15 +27,15 @@ const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 // RPC INTEGRATION TESTS
 // ============================================================================
 
-/// feat_req_recentip_103: REQUEST and RESPONSE message types
-/// feat_req_recentip_60: Message ID composition
-/// feat_req_recentip_83: Request ID composition
+/// feat_req_someip_103: REQUEST and RESPONSE message types
+/// feat_req_someip_60: Message ID composition
+/// feat_req_someip_83: Request ID composition
 #[test_log::test]
 fn request_response_roundtrip() {
     covers!(
-        feat_req_recentip_103,
-        feat_req_recentip_60,
-        feat_req_recentip_83
+        feat_req_someip_103,
+        feat_req_someip_60,
+        feat_req_someip_83
     );
 
     let mut sim = turmoil::Builder::new()
@@ -107,11 +107,11 @@ fn request_response_roundtrip() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_677: Session ID increments
-/// feat_req_recentip_649: Session ID starts at non-zero
+/// feat_req_someip_677: Session ID increments
+/// feat_req_someip_649: Session ID starts at non-zero
 #[test_log::test]
 fn multiple_calls_succeed() {
-    covers!(feat_req_recentip_677, feat_req_recentip_649);
+    covers!(feat_req_someip_677, feat_req_someip_649);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -186,10 +186,10 @@ fn multiple_calls_succeed() {
 // SERVICE DISCOVERY INTEGRATION TESTS
 // ============================================================================
 
-/// feat_req_recentipsd_141, feat_req_recentipsd_142: SD discovery works
+/// feat_req_someipsd_141, feat_req_someipsd_142: SD discovery works
 #[test_log::test]
 fn service_discovery_finds_offered_service() {
-    covers!(feat_req_recentipsd_141, feat_req_recentipsd_142);
+    covers!(feat_req_someipsd_141, feat_req_someipsd_142);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -240,10 +240,10 @@ fn service_discovery_finds_offered_service() {
 // EVENT/NOTIFICATION INTEGRATION TESTS
 // ============================================================================
 
-/// feat_req_recentip_103: NOTIFICATION message type
+/// feat_req_someip_103: NOTIFICATION message type
 #[test_log::test]
 fn notification_delivery() {
-    covers!(feat_req_recentip_103);
+    covers!(feat_req_someip_103);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -329,10 +329,10 @@ fn notification_delivery() {
 // RETURN CODE INTEGRATION TESTS
 // ============================================================================
 
-/// feat_req_recentip_67: Return Code E_OK
+/// feat_req_someip_67: Return Code E_OK
 #[test_log::test]
 fn successful_call_returns_ok() {
-    covers!(feat_req_recentip_67);
+    covers!(feat_req_someip_67);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

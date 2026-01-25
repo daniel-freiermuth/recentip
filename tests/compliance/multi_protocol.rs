@@ -5,8 +5,8 @@
 //!
 //! # Covered Requirements
 //!
-//! - feat_req_recentip_324: TCP binding compatible with UDP binding
-//! - feat_req_recentip_644: Single TCP connection per client-server pair
+//! - feat_req_someip_324: TCP binding compatible with UDP binding
+//! - feat_req_someip_644: Single TCP connection per client-server pair
 //! - Transport selection based on SD endpoint options
 //!
 //! # Test Summary
@@ -74,7 +74,7 @@ const UDP_SERVICE_VERSION: (u8, u32) = (1, 0);
 /// - Both RPC calls complete successfully
 #[test_log::test]
 fn client_talks_to_tcp_and_udp_services() {
-    covers!(feat_req_recentip_324);
+    covers!(feat_req_someip_324);
 
     let tcp_calls = Arc::new(AtomicUsize::new(0));
     let udp_calls = Arc::new(AtomicUsize::new(0));
@@ -489,7 +489,7 @@ fn mixed_transport_event_delivery() {
 /// - The runtime correctly parses the endpoint options from SD
 #[test_log::test]
 fn client_uses_advertised_transport() {
-    covers!(feat_req_recentip_324, feat_req_recentip_644);
+    covers!(feat_req_someip_324, feat_req_someip_644);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1003,7 +1003,7 @@ fn tcp_client_calls_tcp_server() {
 /// - Call succeeds
 #[test_log::test]
 fn client_prefers_udp_but_connects_to_tcp_only_service() {
-    covers!(feat_req_recentip_324);
+    covers!(feat_req_someip_324);
 
     let call_succeeded = Arc::new(std::sync::Mutex::new(false));
     let call_flag = Arc::clone(&call_succeeded);
@@ -1117,7 +1117,7 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
 /// - Call succeeds
 #[test_log::test]
 fn client_prefers_tcp_but_connects_to_udp_only_service() {
-    covers!(feat_req_recentip_324);
+    covers!(feat_req_someip_324);
 
     let call_succeeded = Arc::new(std::sync::Mutex::new(false));
     let call_flag = Arc::clone(&call_succeeded);
@@ -1230,7 +1230,7 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
 /// - Events are delivered
 #[test_log::test]
 fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
-    covers!(feat_req_recentip_324);
+    covers!(feat_req_someip_324);
 
     let events_received = Arc::new(AtomicUsize::new(0));
     let events_flag = Arc::clone(&events_received);
@@ -1378,7 +1378,7 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
 /// - Events are delivered
 #[test_log::test]
 fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
-    covers!(feat_req_recentip_324);
+    covers!(feat_req_someip_324);
 
     let events_received = Arc::new(AtomicUsize::new(0));
     let events_flag = Arc::clone(&events_received);
@@ -1530,7 +1530,7 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
 /// is not yet fully implemented. The RPC equivalent test passes (client_prefers_udp_but_connects_to_tcp_only_service).
 #[test_log::test]
 fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
-    covers!(feat_req_recentip_324);
+    covers!(feat_req_someip_324);
 
     let events_received = Arc::new(AtomicUsize::new(0));
     let events_flag = Arc::clone(&events_received);
@@ -1684,7 +1684,7 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
 /// by checking `proxy.transport()` after discovery.
 #[test_log::test]
 fn preferred_transport_respected_when_both_available() {
-    covers!(feat_req_recentip_324);
+    covers!(feat_req_someip_324);
 
     let tcp_calls = Arc::new(AtomicUsize::new(0));
     let udp_calls = Arc::new(AtomicUsize::new(0));
@@ -1880,7 +1880,7 @@ fn preferred_transport_respected_when_both_available() {
 /// can subscribe to a dual-stack service.
 #[test_log::test]
 fn preferred_transport_respected_for_pubsub_when_both_available() {
-    covers!(feat_req_recentip_324);
+    covers!(feat_req_someip_324);
 
     let tcp_events = Arc::new(AtomicUsize::new(0));
     let udp_events = Arc::new(AtomicUsize::new(0));
@@ -2067,7 +2067,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
 
 #[test_log::test]
 fn handle_call_ignores_preferred_transport_for_dual_stack() {
-    covers!(feat_req_recentip_324);
+    covers!(feat_req_someip_324);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

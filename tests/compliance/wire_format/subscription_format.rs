@@ -15,13 +15,13 @@ use crate::client_behavior::helpers::{
 
 use super::helpers::*;
 
-/// feat_req_recentipsd_576: SubscribeEventgroup entry type is 0x06
+/// feat_req_someipsd_576: SubscribeEventgroup entry type is 0x06
 ///
 /// When a client subscribes to an eventgroup, the SD message must contain
 /// an entry with type 0x06 (SubscribeEventgroup).
 #[test_log::test]
 fn subscribe_eventgroup_entry_type() {
-    covers!(feat_req_recentipsd_576);
+    covers!(feat_req_someipsd_576);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -131,15 +131,15 @@ fn subscribe_eventgroup_entry_type() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_576: SubscribeEventgroupAck entry type is 0x07
-/// feat_req_recentipsd_441: Server shall send SubscribeEventgroupAck after receiving SubscribeEventgroup
+/// feat_req_someipsd_576: SubscribeEventgroupAck entry type is 0x07
+/// feat_req_someipsd_441: Server shall send SubscribeEventgroupAck after receiving SubscribeEventgroup
 ///
 /// When a server acknowledges a subscription, the SD message must contain
 /// an entry with type 0x07 (SubscribeEventgroupAck).
 #[test_log::test]
 fn subscribe_ack_entry_type() {
-    covers!(feat_req_recentipsd_576);
-    covers!(feat_req_recentipsd_441);
+    covers!(feat_req_someipsd_576);
+    covers!(feat_req_someipsd_441);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -260,7 +260,7 @@ fn subscribe_ack_entry_type() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_431: With max TTL (0xFFFFFF), subscription never expires
+/// feat_req_someipsd_431: With max TTL (0xFFFFFF), subscription never expires
 ///
 /// Verifies that a subscription with maximum TTL continues receiving events
 /// well past the point where a finite TTL would have expired.
@@ -269,7 +269,7 @@ fn subscribe_ack_entry_type() {
 #[test_log::test]
 #[cfg(feature = "slow-tests")]
 fn subscription_max_ttl_doesnt_expire() {
-    covers!(feat_req_recentipsd_431);
+    covers!(feat_req_someipsd_431);
 
     const MAX_TTL: u32 = 0xFFFFFF; // ~194 days
     const TICK_SECS: u32 = 100; // Turmoil tick duration in seconds
@@ -433,14 +433,14 @@ fn subscription_max_ttl_doesnt_expire() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_445: Cleanup mechanism required to avoid stale client registrations
+/// feat_req_someipsd_445: Cleanup mechanism required to avoid stale client registrations
 ///
 /// Server must expire subscriptions when TTL elapses without renewal.
 /// Raw client subscribes with short TTL, server sends events continuously,
 /// subscription expires (no renewal sent), events should stop.
 #[test_log::test]
 fn subscription_ttl_expiration_stops_events() {
-    covers!(feat_req_recentipsd_445);
+    covers!(feat_req_someipsd_445);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -580,13 +580,13 @@ fn subscription_ttl_expiration_stops_events() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_178: StopSubscribeEventgroup has TTL=0
+/// feat_req_someipsd_178: StopSubscribeEventgroup has TTL=0
 ///
 /// When a client unsubscribes (drops subscription), it sends a SubscribeEventgroup
 /// entry with TTL=0, which means StopSubscribeEventgroup.
 #[test_log::test]
 fn stop_subscribe_has_ttl_zero() {
-    covers!(feat_req_recentipsd_178);
+    covers!(feat_req_someipsd_178);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

@@ -3,12 +3,12 @@
 //! Tests the Session ID and Request ID behavior per SOME/IP specification.
 //!
 //! Key requirements tested:
-//! - feat_req_recentip_83: Request ID = Client ID (16 bit) + Session ID (16 bit)
-//! - feat_req_recentip_699: Client ID is unique identifier for calling client
-//! - feat_req_recentip_88: Session ID is unique identifier for each call
-//! - feat_req_recentip_649: Session ID starts at 0x0001
-//! - feat_req_recentip_677: Session ID wraps from 0xFFFF to 0x0001
-//! - feat_req_recentip_711: Server copies Request ID from request to response
+//! - feat_req_someip_83: Request ID = Client ID (16 bit) + Session ID (16 bit)
+//! - feat_req_someip_699: Client ID is unique identifier for calling client
+//! - feat_req_someip_88: Session ID is unique identifier for each call
+//! - feat_req_someip_649: Session ID starts at 0x0001
+//! - feat_req_someip_677: Session ID wraps from 0xFFFF to 0x0001
+//! - feat_req_someip_711: Server copies Request ID from request to response
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
@@ -30,17 +30,17 @@ const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 // REQUEST ID STRUCTURE
 // ============================================================================
 
-/// feat_req_recentip_83: Request ID = Client ID || Session ID
-/// feat_req_recentip_711: Response preserves Request ID
+/// feat_req_someip_83: Request ID = Client ID || Session ID
+/// feat_req_someip_711: Response preserves Request ID
 ///
 /// When a client makes multiple calls, each should have incrementing session IDs,
 /// and responses must preserve the request ID.
 #[test_log::test]
 fn multiple_calls_incrementing_session() {
     covers!(
-        feat_req_recentip_83,
-        feat_req_recentip_88,
-        feat_req_recentip_711
+        feat_req_someip_83,
+        feat_req_someip_88,
+        feat_req_someip_711
     );
 
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -133,10 +133,10 @@ fn multiple_calls_incrementing_session() {
     assert_eq!(client, 3, "Client should have made 3 calls, got {}", client);
 }
 
-/// feat_req_recentip_649: First call has Session ID starting at 1
+/// feat_req_someip_649: First call has Session ID starting at 1
 #[test_log::test]
 fn first_call_session_id() {
-    covers!(feat_req_recentip_649);
+    covers!(feat_req_someip_649);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -205,12 +205,12 @@ fn first_call_session_id() {
 // CONCURRENT CALLS
 // ============================================================================
 
-/// feat_req_recentip_88: Each call has unique Session ID
+/// feat_req_someip_88: Each call has unique Session ID
 ///
 /// Even concurrent calls should have unique session IDs.
 #[test_log::test]
 fn concurrent_calls_unique_sessions() {
-    covers!(feat_req_recentip_88);
+    covers!(feat_req_someip_88);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -303,10 +303,10 @@ fn concurrent_calls_unique_sessions() {
 // ERROR RESPONSES
 // ============================================================================
 
-/// feat_req_recentip_711: Error responses also preserve Request ID
+/// feat_req_someip_711: Error responses also preserve Request ID
 #[test_log::test]
 fn error_response_preserves_request_id() {
-    covers!(feat_req_recentip_711);
+    covers!(feat_req_someip_711);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -392,7 +392,7 @@ fn error_response_preserves_request_id() {
 /// Session ID increments across different method calls
 #[test_log::test]
 fn session_increments_across_methods() {
-    covers!(feat_req_recentip_88);
+    covers!(feat_req_someip_88);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -481,12 +481,12 @@ fn session_increments_across_methods() {
 // CLIENT ID CONSISTENCY
 // ============================================================================
 
-/// feat_req_recentip_699: Client ID is consistent for a client
+/// feat_req_someip_699: Client ID is consistent for a client
 ///
 /// Multiple calls from the same client should use the same Client ID.
 #[test_log::test]
 fn client_id_consistent_across_calls() {
-    covers!(feat_req_recentip_699);
+    covers!(feat_req_someip_699);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -562,13 +562,13 @@ fn client_id_consistent_across_calls() {
 // OUT-OF-ORDER RESPONSE MATCHING
 // ============================================================================
 
-/// feat_req_recentip_711: Request ID enables matching responses to requests
+/// feat_req_someip_711: Request ID enables matching responses to requests
 ///
 /// When multiple requests are outstanding and responses arrive out of order,
 /// the client must correctly match each response to its request.
 #[test_log::test]
 fn out_of_order_response_matching() {
-    covers!(feat_req_recentip_711, feat_req_recentip_83);
+    covers!(feat_req_someip_711, feat_req_someip_83);
 
     use std::sync::Arc;
     use tokio::sync::Notify;
@@ -717,12 +717,12 @@ fn out_of_order_response_matching() {
 // EVENTS/NOTIFICATIONS SESSION HANDLING
 // ============================================================================
 
-/// feat_req_recentip_667: Events shall use session handling
+/// feat_req_someip_667: Events shall use session handling
 ///
 /// Event notifications should have incrementing session IDs.
 #[test_log::test]
 fn events_use_session_handling() {
-    covers!(feat_req_recentip_667);
+    covers!(feat_req_someip_667);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -818,12 +818,12 @@ fn events_use_session_handling() {
 // PARALLEL REQUESTS
 // ============================================================================
 
-/// feat_req_recentip_79: Request ID differentiates multiple parallel calls
+/// feat_req_someip_79: Request ID differentiates multiple parallel calls
 ///
 /// Multiple outstanding requests should have unique Request IDs.
 #[test_log::test]
 fn parallel_requests_have_unique_request_ids() {
-    covers!(feat_req_recentip_79);
+    covers!(feat_req_someip_79);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -912,14 +912,14 @@ fn parallel_requests_have_unique_request_ids() {
 // REQUEST ID REUSE
 // ============================================================================
 
-/// feat_req_recentip_80: Request IDs can be reused after response arrives
+/// feat_req_someip_80: Request IDs can be reused after response arrives
 ///
 /// After receiving a response, the Request ID (Session ID portion) can be reused.
 /// Make many sequential requests to verify IDs are managed properly.
 #[test_log::test]
 #[cfg(feature = "slow-tests")]
 fn request_id_reusable_after_response() {
-    covers!(feat_req_recentip_80);
+    covers!(feat_req_someip_80);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(120))
@@ -1001,7 +1001,7 @@ fn request_id_reusable_after_response() {
 // SESSION ID WRAPAROUND
 // ============================================================================
 
-/// feat_req_recentip_677: Session ID wraps from 0xFFFF to 0x0001
+/// feat_req_someip_677: Session ID wraps from 0xFFFF to 0x0001
 ///
 /// When the Session ID reaches 0xFFFF, it shall wrap to 0x0001 (not 0x0000).
 ///
@@ -1020,7 +1020,7 @@ fn request_id_reusable_after_response() {
 #[test_log::test]
 #[cfg(feature = "slow-tests")]
 fn session_id_wraps_to_0001_not_0000() {
-    covers!(feat_req_recentip_677);
+    covers!(feat_req_someip_677);
 
     use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -1157,12 +1157,12 @@ fn session_id_wraps_to_0001_not_0000() {
 // REQUEST/RESPONSE SESSION HANDLING
 // ============================================================================
 
-/// feat_req_recentip_669: Request/Response shall use session handling
+/// feat_req_someip_669: Request/Response shall use session handling
 ///
 /// Request/Response messages must use session handling (Session ID != 0x0000).
 #[test_log::test]
 fn request_response_uses_session_handling() {
-    covers!(feat_req_recentip_669);
+    covers!(feat_req_someip_669);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1238,12 +1238,12 @@ fn request_response_uses_session_handling() {
 // FIRE AND FORGET
 // ============================================================================
 
-/// feat_req_recentip_667: Fire&Forget shall use session handling
+/// feat_req_someip_667: Fire&Forget shall use session handling
 ///
 /// Fire-and-forget messages should use session handling (Session ID != 0x0000).
 #[test_log::test]
 fn fire_and_forget_uses_session_handling() {
-    covers!(feat_req_recentip_667);
+    covers!(feat_req_someip_667);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1323,13 +1323,13 @@ fn fire_and_forget_uses_session_handling() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_711: Server copies Request ID to response
+/// feat_req_someip_711: Server copies Request ID to response
 ///
 /// When generating a response message, the server must copy the
 /// Request ID from the request to the response message.
 #[test_log::test]
 fn server_copies_request_id_to_response() {
-    covers!(feat_req_recentip_711);
+    covers!(feat_req_someip_711);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1399,12 +1399,12 @@ fn server_copies_request_id_to_response() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_79: Request IDs must be unique for parallel calls
+/// feat_req_someip_79: Request IDs must be unique for parallel calls
 ///
 /// Variant test: send many parallel requests and ensure all get correct responses.
 #[test_log::test]
 fn request_id_differentiates_parallel_calls() {
-    covers!(feat_req_recentip_79);
+    covers!(feat_req_someip_79);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

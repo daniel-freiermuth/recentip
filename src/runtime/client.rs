@@ -194,7 +194,7 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
 
 /// Determine the routable IP address to use in endpoint options
 ///
-/// Per `feat_req_recentipsd_814`, endpoint options must contain valid routable IP addresses.
+/// Per `feat_req_someipsd_814`, endpoint options must contain valid routable IP addresses.
 /// Returns the configured advertised IP, or falls back to `local_endpoint/client_rpc_endpoint`
 /// if they have non-unspecified IPs, or None if no valid IP is available.
 fn get_endpoint_ip(state: &RuntimeState) -> Option<std::net::IpAddr> {
@@ -348,7 +348,7 @@ pub fn handle_fire_and_forget(
 /// Handle `Command::Subscribe` with async TCP connection support
 ///
 /// This is the async version of `handle_subscribe` that supports establishing
-/// a TCP connection before subscribing, as required by `feat_req_recentipsd_767`:
+/// a TCP connection before subscribing, as required by `feat_req_someipsd_767`:
 ///
 /// > "The client shall open a TCP connection to the server and should be ready
 /// > to receive message on that connection before sending the SubscribeEventgroup entry"
@@ -408,7 +408,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
         return;
     };
 
-    // For TCP subscriptions, establish connection BEFORE subscribing (feat_req_recentipsd_767)
+    // For TCP subscriptions, establish connection BEFORE subscribing (feat_req_someipsd_767)
     //
     // TCP connection sharing strategy (same as UDP endpoint sharing):
     // - Different services on same server: SHARE connection (conn_key=slot)
@@ -959,7 +959,7 @@ pub fn handle_unsubscribe(
         );
 
         // Determine the actual local IP address to put in the endpoint option
-        // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
+        // Per feat_req_someipsd_814, we must provide a valid routable IP, not 0.0.0.0
         let Some(endpoint_ip) = get_endpoint_ip(state) else {
             tracing::error!(
                 "Cannot unsubscribe from {:04x}:{:04x} eventgroup {:04x}: \
@@ -972,7 +972,7 @@ pub fn handle_unsubscribe(
         };
 
         // Use the same endpoint that was used for the subscription
-        // Per feat_req_recentipsd_1177: StopSubscribeEventgroup shall reference the same
+        // Per feat_req_someipsd_1177: StopSubscribeEventgroup shall reference the same
         // options the SubscribeEventgroup Entry referenced
         let endpoint_for_unsubscribe = SocketAddr::new(endpoint_ip, subscription_endpoint.port());
 

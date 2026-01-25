@@ -3,9 +3,9 @@
 //! Integration tests for SOME/IP event notification (Pub/Sub) behavior using turmoil.
 //!
 //! Key requirements tested:
-//! - feat_req_recentip_352: Events describe Publish/Subscribe concept
-//! - feat_req_recentip_353: SOME/IP transports updated values, not subscription
-//! - feat_req_recentip_807: Events not sent to non-subscribers
+//! - feat_req_someip_352: Events describe Publish/Subscribe concept
+//! - feat_req_someip_353: SOME/IP transports updated values, not subscription
+//! - feat_req_someip_807: Events not sent to non-subscribers
 //!
 //! Note: Basic subscription tests are in subscription.rs. This module focuses on
 //! event delivery semantics and edge cases.
@@ -119,14 +119,14 @@ fn build_sd_offer(
 // EVENT PAYLOAD TESTS
 // ============================================================================
 
-/// [feat_req_recentip_353] SOME/IP transports values, not subscription
+/// [feat_req_someip_353] SOME/IP transports values, not subscription
 ///
 /// SOME/IP is used only for transporting the updated value and not for
 /// the publish/subscribe management (which is done by SD).
 /// This test verifies that event payloads contain the actual data.
 #[test_log::test]
 fn event_transports_value_data() {
-    covers!(feat_req_recentip_353);
+    covers!(feat_req_someip_353);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -215,13 +215,13 @@ fn event_transports_value_data() {
 // NON-SUBSCRIBER EVENT DELIVERY TESTS
 // ============================================================================
 
-/// [feat_req_recentip_807] Events not sent to non-subscribers
+/// [feat_req_someip_807] Events not sent to non-subscribers
 ///
 /// Raw client that doesn't subscribe should not receive event notifications.
 /// Server sends events but only subscribers should receive them.
 #[test_log::test]
 fn events_not_sent_to_non_subscribers() {
-    covers!(feat_req_recentip_807);
+    covers!(feat_req_someip_807);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -349,13 +349,13 @@ fn events_not_sent_to_non_subscribers() {
 // UNSUBSCRIBE STOPS EVENTS TESTS
 // ============================================================================
 
-/// [feat_req_recentip_807] Unsubscribing stops event delivery
+/// [feat_req_someip_807] Unsubscribing stops event delivery
 ///
 /// After unsubscribing (dropping subscription), client should not receive
 /// further events for that eventgroup.
 #[test_log::test]
 fn unsubscribe_stops_event_delivery() {
-    covers!(feat_req_recentip_807);
+    covers!(feat_req_someip_807);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -453,12 +453,12 @@ fn unsubscribe_stops_event_delivery() {
 // EVENT MESSAGE FORMAT TESTS
 // ============================================================================
 
-/// [feat_req_recentip_352] Event uses NOTIFICATION message type (0x02)
+/// [feat_req_someip_352] Event uses NOTIFICATION message type (0x02)
 ///
 /// This verifies at the wire level that events are sent as NOTIFICATION.
 #[test_log::test]
 fn event_uses_notification_message_type_on_wire() {
-    covers!(feat_req_recentip_352, feat_req_recentip_684);
+    covers!(feat_req_someip_352, feat_req_someip_684);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

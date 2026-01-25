@@ -21,11 +21,11 @@ mod rpc {
     mod identifiers {
         use super::*;
 
-        /// feat_req_recentip_538: A service shall be identified using the Service ID.
-        /// feat_req_recentip_539: Service IDs shall be of type 16 bit length unsigned integer.
+        /// feat_req_someip_538: A service shall be identified using the Service ID.
+        /// feat_req_someip_539: Service IDs shall be of type 16 bit length unsigned integer.
         #[test_log::test]
         fn service_id_is_u16() {
-            covers!(feat_req_recentip_538, feat_req_recentip_539);
+            covers!(feat_req_someip_538, feat_req_someip_539);
 
             // ServiceId wraps u16
             let id = ServiceId::new(0x1234).unwrap();
@@ -40,23 +40,23 @@ mod rpc {
             /// Property: Any u16 except reserved values creates valid ServiceId
             #[test_log::test]
             fn service_id_valid_range(value in 0x0001u16..=0xFFFE) {
-                covers!(feat_req_recentip_539);
+                covers!(feat_req_someip_539);
                 prop_assert!(ServiceId::new(value).is_some());
             }
 
-            /// feat_req_recentip_627: Service ID 0x0000 and 0xFFFF reserved
+            /// feat_req_someip_627: Service ID 0x0000 and 0xFFFF reserved
             #[test_log::test]
             fn service_id_reserved_rejected(value in prop::sample::select(vec![0x0000u16, 0xFFFF])) {
-                covers!(feat_req_recentip_627);
+                covers!(feat_req_someip_627);
                 prop_assert!(ServiceId::new(value).is_none());
             }
         }
 
-        /// feat_req_recentip_625: Methods and events identified by 16 bit Method ID
+        /// feat_req_someip_625: Methods and events identified by 16 bit Method ID
         /// Events use range 0x8000-0xFFFE (high bit set)
         #[test_log::test]
         fn method_event_id_distinction() {
-            covers!(feat_req_recentip_625);
+            covers!(feat_req_someip_625);
             // Methods: 0x0000-0x7FFF (any value, including 0)
             assert!(MethodId::new(0x0001).unwrap().value() < 0x8000);
             assert!(MethodId::new(0x7FFF).unwrap().value() < 0x8000);
@@ -85,15 +85,15 @@ mod rpc {
             }
         }
 
-        /// feat_req_recentip_542: Service instance identified by Instance ID
-        /// feat_req_recentip_543: Instance IDs are uint16
-        /// feat_req_recentip_579: Instance IDs 0x0000 and 0xFFFF reserved
+        /// feat_req_someip_542: Service instance identified by Instance ID
+        /// feat_req_someip_543: Instance IDs are uint16
+        /// feat_req_someip_579: Instance IDs 0x0000 and 0xFFFF reserved
         #[test_log::test]
         fn instance_id_wildcard() {
             covers!(
-                feat_req_recentip_542,
-                feat_req_recentip_543,
-                feat_req_recentip_579
+                feat_req_someip_542,
+                feat_req_someip_543,
+                feat_req_someip_579
             );
             // 0xFFFF means "any instance" for client-side matching
             assert_eq!(InstanceId::ANY.value(), 0xFFFF);
@@ -109,7 +109,7 @@ mod rpc {
 
         #[test_log::test]
         fn fire_and_forget_returns_nothing() {
-            covers!(feat_req_recentip_15);
+            covers!(feat_req_someip_15);
             // Fire&Forget: no response expected
             // The API enforces this: fire_and_forget() returns Result<()>
             // while call() returns Result<PendingResponse>
@@ -119,7 +119,7 @@ mod rpc {
         #[test_log::test]
         // TODO drop?
         fn responder_must_be_consumed() {
-            covers!(feat_req_recentip_15);
+            covers!(feat_req_someip_15);
             // Responder MUST send exactly one response
             // Dropping without response panics in debug mode
             // This is tested behaviorally in api_usage.rs
@@ -141,10 +141,10 @@ mod sd {
     mod eventgroups {
         use super::*;
 
-        /// feat_req_recentipids_555: Eventgroup ID 0x0000 is reserved
+        /// feat_req_someipids_555: Eventgroup ID 0x0000 is reserved
         #[test_log::test]
         fn eventgroup_zero_reserved() {
-            covers!(feat_req_recentipids_555);
+            covers!(feat_req_someipids_555);
             assert!(EventgroupId::new(0x0000).is_none());
             assert!(EventgroupId::new(0x0001).is_some());
         }

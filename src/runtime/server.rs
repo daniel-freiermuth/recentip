@@ -580,9 +580,9 @@ pub fn handle_incoming_fire_forget(
 /// Build a SOME/IP response message
 ///
 /// Per SOME/IP specification:
-/// - `feat_req_recentip_726`: If EXCEPTION is not configured, errors use RESPONSE (0x80)
-/// - `feat_req_recentip_106`: EXCEPTION (0x81) is optional and must be configured per-method
-/// - `feat_req_recentip_107`: Receiving errors on both 0x80 and 0x81 must be supported
+/// - `feat_req_someip_726`: If EXCEPTION is not configured, errors use RESPONSE (0x80)
+/// - `feat_req_someip_106`: EXCEPTION (0x81) is optional and must be configured per-method
+/// - `feat_req_someip_107`: Receiving errors on both 0x80 and 0x81 must be supported
 pub fn build_response(
     service_id: u16,
     method_id: u16,
@@ -597,8 +597,8 @@ pub fn build_response(
 
     let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
 
-    // feat_req_recentip_655: Error message must copy request header fields
-    // feat_req_recentip_727: Error messages have return code != 0x00
+    // feat_req_someip_655: Error message must copy request header fields
+    // feat_req_someip_727: Error messages have return code != 0x00
     // Only use EXCEPTION (0x81) if configured for this method AND it's an error
     let message_type = if return_code != 0x00 && uses_exception {
         MessageType::Error

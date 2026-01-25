@@ -4,15 +4,15 @@
 //! SOME/IP-TP allows transporting messages larger than the ~1400 byte UDP limit.
 //!
 //! Key requirements tested:
-//! - feat_req_recentiptp_760: Use TP for payloads > 1400 bytes over UDP
-//! - feat_req_recentiptp_762: Session handling required for TP messages
-//! - feat_req_recentiptp_763: All segments share same Session ID
-//! - feat_req_recentiptp_765: TP-Flag must be set to 1 in Message Type
-//! - feat_req_recentiptp_766: TP header format (offset, reserved, more_segments)
-//! - feat_req_recentiptp_768: Offset is upper 28 bits (multiples of 16)
-//! - feat_req_recentiptp_770: More Segments Flag usage
-//! - feat_req_recentiptp_772: Segment length must be multiple of 16 (except last)
-//! - feat_req_recentiptp_773: Max segment size is 1392 bytes (87 x 16)
+//! - feat_req_someiptp_760: Use TP for payloads > 1400 bytes over UDP
+//! - feat_req_someiptp_762: Session handling required for TP messages
+//! - feat_req_someiptp_763: All segments share same Session ID
+//! - feat_req_someiptp_765: TP-Flag must be set to 1 in Message Type
+//! - feat_req_someiptp_766: TP header format (offset, reserved, more_segments)
+//! - feat_req_someiptp_768: Offset is upper 28 bits (multiples of 16)
+//! - feat_req_someiptp_770: More Segments Flag usage
+//! - feat_req_someiptp_772: Segment length must be multiple of 16 (except last)
+//! - feat_req_someiptp_773: Max segment size is 1392 bytes (87 x 16)
 //!
 //! NOTE: SOME/IP-TP is not yet implemented in the runtime. Integration tests
 //! are marked as ignored until the feature is available.
@@ -251,7 +251,7 @@ mod tp_header_tests {
 // Integration Tests (require SOME/IP-TP implementation)
 // ============================================================================
 
-/// feat_req_recentiptp_760: Large messages must use TP over UDP
+/// feat_req_someiptp_760: Large messages must use TP over UDP
 ///
 /// When sending a SOME/IP message with payload > 1400 bytes over UDP,
 /// the implementation must automatically segment it using SOME/IP-TP.
@@ -259,7 +259,7 @@ mod tp_header_tests {
 #[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn large_udp_messages_use_tp() {
-    covers!(feat_req_recentiptp_760);
+    covers!(feat_req_someiptp_760);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -330,81 +330,81 @@ fn large_udp_messages_use_tp() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentiptp_762, feat_req_recentiptp_763: Session ID consistency
+/// feat_req_someiptp_762, feat_req_someiptp_763: Session ID consistency
 ///
 /// All segments of a TP message must share the same Session ID.
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_segments_share_session_id() {
-    covers!(feat_req_recentiptp_762, feat_req_recentiptp_763);
+    covers!(feat_req_someiptp_762, feat_req_someiptp_763);
     // This test would verify wire capture to ensure all TP segments
     // of a large message share the same session ID
 }
 
-/// feat_req_recentiptp_765: TP-Flag must be set
+/// feat_req_someiptp_765: TP-Flag must be set
 ///
 /// All TP segments must have the TP flag bit (0x20) set in message type.
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_flag_set_on_segments() {
-    covers!(feat_req_recentiptp_765);
+    covers!(feat_req_someiptp_765);
     // Verify TP flag is set on all segments via wire capture
 }
 
-/// feat_req_recentiptp_766: TP header format
+/// feat_req_someiptp_766: TP header format
 ///
 /// TP header must follow the specified format: offset, reserved, more_segments.
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_header_format() {
-    covers!(feat_req_recentiptp_766);
+    covers!(feat_req_someiptp_766);
     // Verify TP header format on wire
 }
 
-/// feat_req_recentiptp_768: Offset is multiple of 16
+/// feat_req_someiptp_768: Offset is multiple of 16
 ///
 /// The offset field in TP header must be in multiples of 16 bytes.
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_offset_is_16_aligned() {
-    covers!(feat_req_recentiptp_768);
+    covers!(feat_req_someiptp_768);
     // Verify offset values on wire are 16-aligned
 }
 
-/// feat_req_recentiptp_770: More Segments Flag
+/// feat_req_someiptp_770: More Segments Flag
 ///
 /// The More Segments flag must be set on all segments except the last.
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_more_segments_flag() {
-    covers!(feat_req_recentiptp_770);
+    covers!(feat_req_someiptp_770);
     // Verify More Segments flag usage on wire
 }
 
-/// feat_req_recentiptp_772: Segment length multiple of 16
+/// feat_req_someiptp_772: Segment length multiple of 16
 ///
 /// All segment payloads except the last must be multiples of 16 bytes.
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_segment_length_alignment() {
-    covers!(feat_req_recentiptp_772);
+    covers!(feat_req_someiptp_772);
     // Verify segment lengths on wire
 }
 
-/// feat_req_recentiptp_773: Max segment size
+/// feat_req_someiptp_773: Max segment size
 ///
 /// Maximum segment size is 1392 bytes (87 x 16).
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_max_segment_size() {
-    covers!(feat_req_recentiptp_773);
+    covers!(feat_req_someiptp_773);
     // Verify no segment exceeds max size
 }
 
@@ -415,6 +415,6 @@ fn tp_max_segment_size() {
 #[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_reassembly() {
-    covers!(feat_req_recentiptp_760);
+    covers!(feat_req_someiptp_760);
     // End-to-end test: send large message, verify correct reassembly
 }

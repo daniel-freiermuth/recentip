@@ -3,12 +3,12 @@
 //! Integration tests for SOME/IP RPC patterns using turmoil network simulation.
 //!
 //! Key requirements tested:
-//! - feat_req_recentip_328: Request/Response communication pattern
-//! - feat_req_recentip_329: Request triggers response from server
-//! - feat_req_recentip_338: Response contains same Request ID as request
-//! - feat_req_recentip_345: Fire&Forget (REQUEST_NO_RETURN)
-//! - feat_req_recentip_348: Fire&Forget shall not return error
-//! - feat_req_recentip_141: Request (0x00) answered by Response (0x80)
+//! - feat_req_someip_328: Request/Response communication pattern
+//! - feat_req_someip_329: Request triggers response from server
+//! - feat_req_someip_338: Response contains same Request ID as request
+//! - feat_req_someip_345: Fire&Forget (REQUEST_NO_RETURN)
+//! - feat_req_someip_348: Fire&Forget shall not return error
+//! - feat_req_someip_141: Request (0x00) answered by Response (0x80)
 
 use bytes::Bytes;
 use recentip::handle::ServiceEvent;
@@ -144,14 +144,14 @@ fn build_fire_and_forget(
 // FIRE & FORGET NO RESPONSE TESTS
 // ============================================================================
 
-/// [feat_req_recentip_348] Fire&Forget shall not receive any response or error
+/// [feat_req_someip_348] Fire&Forget shall not receive any response or error
 ///
 /// Fire&Forget messages (REQUEST_NO_RETURN) shall not return an error.
 /// This test verifies that when a server receives a fire-and-forget request,
 /// it does NOT send any response or error message back.
 #[test_log::test]
 fn fire_and_forget_no_response_or_error() {
-    covers!(feat_req_recentip_348, feat_req_recentip_654);
+    covers!(feat_req_someip_348, feat_req_someip_654);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -281,13 +281,13 @@ fn fire_and_forget_no_response_or_error() {
 // CONCURRENT REQUEST MATCHING TESTS
 // ============================================================================
 
-/// [feat_req_recentip_338] Concurrent requests are correctly matched with responses
+/// [feat_req_someip_338] Concurrent requests are correctly matched with responses
 ///
 /// When multiple requests are pending and responses arrive out of order,
 /// each response must be matched to its correct request using the Request ID.
 #[test_log::test]
 fn concurrent_requests_matched_by_request_id() {
-    covers!(feat_req_recentip_338, feat_req_recentip_88);
+    covers!(feat_req_someip_338, feat_req_someip_88);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -381,13 +381,13 @@ fn concurrent_requests_matched_by_request_id() {
     sim.run().unwrap();
 }
 
-/// [feat_req_recentip_328, feat_req_recentip_329] Basic request/response pattern works
+/// [feat_req_someip_328, feat_req_someip_329] Basic request/response pattern works
 ///
 /// One communication partner sends a request and receives a response.
 /// This is a basic integration test for the request/response pattern.
 #[test_log::test]
 fn request_triggers_response() {
-    covers!(feat_req_recentip_328, feat_req_recentip_329);
+    covers!(feat_req_someip_328, feat_req_someip_329);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -461,13 +461,13 @@ fn request_triggers_response() {
     sim.run().unwrap();
 }
 
-/// [feat_req_recentip_141] Request (0x00) is answered by Error (0x81) on failure
+/// [feat_req_someip_141] Request (0x00) is answered by Error (0x81) on failure
 ///
 /// When the server cannot process a request successfully, it responds with
 /// an ERROR message type (0x81) instead of RESPONSE (0x80).
 #[test_log::test]
 fn request_can_receive_error_response() {
-    covers!(feat_req_recentip_141);
+    covers!(feat_req_someip_141);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

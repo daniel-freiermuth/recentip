@@ -15,15 +15,15 @@
 use super::helpers::*;
 use crate::client_behavior::helpers::build_sd_offer_with_session;
 
-/// feat_req_recentip_103: REQUEST (0x00) message type on wire
-/// feat_req_recentip_60: Message ID = Service ID || Method ID
-/// feat_req_recentip_45: Header is exactly 16 bytes
+/// feat_req_someip_103: REQUEST (0x00) message type on wire
+/// feat_req_someip_60: Message ID = Service ID || Method ID
+/// feat_req_someip_45: Header is exactly 16 bytes
 #[test_log::test]
 fn rpc_request_wire_format() {
     covers!(
-        feat_req_recentip_103,
-        feat_req_recentip_60,
-        feat_req_recentip_45
+        feat_req_someip_103,
+        feat_req_someip_60,
+        feat_req_someip_45
     );
 
     let mut sim = turmoil::Builder::new()
@@ -66,7 +66,7 @@ fn rpc_request_wire_format() {
                 // Verify raw bytes directly
                 let data = &buf[..len];
 
-                // Header must be at least 16 bytes (feat_req_recentip_45)
+                // Header must be at least 16 bytes (feat_req_someip_45)
                 assert!(
                     len >= 16,
                     "SOME/IP packet must be at least 16 bytes (header), got {}",
@@ -76,13 +76,13 @@ fn rpc_request_wire_format() {
                 // Parse and verify header
                 let header = parse_header(data).expect("Should parse as SOME/IP header");
 
-                // Verify Service ID (feat_req_recentip_60)
+                // Verify Service ID (feat_req_someip_60)
                 assert_eq!(header.service_id, 0x1234, "Service ID should be 0x1234");
 
-                // Verify Method ID (feat_req_recentip_60)
+                // Verify Method ID (feat_req_someip_60)
                 assert_eq!(header.method_id, 0x0001, "Method ID should be 0x0001");
 
-                // Verify REQUEST message type (feat_req_recentip_103)
+                // Verify REQUEST message type (feat_req_someip_103)
                 assert_eq!(
                     header.message_type as u8, 0x00,
                     "REQUEST message type must be 0x00"
@@ -145,11 +145,11 @@ fn rpc_request_wire_format() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_103: RESPONSE (0x80) message type on wire
-/// feat_req_recentip_711: Response preserves Request ID
+/// feat_req_someip_103: RESPONSE (0x80) message type on wire
+/// feat_req_someip_711: Response preserves Request ID
 #[test_log::test]
 fn rpc_response_wire_format() {
-    covers!(feat_req_recentip_103, feat_req_recentip_711);
+    covers!(feat_req_someip_103, feat_req_someip_711);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -243,13 +243,13 @@ fn rpc_response_wire_format() {
         let response_data = &buf[..len];
         let response_header = parse_header(response_data).expect("Should parse response");
 
-        // Verify RESPONSE message type (feat_req_recentip_103)
+        // Verify RESPONSE message type (feat_req_someip_103)
         assert_eq!(
             response_header.message_type as u8, 0x80,
             "RESPONSE message type must be 0x80"
         );
 
-        // Verify Request ID preservation (feat_req_recentip_711)
+        // Verify Request ID preservation (feat_req_someip_711)
         assert_eq!(
             response_header.client_id, 0xABCD,
             "Response must preserve Client ID from request"
@@ -269,14 +269,14 @@ fn rpc_response_wire_format() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_103: REQUEST_NO_RETURN (0x01) message type on wire
-/// feat_req_recentip_284: Fire-and-forget uses REQUEST_NO_RETURN
+/// feat_req_someip_103: REQUEST_NO_RETURN (0x01) message type on wire
+/// feat_req_someip_284: Fire-and-forget uses REQUEST_NO_RETURN
 ///
 /// Verifies that when the library sends a fire-and-forget message,
 /// the raw bytes on the wire contain message type 0x01 (REQUEST_NO_RETURN).
 #[test_log::test]
 fn fire_and_forget_wire_format() {
-    covers!(feat_req_recentip_103, feat_req_recentip_284);
+    covers!(feat_req_someip_103, feat_req_someip_284);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -334,7 +334,7 @@ fn fire_and_forget_wire_format() {
                 // Verify Method ID
                 assert_eq!(header.method_id, 0x0001, "Method ID should be 0x0001");
 
-                // Verify REQUEST_NO_RETURN message type (feat_req_recentip_103)
+                // Verify REQUEST_NO_RETURN message type (feat_req_someip_103)
                 assert_eq!(
                     header.message_type as u8, 0x01,
                     "REQUEST_NO_RETURN message type must be 0x01, got 0x{:02X}",
@@ -405,7 +405,7 @@ fn fire_and_forget_wire_format() {
 /// Server receives fire-and-forget from raw socket and dispatches as FireForget event.
 #[test_log::test]
 fn fire_and_forget_received_wire_format() {
-    covers!(feat_req_recentip_103, feat_req_recentip_284);
+    covers!(feat_req_someip_103, feat_req_someip_284);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -507,11 +507,11 @@ fn fire_and_forget_received_wire_format() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_45: SOME/IP header is exactly 16 bytes
-/// feat_req_recentip_42: Big-endian encoding verification
+/// feat_req_someip_45: SOME/IP header is exactly 16 bytes
+/// feat_req_someip_42: Big-endian encoding verification
 #[test_log::test]
 fn header_size_and_endianness_on_wire() {
-    covers!(feat_req_recentip_45, feat_req_recentip_42);
+    covers!(feat_req_someip_45, feat_req_someip_42);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -549,14 +549,14 @@ fn header_size_and_endianness_on_wire() {
 
         let data = &buf[..len];
 
-        // All SOME/IP packets must be at least 16 bytes (feat_req_recentip_45)
+        // All SOME/IP packets must be at least 16 bytes (feat_req_someip_45)
         assert!(
             len >= 16,
             "SOME/IP packet must be at least 16 bytes (header), got {}",
             len
         );
 
-        // Verify big-endian encoding (feat_req_recentip_42):
+        // Verify big-endian encoding (feat_req_someip_42):
         // SD Service ID = 0xFFFF in bytes [0..2]
         let service_id = u16::from_be_bytes([data[0], data[1]]);
         assert_eq!(service_id, 0xFFFF, "SD Service ID must be 0xFFFF");
@@ -594,11 +594,11 @@ fn header_size_and_endianness_on_wire() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentip_677: Session ID increments across calls
-/// feat_req_recentip_649: Session ID starts at non-zero value
+/// feat_req_someip_677: Session ID increments across calls
+/// feat_req_someip_649: Session ID starts at non-zero value
 #[test_log::test]
 fn session_id_increment_on_wire() {
-    covers!(feat_req_recentip_677, feat_req_recentip_649);
+    covers!(feat_req_someip_677, feat_req_someip_649);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -669,12 +669,12 @@ fn session_id_increment_on_wire() {
             session_ids.len()
         );
 
-        // Verify non-zero (feat_req_recentip_649)
+        // Verify non-zero (feat_req_someip_649)
         for sid in &session_ids {
             assert!(*sid > 0, "Session ID must be non-zero");
         }
 
-        // Verify incrementing (feat_req_recentip_677)
+        // Verify incrementing (feat_req_someip_677)
         for i in 1..session_ids.len() {
             let prev = session_ids[i - 1];
             let curr = session_ids[i];

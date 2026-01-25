@@ -122,7 +122,7 @@ pub enum Action {
 /// When we receive an `OfferService`, we:
 /// 1. Update our discovered services table
 /// 2. Notify any pending find requests
-/// 3. **[`feat_req_recentipsd_428/431/631`]** If we have active subscriptions for this service,
+/// 3. **[`feat_req_someipsd_428/431/631`]** If we have active subscriptions for this service,
 ///    send `SubscribeEventgroup` in response (offer-triggered subscription)
 pub fn handle_offer(
     entry: &SdEntry,
@@ -221,9 +221,9 @@ pub fn handle_offer(
         });
     }
 
-    // [feat_req_recentipsd_428/431/631] Offer-triggered subscription renewal
+    // [feat_req_someipsd_428/431/631] Offer-triggered subscription renewal
     // If we have active subscriptions for this service, respond with SubscribeEventgroup.
-    // Per feat_req_recentipsd_631: "Subscriptions shall NOT be triggered cyclically
+    // Per feat_req_someipsd_631: "Subscriptions shall NOT be triggered cyclically
     // but SHALL be triggered by OfferService entries."
 
     // Check if we have any subscriptions for this service first
@@ -235,7 +235,7 @@ pub fn handle_offer(
     }
 
     // Determine the actual local IP address to put in the endpoint option
-    // Per feat_req_recentipsd_814, we must provide a valid routable IP, not 0.0.0.0
+    // Per feat_req_someipsd_814, we must provide a valid routable IP, not 0.0.0.0
     let endpoint_ip = if let Some(advertised) = state.config.advertised_ip {
         advertised
     } else if !state.local_endpoint.ip().is_unspecified() {
@@ -369,8 +369,8 @@ pub fn handle_find_request(entry: &SdEntry, from: SocketAddr, state: &mut Runtim
 
 /// Handle a `SubscribeEventgroup` request
 ///
-/// Per `feat_req_recentipsd_1144`: If options are in conflict, respond negatively (NACK)
-/// Per `feat_req_recentipsd_1137`: Respond with `SubscribeEventgroupNack` for invalid subscribe
+/// Per `feat_req_someipsd_1144`: If options are in conflict, respond negatively (NACK)
+/// Per `feat_req_someipsd_1137`: Respond with `SubscribeEventgroupNack` for invalid subscribe
 ///
 /// ACKs and NACKs are queued for time-based clustering to prevent session ID collisions.
 pub fn handle_subscribe_request(
@@ -386,7 +386,7 @@ pub fn handle_subscribe_request(
     };
 
     // Get client's endpoint options from the SD message
-    // Per feat_req_recentipsd_814: Use endpoint option address as provided
+    // Per feat_req_someipsd_814: Use endpoint option address as provided
     let client_udp_endpoint = sd_message.get_udp_endpoint(entry);
     let client_tcp_endpoint = sd_message.get_tcp_endpoint(entry);
 
@@ -442,7 +442,7 @@ pub fn handle_subscribe_request(
     }
 
     if let Some(offered) = state.offered.get(&key) {
-        // Check transport compatibility per feat_req_recentipsd_1144
+        // Check transport compatibility per feat_req_someipsd_1144
         // Server offers UDP and/or TCP. Client requests UDP and/or TCP endpoint.
         let Some((client_endpoint, transport)) = offered
             .udp_endpoint
@@ -482,7 +482,7 @@ pub fn handle_subscribe_request(
 
         // Track the subscriber - use the endpoint from the option for event delivery
         // Calculate expiration based on client's TTL from the Subscribe message
-        // Per feat_req_recentipsd_431: TTL=0xFFFFFF means "until next reboot" (infinite)
+        // Per feat_req_someipsd_431: TTL=0xFFFFFF means "until next reboot" (infinite)
         let expires_at = if entry.ttl == SD_TTL_INFINITE {
             None // Infinite TTL - never expires
         } else {
@@ -548,7 +548,7 @@ pub fn handle_subscribe_request(
         }
 
         let mut ack = SdMessage::new(state.sd_flags(true));
-        // Per feat_req_recentipsd_614: TTL shall be the same as in the SubscribeEventgroup
+        // Per feat_req_someipsd_614: TTL shall be the same as in the SubscribeEventgroup
         ack.add_entry(SdEntry::subscribe_eventgroup_ack(
             entry.service_id,
             entry.instance_id,
@@ -604,7 +604,7 @@ pub fn handle_unsubscribe_request(
     };
 
     if let Some(offered) = state.offered.get(&key) {
-        // Per feat_req_recentipsd_814: Use endpoint option address as provided
+        // Per feat_req_someipsd_814: Use endpoint option address as provided
         let client_udp_endpoint = sd_message.get_udp_endpoint(entry);
         let client_tcp_endpoint = sd_message.get_tcp_endpoint(entry);
 

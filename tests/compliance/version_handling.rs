@@ -3,12 +3,12 @@
 //! Integration tests for SOME/IP protocol version and interface version handling.
 //! Unit tests and property tests have been moved to src/wire.rs.
 //!
-//! # Protocol Version (feat_req_recentip_300)
+//! # Protocol Version (feat_req_someip_300)
 //! - Byte offset 12 in header
 //! - Current version is 0x01
 //! - Mismatch should be rejected
 //!
-//! # Interface Version (feat_req_recentip_278)
+//! # Interface Version (feat_req_someip_278)
 //! - Byte offset 13 in header  
 //! - Configured per service
 //! - Client/server must match major version
@@ -150,10 +150,10 @@ fn build_sd_offer_with_version(
 // PROTOCOL VERSION WIRE TESTS
 // ============================================================================
 
-/// [feat_req_recentip_300] RPC request contains protocol version 0x01 on wire
+/// [feat_req_someip_300] RPC request contains protocol version 0x01 on wire
 #[test_log::test]
 fn rpc_request_has_protocol_version_0x01() {
-    covers!(feat_req_recentip_300);
+    covers!(feat_req_someip_300);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -239,13 +239,13 @@ fn rpc_request_has_protocol_version_0x01() {
     sim.run().unwrap();
 }
 
-/// [feat_req_recentip_300] Server ignores messages with wrong protocol version
+/// [feat_req_someip_300] Server ignores messages with wrong protocol version
 ///
 /// Note: This test verifies that the runtime should reject messages with
 /// protocol version != 0x01. The runtime validates protocol version and drops invalid messages.
 #[test_log::test]
 fn server_ignores_wrong_protocol_version() {
-    covers!(feat_req_recentip_300);
+    covers!(feat_req_someip_300);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -360,10 +360,10 @@ fn server_ignores_wrong_protocol_version() {
 // INTERFACE VERSION WIRE TESTS
 // ============================================================================
 
-/// [feat_req_recentip_278] RPC request contains interface version at offset 13
+/// [feat_req_someip_278] RPC request contains interface version at offset 13
 #[test_log::test]
 fn rpc_request_has_interface_version_at_offset_13() {
-    covers!(feat_req_recentip_278);
+    covers!(feat_req_someip_278);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -448,10 +448,10 @@ fn rpc_request_has_interface_version_at_offset_13() {
     sim.run().unwrap();
 }
 
-/// [feat_req_recentip_278] SD offer contains major version in entry
+/// [feat_req_someip_278] SD offer contains major version in entry
 #[test_log::test]
 fn sd_offer_contains_major_version() {
-    covers!(feat_req_recentip_278);
+    covers!(feat_req_someip_278);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -515,10 +515,10 @@ fn sd_offer_contains_major_version() {
     sim.run().unwrap();
 }
 
-/// [feat_req_recentip_278] Response preserves interface version from request
+/// [feat_req_someip_278] Response preserves interface version from request
 #[test_log::test]
 fn response_preserves_interface_version() {
-    covers!(feat_req_recentip_278);
+    covers!(feat_req_someip_278);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

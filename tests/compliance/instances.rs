@@ -3,13 +3,13 @@
 //! Tests multiple service instances, instance IDs, and service lifecycle.
 //!
 //! Key requirements tested:
-//! - feat_req_recentip_541: Different services have different Service IDs
-//! - feat_req_recentip_544: Different instances have different Service ID + Instance ID
-//! - feat_req_recentip_636: Instances identified by different Instance IDs
-//! - feat_req_recentip_648: Messages dispatched to correct instance
-//! - feat_req_recentip_967: Different instances on same server offered on different ports
-//! - feat_req_recentip_445: Different services can share same port
-//! - feat_req_recentip_446: Instance identified by Service ID + Instance ID + IP + Port
+//! - feat_req_someip_541: Different services have different Service IDs
+//! - feat_req_someip_544: Different instances have different Service ID + Instance ID
+//! - feat_req_someip_636: Instances identified by different Instance IDs
+//! - feat_req_someip_648: Messages dispatched to correct instance
+//! - feat_req_someip_967: Different instances on same server offered on different ports
+//! - feat_req_someip_445: Different services can share same port
+//! - feat_req_someip_446: Instance identified by Service ID + Instance ID + IP + Port
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
@@ -34,13 +34,13 @@ const SERVICE_B_VERSION: (u8, u32) = (1, 0);
 // Multiple Service Instances Tests
 // ============================================================================
 
-/// feat_req_recentip_636: Service instances identified by different Instance IDs
+/// feat_req_someip_636: Service instances identified by different Instance IDs
 ///
 /// Service-Instances of the same Service are identified through different
 /// Instance IDs.
 #[test_log::test]
 fn multiple_instances_have_different_ids() {
-    covers!(feat_req_recentip_636);
+    covers!(feat_req_someip_636);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -127,16 +127,16 @@ fn multiple_instances_have_different_ids() {
     assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
-/// feat_req_recentip_648: Messages dispatched to correct instance
+/// feat_req_someip_648: Messages dispatched to correct instance
 ///
 /// If a server runs different instances of the same service, messages
 /// belonging to the different instances shall be dispatched correctly.
 ///
-/// NOTE: Per SOME/IP spec feat_req_recentipsd_782, multiple instances must use
+/// NOTE: Per SOME/IP spec feat_req_someipsd_782, multiple instances must use
 /// different endpoints (ports). This test uses separate hosts for each instance.
 #[test_log::test]
 fn messages_dispatched_to_correct_instance() {
-    covers!(feat_req_recentip_648);
+    covers!(feat_req_someip_648);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -263,15 +263,15 @@ fn messages_dispatched_to_correct_instance() {
     assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
-/// feat_req_recentip_648 + feat_req_recentipsd_782: Two instances on same host
+/// feat_req_someip_648 + feat_req_someipsd_782: Two instances on same host
 ///
 /// Tests that two instances of the same service can run on the same host
 /// with proper message routing. This works because each instance gets its own
 /// dedicated RPC socket (separate from the SD socket on port 30490).
 #[test_log::test]
 fn two_instances_same_host() {
-    covers!(feat_req_recentip_648);
-    covers!(feat_req_recentipsd_782);
+    covers!(feat_req_someip_648);
+    covers!(feat_req_someipsd_782);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -402,10 +402,10 @@ fn two_instances_same_host() {
 // Service ID Uniqueness Tests
 // ============================================================================
 
-/// feat_req_recentip_541: Different services have different Service IDs
+/// feat_req_someip_541: Different services have different Service IDs
 #[test_log::test]
 fn different_services_have_different_service_ids() {
-    covers!(feat_req_recentip_541);
+    covers!(feat_req_someip_541);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -477,10 +477,10 @@ fn different_services_have_different_service_ids() {
     assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
-/// feat_req_recentip_544: Different instances have unique Service ID + Instance ID
+/// feat_req_someip_544: Different instances have unique Service ID + Instance ID
 #[test_log::test]
 fn instance_uniquely_identified_by_service_and_instance_id() {
-    covers!(feat_req_recentip_544);
+    covers!(feat_req_someip_544);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -601,7 +601,7 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
 /// Client can request ANY instance and get one
 #[test_log::test]
 fn client_can_request_any_instance() {
-    covers!(feat_req_recentip_636);
+    covers!(feat_req_someip_636);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -661,7 +661,7 @@ fn client_can_request_any_instance() {
 /// Client can request specific instance by ID
 #[test_log::test]
 fn client_can_request_specific_instance() {
-    covers!(feat_req_recentip_636);
+    covers!(feat_req_someip_636);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -728,7 +728,7 @@ fn client_can_request_specific_instance() {
 /// Requesting non-existent instance times out
 #[test_log::test]
 fn nonexistent_instance_not_found() {
-    covers!(feat_req_recentip_636);
+    covers!(feat_req_someip_636);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(10))

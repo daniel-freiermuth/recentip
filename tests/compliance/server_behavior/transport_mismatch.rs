@@ -8,8 +8,8 @@
 //! - Raw socket: Acts as **client** (sends malformed subscribe)
 //!
 //! # Requirements Covered
-//! - feat_req_recentipsd_1144: If options are in conflict → respond negatively (NACK)
-//! - feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
+//! - feat_req_someipsd_1144: If options are in conflict → respond negatively (NACK)
+//! - feat_req_someipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
 
 use super::helpers::{
     build_sd_subscribe_with_tcp_endpoint, build_sd_subscribe_with_udp_endpoint, covers,
@@ -19,8 +19,8 @@ use recentip::prelude::*;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-/// feat_req_recentipsd_1144: Transport mismatch should result in NACK
-/// feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
+/// feat_req_someipsd_1144: Transport mismatch should result in NACK
+/// feat_req_someipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
 ///
 /// When a server offers events only via UDP, but a client sends a SubscribeEventgroup
 /// with only a TCP endpoint option, the server MUST respond with a SubscribeEventgroupNack.
@@ -29,7 +29,7 @@ use std::time::Duration;
 /// Expected behavior: Server rejects with NACK (TTL=0, entry type 0x07)
 #[test_log::test]
 fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
-    covers!(feat_req_recentipsd_1144, feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1144, feat_req_someipsd_1137);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -141,7 +141,7 @@ fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
             found_nack,
             "Server should NACK subscribe with TCP endpoint when only UDP is offered. \
              Got ACK={}, NACK={}. \
-             Per feat_req_recentipsd_1144: incompatible options should be responded negatively.",
+             Per feat_req_someipsd_1144: incompatible options should be responded negatively.",
             found_ack, found_nack
         );
         assert!(
@@ -155,14 +155,14 @@ fn subscribe_tcp_endpoint_to_udp_only_server_should_nack() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_1144: Transport mismatch should result in NACK
-/// feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
+/// feat_req_someipsd_1144: Transport mismatch should result in NACK
+/// feat_req_someipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
 ///
 /// When a server offers events only via TCP, but a client sends a SubscribeEventgroup
 /// with only a UDP endpoint option, the server MUST respond with a SubscribeEventgroupNack.
 #[test_log::test]
 fn subscribe_udp_endpoint_to_tcp_only_server_should_nack() {
-    covers!(feat_req_recentipsd_1144, feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1144, feat_req_someipsd_1137);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -269,7 +269,7 @@ fn subscribe_udp_endpoint_to_tcp_only_server_should_nack() {
             found_nack,
             "Server should NACK subscribe with UDP endpoint when only TCP is offered. \
              Got ACK={}, NACK={}. \
-             Per feat_req_recentipsd_1144: incompatible options should be responded negatively.",
+             Per feat_req_someipsd_1144: incompatible options should be responded negatively.",
             found_ack, found_nack
         );
         assert!(

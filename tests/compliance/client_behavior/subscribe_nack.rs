@@ -7,7 +7,7 @@
 //! - Raw socket: Acts as **server** (sends offers, ACKs one service, NACKs the other)
 //!
 //! # Requirements Covered
-//! - feat_req_recentipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
+//! - feat_req_someipsd_1137: Respond with SubscribeEventgroupNack for invalid subscribe
 //! - Client must propagate NACK as an error to the caller
 
 use crate::client_behavior::helpers::build_sd_offer_with_session;
@@ -90,7 +90,7 @@ fn extract_client_udp_endpoint(
 
 #[test_log::test]
 fn subscribe_nack_then_ack() {
-    covers!(feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1137);
 
     const SERVICE_ID: u16 = 0x1234;
     const INSTANCE_ID: u16 = 0x0001;
@@ -382,7 +382,7 @@ fn subscribe_nack_then_ack() {
 
 #[test_log::test]
 fn subscribe_ack_then_nack() {
-    covers!(feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1137);
 
     const SERVICE_ID: u16 = 0x1234;
     const INSTANCE_ID: u16 = 0x0001;
@@ -682,10 +682,10 @@ fn subscribe_ack_then_nack() {
 /// - Client subscribes to both services
 /// - Verify: subscription to v1 succeeds, subscription to v2 returns an error
 ///
-/// Per feat_req_recentipsd_1137: Server can reject subscriptions with NACK
+/// Per feat_req_someipsd_1137: Server can reject subscriptions with NACK
 #[test_log::test]
 fn subscribe_ack_and_nack_different_services() {
-    covers!(feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1137);
 
     const SERVICE_ID: u16 = 0x1234;
     const INSTANCE_ID: u16 = 0x0001;
@@ -996,7 +996,7 @@ fn subscribe_ack_and_nack_different_services() {
 /// This tests the full pub/sub flow with a wire-level server.
 #[test_log::test]
 fn events_received_after_subscribe_ack() {
-    covers!(feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1137);
 
     const SERVICE_ID: u16 = 0x5678;
     const INSTANCE_ID: u16 = 0x0001;
@@ -1220,7 +1220,7 @@ fn events_received_after_subscribe_ack() {
 /// This tests the "all or nothing" semantics for multi-eventgroup subscriptions.
 #[test_log::test]
 fn multi_eventgroup_subscription_fails_if_one_nacked() {
-    covers!(feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1137);
 
     const SERVICE_ID: u16 = 0x1234;
     const INSTANCE_ID: u16 = 0x0001;
@@ -1408,7 +1408,7 @@ fn multi_eventgroup_subscription_fails_if_one_nacked() {
 /// Same as `multi_eventgroup_subscription_fails_if_one_nacked` but uses TCP transport.
 #[test_log::test]
 fn multi_eventgroup_subscription_fails_if_one_nacked_tcp() {
-    covers!(feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1137);
 
     const SERVICE_ID: u16 = 0x1234;
     const INSTANCE_ID: u16 = 0x0001;

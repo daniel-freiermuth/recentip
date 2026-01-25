@@ -27,13 +27,13 @@ const EVENT_SERVICE_VERSION: (u8, u32) = (1, 0);
 // SUBSCRIPTION FLOW
 // ============================================================================
 
-/// feat_req_recentipsd_576: Subscribe entry type (0x06)
-/// feat_req_recentipsd_109: Eventgroup Entry is 16 bytes
+/// feat_req_someipsd_576: Subscribe entry type (0x06)
+/// feat_req_someipsd_109: Eventgroup Entry is 16 bytes
 ///
 /// Client can subscribe to an eventgroup and receive events.
 #[test_log::test]
 fn subscribe_and_receive_events() {
-    covers!(feat_req_recentipsd_576, feat_req_recentipsd_109);
+    covers!(feat_req_someipsd_576, feat_req_someipsd_109);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -134,12 +134,12 @@ fn subscribe_and_receive_events() {
     assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
-/// feat_req_recentipsd_576: SubscribeAck entry type (0x07)
+/// feat_req_someipsd_576: SubscribeAck entry type (0x07)
 ///
 /// Server must acknowledge subscriptions with SubscribeAck.
 #[test_log::test]
 fn subscribe_receives_ack() {
-    covers!(feat_req_recentipsd_576);
+    covers!(feat_req_someipsd_576);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -210,12 +210,12 @@ fn subscribe_receives_ack() {
     assert!(*executed.lock().unwrap(), "Test should have executed");
 }
 
-/// feat_req_recentipsd_178: StopSubscribe uses TTL=0
+/// feat_req_someipsd_178: StopSubscribe uses TTL=0
 ///
 /// When subscription handle is dropped, StopSubscribe should be sent.
 #[test_log::test]
 fn unsubscribe_on_drop() {
-    covers!(feat_req_recentipsd_178);
+    covers!(feat_req_someipsd_178);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -325,10 +325,10 @@ fn unsubscribe_on_drop() {
 // MULTIPLE EVENTGROUPS
 // ============================================================================
 
-/// feat_req_recentipsd_109: Multiple eventgroups can be subscribed
+/// feat_req_someipsd_109: Multiple eventgroups can be subscribed
 #[test_log::test]
 fn subscribe_multiple_eventgroups() {
-    covers!(feat_req_recentipsd_109);
+    covers!(feat_req_someipsd_109);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -452,10 +452,10 @@ fn subscribe_multiple_eventgroups() {
 // EVENT ID COMPLIANCE
 // ============================================================================
 
-/// feat_req_recentip_101: Event IDs have high bit set (0x8000-0xFFFF)
+/// feat_req_someip_101: Event IDs have high bit set (0x8000-0xFFFF)
 #[test_log::test]
 fn event_id_has_high_bit() {
-    covers!(feat_req_recentip_101);
+    covers!(feat_req_someip_101);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -554,7 +554,7 @@ fn event_id_has_high_bit() {
 /// Services can handle both RPC calls and emit events
 #[test_log::test]
 fn mixed_rpc_and_events() {
-    covers!(feat_req_recentip_103, feat_req_recentipsd_576);
+    covers!(feat_req_someip_103, feat_req_someipsd_576);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -691,7 +691,7 @@ fn mixed_rpc_and_events() {
 /// - Server sends Event1 again
 #[test]
 fn multi_eventgroup_subscription_lifecycle() {
-    covers!(feat_req_recentipsd_109, feat_req_recentipsd_433);
+    covers!(feat_req_someipsd_109, feat_req_someipsd_433);
 
     configure_tracing();
 
@@ -1072,7 +1072,7 @@ fn multi_eventgroup_subscription_lifecycle() {
 /// the library reuses existing TCP connections based on slot assignment.
 #[test]
 fn multi_eventgroup_subscription_lifecycle_tcp() {
-    covers!(feat_req_recentipsd_109, feat_req_recentipsd_433);
+    covers!(feat_req_someipsd_109, feat_req_someipsd_433);
 
     configure_tracing();
 

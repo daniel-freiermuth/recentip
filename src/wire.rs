@@ -119,8 +119,8 @@ pub const MAGIC_COOKIE_SERVER_METHOD_ID: u16 = 0x8000;
 
 /// Generate a Magic Cookie message (16 bytes).
 ///
-/// Per `feat_req_recentip_591`: Each TCP segment shall start with a Magic Cookie.
-/// Per `feat_req_recentip_592`: Only one Magic Cookie per segment.
+/// Per `feat_req_someip_591`: Each TCP segment shall start with a Magic Cookie.
+/// Per `feat_req_someip_592`: Only one Magic Cookie per segment.
 ///
 /// Magic Cookie format:
 /// - Service ID: 0xFFFF
@@ -408,7 +408,7 @@ impl Header {
 
         let message_type = MessageType::from_u8(message_type_raw)?;
 
-        // feat_req_recentip_798: Messages with Length < 8 shall be ignored
+        // feat_req_someip_798: Messages with Length < 8 shall be ignored
         // The length field represents payload size + 8 bytes for the header tail
         // (client_id, session_id, protocol_version, interface_version, message_type, return_code)
         // Therefore, the minimum valid length is 8 (no payload)
@@ -785,7 +785,7 @@ impl SdEntry {
 
     /// Create a `SubscribeEventgroupNack` entry (TTL=0 indicates rejection)
     ///
-    /// Per `feat_req_recentipsd_1137`: Respond with `SubscribeEventgroupNack` for invalid subscribe
+    /// Per `feat_req_someipsd_1137`: Respond with `SubscribeEventgroupNack` for invalid subscribe
     pub fn subscribe_eventgroup_nack(
         service_id: u16,
         instance_id: u16,
@@ -1388,7 +1388,7 @@ mod tests {
     fn test_header_rejects_invalid_length() {
         use bytes::Bytes;
 
-        // feat_req_recentip_798: Messages with Length < 8 shall be ignored
+        // feat_req_someip_798: Messages with Length < 8 shall be ignored
         // Test with Length = 0
         let mut zero_length = Bytes::from_static(&[
             0x12, 0x34, // service_id
@@ -1659,25 +1659,25 @@ mod tests {
     // Protocol Version Tests
     // ========================================================================
 
-    /// [feat_req_recentip_300] Protocol version is 0x01
+    /// [feat_req_someip_300] Protocol version is 0x01
     #[test_log::test]
     fn protocol_version_is_0x01() {
         assert_eq!(PROTOCOL_VERSION, 0x01);
     }
 
-    /// [feat_req_recentip_300] Protocol version is at byte offset 12
+    /// [feat_req_someip_300] Protocol version is at byte offset 12
     #[test_log::test]
     fn protocol_version_offset_is_12() {
         assert_eq!(PROTOCOL_VERSION_OFFSET, 12);
     }
 
-    /// [feat_req_recentip_300] Valid protocol version is accepted
+    /// [feat_req_someip_300] Valid protocol version is accepted
     #[test_log::test]
     fn protocol_version_valid_accepted() {
         assert!(validate_protocol_version(0x01).is_ok());
     }
 
-    /// [feat_req_recentip_300] Invalid protocol version is rejected
+    /// [feat_req_someip_300] Invalid protocol version is rejected
     #[test_log::test]
     fn protocol_version_invalid_rejected() {
         // Version 0x00 is invalid
@@ -1715,13 +1715,13 @@ mod tests {
     // Interface Version Tests
     // ========================================================================
 
-    /// [feat_req_recentip_278] Interface version is at byte offset 13
+    /// [feat_req_someip_278] Interface version is at byte offset 13
     #[test_log::test]
     fn interface_version_offset_is_13() {
         assert_eq!(INTERFACE_VERSION_OFFSET, 13);
     }
 
-    /// [feat_req_recentip_278] Interface version major can be any value 0-255
+    /// [feat_req_someip_278] Interface version major can be any value 0-255
     #[test_log::test]
     fn interface_version_major_range() {
         // All major versions 0-255 are valid
@@ -1731,7 +1731,7 @@ mod tests {
         }
     }
 
-    /// [feat_req_recentip_278] Interface version minor is 32-bit
+    /// [feat_req_someip_278] Interface version minor is 32-bit
     #[test_log::test]
     fn interface_version_minor_is_32bit() {
         let version = InterfaceVersion::new(1, u32::MAX);
@@ -1741,7 +1741,7 @@ mod tests {
         assert_eq!(version.minor, 0);
     }
 
-    /// [feat_req_recentip_278] Same major version is compatible
+    /// [feat_req_someip_278] Same major version is compatible
     #[test_log::test]
     fn interface_version_same_major_compatible() {
         let v1 = InterfaceVersion::new(1, 0);
@@ -1752,7 +1752,7 @@ mod tests {
         assert!(v2.is_compatible_with(&InterfaceVersion::new(1, 0)));
     }
 
-    /// [feat_req_recentip_278] Different major version is incompatible
+    /// [feat_req_someip_278] Different major version is incompatible
     #[test_log::test]
     fn interface_version_different_major_incompatible() {
         let v1 = InterfaceVersion::new(1, 0);
@@ -1762,7 +1762,7 @@ mod tests {
         assert!(!v2.is_compatible_with(&v1));
     }
 
-    /// [feat_req_recentip_278] Higher minor version is compatible with lower
+    /// [feat_req_someip_278] Higher minor version is compatible with lower
     #[test_log::test]
     fn interface_version_higher_minor_compatible() {
         let server_v = InterfaceVersion::new(1, 5);
@@ -1776,7 +1776,7 @@ mod tests {
         assert!(!old_server.is_compatible_with(&required_v));
     }
 
-    /// [feat_req_recentip_278] Exact version match check
+    /// [feat_req_someip_278] Exact version match check
     #[test_log::test]
     fn interface_version_exact_match() {
         let v1 = InterfaceVersion::new(1, 5);
@@ -1789,7 +1789,7 @@ mod tests {
         assert!(!v1.matches_exactly(&v4)); // Different major
     }
 
-    /// [feat_req_recentip_278] Validate interface version header byte
+    /// [feat_req_someip_278] Validate interface version header byte
     #[test_log::test]
     fn interface_version_header_validation() {
         let expected = InterfaceVersion::new(1, 0);
@@ -1812,7 +1812,7 @@ mod tests {
     // Wire Format Version Tests
     // ========================================================================
 
-    /// [feat_req_recentip_300] Protocol version in header at correct offset
+    /// [feat_req_someip_300] Protocol version in header at correct offset
     #[test_log::test]
     fn wire_format_protocol_version_position() {
         // Minimal valid SOME/IP header
@@ -1831,7 +1831,7 @@ mod tests {
         assert_eq!(header[PROTOCOL_VERSION_OFFSET], PROTOCOL_VERSION);
     }
 
-    /// [feat_req_recentip_278] Interface version in header at correct offset
+    /// [feat_req_someip_278] Interface version in header at correct offset
     #[test_log::test]
     fn wire_format_interface_version_position() {
         let interface_v = 0x05u8; // Major version 5
@@ -1858,7 +1858,7 @@ mod tests {
         assert_eq!(header[INTERFACE_VERSION_OFFSET], interface_v);
     }
 
-    /// [feat_req_recentip_300] Parse protocol version from raw bytes
+    /// [feat_req_someip_300] Parse protocol version from raw bytes
     #[test_log::test]
     fn parse_protocol_version_from_bytes() {
         let header_bytes = [
@@ -1944,7 +1944,7 @@ mod proptest_suite {
         // Version Property Tests
         // ====================================================================
 
-        /// [feat_req_recentip_300] Only protocol version 0x01 is valid
+        /// [feat_req_someip_300] Only protocol version 0x01 is valid
         #[test_log::test]
         fn only_protocol_v1_valid(version in 0u8..=255u8) {
             let result = validate_protocol_version(version);
@@ -1955,28 +1955,28 @@ mod proptest_suite {
             }
         }
 
-        /// [feat_req_recentip_278] Interface version major matches header byte
+        /// [feat_req_someip_278] Interface version major matches header byte
         #[test_log::test]
         fn interface_version_wire_major(major in 0u8..=255u8, minor in 0u32..=u32::MAX) {
             let version = InterfaceVersion::new(major, minor);
             prop_assert_eq!(version.wire_major(), major);
         }
 
-        /// [feat_req_recentip_278] Compatibility is reflexive
+        /// [feat_req_someip_278] Compatibility is reflexive
         #[test_log::test]
         fn interface_version_reflexive_compat(major in 0u8..=255u8, minor in 0u32..=u32::MAX) {
             let version = InterfaceVersion::new(major, minor);
             prop_assert!(version.is_compatible_with(&version));
         }
 
-        /// [feat_req_recentip_278] Exact match is reflexive
+        /// [feat_req_someip_278] Exact match is reflexive
         #[test_log::test]
         fn interface_version_reflexive_exact(major in 0u8..=255u8, minor in 0u32..=u32::MAX) {
             let version = InterfaceVersion::new(major, minor);
             prop_assert!(version.matches_exactly(&version));
         }
 
-        /// [feat_req_recentip_278] Different major always incompatible
+        /// [feat_req_someip_278] Different major always incompatible
         #[test_log::test]
         fn interface_version_major_mismatch(
             major1 in 0u8..=127u8,
@@ -1992,7 +1992,7 @@ mod proptest_suite {
             prop_assert!(!v2.is_compatible_with(&v1));
         }
 
-        /// [feat_req_recentip_278] Higher minor is compatible with lower
+        /// [feat_req_someip_278] Higher minor is compatible with lower
         #[test_log::test]
         fn interface_version_minor_forward_compat(
             major in 0u8..=255u8,

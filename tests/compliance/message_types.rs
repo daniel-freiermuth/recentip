@@ -3,14 +3,14 @@
 //! Integration tests for SOME/IP message type behavior using turmoil simulation.
 //! Unit tests for MessageType parsing are in src/wire.rs.
 //!
-//! # Message Types (feat_req_recentip_103)
+//! # Message Types (feat_req_someip_103)
 //! - 0x00: REQUEST - Client sends request expecting response
 //! - 0x01: REQUEST_NO_RETURN - Fire-and-forget request
 //! - 0x02: NOTIFICATION - Server sends event notification
 //! - 0x80: RESPONSE - Response to a REQUEST
 //! - 0x81: ERROR - Error response to a REQUEST
 //!
-//! # Valid Transitions (feat_req_recentip_282)
+//! # Valid Transitions (feat_req_someip_282)
 //! - REQUEST (0x00) → RESPONSE (0x80) or ERROR (0x81)
 //! - REQUEST_NO_RETURN (0x01) → no response allowed
 //! - NOTIFICATION (0x02) → no response allowed
@@ -40,11 +40,11 @@ const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 // Integration Tests (turmoil-based)
 // ============================================================================
 
-/// [feat_req_recentip_282] REQUEST gets RESPONSE with matching type
+/// [feat_req_someip_282] REQUEST gets RESPONSE with matching type
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 fn request_receives_response_type() {
-    covers!(feat_req_recentip_282);
+    covers!(feat_req_someip_282);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -112,11 +112,11 @@ fn request_receives_response_type() {
     sim.run().unwrap();
 }
 
-/// [feat_req_recentip_282] REQUEST can get ERROR type response
+/// [feat_req_someip_282] REQUEST can get ERROR type response
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 fn request_can_receive_error_type() {
-    covers!(feat_req_recentip_282);
+    covers!(feat_req_someip_282);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -188,11 +188,11 @@ fn request_can_receive_error_type() {
     sim.run().unwrap();
 }
 
-/// [feat_req_recentip_284] REQUEST_NO_RETURN gets no response
+/// [feat_req_someip_284] REQUEST_NO_RETURN gets no response
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 fn request_no_return_receives_no_response() {
-    covers!(feat_req_recentip_284);
+    covers!(feat_req_someip_284);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -260,11 +260,11 @@ fn request_no_return_receives_no_response() {
     sim.run().unwrap();
 }
 
-/// [feat_req_recentip_285] Server can send NOTIFICATION messages
+/// [feat_req_someip_285] Server can send NOTIFICATION messages
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 fn server_sends_notification_type() {
-    covers!(feat_req_recentip_285);
+    covers!(feat_req_someip_285);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -344,12 +344,12 @@ fn server_sends_notification_type() {
     sim.run().unwrap();
 }
 
-/// [feat_req_recentip_103] TP-flagged request gets TP-flagged response
+/// [feat_req_someip_103] TP-flagged request gets TP-flagged response
 #[cfg(feature = "turmoil")]
 #[test_log::test]
 #[ignore = "SOME/IP-TP not yet implemented"]
 fn tp_request_gets_tp_response() {
-    covers!(feat_req_recentip_103);
+    covers!(feat_req_someip_103);
     // TP (Transport Protocol) is used for large payloads that exceed UDP MTU.
     // When a request uses TP (message type 0x20), the response must also use TP (0xA0).
     // This test requires the TP implementation to be complete.

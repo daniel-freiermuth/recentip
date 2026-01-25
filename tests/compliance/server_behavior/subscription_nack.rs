@@ -7,7 +7,7 @@
 //! - Raw socket: Acts as **client** (sends invalid subscribe messages)
 //!
 //! # Requirements Covered
-//! - feat_req_recentipsd_1137: SubscribeEventgroupNack for invalid subscribes
+//! - feat_req_someipsd_1137: SubscribeEventgroupNack for invalid subscribes
 
 use super::helpers::{
     build_sd_subscribe_with_udp_endpoint, covers, parse_sd_message, TEST_SERVICE_ID,
@@ -17,13 +17,13 @@ use recentip::prelude::*;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-/// feat_req_recentipsd_1137: Server SHALL NACK when Service ID is unknown
+/// feat_req_someipsd_1137: Server SHALL NACK when Service ID is unknown
 ///
 /// When a server receives a SubscribeEventgroup for a Service ID it doesn't offer,
 /// it MUST respond with SubscribeEventgroupNack (TTL=0).
 #[test_log::test]
 fn subscribe_to_unknown_service_id_should_nack() {
-    covers!(feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1137);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -207,13 +207,13 @@ fn subscribe_to_unknown_service_id_should_nack() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_1137: Server SHALL NACK when Instance ID is unknown
+/// feat_req_someipsd_1137: Server SHALL NACK when Instance ID is unknown
 ///
 /// Server offers service 0x1234 instance 0x0001, client tries to subscribe to
 /// instance 0x0099. Server MUST respond with NACK.
 #[test_log::test]
 fn subscribe_to_unknown_instance_id_should_nack() {
-    covers!(feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1137);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -408,7 +408,7 @@ fn subscribe_to_unknown_instance_id_should_nack() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_1137: Server SHALL NACK when Eventgroup is unknown
+/// feat_req_someipsd_1137: Server SHALL NACK when Eventgroup is unknown
 ///
 /// Server offers eventgroup 0x0001, client tries to subscribe to eventgroup 0x0099.
 /// Server MUST respond with NACK.
@@ -419,7 +419,7 @@ fn subscribe_to_unknown_instance_id_should_nack() {
 #[test_log::test]
 #[ignore = "Design choice: accept subscriptions for not-yet-known eventgroups"]
 fn subscribe_to_unknown_eventgroup_should_nack() {
-    covers!(feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1137);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -606,13 +606,13 @@ fn subscribe_to_unknown_eventgroup_should_nack() {
     sim.run().unwrap();
 }
 
-/// feat_req_recentipsd_1137: Server SHALL NACK when Major Version doesn't match
+/// feat_req_someipsd_1137: Server SHALL NACK when Major Version doesn't match
 ///
 /// Server offers service with major version 1, client tries to subscribe with
 /// major version 99. Server MUST respond with NACK.
 #[test_log::test]
 fn subscribe_to_wrong_major_version_should_nack() {
-    covers!(feat_req_recentipsd_1137);
+    covers!(feat_req_someipsd_1137);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

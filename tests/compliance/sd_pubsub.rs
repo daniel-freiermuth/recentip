@@ -35,13 +35,13 @@ const PUB_SUB_SERVICE_VERSION: (u8, u32) = (1, 0);
 // 1. BASIC SUBSCRIPTION FLOW
 // ============================================================================
 
-/// [feat_req_recentipsd_422] Clients needing events shall register using SD at run-time.
-/// [feat_req_recentipsd_428] OfferService is trigger for Subscriptions.
+/// [feat_req_someipsd_422] Clients needing events shall register using SD at run-time.
+/// [feat_req_someipsd_428] OfferService is trigger for Subscriptions.
 ///
 /// When a server offers a service, clients can subscribe to eventgroups.
 #[test_log::test]
 fn client_registers_for_events_via_sd() {
-    covers!(feat_req_recentipsd_422, feat_req_recentipsd_428);
+    covers!(feat_req_someipsd_422, feat_req_someipsd_428);
 
     let subscription_succeeded = Arc::new(Mutex::new(false));
     let sub_flag = Arc::clone(&subscription_succeeded);
@@ -102,12 +102,12 @@ fn client_registers_for_events_via_sd() {
     );
 }
 
-/// [feat_req_recentipsd_429] Server shall send OfferService on startup to discover interested clients.
+/// [feat_req_someipsd_429] Server shall send OfferService on startup to discover interested clients.
 ///
 /// When server starts, it sends OfferService which clients can respond to with Subscribe.
 #[test_log::test]
 fn server_offers_on_startup_to_discover_clients() {
-    covers!(feat_req_recentipsd_429);
+    covers!(feat_req_someipsd_429);
 
     let offer_received = Arc::new(Mutex::new(false));
     let offer_flag = Arc::clone(&offer_received);
@@ -159,13 +159,13 @@ fn server_offers_on_startup_to_discover_clients() {
     );
 }
 
-/// [feat_req_recentipsd_430] Client implements service interface and signals wish using SubscribeEventgroup.
-/// [feat_req_recentipsd_431] Client shall respond to OfferService with SubscribeEventgroup.
+/// [feat_req_someipsd_430] Client implements service interface and signals wish using SubscribeEventgroup.
+/// [feat_req_someipsd_431] Client shall respond to OfferService with SubscribeEventgroup.
 ///
 /// Client responds to OfferService by sending SubscribeEventgroup.
 #[test_log::test]
 fn client_responds_to_offer_with_subscribe() {
-    covers!(feat_req_recentipsd_430, feat_req_recentipsd_431);
+    covers!(feat_req_someipsd_430, feat_req_someipsd_431);
 
     let server_received_subscribe = Arc::new(Mutex::new(false));
     let sub_flag = Arc::clone(&server_received_subscribe);
@@ -242,7 +242,7 @@ fn client_responds_to_offer_with_subscribe() {
 
 /// Tests API-level behavior: `subscribe()` resolves to Ok when the server acknowledges.
 ///
-/// Wire-level verification of SubscribeEventgroupAck (feat_req_recentipsd_441) is in
+/// Wire-level verification of SubscribeEventgroupAck (feat_req_someipsd_441) is in
 /// `wire_format::subscribe_ack_entry_type`.
 #[test_log::test]
 fn subscribe_resolves_on_ack() {
@@ -310,12 +310,12 @@ fn subscribe_resolves_on_ack() {
 // 2. SUBSCRIPTION LIFECYCLE
 // ============================================================================
 
-/// [feat_req_recentipsd_432] Server must keep state of SubscribeEventgroup to know if events should be sent.
+/// [feat_req_someipsd_432] Server must keep state of SubscribeEventgroup to know if events should be sent.
 ///
 /// Two clients subscribe to different eventgroups; each receives only their eventgroup's events.
 #[test_log::test]
 fn server_tracks_subscription_state() {
-    covers!(feat_req_recentipsd_432);
+    covers!(feat_req_someipsd_432);
 
     let client1_events = Arc::new(Mutex::new(Vec::<u16>::new()));
     let client2_events = Arc::new(Mutex::new(Vec::<u16>::new()));
@@ -460,12 +460,12 @@ fn server_tracks_subscription_state() {
     );
 }
 
-/// [feat_req_recentipsd_433] Client shall deregister by sending StopSubscribeEventgroup (TTL=0).
+/// [feat_req_someipsd_433] Client shall deregister by sending StopSubscribeEventgroup (TTL=0).
 ///
 /// Dropping subscription sends StopSubscribeEventgroup.
 #[test_log::test]
 fn client_deregisters_with_stop_subscribe() {
-    covers!(feat_req_recentipsd_433);
+    covers!(feat_req_someipsd_433);
 
     let unsubscribe_received = Arc::new(Mutex::new(false));
     let unsub_flag = Arc::clone(&unsubscribe_received);
@@ -1170,12 +1170,12 @@ fn no_delivery_to_wrong_eg() {
 // 5. LINK LOSS AND ERROR HANDLING
 // ============================================================================
 
-/// [feat_req_recentipsd_435] Server shall delete subscription if RECENT/IP error received.
+/// [feat_req_someipsd_435] Server shall delete subscription if RECENT/IP error received.
 ///
 /// Server cleans up subscription on error.
 #[test_log::test]
 fn server_deletes_subscription_on_error() {
-    covers!(feat_req_recentipsd_435);
+    covers!(feat_req_someipsd_435);
 
     // This test verifies the error handling concept
     // Actual error injection would require network simulation features
@@ -1222,13 +1222,13 @@ fn server_deletes_subscription_on_error() {
     // Test passes if no panic - error handling mechanisms exist
 }
 
-/// [feat_req_recentipsd_436] Server shall send OfferService when link comes up again.
-/// [feat_req_recentipsd_437] Server shall delete subscriptions when link goes down.
+/// [feat_req_someipsd_436] Server shall send OfferService when link comes up again.
+/// [feat_req_someipsd_437] Server shall delete subscriptions when link goes down.
 ///
 /// Link loss handling on server side.
 #[test_log::test]
 fn server_handles_link_loss() {
-    covers!(feat_req_recentipsd_436, feat_req_recentipsd_437);
+    covers!(feat_req_someipsd_436, feat_req_someipsd_437);
 
     // This test verifies the concept - actual link simulation requires network features
     let offer_after_link_up = Arc::new(Mutex::new(false));
@@ -1275,12 +1275,12 @@ fn server_handles_link_loss() {
     assert!(*offer_after_link_up.lock().unwrap(), "Should receive offer when server link is up");
 }
 
-/// [feat_req_recentipsd_439] Client shall resubscribe if no events received for configured time.
+/// [feat_req_someipsd_439] Client shall resubscribe if no events received for configured time.
 ///
 /// Timeout-based resubscription.
 #[test_log::test]
 fn client_resubscribes_on_timeout() {
-    covers!(feat_req_recentipsd_439);
+    covers!(feat_req_someipsd_439);
 
     // This test verifies the concept - actual timeout resubscription depends on configuration
     let mut sim = turmoil::Builder::new()
@@ -1326,12 +1326,12 @@ fn client_resubscribes_on_timeout() {
     // Test passes - resubscription mechanism exists
 }
 
-/// [feat_req_recentipsd_440] Link-up shall start Initial Wait Phase and trigger SubscribeEventgroup.
+/// [feat_req_someipsd_440] Link-up shall start Initial Wait Phase and trigger SubscribeEventgroup.
 ///
 /// Client subscribes after link comes up.
 #[test_log::test]
 fn client_subscribes_after_link_up() {
-    covers!(feat_req_recentipsd_440);
+    covers!(feat_req_someipsd_440);
 
     let subscription_succeeded = Arc::new(Mutex::new(false));
     let sub_flag = Arc::clone(&subscription_succeeded);
@@ -1386,12 +1386,12 @@ fn client_subscribes_after_link_up() {
 // 6. TCP/UDP READINESS
 // ============================================================================
 
-/// [feat_req_recentipsd_1182] Client shall have UDP port ready before sending SubscribeEventgroup.
+/// [feat_req_someipsd_1182] Client shall have UDP port ready before sending SubscribeEventgroup.
 ///
 /// Client must be ready to receive before subscribing.
 #[test_log::test]
 fn client_udp_port_ready_before_subscribe() {
-    covers!(feat_req_recentipsd_1182);
+    covers!(feat_req_someipsd_1182);
 
     let events_received = Arc::new(Mutex::new(false));
     let event_flag = Arc::clone(&events_received);
@@ -1452,12 +1452,12 @@ fn client_udp_port_ready_before_subscribe() {
     assert!(*events_received.lock().unwrap(), "Client should receive events (port was ready)");
 }
 
-/// [feat_req_recentipsd_767] Client shall open TCP connection before SubscribeEventgroup for reliable.
+/// [feat_req_someipsd_767] Client shall open TCP connection before SubscribeEventgroup for reliable.
 ///
 /// TCP must be ready before subscribing to reliable eventgroups.
 #[test_log::test]
 fn client_tcp_ready_before_subscribe_reliable() {
-    covers!(feat_req_recentipsd_767);
+    covers!(feat_req_someipsd_767);
 
     // This test verifies that TCP subscription works correctly
     // The actual TCP connection setup happens internally
@@ -1514,12 +1514,12 @@ fn client_tcp_ready_before_subscribe_reliable() {
 // 7. CYCLIC SUBSCRIBE TIMERS
 // ============================================================================
 
-/// [feat_req_recentipsd_828] Timer for cyclic SubscribeEventgroup shall be reset on OfferService.
+/// [feat_req_someipsd_828] Timer for cyclic SubscribeEventgroup shall be reset on OfferService.
 ///
 /// Receiving OfferService resets subscription renewal timer.
 #[test_log::test]
 fn subscribe_timer_reset_on_offer() {
-    covers!(feat_req_recentipsd_828);
+    covers!(feat_req_someipsd_828);
 
     // This test verifies the subscription renewal concept
     let subscription_maintained = Arc::new(Mutex::new(false));
@@ -1591,12 +1591,12 @@ fn subscribe_timer_reset_on_offer() {
     assert!(*subscription_maintained.lock().unwrap(), "Subscription should be maintained over time");
 }
 
-/// [feat_req_recentipsd_829] If no cyclic SubscribeEventgroups configured, timer stays off.
+/// [feat_req_someipsd_829] If no cyclic SubscribeEventgroups configured, timer stays off.
 ///
 /// Cyclic subscription renewal is optional.
 #[test_log::test]
 fn no_cyclic_subscribe_if_not_configured() {
-    covers!(feat_req_recentipsd_829);
+    covers!(feat_req_someipsd_829);
 
     // This test verifies that subscriptions work without cyclic renewal
     let subscription_works = Arc::new(Mutex::new(false));
@@ -1658,12 +1658,12 @@ fn no_cyclic_subscribe_if_not_configured() {
 // 8. IMPLICIT/PRE-CONFIGURED SUBSCRIPTIONS
 // ============================================================================
 
-/// [feat_req_recentipsd_444] Implicit (pre-configured) registration shall be supported.
+/// [feat_req_someipsd_444] Implicit (pre-configured) registration shall be supported.
 ///
 /// Some deployments use pre-configured subscriptions.
 #[test_log::test]
 fn implicit_registration_supported() {
-    covers!(feat_req_recentipsd_444);
+    covers!(feat_req_someipsd_444);
 
     // This test verifies that explicit subscription works (implicit would be config-based)
     let subscription_works = Arc::new(Mutex::new(false));
@@ -1716,19 +1716,19 @@ fn implicit_registration_supported() {
 // 9. STATE DIAGRAMS (conceptual verification)
 // ============================================================================
 
-/// [feat_req_recentipsd_442] Pub/Sub State Diagram - overall behavior.
-/// [feat_req_recentipsd_625] State diagram for unicast eventgroups.
-/// [feat_req_recentipsd_626] State diagram for multicast eventgroups.
-/// [feat_req_recentipsd_823] State diagram for adaptive unicast/multicast.
+/// [feat_req_someipsd_442] Pub/Sub State Diagram - overall behavior.
+/// [feat_req_someipsd_625] State diagram for unicast eventgroups.
+/// [feat_req_someipsd_626] State diagram for multicast eventgroups.
+/// [feat_req_someipsd_823] State diagram for adaptive unicast/multicast.
 ///
 /// Verifies the overall pub/sub state machine flow.
 #[test_log::test]
 fn pubsub_state_machine_flow() {
     covers!(
-        feat_req_recentipsd_442,
-        feat_req_recentipsd_625,
-        feat_req_recentipsd_626,
-        feat_req_recentipsd_823
+        feat_req_someipsd_442,
+        feat_req_someipsd_625,
+        feat_req_someipsd_626,
+        feat_req_someipsd_823
     );
 
     let full_flow_completed = Arc::new(Mutex::new(false));

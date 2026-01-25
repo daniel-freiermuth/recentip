@@ -7,9 +7,9 @@
 //! - Raw socket: Acts as **server** (sends offers, verifies subscribe format)
 //!
 //! # Requirements Covered
-//! - feat_req_recentipsd_431: Subscribe message format
-//! - feat_req_recentipsd_631: Subscriptions triggered by OfferService entries
-//! - feat_req_recentip_324: Client adapts to available transport
+//! - feat_req_someipsd_431: Subscribe message format
+//! - feat_req_someipsd_631: Subscriptions triggered by OfferService entries
+//! - feat_req_someip_324: Client adapts to available transport
 
 use super::helpers::{
     build_sd_offer_dual_stack_with_session, build_sd_offer_tcp_only, build_sd_offer_with_session,
@@ -29,10 +29,10 @@ use std::time::Duration;
 /// - Client (our library) subscribes and stays alive
 /// - Server verifies format of initial subscribe AND subsequent re-subscribes
 ///
-/// Per feat_req_recentipsd_631: Subscriptions triggered by OfferService entries
+/// Per feat_req_someipsd_631: Subscriptions triggered by OfferService entries
 #[test_log::test]
 fn subscribe_format_udp_only_cyclic_offers() {
-    covers!(feat_req_recentipsd_431, feat_req_recentipsd_631);
+    covers!(feat_req_someipsd_431, feat_req_someipsd_631);
 
     let subscribe_count = Arc::new(AtomicUsize::new(0));
     let subscribe_count_server = Arc::clone(&subscribe_count);
@@ -201,7 +201,7 @@ fn subscribe_format_udp_only_cyclic_offers() {
 /// - Server verifies subscribe includes TCP endpoint option
 #[test_log::test]
 fn subscribe_format_tcp_only_cyclic_offers() {
-    covers!(feat_req_recentipsd_431, feat_req_recentipsd_631);
+    covers!(feat_req_someipsd_431, feat_req_someipsd_631);
 
     let subscribe_count = Arc::new(AtomicUsize::new(0));
     let subscribe_count_server = Arc::clone(&subscribe_count);
@@ -359,7 +359,7 @@ fn subscribe_format_tcp_only_cyclic_offers() {
 /// Client prefers UDP - should send UDP endpoint
 #[test_log::test]
 fn subscribe_format_dual_stack_client_prefers_udp() {
-    covers!(feat_req_recentipsd_431, feat_req_recentipsd_631);
+    covers!(feat_req_someipsd_431, feat_req_someipsd_631);
 
     let subscribe_count = Arc::new(AtomicUsize::new(0));
     let subscribe_count_server = Arc::clone(&subscribe_count);
@@ -500,7 +500,7 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
 /// Client prefers TCP - should send TCP endpoint
 #[test_log::test]
 fn subscribe_format_dual_stack_client_prefers_tcp() {
-    covers!(feat_req_recentipsd_431, feat_req_recentipsd_631);
+    covers!(feat_req_someipsd_431, feat_req_someipsd_631);
 
     let subscribe_count = Arc::new(AtomicUsize::new(0));
     let subscribe_count_server = Arc::clone(&subscribe_count);
@@ -517,7 +517,7 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
                 turmoil::lookup("wire_server").to_string().parse().unwrap();
 
             // Start TCP listener on advertised TCP port (30510 for dual-stack)
-            // Required for client to connect before subscribing per feat_req_recentipsd_767
+            // Required for client to connect before subscribing per feat_req_someipsd_767
             let tcp_listener = turmoil::net::TcpListener::bind("0.0.0.0:30510").await?;
             tokio::spawn(async move {
                 loop {
@@ -657,7 +657,7 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
 /// Client prefers TCP but server offers UDP only - client should adapt and use UDP
 #[test_log::test]
 fn subscribe_format_client_adapts_to_available_transport() {
-    covers!(feat_req_recentipsd_431, feat_req_recentip_324);
+    covers!(feat_req_someipsd_431, feat_req_someip_324);
 
     let subscribe_count = Arc::new(AtomicUsize::new(0));
     let subscribe_count_server = Arc::clone(&subscribe_count);
@@ -823,7 +823,7 @@ fn subscribe_format_client_adapts_to_available_transport() {
 /// - Firewall/NAT compatibility
 #[test_log::test]
 fn subscribe_reuses_endpoint_port_after_resubscribe() {
-    covers!(feat_req_recentipsd_431);
+    covers!(feat_req_someipsd_431);
 
     use std::sync::Mutex;
 
@@ -1217,7 +1217,7 @@ fn subscribe_reuses_endpoint_port_after_resubscribe() {
 /// - Connection state preservation
 #[test_log::test]
 fn subscribe_tcp_reuses_endpoint_port_after_resubscribe() {
-    covers!(feat_req_recentipsd_431);
+    covers!(feat_req_someipsd_431);
 
     use std::sync::Mutex;
 
@@ -1255,7 +1255,7 @@ fn subscribe_tcp_reuses_endpoint_port_after_resubscribe() {
             let my_ip: std::net::Ipv4Addr =
                 turmoil::lookup("wire_server").to_string().parse().unwrap();
 
-            // Start TCP listener for client connections (required before subscribe per feat_req_recentipsd_767)
+            // Start TCP listener for client connections (required before subscribe per feat_req_someipsd_767)
             let tcp_listener = turmoil::net::TcpListener::bind("0.0.0.0:30509").await?;
             tokio::spawn(async move {
                 loop {
