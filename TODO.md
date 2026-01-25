@@ -96,7 +96,7 @@ Items not yet scheduled:
 
 | Category | Status |
 |----------|--------|
-| **Total tests** | 354 pass, 19 ignored |
+| **Total tests** | 365 pass, 19 ignored |
 | **Ignored (stubs)** | 9 TP tests, needs implementation |
 | **Ignored (pass)** | ~8 session/reboot tests (mostly work) |
 | **Ignored (fail)** | 2 tests need fixes |

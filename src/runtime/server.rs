@@ -377,17 +377,48 @@ pub fn handle_incoming_request(
     transport: crate::config::Transport,
 ) {
     // Find the offering:
-    // - If service_key is provided (from server RPC socket), use exact matching
+    // - If service_key is provided (from server RPC socket), validate service_id matches
+    //   and use exact matching
     // - Otherwise fall back to service_id-only matching
-    let offering = service_key.map_or_else(
-        || {
-            state
-                .offered
-                .iter()
-                .find(|(k, _)| k.service_id == header.service_id)
-        },
-        |key| state.offered.get_key_value(&key),
-    );
+    let offering = if let Some(key) = service_key {
+        // Validate that the service_id in the header matches the socket's service
+        // This prevents routing requests to the wrong service when a client sends
+        // a request with a mismatched service_id to a service-specific socket
+        if key.service_id != header.service_id {
+            tracing::warn!(
+                "Service ID mismatch: socket belongs to service 0x{:04x} but header has 0x{:04x} from {}",
+                key.service_id,
+                header.service_id,
+                from
+            );
+
+            // Send E_UNKNOWN_SERVICE (0x02) response
+            // Per feat_req_someip_816: E_UNKNOWN_SERVICE is optional and may be sent
+            // when the Service ID is wrong
+            let response_data = build_response(
+                header.service_id,
+                header.method_id,
+                header.client_id,
+                header.session_id,
+                header.interface_version,
+                0x02, // E_UNKNOWN_SERVICE
+                &[],
+                false, // No exception config for misrouted services
+            );
+            actions.push(Action::SendClientMessage {
+                data: response_data,
+                target: from,
+                transport,
+            });
+            return;
+        }
+        state.offered.get_key_value(&key)
+    } else {
+        state
+            .offered
+            .iter()
+            .find(|(k, _)| k.service_id == header.service_id)
+    };
 
     if let Some((service_key, offered)) = offering {
         // Validate method_id early: high bit set means event ID, not method ID
@@ -504,15 +535,32 @@ pub fn handle_incoming_fire_forget(
     payload: Bytes,
     from: SocketAddr,
     state: &RuntimeState,
+    service_key: Option<ServiceKey>,
 ) {
-    // Find matching offering
-    // NOTE: Same limitation as handle_incoming_request - see comment there
-    let offering = state
-        .offered
-        .iter()
-        .find(|(k, _)| k.service_id == header.service_id);
+    // Find matching offering with service_id validation
+    // If service_key is provided (from server RPC socket), validate service_id matches
+    let offering = if let Some(key) = service_key {
+        // Validate that the service_id in the header matches the socket's service
+        if key.service_id != header.service_id {
+            tracing::warn!(
+                "Fire-and-forget service ID mismatch: socket belongs to service 0x{:04x} but header has 0x{:04x} from {}",
+                key.service_id,
+                header.service_id,
+                from
+            );
+            // Silently ignore - fire-and-forget doesn't get responses
+            return;
+        }
+        state.offered.get(&key)
+    } else {
+        state
+            .offered
+            .iter()
+            .find(|(k, _)| k.service_id == header.service_id)
+            .map(|(_, v)| v)
+    };
 
-    if let Some((_, offered)) = offering {
+    if let Some(offered) = offering {
         // Send fire-and-forget request to the offering handle (no response channel)
         let _ = offered.requests_tx.try_send(ServiceRequest::FireForget {
             method_id: header.method_id,

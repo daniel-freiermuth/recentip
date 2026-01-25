@@ -773,8 +773,8 @@ fn handle_method_message(
             );
         }
         MessageType::RequestNoReturn => {
-            // Incoming fire-and-forget - route to offering without response tracking
-            server::handle_incoming_fire_forget(header, payload, from, state);
+            // Incoming fire-and-forget - route to offering with service_key for validation
+            server::handle_incoming_fire_forget(header, payload, from, state, service_key);
         }
         MessageType::Response | MessageType::Error => {
             // Response to our request - route to pending call

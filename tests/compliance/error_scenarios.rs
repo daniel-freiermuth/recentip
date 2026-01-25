@@ -1451,3 +1451,275 @@ fn wrong_protocol_version_returns_error() {
 
     sim.run().unwrap();
 }
+
+// ============================================================================
+// Service ID Validation Tests
+// ============================================================================
+
+/// feat_req_someip_816: Service ID must match socket's service when using service-specific RPC sockets
+///
+/// When a request is sent to a service-specific RPC socket (e.g., the UDP port announced
+/// in an Offer entry), the service_id in the SOME/IP header must match the socket's service.
+/// If mismatched, the server should reject with E_UNKNOWN_SERVICE (0x02).
+///
+/// This prevents a malicious or misconfigured client from routing requests to the wrong
+/// service by sending requests with incorrect service IDs to service-specific endpoints.
+#[test_log::test]
+fn service_id_mismatch_on_service_socket_rejected() {
+    use bytes::{BufMut, BytesMut};
+    use recentip::prelude::*;
+    use recentip::wire::MessageType;
+    use std::net::SocketAddr;
+    use std::time::Duration;
+
+    covers!(feat_req_someip_816);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server offers service 0x1234
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering = runtime
+            .offer(0x1234, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        // Wait for requests - should NOT receive any (only mismatched ones sent)
+        let result = tokio::time::timeout(Duration::from_secs(3), offering.next()).await;
+
+        // Verify the service did NOT receive the mismatched request
+        assert!(
+            result.is_err(),
+            "Service should NOT receive requests with mismatched service_id"
+        );
+
+        Ok(())
+    });
+
+    // Raw client sends request with wrong service_id to server's RPC port
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut server_endpoint: Option<SocketAddr> = None;
+        let mut buf = [0u8; 1500];
+
+        // Discover server's RPC endpoint via SD
+        for _ in 0..20 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // Look for OfferService entry for 0x1234
+                        if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
+                            if let Some(opt) = sd_msg.options.first() {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
+                                    addr, port, ..
+                                } = opt
+                                {
+                                    let ip = if addr.is_unspecified() {
+                                        from.ip()
+                                    } else {
+                                        std::net::IpAddr::V4(*addr)
+                                    };
+                                    server_endpoint = Some(SocketAddr::new(ip, *port));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+
+        let server_addr = server_endpoint.expect("Should find server via SD");
+
+        let socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+
+        // Create request with WRONG service_id (0x9999 instead of 0x1234)
+        // This is sent to the socket belonging to service 0x1234
+        let mut bad_request = BytesMut::with_capacity(24);
+        bad_request.put_u16(0x9999); // WRONG Service ID (socket belongs to 0x1234)
+        bad_request.put_u16(0x0001); // Method ID
+        bad_request.put_u32(0x00000010); // Length = 16
+        bad_request.put_u16(0x0001); // Client ID
+        bad_request.put_u16(0x0001); // Session ID
+        bad_request.put_u8(0x01); // Protocol Version
+        bad_request.put_u8(0x01); // Interface Version
+        bad_request.put_u8(0x00); // Message Type = REQUEST
+        bad_request.put_u8(0x00); // Return Code
+        bad_request.put_slice(b"testdata"); // 8 bytes payload
+
+        socket.send_to(&bad_request, server_addr).await?;
+
+        // Check if server responds with E_UNKNOWN_SERVICE error
+        let result = tokio::time::timeout(Duration::from_secs(1), socket.recv_from(&mut buf)).await;
+
+        if let Ok(Ok((len, _))) = result {
+            // Server responded - should be error with E_UNKNOWN_SERVICE
+            if let Some(header) = parse_header_wire(&buf[..len]) {
+                assert!(
+                    header.message_type == MessageType::Response
+                        || header.message_type == MessageType::Error,
+                    "Response should be RESPONSE or ERROR"
+                );
+                assert_eq!(
+                    header.return_code, 0x02,
+                    "Should return E_UNKNOWN_SERVICE (0x02) for mismatched service_id"
+                );
+                // Verify header fields are echoed correctly
+                assert_eq!(header.service_id, 0x9999, "Service ID should be echoed");
+                assert_eq!(header.method_id, 0x0001, "Method ID should be echoed");
+                assert_eq!(header.client_id, 0x0001, "Client ID should be echoed");
+                assert_eq!(header.session_id, 0x0001, "Session ID should be echoed");
+            } else {
+                panic!("Failed to parse response header");
+            }
+        } else {
+            // Per feat_req_someip_816, E_UNKNOWN_SERVICE is optional
+            // But if no response, the request must NOT have been processed
+            tracing::info!("No response received - server silently rejected (also valid)");
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Fire-and-forget with mismatched service_id should be silently ignored
+///
+/// Similar to the above test, but for RequestNoReturn messages.
+/// Since fire-and-forget doesn't expect responses, mismatched requests
+/// should be silently ignored.
+#[test_log::test]
+fn fire_and_forget_service_id_mismatch_ignored() {
+    use bytes::{BufMut, BytesMut};
+    use recentip::prelude::*;
+    use std::net::SocketAddr;
+    use std::time::Duration;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Server offers service 0x1234
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering = runtime
+            .offer(0x1234, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        // Wait for requests - should NOT receive any (only mismatched ones sent)
+        let result = tokio::time::timeout(Duration::from_secs(2), offering.next()).await;
+
+        // Verify the service did NOT receive the mismatched fire-and-forget
+        assert!(
+            result.is_err(),
+            "Service should NOT receive fire-and-forget with mismatched service_id"
+        );
+
+        Ok(())
+    });
+
+    // Raw client sends fire-and-forget with wrong service_id
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut server_endpoint: Option<SocketAddr> = None;
+        let mut buf = [0u8; 1500];
+
+        // Discover server's RPC endpoint via SD
+        for _ in 0..20 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
+                            if let Some(opt) = sd_msg.options.first() {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
+                                    addr, port, ..
+                                } = opt
+                                {
+                                    let ip = if addr.is_unspecified() {
+                                        from.ip()
+                                    } else {
+                                        std::net::IpAddr::V4(*addr)
+                                    };
+                                    server_endpoint = Some(SocketAddr::new(ip, *port));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+
+        let server_addr = server_endpoint.expect("Should find server via SD");
+
+        let socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+
+        // Create fire-and-forget with WRONG service_id (0x9999 instead of 0x1234)
+        let mut bad_request = BytesMut::with_capacity(24);
+        bad_request.put_u16(0x9999); // WRONG Service ID (socket belongs to 0x1234)
+        bad_request.put_u16(0x0001); // Method ID
+        bad_request.put_u32(0x00000010); // Length = 16
+        bad_request.put_u16(0x0001); // Client ID
+        bad_request.put_u16(0x0001); // Session ID
+        bad_request.put_u8(0x01); // Protocol Version
+        bad_request.put_u8(0x01); // Interface Version
+        bad_request.put_u8(0x01); // Message Type = REQUEST_NO_RETURN (fire-and-forget)
+        bad_request.put_u8(0x00); // Return Code
+        bad_request.put_slice(b"testdata"); // 8 bytes payload
+
+        socket.send_to(&bad_request, server_addr).await?;
+
+        // Fire-and-forget should not get any response
+        let result =
+            tokio::time::timeout(Duration::from_millis(500), socket.recv_from(&mut buf)).await;
+
+        assert!(
+            result.is_err(),
+            "Fire-and-forget should not receive any response (even for mismatched service_id)"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
