@@ -14,7 +14,6 @@ use super::helpers::{
     TEST_SERVICE_VERSION,
 };
 use recentip::prelude::*;
-use recentip::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 

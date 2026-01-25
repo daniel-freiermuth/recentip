@@ -7,7 +7,6 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -755,7 +754,7 @@ fn sd_discovery_then_rpc() {
                     } => {
                         let mut response = Vec::from("echo:");
                         response.extend_from_slice(&payload);
-                        responder.reply(&response).await.unwrap();
+                        responder.reply(&response).unwrap();
                     }
                     _ => panic!("Expected Call"),
                 }

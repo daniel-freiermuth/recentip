@@ -13,9 +13,7 @@
 //! The turmoil-based tests (run with `--features turmoil`) provide comprehensive
 //! network testing with simulated separate hosts.
 
-use recentip::{
-    EventId, EventgroupId, InstanceId, MethodId, Runtime, RuntimeConfig, ServiceEvent, Transport,
-};
+use recentip::{EventId, EventgroupId, InstanceId, MethodId, ServiceEvent, Transport};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -28,65 +26,12 @@ const ECHO_SERVICE_ID: u16 = 0x1234;
 const ECHO_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Create config bound to the local network IP for proper multicast
-/// Note: We bind to INADDR_ANY on the SD multicast port (30490) so that multicast discovery works.
-/// Different runtimes on the same machine can share this port via SO_REUSEPORT.
-fn test_config(_port: u16) -> RuntimeConfig {
-    RuntimeConfig::builder()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            30490,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            30490,
-        )))
-        .build()
-}
-
-fn tcp_test_config(_port: u16) -> RuntimeConfig {
-    RuntimeConfig::builder()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            30490,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            30490,
-        )))
-        .preferred_transport(Transport::Tcp)
-        .build()
-}
-
-fn tcp_test_config_with_magic_cookies(_port: u16) -> RuntimeConfig {
-    RuntimeConfig::builder()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            30490,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            30490,
-        )))
-        .preferred_transport(Transport::Tcp)
-        .magic_cookies(true)
-        .build()
-}
-
-// ============================================================================
 // UDP Tests
 // ============================================================================
 
 /// Test basic UDP request/response on real network
 #[tokio::test]
 async fn udp_request_response_real_network() {
-    // Use different ports to avoid conflicts
-    let server_port = 40100;
-    let client_port = 40200;
-
     // Create server runtime and offer service
     let server_runtime = recentip::configure()
         .bind_addr(SocketAddr::V4(SocketAddrV4::new(
@@ -131,7 +76,7 @@ async fn udp_request_response_real_network() {
         {
             let mut response = b"ECHO:".to_vec();
             response.extend_from_slice(&payload);
-            responder.reply(&response).await.expect("Reply");
+            responder.reply(&response).expect("Reply");
         }
     });
 
@@ -166,9 +111,6 @@ async fn udp_request_response_real_network() {
 /// Test UDP service discovery on real network
 #[tokio::test]
 async fn udp_service_discovery_real_network() {
-    let server_port = 40300;
-    let client_port = 40400;
-
     let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
 
@@ -233,9 +175,6 @@ async fn udp_service_discovery_real_network() {
 /// Test basic TCP request/response on real network
 #[tokio::test]
 async fn tcp_request_response_real_network() {
-    let server_port = 40500;
-    let client_port = 40600;
-
     let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
 
@@ -270,7 +209,7 @@ async fn tcp_request_response_real_network() {
         {
             let mut response = b"TCP:".to_vec();
             response.extend_from_slice(&payload);
-            responder.reply(&response).await.expect("Reply");
+            responder.reply(&response).expect("Reply");
         }
 
         done_rx.recv().await;
@@ -320,9 +259,6 @@ async fn tcp_request_response_real_network() {
 /// Test TCP with Magic Cookies on real network
 #[tokio::test]
 async fn tcp_magic_cookies_real_network() {
-    let server_port = 40700;
-    let client_port = 40800;
-
     let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
 
@@ -358,7 +294,7 @@ async fn tcp_magic_cookies_real_network() {
         {
             let mut response = b"MAGIC:".to_vec();
             response.extend_from_slice(&payload);
-            responder.reply(&response).await.expect("Reply");
+            responder.reply(&response).expect("Reply");
         }
 
         done_rx.recv().await;
@@ -405,9 +341,6 @@ async fn tcp_magic_cookies_real_network() {
 /// Test multiple TCP requests on same connection
 #[tokio::test]
 async fn tcp_multiple_requests_real_network() {
-    let server_port = 40900;
-    let client_port = 41000;
-
     let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
 
@@ -443,7 +376,7 @@ async fn tcp_multiple_requests_real_network() {
             {
                 let mut response = b"MULTI:".to_vec();
                 response.extend_from_slice(&payload);
-                responder.reply(&response).await.expect("Reply");
+                responder.reply(&response).expect("Reply");
             }
         }
 
@@ -512,9 +445,6 @@ async fn tcp_multiple_requests_real_network() {
 #[tokio::test]
 #[ignore = "Requires .bind_sd_unicast() implementation + network namespaces/docker"]
 async fn udp_events_real_network() {
-    let server_port = 41100;
-    let client_port = 41200;
-
     let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
     let (subscribed_tx, mut subscribed_rx) = mpsc::channel::<()>(1);
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
@@ -682,7 +612,7 @@ async fn udp_two_runtimes_same_sd_port() {
         {
             let mut response = b"REUSEPORT:".to_vec();
             response.extend_from_slice(&payload);
-            responder.reply(&response).await.expect("Reply");
+            responder.reply(&response).expect("Reply");
         }
     });
 

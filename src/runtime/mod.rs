@@ -1,4 +1,4 @@
-//! # SomeIp Implementation (Internal)
+//! # `SomeIp` Implementation (Internal)
 //!
 //! This module contains the internal implementation of the SOME/IP runtime.
 //! It is `pub(crate)` — internal to the library.

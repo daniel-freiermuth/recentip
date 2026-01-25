@@ -1,6 +1,6 @@
 # Transport: UDP, TCP, and Configuration
 
-RecentIP supports both UDP and TCP transports with various configuration options.
+`RecentIP` supports both UDP and TCP transports with various configuration options.
 
 ## Transport Selection
 

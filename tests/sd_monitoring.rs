@@ -6,7 +6,6 @@
 //! Run with: cargo test --test sd_monitoring
 
 use recentip::prelude::*;
-use recentip::Runtime;
 use recentip::SdEvent;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

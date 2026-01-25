@@ -13,7 +13,6 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -167,7 +166,7 @@ fn messages_dispatched_to_correct_instance() {
                 } = event
                 {
                     assert_eq!(payload.as_ref(), b"for_instance_1");
-                    responder.reply(b"from_instance_1").await.unwrap();
+                    responder.reply(b"from_instance_1").unwrap();
                 }
             }
 
@@ -200,7 +199,7 @@ fn messages_dispatched_to_correct_instance() {
             } = event
             {
                 assert_eq!(payload.as_ref(), b"for_instance_2");
-                responder.reply(b"from_instance_2").await.unwrap();
+                responder.reply(b"from_instance_2").unwrap();
             }
         }
 
@@ -310,13 +309,13 @@ fn two_instances_same_host() {
                 Some(event) = offering1.next() => {
                     if let ServiceEvent::Call { payload, responder, .. } = event {
                         assert_eq!(payload.as_ref(), b"for_instance_1");
-                        responder.reply(b"from_instance_1").await.unwrap();
+                        responder.reply(b"from_instance_1").unwrap();
                     }
                 }
                 Some(event) = offering2.next() => {
                     if let ServiceEvent::Call { payload, responder, .. } = event {
                         assert_eq!(payload.as_ref(), b"for_instance_2");
-                        responder.reply(b"from_instance_2").await.unwrap();
+                        responder.reply(b"from_instance_2").unwrap();
                     }
                 }
             }
@@ -326,13 +325,13 @@ fn two_instances_same_host() {
                 Some(event) = offering1.next() => {
                     if let ServiceEvent::Call { payload, responder, .. } = event {
                         assert_eq!(payload.as_ref(), b"for_instance_1");
-                        responder.reply(b"from_instance_1").await.unwrap();
+                        responder.reply(b"from_instance_1").unwrap();
                     }
                 }
                 Some(event) = offering2.next() => {
                     if let ServiceEvent::Call { payload, responder, .. } = event {
                         assert_eq!(payload.as_ref(), b"for_instance_2");
-                        responder.reply(b"from_instance_2").await.unwrap();
+                        responder.reply(b"from_instance_2").unwrap();
                     }
                 }
             }
@@ -518,7 +517,7 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
                 .flatten()
             {
                 if let ServiceEvent::Call { responder, .. } = event {
-                    responder.reply(b"resp_a").await.unwrap();
+                    responder.reply(b"resp_a").unwrap();
                 }
             }
 
@@ -529,7 +528,7 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
                 .flatten()
             {
                 if let ServiceEvent::Call { responder, .. } = event {
-                    responder.reply(b"resp_b").await.unwrap();
+                    responder.reply(b"resp_b").unwrap();
                 }
             }
 

@@ -7,7 +7,6 @@
 //! These are wire-level tests where we implement a mock SOME/IP server
 //! and observe what endpoints the client library uses for subscriptions.
 
-use bytes::Buf;
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};

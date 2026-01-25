@@ -1,6 +1,6 @@
 //! # Examples
 //!
-//! Compile-checked examples for common RecentIP use cases.
+//! Compile-checked examples for common `RecentIP` use cases.
 //!
 //! These examples are tested as part of `cargo test --doc` to ensure they stay
 //! up-to-date with the API.

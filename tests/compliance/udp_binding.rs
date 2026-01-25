@@ -114,7 +114,7 @@ fn udp_binding_transports_someip_messages() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply(b"response").await.unwrap();
+                    responder.reply(b"response").unwrap();
                 }
                 _ => {}
             }
@@ -195,7 +195,7 @@ fn udp_each_message_has_own_header() {
                         payload, responder, ..
                     } => {
                         assert_eq!(payload.as_ref(), expected);
-                        responder.reply(expected).await.unwrap();
+                        responder.reply(expected).unwrap();
                     }
                     _ => panic!("Expected Call event"),
                 }
@@ -282,7 +282,7 @@ fn udp_multiple_messages_format_supported() {
                     ServiceEvent::Call {
                         payload, responder, ..
                     } => {
-                        responder.reply(&payload).await.unwrap();
+                        responder.reply(&payload).unwrap();
                     }
                     _ => {}
                 }
@@ -647,7 +647,7 @@ fn udp_handles_various_payload_sizes() {
                     ServiceEvent::Call {
                         payload, responder, ..
                     } => {
-                        responder.reply(&payload).await.unwrap();
+                        responder.reply(&payload).unwrap();
                     }
                     _ => {}
                 }
@@ -732,7 +732,7 @@ fn default_transport_is_udp() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply(b"udp response").await.unwrap();
+                    responder.reply(b"udp response").unwrap();
                 }
                 _ => {}
             }

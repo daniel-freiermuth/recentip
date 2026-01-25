@@ -81,7 +81,7 @@
 //!
 //! ## Server-Side Pattern (Advanced Typestate)
 //!
-//! For finer control over the bind/announce lifecycle (TODO: ServiceInstance API):
+//! For finer control over the bind/announce lifecycle (TODO: `ServiceInstance` API):
 //!
 //! ```ignore
 //! use recentip::prelude::*;

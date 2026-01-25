@@ -23,7 +23,6 @@
 //! 4. Large payload handling (TCP advantage over UDP)
 
 use recentip::prelude::*;
-use recentip::Runtime;
 use recentip::Transport;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

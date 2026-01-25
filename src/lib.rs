@@ -180,7 +180,7 @@
 //!
 //! ## Key Concepts
 //!
-//! ### The SomeIp as State Machine Executor
+//! ### The `SomeIp` as State Machine Executor
 //!
 //! The [`SomeIp`] is the **central coordinator**. It:
 //!
@@ -878,7 +878,7 @@ pub mod prelude {
     pub use crate::{
         configure, Error, Event, EventBuilder, EventHandle, EventId, EventgroupId, InstanceId,
         MajorVersion, MethodConfig, MethodId, MinorVersion, OfferedService, Response, Result,
-        ReturnCode, Runtime, RuntimeConfig, ServiceId, ServiceOffering, SomeIp, SomeIpBuilder,
-        Subscription, SubscriptionBuilder, Transport,
+        ReturnCode, RuntimeConfig, ServiceId, ServiceOffering, SomeIp, SomeIpBuilder, Subscription,
+        SubscriptionBuilder, Transport,
     };
 }

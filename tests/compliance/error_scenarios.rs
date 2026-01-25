@@ -12,7 +12,6 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -266,7 +265,7 @@ fn server_returns_various_error_codes() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply_error(ReturnCode::NotReady).await.unwrap();
+                responder.reply_error(ReturnCode::NotReady).unwrap();
             }
         }
 
@@ -277,10 +276,7 @@ fn server_returns_various_error_codes() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder
-                    .reply_error(ReturnCode::UnknownMethod)
-                    .await
-                    .unwrap();
+                responder.reply_error(ReturnCode::UnknownMethod).unwrap();
             }
         }
 
@@ -291,7 +287,7 @@ fn server_returns_various_error_codes() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply_error(ReturnCode::NotOk).await.unwrap();
+                responder.reply_error(ReturnCode::NotOk).unwrap();
             }
         }
 
@@ -435,7 +431,6 @@ fn error_response_copies_request_header() {
     use recentip::handle::ServiceEvent;
     use recentip::prelude::*;
     use recentip::wire::MessageType;
-    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -468,10 +463,7 @@ fn error_response_copies_request_header() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder
-                    .reply_error(ReturnCode::UnknownMethod)
-                    .await
-                    .unwrap();
+                responder.reply_error(ReturnCode::UnknownMethod).unwrap();
             }
         }
 
@@ -613,7 +605,6 @@ fn exception_message_type_when_configured() {
     use recentip::handle::ServiceEvent;
     use recentip::prelude::*;
     use recentip::wire::MessageType;
-    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -650,10 +641,7 @@ fn exception_message_type_when_configured() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder
-                    .reply_error(ReturnCode::UnknownMethod)
-                    .await
-                    .unwrap();
+                responder.reply_error(ReturnCode::UnknownMethod).unwrap();
             }
         }
 
@@ -764,7 +752,6 @@ fn mixed_exception_config_per_method() {
     use recentip::handle::ServiceEvent;
     use recentip::prelude::*;
     use recentip::wire::MessageType;
-    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -802,7 +789,7 @@ fn mixed_exception_config_per_method() {
                 .flatten()
             {
                 if let ServiceEvent::Call { responder, .. } = event {
-                    responder.reply_error(ReturnCode::NotOk).await.unwrap();
+                    responder.reply_error(ReturnCode::NotOk).unwrap();
                 }
             }
         }
@@ -938,7 +925,6 @@ fn internal_unknown_service_error_uses_response() {
     use bytes::{BufMut, BytesMut};
     use recentip::prelude::*;
     use recentip::wire::MessageType;
-    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -1064,7 +1050,6 @@ fn internal_unknown_service_error_uses_response() {
 fn messages_with_short_length_ignored() {
     use bytes::{BufMut, BytesMut};
     use recentip::prelude::*;
-    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -1177,7 +1162,6 @@ fn messages_with_short_length_ignored() {
 fn uses_known_protocol_version() {
     use recentip::prelude::*;
     use recentip::wire::Header;
-    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 
@@ -1211,7 +1195,7 @@ fn uses_known_protocol_version() {
                 .flatten()
             {
                 if let recentip::handle::ServiceEvent::Call { responder, .. } = event {
-                    let _ = responder.reply(b"response").await;
+                    let _ = responder.reply(b"response");
                 }
             }
         }
@@ -1336,7 +1320,6 @@ fn wrong_protocol_version_returns_error() {
     use bytes::{BufMut, BytesMut};
     use recentip::prelude::*;
     use recentip::wire::MessageType;
-    use recentip::{Runtime, RuntimeConfig};
     use std::net::SocketAddr;
     use std::time::Duration;
 

@@ -20,7 +20,6 @@ use recentip::wire::{
     Header, SdMessage, INTERFACE_VERSION_OFFSET, PROTOCOL_VERSION, PROTOCOL_VERSION_OFFSET,
     SD_METHOD_ID, SD_SERVICE_ID,
 };
-use recentip::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -542,7 +541,7 @@ fn response_preserves_interface_version() {
 
         if let Some(event) = offering.next().await {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply(b"response").await.unwrap();
+                responder.reply(b"response").unwrap();
             }
         }
 

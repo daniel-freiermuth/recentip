@@ -14,7 +14,6 @@ use bytes::Bytes;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 use recentip::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
-use recentip::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -334,7 +333,7 @@ fn concurrent_requests_matched_by_request_id() {
         for (payload, responder) in pending_requests.into_iter().rev() {
             let value = payload[0];
             // Response contains the request value + 100 to identify it
-            responder.reply(&[value + 100]).await.unwrap();
+            responder.reply(&[value + 100]).unwrap();
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -419,7 +418,7 @@ fn request_triggers_response() {
                     payload, responder, ..
                 } => {
                     assert_eq!(payload.as_ref(), b"request_data");
-                    responder.reply(b"response_data").await.unwrap();
+                    responder.reply(b"response_data").unwrap();
                 }
                 _ => panic!("Expected Call event"),
             }
@@ -497,7 +496,7 @@ fn request_can_receive_error_response() {
             match event {
                 ServiceEvent::Call { responder, .. } => {
                     // Server replies with error
-                    responder.reply_error(ReturnCode::NotOk).await.unwrap();
+                    responder.reply_error(ReturnCode::NotOk).unwrap();
                 }
                 _ => panic!("Expected Call event"),
             }

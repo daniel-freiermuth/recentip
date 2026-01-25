@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide walks through the basic patterns for using RecentIP.
+This guide walks through the basic patterns for using `RecentIP`.
 
 ## Minimal Client
 

@@ -1,4 +1,4 @@
-//! # SomeIp Configuration
+//! # `SomeIp` Configuration
 //!
 //! This module provides configuration types for the SOME/IP runtime.
 //!
@@ -182,7 +182,7 @@ pub enum Transport {
     Tcp,
 }
 
-/// SomeIp configuration
+/// `SomeIp` configuration
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
     /// Local address to bind to (default: 0.0.0.0:30490)
@@ -252,6 +252,7 @@ impl RuntimeConfig {
 
 /// Builder for `RuntimeConfig`
 #[derive(Default)]
+#[must_use]
 pub struct RuntimeConfigBuilder {
     config: RuntimeConfig,
 }
@@ -353,8 +354,8 @@ impl RuntimeConfigBuilder {
     /// subscriptions need to be renewed upon every incomming offer anyway.
     /// Thus it is important for uninterrupted subscriptions that this value is
     /// set striclty higher than the remote side's cyclic offer delay. A value
-    /// that is unfortunately unknown to the client. RecentIP thus subscribes
-    /// with TTL=max(configured_min_sub_ttl, remote_offer_ttl) and hopes that
+    /// that is unfortunately unknown to the client. `RecentIP` thus subscribes
+    /// with `TTL=max(configured_min_sub_ttl`, `remote_offer_ttl`) and hopes that
     /// the other implementations do the same.
     ///
     /// So the subscription TTL rather carries beliefs about the
@@ -493,6 +494,7 @@ impl MethodConfig {
 /// let udp_only = OfferConfig::new().udp();
 /// ```
 #[derive(Debug, Clone, Default)]
+#[must_use]
 pub struct OfferConfig {
     /// TCP port to offer on (None = not offered via TCP, Some(0) = use default)
     pub tcp_port: Option<u16>,

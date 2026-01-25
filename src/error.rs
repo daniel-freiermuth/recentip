@@ -13,7 +13,7 @@
 //! | [`Error::Protocol`] | Wire protocol violation | No (bug/incompatibility) |
 //! | [`Error::ServiceUnavailable`] | Service not found/offline | Maybe (retry later) |
 //! | [`Error::NotSubscribed`] | Eventgroup not subscribed | Yes (subscribe first) |
-//! | [`Error::RuntimeShutdown`] | SomeIp was dropped | No (restart app) |
+//! | [`Error::RuntimeShutdown`] | `SomeIp` was dropped | No (restart app) |
 //! | [`Error::ChannelFull`] | Event dropped due to backpressure | Yes (slow down) |
 //! | [`Error::AlreadyOffered`] | Duplicate offer attempt | Yes (use existing) |
 //! | [`Error::SubscriptionRejected`] | Server rejected subscription | Maybe (check eventgroup) |

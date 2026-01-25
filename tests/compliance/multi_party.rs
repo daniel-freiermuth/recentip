@@ -10,7 +10,6 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -54,39 +53,39 @@ fn multiple_clients_call_same_server() {
     // Server handles requests from multiple clients
     let flag = Arc::clone(&exec_flag);
     sim.client("server", async move {
-            let runtime = recentip::configure().start_turmoil().await.unwrap();
+        let runtime = recentip::configure().start_turmoil().await.unwrap();
 
-            let mut offering = runtime
-                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
-                .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
-                .udp()
-                .start()
+        let mut offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        // Handle 3 requests from different clients
+        let mut handled = 0;
+        while handled < 3 {
+            if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
                 .await
-                .unwrap();
-
-            // Handle 3 requests from different clients
-            let mut handled = 0;
-            while handled < 3 {
-                if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
-                    .await
-                    .ok()
-                    .flatten()
+                .ok()
+                .flatten()
+            {
+                if let ServiceEvent::Call {
+                    payload, responder, ..
+                } = event
                 {
-                    if let ServiceEvent::Call {
-                        payload, responder, ..
-                    } = event
-                    {
-                        // Echo back with prefix
-                        let response = format!("response_to_{}", String::from_utf8_lossy(&payload));
-                        responder.reply(response.as_bytes()).await.unwrap();
-                        handled += 1;
-                    }
+                    // Echo back with prefix
+                    let response = format!("response_to_{}", String::from_utf8_lossy(&payload));
+                    responder.reply(response.as_bytes()).unwrap();
+                    handled += 1;
                 }
             }
-            *flag.lock().unwrap() = true;
+        }
+        *flag.lock().unwrap() = true;
 
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            Ok(())
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
     });
 
     // Client 1
@@ -529,7 +528,7 @@ fn nodes_with_mixed_client_server_roles() {
                 .flatten()
             {
                 if let ServiceEvent::Call { responder, .. } = event {
-                    responder.reply(b"response_from_nodeA").await.unwrap();
+                    responder.reply(b"response_from_nodeA").unwrap();
                 }
             }
 
@@ -563,7 +562,7 @@ fn nodes_with_mixed_client_server_roles() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply(b"response_from_nodeB").await.unwrap();
+                responder.reply(b"response_from_nodeB").unwrap();
             }
         }
 
@@ -636,7 +635,7 @@ fn multiple_servers_different_instances() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply(b"from_instance_1").await.unwrap();
+                responder.reply(b"from_instance_1").unwrap();
             }
         }
 
@@ -668,7 +667,7 @@ fn multiple_servers_different_instances() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply(b"from_instance_2").await.unwrap();
+                responder.reply(b"from_instance_2").unwrap();
             }
         }
 

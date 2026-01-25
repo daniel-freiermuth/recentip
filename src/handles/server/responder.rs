@@ -41,7 +41,7 @@ pub struct Responder {
 
 impl Responder {
     /// Send a successful response.
-    pub async fn reply(mut self, payload: &[u8]) -> Result<()> {
+    pub fn reply(mut self, payload: &[u8]) -> Result<()> {
         if let Some(tx) = self.response.take() {
             let _ = tx.send(Ok(bytes::Bytes::copy_from_slice(payload)));
         }
@@ -49,7 +49,7 @@ impl Responder {
     }
 
     /// Send an error response.
-    pub async fn reply_error(mut self, code: ReturnCode) -> Result<()> {
+    pub fn reply_error(mut self, code: ReturnCode) -> Result<()> {
         if let Some(tx) = self.response.take() {
             let _ = tx.send(Err(Error::Protocol(crate::error::ProtocolError {
                 message: format!("Error: {code:?}"),

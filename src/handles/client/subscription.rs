@@ -39,6 +39,7 @@ use crate::{Event, EventgroupId, InstanceId, ServiceId};
 /// # Ok(())
 /// # }
 /// ```
+#[must_use]
 pub struct SubscriptionBuilder {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
@@ -97,7 +98,11 @@ impl SubscriptionBuilder {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
                 major_version: self.major_version,
-                eventgroup_ids: self.eventgroups.iter().map(|eg| eg.value()).collect(),
+                eventgroup_ids: self
+                    .eventgroups
+                    .iter()
+                    .map(crate::EventgroupId::value)
+                    .collect(),
                 events: events_tx,
                 response: response_tx,
             })
@@ -121,7 +126,7 @@ impl SubscriptionBuilder {
 /// Active subscription to one or more eventgroups.
 ///
 /// Events from any subscribed eventgroup are received via the `next()` method.
-/// The subscription is automatically stopped (StopSubscribeEventgroup sent for
+/// The subscription is automatically stopped (`StopSubscribeEventgroup` sent for
 /// all eventgroups) when dropped.
 ///
 /// All eventgroups in a subscription share the same network endpoint, ensuring
@@ -132,7 +137,7 @@ pub struct Subscription {
     instance_id: InstanceId,
     major_version: u8,
     eventgroups: Vec<EventgroupId>,
-    subscription_id: u64,
+    id: u64,
     events: mpsc::Receiver<Event>,
 }
 
@@ -153,7 +158,7 @@ impl Subscription {
             instance_id,
             major_version,
             eventgroups,
-            subscription_id,
+            id: subscription_id,
             events,
         }
     }
@@ -180,7 +185,7 @@ impl Drop for Subscription {
                 instance_id: self.instance_id,
                 major_version: self.major_version,
                 eventgroup_id: eventgroup.value(),
-                subscription_id: self.subscription_id,
+                subscription_id: self.id,
             });
         }
     }

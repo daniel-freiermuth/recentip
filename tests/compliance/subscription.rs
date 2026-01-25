@@ -593,7 +593,7 @@ fn mixed_rpc_and_events() {
                 {
                     match event {
                         ServiceEvent::Call { responder, .. } => {
-                            responder.reply(b"response").await.unwrap();
+                            responder.reply(b"response").unwrap();
                             call_handled = true;
                             break;
                         }

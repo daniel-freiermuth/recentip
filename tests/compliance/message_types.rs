@@ -19,7 +19,6 @@ use std::time::Duration;
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 
 #[cfg(feature = "turmoil")]
 
@@ -70,7 +69,7 @@ fn request_receives_response_type() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply(&[4, 5, 6]).await.unwrap();
+                    responder.reply(&[4, 5, 6]).unwrap();
                 }
                 _ => {}
             }
@@ -142,7 +141,7 @@ fn request_can_receive_error_type() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply_error(ReturnCode::NotOk).await.unwrap();
+                    responder.reply_error(ReturnCode::NotOk).unwrap();
                 }
                 _ => {}
             }

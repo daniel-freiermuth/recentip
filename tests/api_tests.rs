@@ -27,7 +27,7 @@ fn test_runtime_creation() {
     let mut sim = turmoil::Builder::new().build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
+        let _runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
             .start_turmoil()
             .await
@@ -362,7 +362,7 @@ fn test_method_call_rpc() {
                     // Echo the payload back with method ID prepended
                     let mut response = vec![method.value() as u8];
                     response.extend_from_slice(&payload);
-                    responder.reply(&response).await.unwrap();
+                    responder.reply(&response).unwrap();
                 }
                 _ => panic!("Expected Call event"),
             }
@@ -898,7 +898,7 @@ fn test_multiple_versions_subscribe_both_data() {
             .await
             .unwrap();
 
-        let mut offering3 = runtime
+        let offering3 = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(3, TEST_SERVICE_NEW_VERSION.1)
             .start()
@@ -970,7 +970,7 @@ fn test_multiple_versions_subscribe_both_data() {
             .await
             .unwrap();
 
-        let mut proxy_v1 = runtime
+        let proxy_v1 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(1)
             .await
@@ -980,7 +980,7 @@ fn test_multiple_versions_subscribe_both_data() {
             .eventgroup(EventgroupId::new(1).unwrap())
             .subscribe();
 
-        let mut proxy_v2 = runtime
+        let proxy_v2 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(2)
             .await
@@ -990,7 +990,7 @@ fn test_multiple_versions_subscribe_both_data() {
             .eventgroup(EventgroupId::new(1).unwrap())
             .subscribe();
 
-        let mut proxy_v3 = runtime
+        let proxy_v3 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(3)
             .await
@@ -1000,7 +1000,7 @@ fn test_multiple_versions_subscribe_both_data() {
             .eventgroup(EventgroupId::new(1).unwrap())
             .subscribe();
 
-        let mut proxy_v4 = runtime
+        let proxy_v4 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(4)
             .await
@@ -1010,7 +1010,7 @@ fn test_multiple_versions_subscribe_both_data() {
             .eventgroup(EventgroupId::new(1).unwrap())
             .subscribe();
 
-        let mut proxy_v5 = runtime
+        let proxy_v5 = runtime
             .find(TEST_SERVICE_ID)
             .major_version(5)
             .await
@@ -1667,10 +1667,10 @@ fn test_two_concurrent_versions() {
                         ServiceEvent::Call { method, payload, responder, .. } => {
                             let mut response = vec![method.value() as u8];
                             response.extend_from_slice(&payload);
-                            responder.reply(&response).await.unwrap();
+                            responder.reply(&response).unwrap();
                             tracing::info!("Handled expected call for TestService v1");
                         }
-                        ServiceEvent::FireForget { method, payload, .. } => {
+                        ServiceEvent::FireForget { method, .. } => {
                             panic!("Unexpected FireForget for TestService v1: method={:?}", method);
                         }
                         _ => {}
@@ -1678,10 +1678,10 @@ fn test_two_concurrent_versions() {
                 }
                 Some(event) = offering2.next() => {
                     match event {
-                        ServiceEvent::Call { method, payload, responder, .. } => {
+                        ServiceEvent::Call { method, .. } => {
                             panic!("Unexpected Call for TestServiceNew v2: method={:?}", method);
                         }
-                        ServiceEvent::FireForget { method, payload, .. } => {
+                        ServiceEvent::FireForget { method, .. } => {
                             tracing::info!("Handled expected FireForget for TestServiceNew v2: method={:?}", method);
                         }
                         _ => {}
@@ -1790,17 +1790,10 @@ fn parse_sd_message(data: &[u8]) -> Option<(SomeIpHeader, SdMessage)> {
         let entry = &entries_data[offset..offset + 16];
         entries.push(SdEntry {
             entry_type: entry[0].into(),
-            index_1st_option: entry[1],
-            index_2nd_option: entry[2],
-            num_options_1: (entry[3] >> 4) & 0x0F,
-            num_options_2: entry[3] & 0x0F,
             service_id: u16::from_be_bytes([entry[4], entry[5]]),
             instance_id: u16::from_be_bytes([entry[6], entry[7]]),
             major_version: entry[8],
-            ttl: u32::from_be_bytes([0, entry[9], entry[10], entry[11]]),
-            minor_version: u32::from_be_bytes([entry[12], entry[13], entry[14], entry[15]]),
             eventgroup_id: u16::from_be_bytes([entry[14], entry[15]]),
-            counter: entry[13] & 0x0F,
         });
         offset += 16;
     }
@@ -1853,34 +1846,19 @@ struct SdMessage {
     options: Vec<SdOption>,
 }
 
-impl SdMessage {
-    fn get_udp_endpoint(&self, _entry: &SdEntry) -> Option<std::net::SocketAddr> {
-        None // Simplified
-    }
-}
-
 /// Simplified SD entry for test parsing
 #[derive(Debug)]
-#[allow(dead_code)]
 struct SdEntry {
     entry_type: SdEntryType,
-    index_1st_option: u8,
-    index_2nd_option: u8,
-    num_options_1: u8,
-    num_options_2: u8,
     service_id: u16,
     instance_id: u16,
     major_version: u8,
-    ttl: u32,
-    minor_version: u32,
     eventgroup_id: u16,
-    counter: u8,
 }
 
 /// SD entry types
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
-#[allow(dead_code)]
 enum SdEntryType {
     FindService = 0x00,
     OfferService = 0x01,

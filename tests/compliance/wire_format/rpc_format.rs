@@ -174,7 +174,7 @@ fn rpc_response_wire_format() {
         // Handle one call
         if let Some(event) = offering.next().await {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply(b"response_payload").await.unwrap();
+                responder.reply(b"response_payload").unwrap();
             }
         }
 

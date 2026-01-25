@@ -1,4 +1,4 @@
-//! # SomeIp Event Loop
+//! # `SomeIp` Event Loop
 //!
 //! Internal event loop that processes commands and I/O events.
 //!
@@ -173,9 +173,9 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             }
 
             // Flush pending initial offers if deadline has passed AND we're not too close to periodic cycle
-            _ = async {
+            () = async {
                 if let Some(deadline) = state.pending_offers_deadline {
-                    tokio::time::sleep_until(deadline.into()).await;
+                    tokio::time::sleep_until(deadline).await;
                 } else {
                     std::future::pending::<()>().await;
                 }
@@ -188,8 +188,8 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             }
 
             // Flush pending unicast SD actions when deadline is reached
-            _ = state.await_pending_unicast_sd_flush_deadline() => {
-                for action in state.flush_pending_unicast_sd(&tcp_pool).await {
+            () = state.await_pending_unicast_sd_flush_deadline() => {
+                for action in state.flush_pending_unicast_sd(&tcp_pool) {
                     execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                 }
             }
@@ -238,15 +238,10 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     }
                     // Special handling for Offer - needs async socket/listener creation
                     Some(Command::Offer { service_id, instance_id, major_version, minor_version, offer_config, response }) => {
-                        if let Some(actions) = server::handle_offer_command::<U, T, L>(
+                        server::handle_offer_command::<U, T, L>(
                             service_id, instance_id, major_version, minor_version, offer_config, response,
                             &config, &mut state, &rpc_tx, &tcp_rpc_tx
-                        ).await {
-                            for action in actions {
-                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
-                            }
-                        }
-                    }
+                        ).await;                    }
                     // Special handling for Subscribe - handles multiple eventgroups with shared endpoint
                     Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response }) => {
                         client::handle_subscribe_command::<U, T>(
@@ -265,10 +260,10 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             }
 
             // Periodic tasks (cyclic offers, find retries)
-            _ = tokio::time::sleep_until(next_periodic_cycle_at) => {
+            () = tokio::time::sleep_until(next_periodic_cycle_at) => {
                 let now = tokio::time::Instant::now();
                 // Track when periodic cycle runs (use the scheduled time, not now)
-                state.last_periodic_cycle = Some(next_periodic_cycle_at.into());
+                state.last_periodic_cycle = Some(next_periodic_cycle_at);
 
                 // Schedule next cycle
                 next_periodic_cycle_at = now + cycle_interval;
@@ -372,7 +367,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
         Action::NotifyFound { key, availability } => {
             // Find all matching find requests and notify them
             for (req_key, request) in &state.find_requests {
-                if req_key.matches(&key) {
+                if req_key.matches(key) {
                     let _ = request.notify.try_send(availability.clone());
                 }
             }
@@ -473,7 +468,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
 
             // Server-side: Remove subscribers from this peer
             // Collect keys to avoid borrow issues
-            let subscriber_keys: Vec<_> = state.server_subscribers.keys().cloned().collect();
+            let subscriber_keys: Vec<_> = state.server_subscribers.keys().copied().collect();
             for key in subscriber_keys {
                 if let Some(subs) = state.server_subscribers.get_mut(&key) {
                     let before_count = subs.len();
@@ -501,8 +496,8 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                 .filter_map(|(key, _subs)| {
                     // Check if this subscription is to the rebooted peer
                     if let Some(svc) = state.discovered.get(key) {
-                        let is_from_peer = svc.udp_endpoint.map_or(false, |addr| addr.ip() == peer)
-                            || svc.tcp_endpoint.map_or(false, |addr| addr.ip() == peer);
+                        let is_from_peer = svc.udp_endpoint.is_some_and(|addr| addr.ip() == peer)
+                            || svc.tcp_endpoint.is_some_and(|addr| addr.ip() == peer);
                         if is_from_peer {
                             return Some(*key);
                         }
@@ -530,8 +525,8 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                 .discovered
                 .iter()
                 .filter(|(_, svc)| {
-                    svc.udp_endpoint.map_or(false, |addr| addr.ip() == peer)
-                        || svc.tcp_endpoint.map_or(false, |addr| addr.ip() == peer)
+                    svc.udp_endpoint.is_some_and(|addr| addr.ip() == peer)
+                        || svc.tcp_endpoint.is_some_and(|addr| addr.ip() == peer)
                 })
                 .map(|(key, _)| *key)
                 .collect();
@@ -663,7 +658,7 @@ fn handle_sd_message(
     }
 }
 
-/// Cluster multiple SendSd actions going to the same target into a single SD message
+/// Cluster multiple `SendSd` actions going to the same target into a single SD message
 ///
 /// This prevents duplicate session IDs when responding to multi-entry SD messages
 /// (e.g., client sends Subscribe for multiple eventgroups, server responds with
@@ -847,7 +842,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             client::handle_call(
                 service_id,
                 method_id,
-                payload,
+                &payload,
                 response,
                 target_endpoint,
                 target_transport,
@@ -866,7 +861,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
             client::handle_fire_and_forget(
                 service_id,
                 method_id,
-                payload,
+                &payload,
                 target_endpoint,
                 target_transport,
                 state,
@@ -925,7 +920,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
                 major_version,
                 &eventgroup_ids,
                 event_id,
-                payload,
+                &payload,
                 state,
                 &mut actions,
             );
@@ -989,7 +984,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
             );
 
             let msg = build_offer_message(
-                key,
+                *key,
                 offered,
                 sd_flags,
                 offer_ttl,

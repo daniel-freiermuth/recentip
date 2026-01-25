@@ -10,7 +10,9 @@
 //! - TTL field encoding (24-bit)
 //! - SubscribeEventgroupAck TTL echoing
 
-use crate::client_behavior::helpers::{build_sd_offer_with_session, build_sd_subscribe_ack_with_session};
+use crate::client_behavior::helpers::{
+    build_sd_offer_with_session, build_sd_subscribe_ack_with_session,
+};
 
 use super::helpers::*;
 

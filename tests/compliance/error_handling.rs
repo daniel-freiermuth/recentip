@@ -14,7 +14,6 @@ use std::time::Duration;
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 
 #[cfg(feature = "turmoil")]
 
@@ -187,7 +186,7 @@ fn request_answered_by_response() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply(b"ok").await.unwrap();
+                    responder.reply(b"ok").unwrap();
                 }
                 _ => {}
             }
@@ -261,7 +260,7 @@ fn error_response_has_nonzero_return_code() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply_error(ReturnCode::NotOk).await.unwrap();
+                    responder.reply_error(ReturnCode::NotOk).unwrap();
                 }
                 _ => {}
             }
@@ -444,7 +443,7 @@ fn response_ids_match_request() {
                     ServiceEvent::Call {
                         payload, responder, ..
                     } => {
-                        responder.reply(payload.as_ref()).await.unwrap();
+                        responder.reply(payload.as_ref()).unwrap();
                     }
                     _ => {}
                 }
@@ -532,7 +531,7 @@ fn successful_response_has_e_ok() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply(b"success").await.unwrap();
+                    responder.reply(b"success").unwrap();
                 }
                 _ => {}
             }

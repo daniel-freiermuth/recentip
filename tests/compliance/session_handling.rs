@@ -76,7 +76,6 @@ fn multiple_calls_incrementing_session() {
                         TEST_SERVER_COUNT.fetch_add(1, Ordering::SeqCst);
                         responder
                             .reply(&[TEST_SERVER_COUNT.load(Ordering::SeqCst) as u8 - 1])
-                            .await
                             .unwrap();
                     }
                     _ => panic!("Expected Call"),
@@ -161,7 +160,7 @@ fn first_call_session_id() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply(b"ok").await.unwrap();
+                    responder.reply(b"ok").unwrap();
                 }
                 _ => panic!("Expected Call"),
             }
@@ -240,7 +239,7 @@ fn concurrent_calls_unique_sessions() {
                         payload, responder, ..
                     } => {
                         // Echo payload back
-                        responder.reply(&payload).await.unwrap();
+                        responder.reply(&payload).unwrap();
                     }
                     _ => panic!("Expected Call"),
                 }
@@ -332,7 +331,7 @@ fn error_response_preserves_request_id() {
             match event {
                 ServiceEvent::Call { responder, .. } => {
                     // Send error response using reply_error
-                    responder.reply_error(ReturnCode::NotOk).await.unwrap();
+                    responder.reply_error(ReturnCode::NotOk).unwrap();
                 }
                 _ => panic!("Expected Call"),
             }
@@ -422,10 +421,7 @@ fn session_increments_across_methods() {
                         method, responder, ..
                     } => {
                         // Return method ID in response
-                        responder
-                            .reply(&method.value().to_be_bytes())
-                            .await
-                            .unwrap();
+                        responder.reply(&method.value().to_be_bytes()).unwrap();
                     }
                     _ => panic!("Expected Call"),
                 }
@@ -516,7 +512,7 @@ fn client_id_consistent_across_calls() {
             if let Some(event) = offering.next().await {
                 match event {
                     ServiceEvent::Call { responder, .. } => {
-                        responder.reply(&[]).await.unwrap();
+                        responder.reply(&[]).unwrap();
                     }
                     _ => {}
                 }
@@ -639,11 +635,11 @@ fn out_of_order_response_matching() {
             // Respond in reverse order (second request first)
             if let (Some((resp1, _)), Some((resp2, _))) = (first_call, second_call) {
                 // Send response to second request first
-                resp2.reply(&[2]).await.unwrap();
+                resp2.reply(&[2]).unwrap();
                 // Small delay to ensure responses arrive out-of-order
                 tokio::time::sleep(Duration::from_millis(10)).await;
                 // Send response to first request second
-                resp1.reply(&[1]).await.unwrap();
+                resp1.reply(&[1]).unwrap();
             }
 
             // Wait for client to complete
@@ -855,7 +851,7 @@ fn parallel_requests_have_unique_request_ids() {
                     ServiceEvent::Call {
                         payload, responder, ..
                     } => {
-                        responder.reply(&payload).await.unwrap();
+                        responder.reply(&payload).unwrap();
                     }
                     _ => {}
                 }
@@ -1192,7 +1188,7 @@ fn request_response_uses_session_handling() {
             if let Some(event) = offering.next().await {
                 match event {
                     ServiceEvent::Call { responder, .. } => {
-                        responder.reply(&[]).await.unwrap();
+                        responder.reply(&[]).unwrap();
                     }
                     _ => {}
                 }
@@ -1359,7 +1355,7 @@ fn server_copies_request_id_to_response() {
             match event {
                 ServiceEvent::Call { responder, .. } => {
                     // The runtime should automatically copy Request ID
-                    responder.reply(b"response").await.unwrap();
+                    responder.reply(b"response").unwrap();
                 }
                 _ => panic!("Expected Call"),
             }
@@ -1438,7 +1434,7 @@ fn request_id_differentiates_parallel_calls() {
                     } => {
                         // Return payload doubled
                         let val = payload[0];
-                        responder.reply(&[val * 2]).await.unwrap();
+                        responder.reply(&[val * 2]).unwrap();
                     }
                     _ => {}
                 }
@@ -1570,7 +1566,7 @@ fn late_server_discovery_rpc() {
                     // Respond with greeting + payload
                     let mut response = b"hello-".to_vec();
                     response.extend_from_slice(&payload);
-                    responder.reply(&response).await.unwrap();
+                    responder.reply(&response).unwrap();
                 }
                 _ => panic!("Expected Call"),
             }

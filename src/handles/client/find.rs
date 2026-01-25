@@ -48,6 +48,7 @@ use super::OfferedService;
 ///     Ok(())
 /// }
 /// ```
+#[must_use]
 pub struct FindBuilder<'a, U, T, L>
 where
     U: UdpSocket,
@@ -104,7 +105,7 @@ where
     /// # Errors
     ///
     /// - [`Error::NotAvailable`] - No matching service found (all find repetitions exhausted)
-    /// - [`Error::RuntimeShutdown`] - SomeIp was shut down during discovery
+    /// - [`Error::RuntimeShutdown`] - `SomeIp` was shut down during discovery
     pub async fn await_discovery(self) -> Result<OfferedService> {
         // TODO maybe oneshot channel would be better?
         let (notify_tx, mut notify_rx) = mpsc::channel(1);
@@ -123,19 +124,15 @@ where
             .map_err(|_| Error::RuntimeShutdown)?;
 
         // Wait for availability notification
-        let (endpoint, transport, discovered_instance_id, major_version) = loop {
-            match notify_rx.recv().await {
-                Some(ServiceAvailability::Available {
-                    endpoint,
-                    transport,
-                    instance_id,
-                    major_version,
-                }) => break (endpoint, transport, instance_id, major_version),
-                None => {
-                    // Channel closed - either runtime shut down or find request expired
-                    return Err(Error::NotAvailable);
-                }
-            }
+        let Some(ServiceAvailability::Available {
+            endpoint,
+            transport,
+            instance_id: discovered_instance_id,
+            major_version,
+        }) = notify_rx.recv().await
+        else {
+            // Channel closed - either runtime shut down or find request expired
+            return Err(Error::NotAvailable);
         };
 
         Ok(OfferedService::new(

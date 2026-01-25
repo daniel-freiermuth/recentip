@@ -29,7 +29,6 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 use recentip::Transport;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -112,7 +111,7 @@ fn client_talks_to_tcp_and_udp_services() {
                 if let ServiceEvent::Call { responder, .. } = event {
                     eprintln!("[tcp_server] TCP service received call");
                     tcp_calls.fetch_add(1, Ordering::SeqCst);
-                    responder.reply(b"tcp_response").await.unwrap();
+                    responder.reply(b"tcp_response").unwrap();
                 }
             }
 
@@ -146,7 +145,7 @@ fn client_talks_to_tcp_and_udp_services() {
                 if let ServiceEvent::Call { responder, .. } = event {
                     eprintln!("[udp_server] UDP service received call");
                     udp_calls.fetch_add(1, Ordering::SeqCst);
-                    responder.reply(b"udp_response").await.unwrap();
+                    responder.reply(b"udp_response").unwrap();
                 }
             }
 
@@ -521,7 +520,7 @@ fn client_uses_advertised_transport() {
             } = event
             {
                 eprintln!("[tcp_server] Received call on method {:?}", method);
-                responder.reply(b"from_tcp_server").await.unwrap();
+                responder.reply(b"from_tcp_server").unwrap();
             }
         }
 
@@ -553,7 +552,7 @@ fn client_uses_advertised_transport() {
             } = event
             {
                 eprintln!("[udp_server] Received call on method {:?}", method);
-                responder.reply(b"from_udp_server").await.unwrap();
+                responder.reply(b"from_udp_server").unwrap();
             }
         }
 
@@ -673,7 +672,7 @@ fn concurrent_calls_different_transports() {
                 if let ServiceEvent::Call { responder, .. } = event {
                     tokio::time::sleep(Duration::from_millis(10)).await;
                     total_calls.fetch_add(1, Ordering::SeqCst);
-                    responder.reply(b"tcp_done").await.unwrap();
+                    responder.reply(b"tcp_done").unwrap();
                 }
             }
 
@@ -705,7 +704,7 @@ fn concurrent_calls_different_transports() {
                 if let ServiceEvent::Call { responder, .. } = event {
                     tokio::time::sleep(Duration::from_millis(10)).await;
                     total_calls.fetch_add(1, Ordering::SeqCst);
-                    responder.reply(b"udp_done").await.unwrap();
+                    responder.reply(b"udp_done").unwrap();
                 }
             }
 
@@ -831,7 +830,7 @@ fn udp_client_calls_tcp_server() {
                     "[tcp_server] Received call with payload: {:?}",
                     payload.as_ref()
                 );
-                responder.reply(b"tcp_response").await.unwrap();
+                responder.reply(b"tcp_response").unwrap();
                 eprintln!("[tcp_server] Sent reply");
             }
         }
@@ -927,7 +926,7 @@ fn tcp_client_calls_tcp_server() {
                     "[tcp_server] Received call with payload: {:?}",
                     payload.as_ref()
                 );
-                responder.reply(b"tcp_response").await.unwrap();
+                responder.reply(b"tcp_response").unwrap();
                 eprintln!("[tcp_server] Sent reply");
             }
         }
@@ -1040,7 +1039,7 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
                     "[server] Received call with payload: {:?}",
                     payload.as_ref()
                 );
-                responder.reply(b"tcp_response").await.unwrap();
+                responder.reply(b"tcp_response").unwrap();
             }
         }
 
@@ -1154,7 +1153,7 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
                     "[server] Received call with payload: {:?}",
                     payload.as_ref()
                 );
-                responder.reply(b"udp_response").await.unwrap();
+                responder.reply(b"udp_response").unwrap();
             }
         }
 
@@ -1730,12 +1729,12 @@ fn preferred_transport_respected_when_both_available() {
                     // Track which transport was used based on payload
                     if payload_str.contains("from_tcp_client") {
                         tcp_calls.fetch_add(1, Ordering::SeqCst);
-                        responder.reply(b"response_to_tcp_client").await.unwrap();
+                        responder.reply(b"response_to_tcp_client").unwrap();
                     } else if payload_str.contains("from_udp_client") {
                         udp_calls.fetch_add(1, Ordering::SeqCst);
-                        responder.reply(b"response_to_udp_client").await.unwrap();
+                        responder.reply(b"response_to_udp_client").unwrap();
                     } else {
-                        responder.reply(b"unknown_client").await.unwrap();
+                        responder.reply(b"unknown_client").unwrap();
                     }
                 }
             }
@@ -2105,7 +2104,7 @@ fn handle_call_ignores_preferred_transport_for_dual_stack() {
                 let payload_str = String::from_utf8_lossy(&payload);
                 eprintln!("[server] Received call: {}", payload_str);
 
-                responder.reply(b"response").await.unwrap();
+                responder.reply(b"response").unwrap();
             }
         }
 

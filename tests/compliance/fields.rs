@@ -11,7 +11,6 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -86,7 +85,7 @@ fn field_getter_empty_request_payload() {
                     );
 
                     // Respond with current field value
-                    responder.reply(b"field_value").await.unwrap();
+                    responder.reply(b"field_value").unwrap();
                     *flag.lock().unwrap() = true;
                 }
             }
@@ -183,10 +182,7 @@ fn field_getter_returns_current_value() {
             if let Some(event) = offering.next().await {
                 if let ServiceEvent::Call { responder, .. } = event {
                     // Return current field value
-                    responder
-                        .reply(&current_temperature.to_be_bytes())
-                        .await
-                        .unwrap();
+                    responder.reply(&current_temperature.to_be_bytes()).unwrap();
                     *flag.lock().unwrap() = true;
                 }
             }
@@ -308,7 +304,7 @@ fn field_setter_sends_value_in_request() {
                     );
 
                     // Acknowledge setter
-                    responder.reply(b"").await.unwrap();
+                    responder.reply(b"").unwrap();
                     // Allow response to be transmitted before task exits
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     *flag.lock().unwrap() = true;
@@ -402,7 +398,7 @@ fn field_setter_gets_response() {
             if let Some(event) = offering.next().await {
                 if let ServiceEvent::Call { responder, .. } = event {
                     // Setter must send response (not fire-and-forget)
-                    responder.reply(b"").await.unwrap();
+                    responder.reply(b"").unwrap();
                     // Allow response to be transmitted before task exits
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     *flag.lock().unwrap() = true;
@@ -652,12 +648,12 @@ fn field_combines_getter_setter_notifier() {
                         } => {
                             if method == MethodId::new(0x0001).unwrap() && !getter_handled {
                                 // Getter - return current value
-                                responder.reply(&field_value.to_be_bytes()).await.unwrap();
+                                responder.reply(&field_value.to_be_bytes()).unwrap();
                                 getter_handled = true;
                             } else if method == MethodId::new(0x0002).unwrap() && !setter_handled {
                                 // Setter - update value
                                 field_value = u16::from_be_bytes([payload[0], payload[1]]);
-                                responder.reply(b"").await.unwrap();
+                                responder.reply(b"").unwrap();
 
                                 // Send notification of changed value
                                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -814,9 +810,9 @@ fn field_setter_can_reject_invalid_value() {
 
                     if new_value > 100 {
                         // Reject invalid value
-                        responder.reply_error(ReturnCode::NotOk).await.unwrap();
+                        responder.reply_error(ReturnCode::NotOk).unwrap();
                     } else {
-                        responder.reply(b"").await.unwrap();
+                        responder.reply(b"").unwrap();
                     }
                     *flag.lock().unwrap() = true;
                 }

@@ -766,7 +766,7 @@ fn server_unicast_session_ids_start_at_one_and_increment() {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Send multiple Subscribe messages to trigger unicast SubscribeAck responses
-        for counter in 0..4 {
+        for _counter in 0..4 {
             let subscribe = build_sd_subscribe_with_udp_endpoint(
                 TEST_SERVICE_ID,
                 0x0001,
@@ -1179,7 +1179,7 @@ fn no_false_positive_on_session_wraparound_reboot_0() {
         // Count events in phase 1 (before wraparound)
         // Server sends events with session IDs 0xFFFD, 0xFFFE, 0xFFFF during this phase
         // Each event has payload [0x01] to mark it as phase 1
-        for i in 0..3 {
+        for _i in 0..3 {
             if let Ok(Some(event)) =
                 tokio::time::timeout(Duration::from_millis(2000), subscription.next()).await
             {
@@ -2946,7 +2946,6 @@ fn subscription_valid_after_high_session_finds() {
 fn normal_session_wraparound_does_not_trigger_reboot() {
     covers!(feat_req_someipsd_764, feat_req_someipsd_765);
 
-    use recentip::handle::ServiceEvent;
     use recentip::{EventId, EventgroupId};
     use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -2965,7 +2964,7 @@ fn normal_session_wraparound_does_not_trigger_reboot() {
             .await
             .unwrap();
 
-        let mut offering = runtime
+        let offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
@@ -3134,7 +3133,6 @@ fn normal_session_wraparound_does_not_trigger_reboot() {
 fn multicast_session_wraparound_does_not_affect_subscriptions() {
     covers!(feat_req_someipsd_764, feat_req_someipsd_765);
 
-    use recentip::handle::ServiceEvent;
     use recentip::{EventId, EventgroupId};
     use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -3152,7 +3150,7 @@ fn multicast_session_wraparound_does_not_affect_subscriptions() {
             .await
             .unwrap();
 
-        let mut offering = runtime
+        let offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
             .udp()
@@ -4033,7 +4031,7 @@ fn client_closes_subscription_on_server_offer_regression() {
 
     // Client (library under test) - discovers, subscribes, should detect reboot
     sim.client("client", async move {
-        let runtime = recentip::configure()
+        let _runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .start_turmoil()
             .await
@@ -4239,7 +4237,7 @@ fn client_closes_subscription_on_server_ack_regression() {
     });
 
     sim.client("client", async move {
-        let runtime = recentip::configure()
+        let _runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .start_turmoil()
             .await
@@ -4315,7 +4313,7 @@ fn client_invalidates_service_on_offer_regression() {
     });
 
     sim.client("client", async move {
-        let runtime = recentip::configure()
+        let _runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .start_turmoil()
             .await
@@ -4453,7 +4451,7 @@ fn client_subscription_survives_low_session_offer() {
     });
 
     sim.client("client", async move {
-        let runtime = recentip::configure()
+        let _runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .start_turmoil()
             .await
@@ -4600,7 +4598,7 @@ fn client_all_subscriptions_invalidated_on_server_reboot() {
 
     // Client (library under test) - subscribes to 3 eventgroups
     sim.client("client", async move {
-        let runtime = recentip::configure()
+        let _runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .start_turmoil()
             .await
@@ -4806,7 +4804,7 @@ fn client_other_server_subscriptions_survive_one_server_reboot() {
 
     // Client (library under test) - subscribes to both servers
     sim.client("client", async move {
-        let runtime = recentip::configure()
+        let _runtime = recentip::configure()
             .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
             .start_turmoil()
             .await
@@ -6576,7 +6574,7 @@ fn client_tracks_reboot_flags_per_server_independently() {
         // Phase 1: Both servers sending events
         for _ in 0..10 {
             tokio::select! {
-                Some(event) = sub1.next() => {
+                Some(_) = sub1.next() => {
                     SERVER1_EVENTS.fetch_add(1, Ordering::SeqCst);
                 }
                 Some(event) = sub2.next() => {

@@ -22,9 +22,8 @@
 //! The first few intervals may vary due to Initial/Repetition phases,
 //! so we're lenient on early intervals and strict on later ones.
 
-use crate::helpers::configure_tracing;
-
 use super::helpers::{covers, parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION};
+#[cfg(feature = "slow-tests")]
 use proptest::prelude::*;
 use recentip::prelude::*;
 use std::time::Duration;
@@ -38,6 +37,7 @@ use std::time::Duration;
 /// Range: 200ms to 600ms (practical test range)
 /// - Lower bound: 200ms (turmoil has high variance at smaller delays)
 /// - Upper bound: 600ms (keeps simulation step count reasonable)
+#[cfg(feature = "slow-tests")]
 fn cyclic_delay_strategy() -> impl Strategy<Value = u64> {
     // Use log-uniform distribution to get good coverage of small and large values
     // 100ms to 10_000ms (10 seconds)

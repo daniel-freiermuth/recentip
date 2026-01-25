@@ -1,4 +1,4 @@
-//! # SomeIp State (Internal)
+//! # `SomeIp` State (Internal)
 //!
 //! This module contains the central state structure and supporting types
 //! used by the runtime's event loop. It is `pub(crate)` — internal to the
@@ -84,7 +84,7 @@ impl ServiceKey {
     /// Check if this key matches another key (supports wildcards on both sides)
     /// - `instance_id` 0xFFFF matches any instance
     /// - `major_version` 0xFF matches any version
-    pub(crate) fn matches(&self, other: &Self) -> bool {
+    pub(crate) fn matches(self, other: Self) -> bool {
         self.service_id == other.service_id
             && (self.instance_id == 0xFFFF
                 || self.instance_id == other.instance_id
@@ -132,10 +132,10 @@ pub struct CallKey {
 
 /// Tracks session state for a remote peer on a specific channel (multicast or unicast).
 ///
-/// Per SOME/IP-SD spec (feat_req_someipsd_765), each peer has separate session counters
+/// Per SOME/IP-SD spec (`feat_req_someipsd_765`), each peer has separate session counters
 /// for multicast and unicast SD messages. Reboot detection must track these independently.
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct PeerChannelSession {
+pub struct PeerChannelSession {
     /// Last observed session ID from this peer on this channel
     pub(crate) last_session_id: Option<u16>,
     /// Last observed reboot flag from this peer on this channel
@@ -145,9 +145,9 @@ pub(crate) struct PeerChannelSession {
 impl PeerChannelSession {
     /// Check if the new message indicates a peer reboot.
     ///
-    /// Per feat_req_someipsd_764, reboot is detected when:
+    /// Per `feat_req_someipsd_764`, reboot is detected when:
     /// 1. Reboot flag transitions from 0 to 1 (explicit reboot), OR
-    /// 2. Reboot flag is 1 AND session ID regresses (session_id < last_session_id)
+    /// 2. Reboot flag is 1 AND session ID regresses (`session_id` < `last_session_id`)
     ///
     /// Returns true if reboot detected.
     pub(crate) fn check_and_update(&mut self, session_id: u16, reboot_flag: bool) -> bool {
@@ -208,11 +208,11 @@ impl PeerChannelSession {
 
 /// Tracks session state for both multicast and unicast channels from a peer.
 ///
-/// Per feat_req_someipsd_765:
-/// - Multicast channel: FindService, OfferService
-/// - Unicast channel: SubscribeEventgroup, SubscribeEventgroupAck, StopSubscribeEventgroup
+/// Per `feat_req_someipsd_765`:
+/// - Multicast channel: `FindService`, `OfferService`
+/// - Unicast channel: `SubscribeEventgroup`, `SubscribeEventgroupAck`, `StopSubscribeEventgroup`
 #[derive(Debug, Clone, Default)]
-pub(crate) struct PeerSessionState {
+pub struct PeerSessionState {
     /// Session tracking for multicast SD messages
     pub(crate) multicast: PeerChannelSession,
     /// Session tracking for unicast SD messages
@@ -221,7 +221,7 @@ pub(crate) struct PeerSessionState {
 
 /// Identifies whether an SD message is on the multicast or unicast channel
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SdChannel {
+pub enum SdChannel {
     Multicast,
     Unicast,
 }
@@ -361,7 +361,7 @@ pub struct ClientSubscription {
     /// TCP subscriptions receive events via the shared TCP connection handler
     pub(crate) has_dedicated_socket: bool,
     /// The connection key used for TCP subscriptions (0 = shared connection, >0 = dedicated)
-    /// Used for routing: events from conn_key=0 only go to subscriptions with conn_key=0
+    /// Used for routing: events from `conn_key=0` only go to subscriptions with `conn_key=0`
     pub(crate) tcp_conn_key: u64,
 }
 
@@ -386,7 +386,7 @@ pub struct PendingSubscription {
 }
 
 /// Key for tracking multi-eventgroup subscriptions
-/// A multi-eventgroup subscription uses the same subscription_id for all eventgroups
+/// A multi-eventgroup subscription uses the same `subscription_id` for all eventgroups
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MultiEventgroupSubscriptionKey {
     pub(crate) service_id: u16,
@@ -399,9 +399,9 @@ pub struct MultiEventgroupSubscriptionKey {
 pub struct MultiEventgroupSubscription {
     /// All eventgroup IDs in this subscription
     pub(crate) eventgroup_ids: Vec<u16>,
-    /// Eventgroups that have been ACKed (set)
+    /// Eventgroups that have been `ACKed` (set)
     pub(crate) acked_eventgroups: HashSet<u16>,
-    /// Response channel to send result when all ACKed or any NACKed
+    /// Response channel to send result when all `ACKed` or any `NACKed`
     pub(crate) response: Option<oneshot::Sender<crate::error::Result<u64>>>,
 }
 
@@ -431,7 +431,7 @@ pub struct PendingServerResponse {
 // RUNTIME STATE
 // ============================================================================
 
-/// SomeIp state managed by the runtime task
+/// `SomeIp` state managed by the runtime task
 pub struct RuntimeState {
     /// SD endpoint (port 30490) - only for Service Discovery
     pub(crate) local_endpoint: SocketAddr,
@@ -465,9 +465,9 @@ pub struct RuntimeState {
         HashMap<MultiEventgroupSubscriptionKey, MultiEventgroupSubscription>,
     /// Client ID for outgoing requests
     pub(crate) client_id: u16,
-    /// SD session ID counter for multicast messages (per feat_req_someipsd_41)
+    /// SD session ID counter for multicast messages (per `feat_req_someipsd_41`)
     multicast_session_id: u16,
-    /// SD session ID counter for unicast messages (per feat_req_someipsd_41)
+    /// SD session ID counter for unicast messages (per `feat_req_someipsd_41`)
     unicast_session_id: u16,
     /// Whether the multicast session ID has wrapped around at least once
     multicast_has_wrapped_once: bool,
@@ -486,17 +486,17 @@ pub struct RuntimeState {
     pending_unicast_sd_deadline: Option<Instant>,
     /// Configuration
     pub(crate) config: RuntimeConfig,
-    /// Session tracking per peer for reboot detection (feat_req_someipsd_764, feat_req_someipsd_765)
+    /// Session tracking per peer for reboot detection (`feat_req_someipsd_764`, `feat_req_someipsd_765`)
     /// Tracks both multicast and unicast session counters independently per peer
     pub(crate) peer_sessions: HashMap<std::net::IpAddr, PeerSessionState>,
     /// SD event monitors - channels to send all SD events to
     pub(crate) sd_monitors: Vec<mpsc::Sender<crate::SdEvent>>,
     /// Next subscription ID for client-side subscriptions (unique per handle)
     next_subscription_id: u64,
-    /// Tracks which (service_id, instance_id) pairs are using each subscription endpoint (port).
+    /// Tracks which (`service_id`, `instance_id`) pairs are using each subscription endpoint (port).
     /// This enables endpoint reuse across DIFFERENT services while maintaining isolation
-    /// within the SAME service (events can be routed by service_id in header, but not by eventgroup).
-    /// Key: port number, Value: set of (service_id, instance_id) using that port
+    /// within the SAME service (events can be routed by `service_id` in header, but not by eventgroup).
+    /// Key: port number, Value: set of (`service_id`, `instance_id`) using that port
     pub(crate) subscription_endpoint_usage: HashMap<u16, HashSet<(u16, u16)>>,
     payload_session_id: u16,
 }
@@ -566,7 +566,7 @@ impl RuntimeState {
     /// Flush pending unicast SD actions (time-based clustering)
     /// Clusters all pending SD actions by target and sends them together
     /// This handles: initial subscribes, offer-triggered subscribes, find-triggered offers, subscribe ACKs/NACKs
-    pub(crate) async fn flush_pending_unicast_sd<T: TcpStream>(
+    pub(crate) fn flush_pending_unicast_sd<T: TcpStream>(
         &mut self,
         _tcp_pool: &TcpConnectionPool<T>,
     ) -> Vec<Action> {
@@ -584,7 +584,7 @@ impl RuntimeState {
 
     pub(crate) async fn await_pending_unicast_sd_flush_deadline(&self) {
         if let Some(deadline) = self.pending_unicast_sd_deadline {
-            tokio::time::sleep_until(deadline.into()).await;
+            tokio::time::sleep_until(deadline).await;
         } else {
             std::future::pending::<()>().await;
         }
@@ -637,10 +637,8 @@ impl RuntimeState {
             if !self.unicast_has_wrapped_once {
                 flags |= SdMessage::FLAG_REBOOT;
             }
-        } else {
-            if !self.multicast_has_wrapped_once {
-                flags |= SdMessage::FLAG_REBOOT;
-            }
+        } else if !self.multicast_has_wrapped_once {
+            flags |= SdMessage::FLAG_REBOOT;
         }
         flags
     }
@@ -648,10 +646,10 @@ impl RuntimeState {
     /// Find an existing subscription endpoint that can be reused for a new subscription.
     ///
     /// Returns Some(port) if there's an endpoint that doesn't already have a subscription
-    /// from the same (service_id, instance_id). This enables endpoint sharing across
+    /// from the same (`service_id`, `instance_id`). This enables endpoint sharing across
     /// different services while maintaining isolation within the same service.
     ///
-    /// This includes the client_rpc_endpoint if this service isn't currently using it,
+    /// This includes the `client_rpc_endpoint` if this service isn't currently using it,
     /// allowing port reuse after unsubscribe/resubscribe cycles.
     ///
     /// Returns None if no suitable endpoint exists (need to create a new one).
@@ -666,9 +664,7 @@ impl RuntimeState {
         let service_uses_rpc_port = self
             .subscription_endpoint_usage
             .get(&rpc_port)
-            .map_or(false, |services| {
-                services.contains(&(service_id, instance_id))
-            });
+            .is_some_and(|services| services.contains(&(service_id, instance_id)));
 
         if !service_uses_rpc_port {
             // The shared RPC endpoint is available for this service - prefer it
@@ -688,7 +684,7 @@ impl RuntimeState {
         None
     }
 
-    /// Register that a (service_id, instance_id) is using a subscription endpoint (port).
+    /// Register that a (`service_id`, `instance_id`) is using a subscription endpoint (port).
     pub(crate) fn register_subscription_endpoint(
         &mut self,
         port: u16,
@@ -701,7 +697,7 @@ impl RuntimeState {
             .insert((service_id, instance_id));
     }
 
-    /// Unregister a (service_id, instance_id) from a subscription endpoint.
+    /// Unregister a (`service_id`, `instance_id`) from a subscription endpoint.
     /// Called when a subscription is dropped.
     pub(crate) fn unregister_subscription_endpoint(
         &mut self,

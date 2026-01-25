@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use recentip::{EventId, EventgroupId, InstanceId, OfferedService, Runtime, RuntimeConfig};
+use recentip::{EventId, EventgroupId, InstanceId, OfferedService};
 use tracing::Instrument;
 
 // Wire values for ServiceA

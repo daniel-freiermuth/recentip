@@ -23,7 +23,7 @@ use bytes::Bytes;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 use recentip::wire::Header;
-use recentip::{Runtime, RuntimeConfig, Transport};
+use recentip::Transport;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -128,7 +128,7 @@ fn client_opens_tcp_connection() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply(b"response").await.unwrap();
+                    responder.reply(b"response").unwrap();
                 }
                 _ => {}
             }
@@ -211,7 +211,7 @@ fn single_tcp_connection_reused() {
                     ServiceEvent::Call {
                         payload, responder, ..
                     } => {
-                        responder.reply(&payload).await.unwrap();
+                        responder.reply(&payload).unwrap();
                     }
                     _ => {}
                 }
@@ -296,7 +296,7 @@ fn client_reestablishes_connection() {
             tokio::select! {
                 event = offering.next() => {
                     if let Some(ServiceEvent::Call { payload, responder, .. }) = event {
-                        responder.reply(&payload).await.unwrap();
+                        responder.reply(&payload).unwrap();
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_millis(500)) => break,
@@ -392,7 +392,7 @@ fn each_message_has_own_header() {
                         payload, responder, ..
                     } => {
                         assert_eq!(payload.as_ref(), expected);
-                        responder.reply(expected).await.unwrap();
+                        responder.reply(expected).unwrap();
                     }
                     _ => panic!("Expected Call event"),
                 }
@@ -477,7 +477,7 @@ fn multiple_messages_per_segment_parsed() {
                     .ok()
                     .flatten()
             {
-                responder.reply(&[]).await.unwrap();
+                responder.reply(&[]).unwrap();
             }
         }
 
@@ -644,7 +644,7 @@ fn magic_cookie_recognized() {
 
         // Server should receive request even with magic cookies
         if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
-            responder.reply(b"response").await.unwrap();
+            responder.reply(b"response").unwrap();
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -723,7 +723,7 @@ fn tcp_segment_starts_with_magic_cookie() {
         // Server prepends magic cookie (Service ID 0xFFFF, Method ID 0x8000)
         // to each response
         if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
-            responder.reply(b"with_magic").await.unwrap();
+            responder.reply(b"with_magic").unwrap();
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -807,7 +807,7 @@ fn only_one_magic_cookie_per_segment() {
         for i in 0..3 {
             if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
                 let reply = format!("response_{}", i);
-                responder.reply(reply.as_bytes()).await.unwrap();
+                responder.reply(reply.as_bytes()).unwrap();
             }
         }
 
@@ -891,7 +891,7 @@ fn tcp_header_format_matches_udp() {
             .unwrap();
 
         if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
-            responder.reply(b"response").await.unwrap();
+            responder.reply(b"response").unwrap();
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -976,7 +976,7 @@ fn tcp_loss_does_not_reset_session_id() {
             tokio::select! {
                 event = offering.next() => {
                     if let Some(ServiceEvent::Call { responder, .. }) = event {
-                        responder.reply(&[]).await.unwrap();
+                        responder.reply(&[]).unwrap();
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_secs(1)) => break,
@@ -1075,7 +1075,7 @@ fn reboot_detection_resets_tcp_connections() {
                 .ok()
                 .flatten()
         {
-            responder.reply(b"response1").await.unwrap();
+            responder.reply(b"response1").unwrap();
         }
 
         // Handle second request (after "reboot")
@@ -1085,7 +1085,7 @@ fn reboot_detection_resets_tcp_connections() {
                 .ok()
                 .flatten()
         {
-            responder.reply(b"response2").await.unwrap();
+            responder.reply(b"response2").unwrap();
         }
 
         // Keep server alive for final response

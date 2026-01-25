@@ -25,17 +25,9 @@ use std::net::{IpAddr, SocketAddr};
 ///     Ok(())
 /// }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SomeIpBuilder {
     config: RuntimeConfig,
-}
-
-impl Default for SomeIpBuilder {
-    fn default() -> Self {
-        Self {
-            config: RuntimeConfig::default(),
-        }
-    }
 }
 
 impl SomeIpBuilder {

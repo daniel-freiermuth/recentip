@@ -8,7 +8,6 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -64,7 +63,7 @@ fn request_response_roundtrip() {
                     payload, responder, ..
                 } => {
                     assert_eq!(payload.as_ref(), b"hello");
-                    responder.reply(b"world").await.unwrap();
+                    responder.reply(b"world").unwrap();
                 }
                 _ => panic!("Expected Call event"),
             }
@@ -137,7 +136,7 @@ fn multiple_calls_succeed() {
             if let Some(event) = offering.next().await {
                 match event {
                     ServiceEvent::Call { responder, .. } => {
-                        responder.reply(&[i as u8]).await.unwrap();
+                        responder.reply(&[i as u8]).unwrap();
                     }
                     _ => {}
                 }
@@ -355,7 +354,7 @@ fn successful_call_returns_ok() {
             .unwrap();
 
         if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
-            responder.reply(b"ok").await.unwrap();
+            responder.reply(b"ok").unwrap();
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -438,7 +437,7 @@ fn network_partition_handling() {
                 tokio::select! {
                     event = offering.next() => {
                         if let Some(ServiceEvent::Call { responder, .. }) = event {
-                            responder.reply(b"pong").await.unwrap();
+                            responder.reply(b"pong").unwrap();
                         }
                     }
                     _ = tokio::time::sleep(Duration::from_millis(50)) => {
@@ -574,7 +573,7 @@ fn service_restart_recovery() {
                     event = offering.next() => {
                         if let Some(ServiceEvent::Call { responder, .. }) = event {
                             // Return which server instance this is
-                            responder.reply(&start_count.to_be_bytes()).await.unwrap();
+                            responder.reply(&start_count.to_be_bytes()).unwrap();
                         }
                     }
                     _ = tokio::time::sleep(Duration::from_secs(30)) => {
@@ -727,7 +726,7 @@ fn many_concurrent_requests() {
                         payload, responder, ..
                     } => {
                         // Echo back the payload
-                        responder.reply(payload.as_ref()).await.unwrap();
+                        responder.reply(payload.as_ref()).unwrap();
                         handled += 1;
                     }
                     _ => {}

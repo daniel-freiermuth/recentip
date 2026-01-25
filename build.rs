@@ -34,7 +34,7 @@ fn run_python_script(project_root: &Path, script_name: &str) -> bool {
     let script_path = project_root.join(script_name);
 
     if !script_path.exists() {
-        eprintln!("Warning: {} not found, skipping", script_name);
+        eprintln!("Warning: {script_name} not found, skipping");
         return false;
     }
 
@@ -45,19 +45,19 @@ fn run_python_script(project_root: &Path, script_name: &str) -> bool {
 
     match output {
         Ok(result) => {
-            if !result.status.success() {
+            if result.status.success() {
+                true
+            } else {
                 eprintln!(
                     "Warning: {} failed: {}",
                     script_name,
                     String::from_utf8_lossy(&result.stderr)
                 );
                 false
-            } else {
-                true
             }
         }
         Err(e) => {
-            eprintln!("Warning: Could not run {}: {}", script_name, e);
+            eprintln!("Warning: Could not run {script_name}: {e}");
             false
         }
     }
@@ -120,13 +120,13 @@ fn main() {
     }
 
     // Load requirements
-    let requirements: Vec<Requirement> = match fs::read_to_string(&requirements_path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => {
-            eprintln!("Warning: Could not read requirements.json, generating stub");
-            write_stub(&output_path);
-            return;
-        }
+    let requirements: Vec<Requirement> = if let Ok(content) = fs::read_to_string(&requirements_path)
+    {
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        eprintln!("Warning: Could not read requirements.json, generating stub");
+        write_stub(&output_path);
+        return;
     };
 
     // Load coverage
@@ -141,10 +141,10 @@ fn main() {
 }
 
 fn write_stub(path: &Path) {
-    let stub = r#"# Specification Compliance
+    let stub = r"# Specification Compliance
 
 > ⚠️ Compliance data not available. Run `python scripts/extract_coverage.py` to generate.
-"#;
+";
     fs::write(path, stub).ok();
 }
 
@@ -176,11 +176,6 @@ struct TestCoverage {
     test_name: String,
     file_path: String,
     line_number: u32,
-    requirements: Vec<String>,
-    #[allow(dead_code)]
-    is_ignored: bool,
-    #[allow(dead_code)]
-    ignore_reason: Option<String>,
 }
 
 fn generate_compliance_doc(
@@ -247,23 +242,17 @@ fn generate_compliance_doc(
     out.push_str("## Summary\n\n");
     out.push_str("| Metric | Count |\n");
     out.push_str("|--------|-------|\n");
-    out.push_str(&format!("| Total Requirements | {} |\n", total_reqs));
-    out.push_str(&format!(
-        "| Requirements (testable) | {} |\n",
-        testable_count
-    ));
-    out.push_str(&format!(
-        "| Information (non-testable) | {} |\n",
-        info_count
-    ));
-    out.push_str(&format!("| Covered (testable) | {} |\n", covered_testable));
-    out.push_str(&format!("| Covered (info) | {} |\n", covered_info));
-    out.push_str(&format!("| **Total Covered** | **{}** |\n", covered_all));
+    out.push_str(&format!("| Total Requirements | {total_reqs} |\n"));
+    out.push_str(&format!("| Requirements (testable) | {testable_count} |\n"));
+    out.push_str(&format!("| Information (non-testable) | {info_count} |\n"));
+    out.push_str(&format!("| Covered (testable) | {covered_testable} |\n"));
+    out.push_str(&format!("| Covered (info) | {covered_info} |\n"));
+    out.push_str(&format!("| **Total Covered** | **{covered_all}** |\n"));
     out.push_str(&format!(
         "| Not Yet Covered | {} |\n",
         testable_count.saturating_sub(covered_testable)
     ));
-    out.push_str(&format!("| **Coverage** | **{:.1}%** |\n\n", coverage_pct));
+    out.push_str(&format!("| **Coverage** | **{coverage_pct:.1}%** |\n\n"));
 
     // Group requirements by source file
     let mut by_source: HashMap<&str, Vec<&Requirement>> = HashMap::new();
@@ -276,7 +265,7 @@ fn generate_compliance_doc(
     out.push_str("| Document | Requirements | Covered | Coverage |\n");
     out.push_str("|----------|-------------|---------|----------|\n");
 
-    for (source, reqs) in by_source.iter() {
+    for (source, reqs) in &by_source {
         let testable: Vec<_> = reqs.iter().filter(|r| r.reqtype == "Requirement").collect();
         let covered_count = testable
             .iter()
@@ -313,8 +302,7 @@ fn generate_compliance_doc(
         let test_count = coverage
             .requirements_to_tests
             .get(&req.id)
-            .map(|t| t.len())
-            .unwrap_or(0);
+            .map_or(0, std::vec::Vec::len);
 
         let is_info = req.reqtype == "Information";
         let is_covered = test_count > 0;
@@ -334,7 +322,7 @@ fn generate_compliance_doc(
         let req_type = if is_info { "Info" } else { "Req" };
 
         let test_display = if test_count > 0 {
-            format!("{}", test_count)
+            format!("{test_count}")
         } else {
             "—".to_string()
         };
@@ -353,7 +341,7 @@ fn generate_compliance_doc(
     out.push_str("## Covered Requirements\n\n");
     out.push_str("Each requirement below includes the full specification text and links to verifying tests.\n\n");
 
-    for (source, reqs) in by_source.iter() {
+    for (source, reqs) in &by_source {
         // Include any requirement (Requirement or Information) that has tests
         let covered_reqs: Vec<_> = reqs
             .iter()
@@ -365,8 +353,8 @@ fn generate_compliance_doc(
         }
 
         let doc_anchor = source.replace(".rst", "").replace('.', "-");
-        out.push_str(&format!("<a id=\"doc-{}\"></a>\n\n", doc_anchor));
-        out.push_str(&format!("### {}\n\n", source));
+        out.push_str(&format!("<a id=\"doc-{doc_anchor}\"></a>\n\n"));
+        out.push_str(&format!("### {source}\n\n"));
 
         // Group requirements by section
         let mut by_section: HashMap<&str, Vec<&&Requirement>> = HashMap::new();
@@ -380,9 +368,9 @@ fn generate_compliance_doc(
 
         for section in sections {
             let section_reqs = &by_section[section];
-            out.push_str(&format!("#### {}\n\n", section));
+            out.push_str(&format!("#### {section}\n\n"));
 
-            for req in section_reqs.iter() {
+            for req in section_reqs {
                 // Escape pipes for markdown compatibility
                 let safe_text = req.text.replace('|', "\\|");
 
@@ -393,7 +381,7 @@ fn generate_compliance_doc(
                 };
                 out.push_str(&format!("<a id=\"{}\"></a>\n\n", req.id));
                 out.push_str(&format!("##### {}{}\n\n", req.id, type_badge));
-                out.push_str(&format!("> {}\n\n", safe_text));
+                out.push_str(&format!("> {safe_text}\n\n"));
                 out.push_str("**Tests:**\n\n");
 
                 if let Some(test_names) = coverage.requirements_to_tests.get(&req.id) {
@@ -405,7 +393,7 @@ fn generate_compliance_doc(
                                 test_name, git_commit, test.file_path, test.line_number
                             ));
                         } else {
-                            out.push_str(&format!("- `{}`\n", test_name));
+                            out.push_str(&format!("- `{test_name}`\n"));
                         }
                     }
                 }
@@ -418,7 +406,7 @@ fn generate_compliance_doc(
     out.push_str("## Not Yet Covered\n\n");
     out.push_str("Requirements without test coverage. Contributions welcome!\n\n");
 
-    for (source, reqs) in by_source.iter() {
+    for (source, reqs) in &by_source {
         let uncovered: Vec<_> = reqs
             .iter()
             .filter(|r| {
@@ -448,13 +436,13 @@ fn generate_compliance_doc(
 
         for section in sections {
             let section_reqs = &by_section[section];
-            out.push_str(&format!("#### {}\n\n", section));
+            out.push_str(&format!("#### {section}\n\n"));
 
-            for req in section_reqs.iter() {
+            for req in section_reqs {
                 let safe_text = req.text.replace('|', "\\|");
                 out.push_str(&format!("<a id=\"{}\"></a>\n\n", req.id));
                 out.push_str(&format!("##### {}\n\n", req.id));
-                out.push_str(&format!("> {}\n\n", safe_text));
+                out.push_str(&format!("> {safe_text}\n\n"));
             }
         }
 

@@ -51,6 +51,7 @@
 //! - No I/O is performed directly; actions are returned to the runtime
 //! - Session IDs are allocated from `state.next_client_session_id()`
 
+use std::collections::HashSet;
 use std::net::SocketAddr;
 
 use bytes::Bytes;
@@ -80,7 +81,7 @@ use tokio::sync::mpsc;
 ///
 /// Creates a dedicated UDP socket for a subscription, binds it to an ephemeral port,
 /// and spawns a task to receive events and route them directly to the subscription's
-/// events_tx channel.
+/// `events_tx` channel.
 ///
 /// Returns the local endpoint (IP + ephemeral port) to use in the SD Subscribe message.
 async fn spawn_udp_subscription_socket<U: UdpSocket>(
@@ -197,13 +198,13 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
 /// Returns the configured advertised IP, or falls back to `local_endpoint/client_rpc_endpoint`
 /// if they have non-unspecified IPs, or None if no valid IP is available.
 fn get_endpoint_ip(state: &RuntimeState) -> Option<std::net::IpAddr> {
-    if let Some(advertised) = state.config.advertised_ip {
-        Some(advertised)
-    } else if !state.local_endpoint.ip().is_unspecified() {
-        Some(state.local_endpoint.ip())
-    } else {
-        None
-    }
+    state.config.advertised_ip.or_else(|| {
+        if state.local_endpoint.ip().is_unspecified() {
+            None
+        } else {
+            Some(state.local_endpoint.ip())
+        }
+    })
 }
 
 /// Handle `Command::Find`
@@ -223,7 +224,7 @@ pub fn handle_find(
     let found = state
         .discovered
         .iter()
-        .find(|(k, _v)| k.matches(&key))
+        .find(|(k, _v)| k.matches(key))
         .and_then(|(k, v)| {
             v.method_endpoint(prefer_tcp)
                 .map(|(ep, tr)| (k.instance_id, k.major_version, ep, tr))
@@ -278,7 +279,7 @@ pub fn handle_stop_find(
 pub fn handle_call(
     service_id: crate::ServiceId,
     method_id: u16,
-    payload: Bytes,
+    payload: &Bytes,
     response: tokio::sync::oneshot::Sender<crate::error::Result<Response>>,
     target_endpoint: SocketAddr,
     target_transport: Transport,
@@ -295,7 +296,7 @@ pub fn handle_call(
         client_id,
         session_id,
         1, // interface version
-        &payload,
+        payload,
     );
 
     // Register pending call
@@ -318,10 +319,10 @@ pub fn handle_call(
 pub fn handle_fire_and_forget(
     service_id: crate::ServiceId,
     method_id: u16,
-    payload: Bytes,
+    payload: &Bytes,
     target_endpoint: SocketAddr,
     target_transport: Transport,
-    state: &mut RuntimeState,
+    state: &RuntimeState,
     actions: &mut Vec<Action>,
 ) {
     let session_id = 0;
@@ -334,7 +335,7 @@ pub fn handle_fire_and_forget(
         client_id,
         session_id,
         1, // interface version
-        &payload,
+        payload,
     );
 
     actions.push(Action::SendClientMessage {
@@ -448,7 +449,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
             let used_conn_keys: std::collections::HashSet<u64> = state
                 .subscriptions
                 .get(&key)
-                .map_or(Default::default(), |subs| {
+                .map_or_else(HashSet::default, |subs| {
                     subs.iter().map(|sub| sub.tcp_conn_key).collect()
                 });
 
@@ -520,7 +521,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
         let service_already_has_subscription = state
             .subscriptions
             .get(&key)
-            .map_or(false, |subs| !subs.is_empty());
+            .is_some_and(|subs| !subs.is_empty());
 
         if service_already_has_subscription {
             // This service already has a subscription using some endpoint.
@@ -718,20 +719,19 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
                     return;
                 }
             }
-        } else {
-            // First subscription for this service - use the shared RPC endpoint
-            // Register this service's usage of the client_rpc_endpoint
-            state.register_subscription_endpoint(
-                state.client_rpc_endpoint.port(),
-                service_id.value(),
-                instance_id.value(),
-            );
-            // tcp_conn_key=0 since this is UDP, not used for routing
-            (
-                SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port()),
-                0,
-            )
         }
+        // First subscription for this service - use the shared RPC endpoint
+        // Register this service's usage of the client_rpc_endpoint
+        state.register_subscription_endpoint(
+            state.client_rpc_endpoint.port(),
+            service_id.value(),
+            instance_id.value(),
+        );
+        // tcp_conn_key=0 since this is UDP, not used for routing
+        (
+            SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port()),
+            0,
+        )
     };
 
     let discovered = state.discovered.get(&key).unwrap();
@@ -875,12 +875,10 @@ pub fn handle_unsubscribe(
         });
 
         // Check if this specific port is still used by any remaining subscription for this service
-        let port_still_in_use = if let Some(endpoint) = &removed_endpoint {
+        let port_still_in_use = removed_endpoint.is_none_or(|endpoint| {
             subs.iter()
                 .any(|s| s.local_endpoint.port() == endpoint.port())
-        } else {
-            true // No endpoint to check
-        };
+        });
 
         // Count remaining subscriptions for this eventgroup
         let remaining_for_eventgroup = subs
@@ -1048,13 +1046,12 @@ pub fn handle_incoming_notification(
     header: &Header,
     payload: Bytes,
     from: SocketAddr,
-    state: &mut RuntimeState,
+    state: &RuntimeState,
     subscription_id: u64,
 ) {
     // Method ID is the event ID for notifications
-    let event_id = match EventId::new(header.method_id) {
-        Some(id) => id,
-        None => return, // Invalid event ID
+    let Some(event_id) = EventId::new(header.method_id) else {
+        return; // Invalid event ID
     };
 
     let event = Event { event_id, payload };

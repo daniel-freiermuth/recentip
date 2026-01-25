@@ -59,7 +59,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
 use super::command::ServiceRequest;
-use super::sd::{build_offer_message, build_stop_offer_message, Action};
+use super::sd::{build_stop_offer_message, Action};
 use super::state::{
     OfferedService, PendingServerResponse, RpcMessage, RpcSendMessage, RpcTransportSender,
     RuntimeState, ServiceKey, SubscriberKey,
@@ -87,9 +87,8 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     state: &mut RuntimeState,
     rpc_tx: &mpsc::Sender<RpcMessage>,
     tcp_rpc_tx: &mpsc::Sender<TcpMessage>,
-) -> Option<Vec<Action>> {
+) {
     let key = ServiceKey::new(service_id, instance_id, major_version);
-    let mut actions = Vec::new();
 
     // Create channel for service requests
     let (requests_tx, requests_rx) = mpsc::channel(64);
@@ -117,15 +116,14 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
                     instance_id.value(),
                     major_version,
                     rpc_tx.clone(),
-                )
-                .await;
+                );
                 udp_endpoint = Some(endpoint);
                 udp_transport = Some(RpcTransportSender::Udp(rpc_send_tx));
             }
             Err(e) => {
                 tracing::error!("Failed to bind UDP RPC on {}: {}", rpc_addr, e);
                 let _ = response.send(Err(Error::Io(e)));
-                return None;
+                return;
             }
         }
     }
@@ -143,9 +141,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
                     instance_id.value(),
                     tcp_rpc_tx.clone(),
                     config.magic_cookies,
-                )
-                .await
-                {
+                ) {
                     Ok(tcp_server) => {
                         tcp_endpoint = Some(tcp_server.local_addr);
                         tcp_transport = Some(RpcTransportSender::Tcp(tcp_server.send_tx));
@@ -153,14 +149,14 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
                     Err(e) => {
                         tracing::error!("Failed to create TCP server on {}: {}", rpc_addr, e);
                         let _ = response.send(Err(Error::Io(e)));
-                        return None;
+                        return;
                     }
                 }
             }
             Err(e) => {
                 tracing::error!("Failed to bind TCP listener on {}: {}", rpc_addr, e);
                 let _ = response.send(Err(Error::Io(e)));
-                return None;
+                return;
             }
         }
     }
@@ -171,7 +167,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
         let _ = response.send(Err(Error::Config(crate::error::ConfigError::new(
             "No transport configured",
         ))));
-        return None;
+        return;
     }
 
     // Store the offered service
@@ -237,7 +233,6 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     }
 
     let _ = response.send(Ok(requests_rx));
-    Some(actions)
 }
 
 // ============================================================================
@@ -265,10 +260,7 @@ pub fn handle_register_event(
     }
 
     // Get or create the event set for this service
-    let events = state
-        .registered_events
-        .entry(key)
-        .or_insert_with(std::collections::HashSet::new);
+    let events = state.registered_events.entry(key).or_default();
 
     // Check if event_id is already registered
     if events.contains(&event_id) {
@@ -297,7 +289,7 @@ pub fn handle_stop_offer(
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
     if let Some(offered) = state.offered.remove(&key) {
-        let msg = build_stop_offer_message(&key, &offered, state.sd_flags(false));
+        let msg = build_stop_offer_message(key, &offered, state.sd_flags(false));
 
         actions.push(Action::SendSd {
             message: msg,
@@ -316,8 +308,8 @@ pub fn handle_notify(
     major_version: u8,
     eventgroup_ids: &[u16],
     event_id: u16,
-    payload: Bytes,
-    state: &mut RuntimeState,
+    payload: &Bytes,
+    state: &RuntimeState,
     actions: &mut Vec<Action>,
 ) {
     let service_key = ServiceKey::new(service_id, instance_id, major_version);
@@ -355,7 +347,7 @@ pub fn handle_notify(
             state.client_id,
             0,
             1, // interface version
-            &payload,
+            payload,
         );
 
         for (subscriber, transport) in subscribers {
@@ -379,7 +371,7 @@ pub fn handle_incoming_request(
     header: &Header,
     payload: Bytes,
     from: SocketAddr,
-    state: &mut RuntimeState,
+    state: &RuntimeState,
     actions: &mut Vec<Action>,
     service_key: Option<ServiceKey>,
     transport: crate::config::Transport,
@@ -387,14 +379,15 @@ pub fn handle_incoming_request(
     // Find the offering:
     // - If service_key is provided (from server RPC socket), use exact matching
     // - Otherwise fall back to service_id-only matching
-    let offering = if let Some(key) = service_key {
-        state.offered.get_key_value(&key)
-    } else {
-        state
-            .offered
-            .iter()
-            .find(|(k, _)| k.service_id == header.service_id)
-    };
+    let offering = service_key.map_or_else(
+        || {
+            state
+                .offered
+                .iter()
+                .find(|(k, _)| k.service_id == header.service_id)
+        },
+        |key| state.offered.get_key_value(&key),
+    );
 
     if let Some((service_key, offered)) = offering {
         // Create a response channel
@@ -472,7 +465,7 @@ pub fn handle_incoming_fire_forget(
     header: &Header,
     payload: Bytes,
     from: SocketAddr,
-    state: &mut RuntimeState,
+    state: &RuntimeState,
 ) {
     // Find matching offering
     // NOTE: Same limitation as handle_incoming_request - see comment there
@@ -580,7 +573,7 @@ pub fn build_notification(
 
 /// Spawns a task to handle an RPC socket for a specific service instance
 /// Returns the endpoint and a sender to send outgoing messages
-pub async fn spawn_rpc_socket_task<U: UdpSocket>(
+pub fn spawn_rpc_socket_task<U: UdpSocket>(
     rpc_socket: U,
     service_id: u16,
     instance_id: u16,

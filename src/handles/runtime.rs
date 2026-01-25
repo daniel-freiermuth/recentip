@@ -1,4 +1,4 @@
-//! # SOME/IP SomeIp
+//! # SOME/IP `SomeIp`
 //!
 //! The runtime is the **central coordinator** for all SOME/IP communication.
 //! It manages network I/O, service discovery, and dispatches commands from handles.
@@ -45,7 +45,7 @@ use crate::{InstanceId, SdEvent, ServiceId};
 // RUNTIME INNER
 // ============================================================================
 
-/// Shared state between the SomeIp handle and the runtime task.
+/// Shared state between the `SomeIp` handle and the runtime task.
 ///
 /// This is an implementation detail. Users interact with [`SomeIp`] directly.
 #[derive(Debug)]
@@ -55,7 +55,7 @@ pub(crate) struct RuntimeInner {
     /// All handle operations (find, offer, call, etc.) send commands through
     /// this channel. The runtime's event loop receives and processes them.
     pub(crate) cmd_tx: mpsc::Sender<Command>,
-    /// SomeIp configuration (for static proxy creation)
+    /// `SomeIp` configuration (for static proxy creation)
     pub(crate) config: crate::config::RuntimeConfig,
 }
 
@@ -63,7 +63,7 @@ pub(crate) struct RuntimeInner {
 // RUNTIME
 // ============================================================================
 
-/// SOME/IP SomeIp — the central coordinator for all SOME/IP communication.
+/// SOME/IP `SomeIp` — the central coordinator for all SOME/IP communication.
 ///
 /// Create one `SomeIp` per application. It manages:
 ///
@@ -481,6 +481,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
 /// # Ok(())
 /// # }
 /// ```
+#[must_use]
 pub struct OfferBuilder<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> {
     runtime: &'a SomeIp<U, T, L>,
     service_id: ServiceId,

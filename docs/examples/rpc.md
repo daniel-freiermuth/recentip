@@ -1,6 +1,6 @@
 # RPC: Request/Response & Fire-and-Forget
 
-RecentIP supports two RPC patterns:
+`RecentIP` supports two RPC patterns:
 - **Request/Response**: Client sends request, server sends response
 - **Fire-and-Forget**: Client sends request, no response expected
 

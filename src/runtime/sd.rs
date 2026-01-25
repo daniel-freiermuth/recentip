@@ -109,7 +109,7 @@ pub enum Action {
     /// Reset TCP connections to a peer (due to reboot detection)
     ResetPeerTcpConnections { peer: std::net::IpAddr },
     /// Expire all subscriptions from/to a peer (due to reboot detection)
-    /// Per feat_req_someipsd_871: On peer reboot, cancel subscriptions
+    /// Per `feat_req_someipsd_871`: On peer reboot, cancel subscriptions
     ExpirePeerSubscriptions { peer: std::net::IpAddr },
 }
 
@@ -258,7 +258,7 @@ pub fn handle_offer(
     let mut sd_messages_to_be_queued = Vec::new();
 
     if let Some(subscriptions) = state.subscriptions.get(&key) {
-        for sub in subscriptions.iter() {
+        for sub in subscriptions {
             // Skip if TTL is infinite (0xFFFFFF) - no renewal needed
             if state.config.subscribe_ttl == SD_TTL_INFINITE {
                 tracing::trace!(
@@ -339,7 +339,7 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
 /// Handle a `FindService` request (we may need to respond with an offer)
 ///
 /// Responses are queued for time-based clustering to prevent session ID collisions
-/// when multiple FindService requests arrive close together.
+/// when multiple `FindService` requests arrive close together.
 pub fn handle_find_request(entry: &SdEntry, from: SocketAddr, state: &mut RuntimeState) {
     // Collect responses first to avoid borrowing issues
     let responses: Vec<SdMessage> = state
@@ -352,7 +352,7 @@ pub fn handle_find_request(entry: &SdEntry, from: SocketAddr, state: &mut Runtim
         })
         .map(|(key, offered)| {
             build_offer_message(
-                key,
+                *key,
                 offered,
                 state.sd_flags(true),
                 state.config.offer_ttl,
@@ -447,9 +447,11 @@ pub fn handle_subscribe_request(
         let Some((client_endpoint, transport)) = offered
             .udp_endpoint
             .and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
-            .or(offered
-                .tcp_endpoint
-                .and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp))))
+            .or_else(|| {
+                offered
+                    .tcp_endpoint
+                    .and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))
+            })
         else {
             // Transport mismatch - send NACK
             tracing::warn!(
@@ -638,9 +640,11 @@ pub fn handle_unsubscribe_request(
         let Some((client_endpoint, transport)) = offered
             .udp_endpoint
             .and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
-            .or(offered
-                .tcp_endpoint
-                .and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp))))
+            .or_else(|| {
+                offered
+                    .tcp_endpoint
+                    .and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))
+            })
         else {
             // Transport mismatch - send NACK
             tracing::warn!(
@@ -827,7 +831,7 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
 /// This advertises all configured endpoints (TCP and/or UDP) in the SD message.
 /// If `advertised_ip` is provided, it overrides the IP from the stored endpoints.
 pub fn build_offer_message(
-    key: &ServiceKey,
+    key: ServiceKey,
     offered: &OfferedService,
     sd_flags: u8,
     ttl: u32,
@@ -885,7 +889,7 @@ pub fn build_offer_message(
 
 /// Build a `StopOfferService` SD message
 pub fn build_stop_offer_message(
-    key: &ServiceKey,
+    key: ServiceKey,
     offered: &OfferedService,
     sd_flags: u8,
 ) -> SdMessage {
@@ -945,7 +949,7 @@ pub fn build_subscribe_message(
 
 /// Build a Subscribe SD message with multiple eventgroups
 ///
-/// Clusters multiple SubscribeEventgroup entries into ONE SD message
+/// Clusters multiple `SubscribeEventgroup` entries into ONE SD message
 /// to prevent duplicate session IDs and reboot detection issues.
 pub fn build_subscribe_message_multi(
     service_id: u16,
@@ -1015,7 +1019,7 @@ pub fn build_unsubscribe_message(
 
 /// Build an Unsubscribe SD message with multiple eventgroups
 ///
-/// Clusters multiple StopSubscribeEventgroup entries into ONE SD message
+/// Clusters multiple `StopSubscribeEventgroup` entries into ONE SD message
 /// to prevent duplicate session IDs and reboot detection issues.
 pub fn build_unsubscribe_message_multi(
     service_id: u16,

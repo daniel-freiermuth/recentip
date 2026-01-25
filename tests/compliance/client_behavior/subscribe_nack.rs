@@ -287,7 +287,7 @@ fn subscribe_nack_then_ack() {
         // Subscribe to v1 - should succeed
         let eventgroup = EventgroupId::new(EVENTGROUP_ID).unwrap();
         let async1 = async {
-            let mut subscription_v1 = tokio::time::timeout(
+            let subscription_v1 = tokio::time::timeout(
                 Duration::from_secs(5),
                 proxy_v1
                     .new_subscription()
@@ -579,7 +579,7 @@ fn subscribe_ack_then_nack() {
         // Subscribe to v1 - should succeed
         let eventgroup = EventgroupId::new(EVENTGROUP_ID).unwrap();
         let async1 = async {
-            let mut subscription_v1 = tokio::time::timeout(
+            let subscription_v1 = tokio::time::timeout(
                 Duration::from_secs(5),
                 proxy_v1
                     .new_subscription()

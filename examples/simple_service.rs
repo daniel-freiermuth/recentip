@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
                         println!("← Received method call 0x{:04X} with {} bytes", method.value(), payload.len());
 
                         // Echo back the payload
-                        if let Err(e) = responder.reply(&payload).await {
+                        if let Err(e) = responder.reply(&payload) {
                             eprintln!("  Error sending response: {}", e);
                         } else {
                             println!("→ Sent response");

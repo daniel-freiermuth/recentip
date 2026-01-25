@@ -30,7 +30,6 @@
 use bytes::Bytes;
 use recentip::prelude::*;
 use recentip::wire::{Header, SdEntryType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
-use recentip::Runtime;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

@@ -13,7 +13,6 @@
 use bytes::Bytes;
 use recentip::prelude::*;
 use recentip::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
-use recentip::Runtime;
 use std::net::SocketAddr;
 use std::time::Duration;
 

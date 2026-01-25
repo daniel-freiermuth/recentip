@@ -23,7 +23,6 @@ use std::time::Duration;
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::Runtime;
 
 #[cfg(feature = "turmoil")]
 
@@ -287,7 +286,7 @@ fn large_udp_messages_use_tp() {
                 ServiceEvent::Call {
                     payload, responder, ..
                 } => {
-                    responder.reply(payload.as_ref()).await.unwrap();
+                    responder.reply(payload.as_ref()).unwrap();
                 }
                 _ => {}
             }

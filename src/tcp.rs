@@ -74,14 +74,14 @@ pub struct TcpMessage {
 
 /// TCP connection pool manages connections to remote peers.
 ///
-/// Connections are keyed by (remote_endpoint, subscription_id) to allow
+/// Connections are keyed by (`remote_endpoint`, `subscription_id`) to allow
 /// separate connections per subscription (like UDP's per-subscription sockets).
 /// The pool handles connection establishment, reuse, and reconnection.
 ///
 /// For client-side TCP: When a connection is established, a reader task is spawned
 /// to receive responses and forward them to the runtime.
 pub struct TcpConnectionPool<T: TcpStream> {
-    /// Active connections indexed by (peer address, subscription_id)
+    /// Active connections indexed by (peer address, `subscription_id`)
     connections: Arc<Mutex<HashMap<(SocketAddr, u64), TcpConnectionHandle>>>,
     /// Sender for each connection
     senders: Arc<Mutex<HashMap<(SocketAddr, u64), mpsc::Sender<Vec<u8>>>>>,
@@ -121,7 +121,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     ///
     /// When a new connection is established, a reader task is spawned to receive
     /// responses and forward them to the runtime via the `msg_tx` channel.
-    /// Uses subscription_id 0 for RPC traffic (method calls/responses).
+    /// Uses `subscription_id` 0 for RPC traffic (method calls/responses).
     pub async fn send(&self, target: SocketAddr, data: &[u8]) -> io::Result<()> {
         // Check if we have a sender for this connection (use subscription_id 0 for RPC)
         let key = (target, 0);
@@ -199,7 +199,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// endpoint (our local address on the TCP connection) so the server can send
     /// events back on the same connection.
     ///
-    /// The subscription_id allows multiple connections per server (one per subscription),
+    /// The `subscription_id` allows multiple connections per server (one per subscription),
     /// mirroring UDP's per-subscription socket approach. Use 0 for RPC connections.
     pub async fn ensure_connected(
         &self,
@@ -265,7 +265,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         Ok(local_addr)
     }
 
-    /// Close connection to a peer (RPC connection, subscription_id 0)
+    /// Close connection to a peer (RPC connection, `subscription_id` 0)
     pub async fn close(&self, target: &SocketAddr) {
         tracing::debug!("Closing TCP connection to {}", target);
         let key = (*target, 0);
@@ -282,7 +282,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// Close ALL connections to a peer IP address (for reboot handling)
     ///
     /// This closes all connections to the given peer IP, regardless of port or
-    /// subscription_id. Used when a peer reboot is detected per `feat_req_someipsd_872`.
+    /// `subscription_id`. Used when a peer reboot is detected per `feat_req_someipsd_872`.
     pub async fn close_all_to_peer(&self, peer_ip: std::net::IpAddr) {
         // Collect keys to close
         let keys_to_close: Vec<_> = {
@@ -290,7 +290,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             connections
                 .keys()
                 .filter(|(addr, _)| addr.ip() == peer_ip)
-                .cloned()
+                .copied()
                 .collect()
         };
 
@@ -489,7 +489,7 @@ impl<T: TcpStream> TcpServer<T> {
     ///
     /// Returns the server handle and immediately starts accepting connections.
     /// Messages received from clients are forwarded via `msg_tx`.
-    pub async fn spawn<L: TcpListener<Stream = T>>(
+    pub fn spawn<L: TcpListener<Stream = T>>(
         listener: L,
         service_id: u16,
         instance_id: u16,

@@ -31,6 +31,7 @@ use crate::{EventId, EventgroupId, InstanceId, ServiceId};
 /// Builder for creating an [`EventHandle`].
 ///
 /// Obtained via [`ServiceOffering::event()`](super::ServiceOffering::event).
+#[must_use]
 pub struct EventBuilder {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
@@ -151,7 +152,11 @@ impl EventHandle {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
                 major_version: self.major_version,
-                eventgroup_ids: self.eventgroups.iter().map(|eg| eg.value()).collect(),
+                eventgroup_ids: self
+                    .eventgroups
+                    .iter()
+                    .map(crate::EventgroupId::value)
+                    .collect(),
                 event_id: self.event_id.value(),
                 payload: bytes::Bytes::copy_from_slice(payload),
             })

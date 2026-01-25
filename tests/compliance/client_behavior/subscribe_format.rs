@@ -1011,7 +1011,6 @@ fn subscribe_reuses_endpoint_port_after_resubscribe() {
                 true,  // reboot_flag
                 false, // unicast_flag (multicast)
             );
-            next_multicast_session_id += 1;
             sd_socket.send_to(&offer, sd_multicast).await?;
             eprintln!("[wire_server] Sent offer for re-subscription");
 
@@ -1386,7 +1385,6 @@ fn subscribe_tcp_reuses_endpoint_port_after_resubscribe() {
             // Phase 3: Send another offer to trigger re-subscription of EG1+EG2
             let offer = build_sd_offer_tcp_only(0x1234, 0x0001, 1, 0, my_ip, 30509, 10, next_multicast_session_id, true, false);
             sd_socket.send_to(&offer, sd_multicast).await?;
-            next_multicast_session_id += 1;
             eprintln!("[wire_server] Sent offer for TCP re-subscription");
 
             // Wait for re-subscriptions (only EG1 and EG2)

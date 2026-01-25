@@ -18,7 +18,6 @@ use super::helpers::{
     parse_header, parse_sd_message, TEST_SERVICE_ID,
 };
 use recentip::prelude::*;
-use recentip::{Runtime, RuntimeConfig};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
