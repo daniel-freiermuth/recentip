@@ -29,13 +29,13 @@ fn get_git_commit() -> String {
         .unwrap_or_else(|| "main".to_string())
 }
 
-/// Run the Python script to extract coverage annotations from test files.
-fn run_extract_coverage(project_root: &Path) {
-    let script_path = project_root.join("scripts/extract_coverage.py");
+/// Run a Python script if it exists, returning true on success.
+fn run_python_script(project_root: &Path, script_name: &str) -> bool {
+    let script_path = project_root.join(script_name);
 
     if !script_path.exists() {
-        eprintln!("Warning: extract_coverage.py not found, skipping coverage extraction");
-        return;
+        eprintln!("Warning: {} not found, skipping", script_name);
+        return false;
     }
 
     let output = Command::new("python3")
@@ -47,15 +47,45 @@ fn run_extract_coverage(project_root: &Path) {
         Ok(result) => {
             if !result.status.success() {
                 eprintln!(
-                    "Warning: extract_coverage.py failed: {}",
+                    "Warning: {} failed: {}",
+                    script_name,
                     String::from_utf8_lossy(&result.stderr)
                 );
+                false
+            } else {
+                true
             }
         }
         Err(e) => {
-            eprintln!("Warning: Could not run extract_coverage.py: {}", e);
+            eprintln!("Warning: Could not run {}: {}", script_name, e);
+            false
         }
     }
+}
+
+/// Run the Python script to extract coverage annotations from test files.
+fn run_extract_coverage(project_root: &Path) {
+    run_python_script(project_root, "scripts/extract_coverage.py");
+}
+
+/// Run the Python script to extract requirements from spec RST files.
+/// Only runs if requirements.json doesn't exist yet.
+fn run_extract_requirements(project_root: &Path) {
+    let requirements_path = project_root.join("spec-data/requirements.json");
+    if requirements_path.exists() {
+        return; // Already have requirements, no need to regenerate
+    }
+
+    // Check if specs submodule is available
+    let spec_dir = project_root.join("specs/src");
+    if !spec_dir.exists() {
+        eprintln!("Note: specs submodule not initialized, skipping requirements extraction");
+        eprintln!("      Run: git submodule update --init");
+        return;
+    }
+
+    eprintln!("Generating requirements.json from spec files...");
+    run_python_script(project_root, "tools/extract_requirements.py");
 }
 
 fn main() {
@@ -70,6 +100,9 @@ fn main() {
 
     let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let project_root = Path::new(&project_root);
+
+    // Extract requirements from spec if not already present
+    run_extract_requirements(project_root);
 
     // Run Python script to extract coverage from test files
     run_extract_coverage(project_root);
