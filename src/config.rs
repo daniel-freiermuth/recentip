@@ -117,6 +117,7 @@
 
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use tracing::warn;
 
 /// Default SD multicast address (239.255.0.1) per SOME/IP specification.
 pub const DEFAULT_SD_MULTICAST: Ipv4Addr = Ipv4Addr::new(239, 255, 0, 1);
@@ -141,6 +142,23 @@ pub const DEFAULT_TTL: u32 = 3600;
 ///
 /// See: `feat_req_recentipsd_431`
 pub const SD_TTL_INFINITE: u32 = 0xFFFFFF;
+
+/// Clamp a TTL value to the 24-bit maximum, logging a warning if truncation occurs.
+///
+/// SOME/IP-SD uses 24-bit TTL fields. Values exceeding 0xFFFFFF would be silently
+/// truncated during serialization, potentially causing service announcements to
+/// be misinterpreted as stop/nack messages (TTL=0).
+fn clamp_ttl_to_24bit(ttl: u32, field_name: &str) -> u32 {
+    if ttl > SD_TTL_INFINITE {
+        warn!(
+            "{} value {} exceeds 24-bit maximum ({}), clamping to SD_TTL_INFINITE",
+            field_name, ttl, SD_TTL_INFINITE
+        );
+        SD_TTL_INFINITE
+    } else {
+        ttl
+    }
+}
 
 /// Default TTL for `OfferService` entries in seconds (1 hour).
 pub const DEFAULT_OFFER_TTL: u32 = 3600;
@@ -325,9 +343,13 @@ impl RuntimeConfigBuilder {
 
     /// Set the TTL for `OfferService` entries (in seconds)
     ///
+    /// Values exceeding the 24-bit maximum (0xFFFFFF = 16,777,215) will be
+    /// clamped to `SD_TTL_INFINITE` to prevent silent truncation during
+    /// serialization.
+    ///
     /// Default: 3600 seconds
     pub fn offer_ttl(mut self, ttl: u32) -> Self {
-        self.config.offer_ttl = ttl;
+        self.config.offer_ttl = clamp_ttl_to_24bit(ttl, "offer_ttl");
         self
     }
 
@@ -336,9 +358,13 @@ impl RuntimeConfigBuilder {
     /// So far, this option is pretty irrelevant as clients don't, but the
     /// behavior might change in the future.
     ///
+    /// Values exceeding the 24-bit maximum (0xFFFFFF = 16,777,215) will be
+    /// clamped to `SD_TTL_INFINITE` to prevent silent truncation during
+    /// serialization.
+    ///
     /// Default: 3600 seconds
     pub fn find_ttl(mut self, ttl: u32) -> Self {
-        self.config.find_ttl = ttl;
+        self.config.find_ttl = clamp_ttl_to_24bit(ttl, "find_ttl");
         self
     }
 
@@ -378,7 +404,7 @@ impl RuntimeConfigBuilder {
     ///
     /// Default: 3600 seconds
     pub fn subscribe_ttl(mut self, ttl: u32) -> Self {
-        self.config.subscribe_ttl = ttl;
+        self.config.subscribe_ttl = clamp_ttl_to_24bit(ttl, "subscribe_ttl");
         self
     }
 
@@ -556,5 +582,58 @@ impl OfferConfig {
     /// Check if UDP is enabled.
     pub fn has_udp(&self) -> bool {
         self.udp_port.is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ttl_clamping_to_24bit_max() {
+        // Values within 24-bit range should pass through unchanged
+        assert_eq!(clamp_ttl_to_24bit(0, "test"), 0);
+        assert_eq!(clamp_ttl_to_24bit(3600, "test"), 3600);
+        assert_eq!(clamp_ttl_to_24bit(SD_TTL_INFINITE, "test"), SD_TTL_INFINITE);
+
+        // Values exceeding 24-bit max should be clamped to SD_TTL_INFINITE
+        assert_eq!(clamp_ttl_to_24bit(0x01_00_00_00, "test"), SD_TTL_INFINITE);
+        assert_eq!(clamp_ttl_to_24bit(u32::MAX, "test"), SD_TTL_INFINITE);
+    }
+
+    #[test]
+    fn test_offer_ttl_clamps_excessive_values() {
+        let config = RuntimeConfig::builder()
+            .offer_ttl(0x01_00_00_00) // 16777216 - exceeds 24-bit max
+            .build();
+        assert_eq!(config.offer_ttl, SD_TTL_INFINITE);
+    }
+
+    #[test]
+    fn test_find_ttl_clamps_excessive_values() {
+        let config = RuntimeConfig::builder()
+            .find_ttl(0x01_00_00_00) // 16777216 - exceeds 24-bit max
+            .build();
+        assert_eq!(config.find_ttl, SD_TTL_INFINITE);
+    }
+
+    #[test]
+    fn test_subscribe_ttl_clamps_excessive_values() {
+        let config = RuntimeConfig::builder()
+            .subscribe_ttl(0x01_00_00_00) // 16777216 - exceeds 24-bit max
+            .build();
+        assert_eq!(config.subscribe_ttl, SD_TTL_INFINITE);
+    }
+
+    #[test]
+    fn test_valid_ttl_values_pass_through() {
+        let config = RuntimeConfig::builder()
+            .offer_ttl(7200)
+            .find_ttl(1800)
+            .subscribe_ttl(SD_TTL_INFINITE)
+            .build();
+        assert_eq!(config.offer_ttl, 7200);
+        assert_eq!(config.find_ttl, 1800);
+        assert_eq!(config.subscribe_ttl, SD_TTL_INFINITE);
     }
 }
