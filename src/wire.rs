@@ -1076,40 +1076,59 @@ impl SdMessage {
         idx
     }
 
-    /// Get the UDP endpoint from options for an entry
+    /// Get the UDP endpoint from options for an entry.
+    ///
+    /// Searches both option runs (first and second) as per SOME/IP-SD specification.
     pub fn get_udp_endpoint(&self, entry: &SdEntry) -> Option<SocketAddr> {
-        let start = entry.index_1st_option as usize;
-        let count = entry.num_options_1 as usize;
-
-        for i in start..(start + count) {
-            if let Some(SdOption::Ipv4Endpoint {
-                addr,
-                port,
-                protocol: L4Protocol::Udp,
-            }) = self.options.get(i)
-            {
-                return Some(SocketAddr::V4(SocketAddrV4::new(*addr, *port)));
-            }
-        }
-        None
+        self.get_endpoint_with_protocol(entry, L4Protocol::Udp)
     }
 
-    /// Get the TCP endpoint from options for an entry
+    /// Get the TCP endpoint from options for an entry.
+    ///
+    /// Searches both option runs (first and second) as per SOME/IP-SD specification.
     #[allow(dead_code)] // Will be used for TCP transport
     pub fn get_tcp_endpoint(&self, entry: &SdEntry) -> Option<SocketAddr> {
-        let start = entry.index_1st_option as usize;
-        let count = entry.num_options_1 as usize;
+        self.get_endpoint_with_protocol(entry, L4Protocol::Tcp)
+    }
 
-        for i in start..(start + count) {
+    /// Search for an endpoint option with the specified protocol in both option runs.
+    fn get_endpoint_with_protocol(
+        &self,
+        entry: &SdEntry,
+        target_protocol: L4Protocol,
+    ) -> Option<SocketAddr> {
+        // First option run
+        let start1 = entry.index_1st_option as usize;
+        let count1 = entry.num_options_1 as usize;
+        for i in start1..(start1 + count1) {
             if let Some(SdOption::Ipv4Endpoint {
                 addr,
                 port,
-                protocol: L4Protocol::Tcp,
+                protocol,
             }) = self.options.get(i)
             {
-                return Some(SocketAddr::V4(SocketAddrV4::new(*addr, *port)));
+                if *protocol == target_protocol {
+                    return Some(SocketAddr::V4(SocketAddrV4::new(*addr, *port)));
+                }
             }
         }
+
+        // Second option run
+        let start2 = entry.index_2nd_option as usize;
+        let count2 = entry.num_options_2 as usize;
+        for i in start2..(start2 + count2) {
+            if let Some(SdOption::Ipv4Endpoint {
+                addr,
+                port,
+                protocol,
+            }) = self.options.get(i)
+            {
+                if *protocol == target_protocol {
+                    return Some(SocketAddr::V4(SocketAddrV4::new(*addr, *port)));
+                }
+            }
+        }
+
         None
     }
 }
@@ -1197,6 +1216,120 @@ mod tests {
         assert_eq!(msg.flags, parsed.flags);
         assert_eq!(msg.entries.len(), parsed.entries.len());
         assert_eq!(msg.options.len(), parsed.options.len());
+    }
+
+    #[test_log::test]
+    fn test_get_udp_endpoint_from_first_option_run() {
+        let mut msg = SdMessage::initial();
+        let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
+            addr: Ipv4Addr::new(192, 168, 1, 100),
+            port: 30501,
+            protocol: L4Protocol::Udp,
+        });
+        let entry = SdEntry::offer_service(0x1234, 0x0001, 1, 0, 3600, opt_idx, 1);
+
+        let endpoint = msg.get_udp_endpoint(&entry);
+        assert_eq!(
+            endpoint,
+            Some(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(192, 168, 1, 100),
+                30501
+            )))
+        );
+    }
+
+    #[test_log::test]
+    fn test_get_udp_endpoint_from_second_option_run() {
+        // Scenario: First option run has multicast, second has UDP endpoint
+        let mut msg = SdMessage::initial();
+
+        // Option 0: Multicast (in first run)
+        msg.add_option(SdOption::Ipv4Multicast {
+            addr: Ipv4Addr::new(239, 255, 0, 1),
+            port: 30490,
+        });
+
+        // Option 1: UDP endpoint (in second run)
+        msg.add_option(SdOption::Ipv4Endpoint {
+            addr: Ipv4Addr::new(192, 168, 1, 200),
+            port: 30502,
+            protocol: L4Protocol::Udp,
+        });
+
+        // Entry with two option runs:
+        // - First run: option 0 (multicast)
+        // - Second run: option 1 (UDP endpoint)
+        let mut entry = SdEntry::offer_service(0x1234, 0x0001, 1, 0, 3600, 0, 1);
+        entry.index_2nd_option = 1;
+        entry.num_options_2 = 1;
+
+        let endpoint = msg.get_udp_endpoint(&entry);
+        assert_eq!(
+            endpoint,
+            Some(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(192, 168, 1, 200),
+                30502
+            )))
+        );
+    }
+
+    #[test_log::test]
+    fn test_get_tcp_endpoint_from_second_option_run() {
+        let mut msg = SdMessage::initial();
+
+        // Option 0: UDP endpoint (not what we're looking for)
+        msg.add_option(SdOption::Ipv4Endpoint {
+            addr: Ipv4Addr::new(192, 168, 1, 100),
+            port: 30501,
+            protocol: L4Protocol::Udp,
+        });
+
+        // Option 1: TCP endpoint (in second run)
+        msg.add_option(SdOption::Ipv4Endpoint {
+            addr: Ipv4Addr::new(192, 168, 1, 100),
+            port: 30502,
+            protocol: L4Protocol::Tcp,
+        });
+
+        // First run has UDP, second run has TCP
+        let mut entry = SdEntry::offer_service(0x1234, 0x0001, 1, 0, 3600, 0, 1);
+        entry.index_2nd_option = 1;
+        entry.num_options_2 = 1;
+
+        let tcp_endpoint = msg.get_tcp_endpoint(&entry);
+        assert_eq!(
+            tcp_endpoint,
+            Some(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(192, 168, 1, 100),
+                30502
+            )))
+        );
+
+        // UDP should come from first run
+        let udp_endpoint = msg.get_udp_endpoint(&entry);
+        assert_eq!(
+            udp_endpoint,
+            Some(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(192, 168, 1, 100),
+                30501
+            )))
+        );
+    }
+
+    #[test_log::test]
+    fn test_get_endpoint_returns_none_when_not_found() {
+        let mut msg = SdMessage::initial();
+
+        // Only add a multicast option
+        msg.add_option(SdOption::Ipv4Multicast {
+            addr: Ipv4Addr::new(239, 255, 0, 1),
+            port: 30490,
+        });
+
+        let entry = SdEntry::offer_service(0x1234, 0x0001, 1, 0, 3600, 0, 1);
+
+        assert!(msg.get_udp_endpoint(&entry).is_none());
+        assert!(msg.get_tcp_endpoint(&entry).is_none());
     }
 
     #[test_log::test]
