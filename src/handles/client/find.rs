@@ -142,6 +142,8 @@ where
             major_version,
             endpoint,
             transport,
+            // Pass original find criteria for proper StopFind on drop
+            Some((self.instance_id, self.major_version)),
         ))
     }
 }

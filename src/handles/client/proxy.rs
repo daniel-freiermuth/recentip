@@ -102,6 +102,9 @@ pub struct OfferedService {
     major_version: u8,
     endpoint: SocketAddr,
     transport: crate::config::Transport,
+    /// Original find criteria - used for StopFind on drop
+    /// If None, this proxy was created without discovery (static deployment)
+    find_criteria: Option<(InstanceId, MajorVersion)>,
 }
 
 impl Clone for OfferedService {
@@ -113,12 +116,17 @@ impl Clone for OfferedService {
             major_version: self.major_version,
             endpoint: self.endpoint,
             transport: self.transport,
+            find_criteria: self.find_criteria,
         }
     }
 }
 
 impl OfferedService {
     /// Create a new `OfferedService` (for static deployments or after discovery).
+    ///
+    /// # Parameters
+    /// - `find_criteria`: Original (instance_id, major_version) used in the find request.
+    ///   Used for `StopFind` on drop. Pass `None` for static deployments.
     pub(crate) fn new(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
@@ -126,6 +134,7 @@ impl OfferedService {
         major_version: u8,
         endpoint: SocketAddr,
         transport: crate::config::Transport,
+        find_criteria: Option<(InstanceId, MajorVersion)>,
     ) -> Self {
         Self {
             inner,
@@ -134,6 +143,7 @@ impl OfferedService {
             major_version,
             endpoint,
             transport,
+            find_criteria,
         }
     }
 
@@ -270,13 +280,21 @@ impl OfferedService {
 
 impl Drop for OfferedService {
     fn drop(&mut self) {
-        // Stop finding (best-effort).
-        // If the channel is full or closed, the runtime will clean up on shutdown.
+        // Only send StopFind if this proxy was created via discovery
+        // (static deployments don't have find_criteria)
+        let Some((original_instance, original_version)) = self.find_criteria else {
+            return;
+        };
+
+        // Use the original find criteria to match the key in find_requests.
+        // This is critical: the Find command was registered with potentially wildcard
+        // instance/version, so StopFind must use the same key.
         let cmd = Command::StopFind {
             service_id: self.service_id,
-            instance_id: self.instance_id,
-            major_version: MajorVersion::new(self.major_version),
+            instance_id: original_instance,
+            major_version: original_version,
         };
+
         if let Err(e) = self.inner.cmd_tx.try_send(cmd) {
             match e {
                 TrySendError::Full(_) => {
@@ -284,7 +302,7 @@ impl Drop for OfferedService {
                         "Failed to send StopFind for service {:04x}:{:04x}: \
                          command channel full. Find will stop on runtime shutdown.",
                         self.service_id.value(),
-                        self.instance_id.value()
+                        original_instance.value()
                     );
                 }
                 TrySendError::Closed(_) => {
@@ -292,7 +310,7 @@ impl Drop for OfferedService {
                     tracing::debug!(
                         "StopFind skipped: runtime already shut down (service {:04x}:{:04x})",
                         self.service_id.value(),
-                        self.instance_id.value()
+                        original_instance.value()
                     );
                 }
             }
