@@ -32,11 +32,7 @@ const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 /// feat_req_someip_83: Request ID composition
 #[test_log::test]
 fn request_response_roundtrip() {
-    covers!(
-        feat_req_someip_103,
-        feat_req_someip_60,
-        feat_req_someip_83
-    );
+    covers!(feat_req_someip_103, feat_req_someip_60, feat_req_someip_83);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

@@ -37,11 +37,7 @@ const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 /// and responses must preserve the request ID.
 #[test_log::test]
 fn multiple_calls_incrementing_session() {
-    covers!(
-        feat_req_someip_83,
-        feat_req_someip_88,
-        feat_req_someip_711
-    );
+    covers!(feat_req_someip_83, feat_req_someip_88, feat_req_someip_711);
 
     use std::sync::atomic::{AtomicU32, Ordering};
     static TEST_SERVER_COUNT: AtomicU32 = AtomicU32::new(0);

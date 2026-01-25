@@ -20,11 +20,7 @@ use crate::client_behavior::helpers::build_sd_offer_with_session;
 /// feat_req_someip_45: Header is exactly 16 bytes
 #[test_log::test]
 fn rpc_request_wire_format() {
-    covers!(
-        feat_req_someip_103,
-        feat_req_someip_60,
-        feat_req_someip_45
-    );
+    covers!(feat_req_someip_103, feat_req_someip_60, feat_req_someip_45);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
