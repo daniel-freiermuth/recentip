@@ -19,7 +19,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 
 use crate::config::{RuntimeConfig, Transport};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::runtime::{
     client,
@@ -295,16 +295,22 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                         &payload,
                         false, // uses_exception doesn't matter for OK responses
                     ),
-                    Err(_) => build_response(
-                        context.service_id,
-                        context.method_id,
-                        context.client_id,
-                        context.session_id,
-                        context.interface_version,
-                        0x01, // NOT_OK
-                        &[],
-                        context.uses_exception,
-                    ),
+                    Err(ref e) => {
+                        let return_code = match e {
+                            Error::Protocol(proto_err) => proto_err.return_code.unwrap_or(0x01),
+                            _ => 0x01, // NOT_OK for other errors
+                        };
+                        build_response(
+                            context.service_id,
+                            context.method_id,
+                            context.client_id,
+                            context.session_id,
+                            context.interface_version,
+                            return_code,
+                            &[],
+                            context.uses_exception,
+                        )
+                    }
                 };
 
                 // Send response via the captured RPC transport

@@ -50,7 +50,7 @@ async fn main() -> Result<()> {
         match event {
             ServiceEvent::Call { responder, payload, .. } => {
                 // Echo the payload back
-                responder.reply(&payload).await?;
+                responder.reply(&payload)?;
             }
             _ => {}
         }

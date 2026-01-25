@@ -376,7 +376,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     ///     // Process one request then shutdown
     ///     if let Some(ServiceEvent::Call { responder, .. }) = offering.next().await {
-    ///         responder.reply(b"response").await?;
+    ///         responder.reply(b"response")?;
     ///     }
     ///
     ///     // Ensure the response is actually sent before exiting

@@ -258,14 +258,16 @@ fn server_returns_various_error_codes() {
             .await
             .unwrap();
 
-        // Handle first request - return NotReady
+        // Handle first request - return MalformedMessage (as a test of application-controlled error)
         if let Some(event) = tokio::time::timeout(Duration::from_secs(10), offering.next())
             .await
             .ok()
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply_error(ReturnCode::NotReady).unwrap();
+                responder
+                    .reply_error(ApplicationError::MalformedMessage)
+                    .unwrap();
             }
         }
 
@@ -276,7 +278,9 @@ fn server_returns_various_error_codes() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply_error(ReturnCode::UnknownMethod).unwrap();
+                responder
+                    .reply_error(ApplicationError::UnknownMethod)
+                    .unwrap();
             }
         }
 
@@ -287,7 +291,7 @@ fn server_returns_various_error_codes() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply_error(ReturnCode::NotOk).unwrap();
+                responder.reply_error(ApplicationError::NotOk).unwrap();
             }
         }
 
@@ -311,7 +315,7 @@ fn server_returns_various_error_codes() {
             .expect("Discovery timeout")
             .expect("Service available");
 
-        // First call - expect NotReady
+        // First call - expect MalformedMessage
         let result1 = tokio::time::timeout(
             Duration::from_secs(5),
             proxy.call(MethodId::new(0x0001).unwrap(), b"data1"),
@@ -326,8 +330,8 @@ fn server_returns_various_error_codes() {
             Ok(response) => {
                 assert_eq!(
                     response.return_code,
-                    ReturnCode::NotReady,
-                    "Should receive NotReady"
+                    ReturnCode::MalformedMessage,
+                    "Should receive MalformedMessage"
                 );
             }
         }
@@ -463,7 +467,9 @@ fn error_response_copies_request_header() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply_error(ReturnCode::UnknownMethod).unwrap();
+                responder
+                    .reply_error(ApplicationError::UnknownMethod)
+                    .unwrap();
             }
         }
 
@@ -641,7 +647,9 @@ fn exception_message_type_when_configured() {
             .flatten()
         {
             if let ServiceEvent::Call { responder, .. } = event {
-                responder.reply_error(ReturnCode::UnknownMethod).unwrap();
+                responder
+                    .reply_error(ApplicationError::UnknownMethod)
+                    .unwrap();
             }
         }
 
@@ -789,7 +797,7 @@ fn mixed_exception_config_per_method() {
                 .flatten()
             {
                 if let ServiceEvent::Call { responder, .. } = event {
-                    responder.reply_error(ReturnCode::NotOk).unwrap();
+                    responder.reply_error(ApplicationError::NotOk).unwrap();
                 }
             }
         }

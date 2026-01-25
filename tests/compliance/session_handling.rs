@@ -331,7 +331,7 @@ fn error_response_preserves_request_id() {
             match event {
                 ServiceEvent::Call { responder, .. } => {
                     // Send error response using reply_error
-                    responder.reply_error(ReturnCode::NotOk).unwrap();
+                    responder.reply_error(ApplicationError::NotOk).unwrap();
                 }
                 _ => panic!("Expected Call"),
             }

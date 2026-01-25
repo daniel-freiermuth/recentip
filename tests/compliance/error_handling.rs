@@ -260,7 +260,7 @@ fn error_response_has_nonzero_return_code() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply_error(ReturnCode::NotOk).unwrap();
+                    responder.reply_error(ApplicationError::NotOk).unwrap();
                 }
                 _ => {}
             }

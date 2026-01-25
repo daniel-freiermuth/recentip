@@ -496,7 +496,7 @@ fn request_can_receive_error_response() {
             match event {
                 ServiceEvent::Call { responder, .. } => {
                     // Server replies with error
-                    responder.reply_error(ReturnCode::NotOk).unwrap();
+                    responder.reply_error(ApplicationError::NotOk).unwrap();
                 }
                 _ => panic!("Expected Call event"),
             }

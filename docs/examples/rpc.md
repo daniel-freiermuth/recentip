@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
                 _ => b"unknown method".to_vec(),
             };
             
-            responder.reply(&response).await?;
+            responder.reply(&response)?;
         }
     }
 
@@ -145,9 +145,9 @@ async fn main() -> Result<()> {
         if let ServiceEvent::Call { method, payload, responder, .. } = event {
             if payload.is_empty() {
                 // Send error response
-                responder.reply_error(ReturnCode::MalformedMessage).await?;
+                responder.reply_error(ApplicationError::MalformedMessage)?;
             } else {
-                responder.reply(b"OK").await?;
+                responder.reply(b"OK")?;
             }
         }
     }

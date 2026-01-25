@@ -3,7 +3,7 @@
 use tokio::sync::oneshot;
 
 use crate::error::{Error, Result};
-use crate::{ClientInfo, EventgroupId, MethodId, ReturnCode};
+use crate::{ApplicationError, ClientInfo, EventgroupId, MethodId};
 
 /// Events received by an offered service
 #[derive(Debug)]
@@ -40,7 +40,9 @@ pub struct Responder {
 }
 
 impl Responder {
-    /// Send a successful response.
+    /// Send a successful response with the given payload.
+    ///
+    /// This sends a RESPONSE message with return code E_OK (0x00).
     pub fn reply(mut self, payload: &[u8]) -> Result<()> {
         if let Some(tx) = self.response.take() {
             let _ = tx.send(Ok(bytes::Bytes::copy_from_slice(payload)));
@@ -49,10 +51,32 @@ impl Responder {
     }
 
     /// Send an error response.
-    pub fn reply_error(mut self, code: ReturnCode) -> Result<()> {
+    ///
+    /// This sends a RESPONSE (or EXCEPTION, if configured) message with
+    /// the specified application error code.
+    ///
+    /// # Application vs Protocol Errors
+    ///
+    /// This method only accepts [`ApplicationError`] codes - errors that
+    /// your application logic should generate. Protocol-level errors
+    /// (like wrong protocol version) are automatically handled by the library.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    ///
+    /// # fn handle(responder: recentip::handles::Responder) -> Result<()> {
+    /// // Method not implemented
+    /// responder.reply_error(ApplicationError::UnknownMethod)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn reply_error(mut self, error: ApplicationError) -> Result<()> {
         if let Some(tx) = self.response.take() {
             let _ = tx.send(Err(Error::Protocol(crate::error::ProtocolError {
-                message: format!("Error: {code:?}"),
+                message: format!("Application error: {error:?}"),
+                return_code: Some(error.as_u8()),
             })));
         }
         Ok(())

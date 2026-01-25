@@ -69,7 +69,7 @@
 //!     while let Some(event) = offering.next().await {
 //!         match event {
 //!             ServiceEvent::Call { method, payload, responder, .. } => {
-//!                 responder.reply(b"response").await?;
+//!                 responder.reply(b"response")?;
 //!             }
 //!             ServiceEvent::Subscribe { .. } => {  }
 //!             _ => {}

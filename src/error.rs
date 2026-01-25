@@ -182,12 +182,23 @@ impl ConfigError {
 #[derive(Debug)]
 pub struct ProtocolError {
     pub message: String,
+    /// SOME/IP return code (for server error responses)
+    pub return_code: Option<u8>,
 }
 
 impl ProtocolError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            return_code: None,
+        }
+    }
+
+    /// Create a protocol error with a specific SOME/IP return code
+    pub fn with_return_code(message: impl Into<String>, return_code: u8) -> Self {
+        Self {
+            message: message.into(),
+            return_code: Some(return_code),
         }
     }
 }

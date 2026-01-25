@@ -810,7 +810,7 @@ fn field_setter_can_reject_invalid_value() {
 
                     if new_value > 100 {
                         // Reject invalid value
-                        responder.reply_error(ReturnCode::NotOk).unwrap();
+                        responder.reply_error(ApplicationError::NotOk).unwrap();
                     } else {
                         responder.reply(b"").unwrap();
                     }

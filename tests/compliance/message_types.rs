@@ -141,7 +141,7 @@ fn request_can_receive_error_type() {
         if let Some(event) = offering.next().await {
             match event {
                 ServiceEvent::Call { responder, .. } => {
-                    responder.reply_error(ReturnCode::NotOk).unwrap();
+                    responder.reply_error(ApplicationError::NotOk).unwrap();
                 }
                 _ => {}
             }
