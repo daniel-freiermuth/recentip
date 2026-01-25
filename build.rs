@@ -109,15 +109,13 @@ fn main() {
 
     let requirements_path = project_root.join("spec-data/requirements.json");
     let coverage_path = project_root.join("spec-data/coverage.json");
-    let output_path = project_root.join("docs/generated/compliance.md");
+
+    // Write to OUT_DIR so include_str! can find it reliably
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let output_path = Path::new(&out_dir).join("compliance.md");
 
     // Get git commit for stable links
     let git_commit = get_git_commit();
-
-    // Ensure output directory exists
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent).ok();
-    }
 
     // Load requirements
     let requirements: Vec<Requirement> = if let Ok(content) = fs::read_to_string(&requirements_path)
