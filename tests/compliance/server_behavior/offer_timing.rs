@@ -24,6 +24,8 @@
 
 use super::helpers::{covers, parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION};
 #[cfg(feature = "slow-tests")]
+use crate::helpers::configure_tracing;
+#[cfg(feature = "slow-tests")]
 use proptest::prelude::*;
 use recentip::prelude::*;
 use std::time::Duration;

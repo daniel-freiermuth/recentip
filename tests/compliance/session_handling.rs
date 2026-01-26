@@ -945,7 +945,7 @@ fn request_id_reusable_after_response() {
                     } => {
                         // Echo + 1
                         let val = u16::from_be_bytes([payload[0], payload[1]]);
-                        responder.reply(&(val + 1).to_be_bytes()).await.unwrap();
+                        responder.reply(&(val + 1).to_be_bytes()).unwrap();
                     }
                     _ => {}
                 }
@@ -1058,7 +1058,7 @@ fn session_id_wraps_to_0001_not_0000() {
                     } => {
                         // Echo the iteration number back to prove we processed it
                         SERVER_COUNT.fetch_add(1, Ordering::SeqCst);
-                        responder.reply(&payload).await.unwrap();
+                        responder.reply(&payload).unwrap();
                     }
                     _ => {}
                 }
