@@ -16,8 +16,8 @@
 use crate::wire_format::helpers::build_response;
 
 use super::helpers::{
-    build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers,
-    parse_header, parse_sd_message, TEST_SERVICE_ID,
+    build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers, parse_header,
+    parse_sd_message, TEST_SERVICE_ID,
 };
 use recentip::prelude::*;
 use std::net::SocketAddr;
