@@ -120,13 +120,11 @@ fn tcp_basic_subscribe_and_receive_events() {
         eprintln!("[client] Service discovered");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe success");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe success");
 
         eprintln!("[client] Subscribed to eventgroup via TCP");
 
@@ -228,12 +226,7 @@ fn tcp_multiple_subscribers_receive_events() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub = proxy.subscribe(eventgroup).await.unwrap();
         eprintln!("[client1] Subscribed");
 
         while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub.next())
@@ -266,12 +259,7 @@ fn tcp_multiple_subscribers_receive_events() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub = proxy.subscribe(eventgroup).await.unwrap();
         eprintln!("[client2] Subscribed");
 
         while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub.next())
@@ -381,12 +369,7 @@ fn tcp_large_payload_events() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub = proxy.subscribe(eventgroup).await.unwrap();
         eprintln!("[client] Subscribed");
 
         while let Some(event) = tokio::time::timeout(Duration::from_secs(5), sub.next())
@@ -519,12 +502,7 @@ fn tcp_different_eventgroups() {
             .expect("Service available");
 
         let eg1 = EventgroupId::new(0x0001).unwrap();
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eg1)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub = proxy.subscribe(eg1).await.unwrap();
         eprintln!("[client1] Subscribed to EG1");
 
         while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub.next())
@@ -558,12 +536,7 @@ fn tcp_different_eventgroups() {
             .expect("Service available");
 
         let eg2 = EventgroupId::new(0x0002).unwrap();
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eg2)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub = proxy.subscribe(eg2).await.unwrap();
         eprintln!("[client2] Subscribed to EG2");
 
         while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub.next())
@@ -673,12 +646,7 @@ fn dual_stack_service_client_prefers_tcp() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub = proxy.subscribe(eventgroup).await.unwrap();
         eprintln!("[client] Subscribed (should use TCP)");
 
         while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub.next())
@@ -772,12 +740,7 @@ fn dual_stack_service_client_prefers_udp() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub = proxy.subscribe(eventgroup).await.unwrap();
         eprintln!("[client] Subscribed (should use UDP)");
 
         while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub.next())
@@ -879,12 +842,7 @@ fn tcp_only_server_udp_preferring_client() {
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
         // Should succeed even though client prefers UDP - it adapts to TCP
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub = proxy.subscribe(eventgroup).await.unwrap();
         eprintln!("[client] Subscribed (adapted to TCP)");
 
         while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub.next())

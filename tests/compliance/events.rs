@@ -182,13 +182,11 @@ fn event_transports_value_data() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Receive event and verify it contains the value data
         let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -419,13 +417,11 @@ fn unsubscribe_stops_event_delivery() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Receive first event while subscribed
         let event1 = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -514,13 +510,11 @@ fn event_uses_notification_message_type_on_wire() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         // Receive event
         let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())

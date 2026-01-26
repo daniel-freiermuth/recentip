@@ -287,16 +287,11 @@ fn subscribe_nack_then_ack() {
         // Subscribe to v1 - should succeed
         let eventgroup = EventgroupId::new(EVENTGROUP_ID).unwrap();
         let async1 = async {
-            let subscription_v1 = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy_v1
-                    .new_subscription()
-                    .eventgroup(eventgroup)
-                    .subscribe(),
-            )
-            .await
-            .expect("Subscribe timeout for v1")
-            .expect("Subscribe should succeed for v1");
+            let subscription_v1 =
+                tokio::time::timeout(Duration::from_secs(5), proxy_v1.subscribe(eventgroup))
+                    .await
+                    .expect("Subscribe timeout for v1")
+                    .expect("Subscribe should succeed for v1");
 
             eprintln!("[client] v1 subscription succeeded (expected)");
             v1_sub_clone.store(true, Ordering::SeqCst);
@@ -304,15 +299,10 @@ fn subscribe_nack_then_ack() {
         };
         let async2 = async {
             // Subscribe to v2 - should fail with NACK
-            let result_v2 = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy_v2
-                    .new_subscription()
-                    .eventgroup(eventgroup)
-                    .subscribe(),
-            )
-            .await
-            .expect("Subscribe timeout for v2");
+            let result_v2 =
+                tokio::time::timeout(Duration::from_secs(5), proxy_v2.subscribe(eventgroup))
+                    .await
+                    .expect("Subscribe timeout for v2");
 
             match result_v2 {
                 Ok(_subscription) => {
@@ -579,16 +569,11 @@ fn subscribe_ack_then_nack() {
         // Subscribe to v1 - should succeed
         let eventgroup = EventgroupId::new(EVENTGROUP_ID).unwrap();
         let async1 = async {
-            let subscription_v1 = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy_v1
-                    .new_subscription()
-                    .eventgroup(eventgroup)
-                    .subscribe(),
-            )
-            .await
-            .expect("Subscribe timeout for v1")
-            .expect("Subscribe should succeed for v1");
+            let subscription_v1 =
+                tokio::time::timeout(Duration::from_secs(5), proxy_v1.subscribe(eventgroup))
+                    .await
+                    .expect("Subscribe timeout for v1")
+                    .expect("Subscribe should succeed for v1");
 
             eprintln!("[client] v1 subscription succeeded (expected)");
             v1_sub_clone.store(true, Ordering::SeqCst);
@@ -597,15 +582,10 @@ fn subscribe_ack_then_nack() {
 
         let async2 = async {
             // Subscribe to v2 - should fail with NACK
-            let result_v2 = tokio::time::timeout(
-                Duration::from_secs(5),
-                proxy_v2
-                    .new_subscription()
-                    .eventgroup(eventgroup)
-                    .subscribe(),
-            )
-            .await
-            .expect("Subscribe timeout for v2");
+            let result_v2 =
+                tokio::time::timeout(Duration::from_secs(5), proxy_v2.subscribe(eventgroup))
+                    .await
+                    .expect("Subscribe timeout for v2");
 
             match result_v2 {
                 Ok(_subscription) => {
@@ -874,16 +854,11 @@ fn subscribe_ack_and_nack_different_services() {
 
         // Subscribe to v1 - should succeed
         let eventgroup = EventgroupId::new(EVENTGROUP_ID).unwrap();
-        let mut subscription_v1 = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy_v1
-                .new_subscription()
-                .eventgroup(eventgroup)
-                .subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout for v1")
-        .expect("Subscribe should succeed for v1");
+        let mut subscription_v1 =
+            tokio::time::timeout(Duration::from_secs(5), proxy_v1.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout for v1")
+                .expect("Subscribe should succeed for v1");
 
         eprintln!("[client] v1 subscription succeeded (expected)");
         v1_sub_clone.store(true, Ordering::SeqCst);
@@ -911,15 +886,10 @@ fn subscribe_ack_and_nack_different_services() {
         }
 
         // Subscribe to v2 - should fail with NACK
-        let result_v2 = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy_v2
-                .new_subscription()
-                .eventgroup(eventgroup)
-                .subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout for v2");
+        let result_v2 =
+            tokio::time::timeout(Duration::from_secs(5), proxy_v2.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout for v2");
 
         match result_v2 {
             Ok(_subscription) => {
@@ -1154,13 +1124,11 @@ fn events_received_after_subscribe_ack() {
 
         // Subscribe
         let eventgroup = EventgroupId::new(EVENTGROUP_ID).unwrap();
-        let mut subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let mut subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
         eprintln!("[client] Subscription established");
 
         // Receive events
@@ -1362,10 +1330,8 @@ fn multi_eventgroup_subscription_fails_if_one_nacked() {
         let result = tokio::time::timeout(
             Duration::from_secs(5),
             proxy
-                .new_subscription()
-                .eventgroup(eg1)
-                .eventgroup(eg2)
-                .subscribe(),
+                .subscribe(eg1)
+                .and(eg2),
         )
         .await
         .expect("Subscribe timeout");
@@ -1567,10 +1533,8 @@ fn multi_eventgroup_subscription_fails_if_one_nacked_tcp() {
         let result = tokio::time::timeout(
             Duration::from_secs(5),
             proxy
-                .new_subscription()
-                .eventgroup(eg1)
-                .eventgroup(eg2)
-                .subscribe(),
+                .subscribe(eg1)
+                .and(eg2),
         )
         .await
         .expect("Subscribe timeout");

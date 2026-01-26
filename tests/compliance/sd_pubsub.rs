@@ -83,11 +83,8 @@ fn client_registers_for_events_via_sd() {
 
         // Subscribe to eventgroup - this registers for events at runtime via SD
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let result = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup)).await;
 
         if result.is_ok() && result.unwrap().is_ok() {
             *sub_flag.lock().unwrap() = true;
@@ -224,11 +221,7 @@ fn client_responds_to_offer_with_subscribe() {
 
         // Subscribe in response to OfferService
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await;
+        let _subscription = proxy.subscribe(eventgroup).await;
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(())
     });
@@ -288,11 +281,8 @@ fn subscribe_resolves_on_ack() {
 
         // The subscribe() future resolves when SubscribeEventgroupAck is received.
         // Wire-level verification of entry type 0x07 is in wire_format::subscribe_ack_entry_type.
-        let result = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup)).await;
         if let Ok(Ok(_)) = result {
             *ack_flag.lock().unwrap() = true;
         }
@@ -384,12 +374,7 @@ fn server_tracks_subscription_state() {
             .expect("Service available");
 
         let eg1 = EventgroupId::new(0x0001).unwrap();
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eg1)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub = proxy.subscribe(eg1).await.unwrap();
 
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while tokio::time::Instant::now() < deadline {
@@ -418,12 +403,7 @@ fn server_tracks_subscription_state() {
             .expect("Service available");
 
         let eg2 = EventgroupId::new(0x0002).unwrap();
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eg2)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub = proxy.subscribe(eg2).await.unwrap();
 
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while tokio::time::Instant::now() < deadline {
@@ -525,12 +505,7 @@ fn client_deregisters_with_stop_subscribe() {
 
         // Subscribe then drop to trigger StopSubscribe
         {
-            let _subscription = proxy
-                .new_subscription()
-                .eventgroup(eventgroup)
-                .subscribe()
-                .await
-                .unwrap();
+            let _subscription = proxy.subscribe(eventgroup).await.unwrap();
             tokio::time::sleep(Duration::from_millis(200)).await;
             // subscription dropped here
         }
@@ -616,18 +591,8 @@ fn no_duplicate_events_for_overlapping_eventgroups_tcp() {
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
         let eventgroup2 = EventgroupId::new(0x0002).unwrap();
 
-        let mut sub1 = proxy
-            .new_subscription()
-            .eventgroup(eventgroup1)
-            .subscribe()
-            .await
-            .unwrap();
-        let mut sub2 = proxy
-            .new_subscription()
-            .eventgroup(eventgroup2)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub1 = proxy.subscribe(eventgroup1).await.unwrap();
+        let mut sub2 = proxy.subscribe(eventgroup2).await.unwrap();
 
         // Collect events from sub1
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
@@ -761,24 +726,9 @@ fn no_delivery_to_wrong_eg_tcp() {
         let eventgroup2 = EventgroupId::new(0x0002).unwrap();
         let eventgroup3 = EventgroupId::new(0x0003).unwrap();
 
-        let mut sub1 = proxy
-            .new_subscription()
-            .eventgroup(eventgroup1)
-            .subscribe()
-            .await
-            .unwrap();
-        let mut sub2 = proxy
-            .new_subscription()
-            .eventgroup(eventgroup2)
-            .subscribe()
-            .await
-            .unwrap();
-        let mut sub3 = proxy
-            .new_subscription()
-            .eventgroup(eventgroup3)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub1 = proxy.subscribe(eventgroup1).await.unwrap();
+        let mut sub2 = proxy.subscribe(eventgroup2).await.unwrap();
+        let mut sub3 = proxy.subscribe(eventgroup3).await.unwrap();
 
         // Collect events from sub1
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
@@ -925,18 +875,8 @@ fn no_duplicate_events_for_overlapping_eventgroups() {
         let eventgroup1 = EventgroupId::new(0x0001).unwrap();
         let eventgroup2 = EventgroupId::new(0x0002).unwrap();
 
-        let mut sub1 = proxy
-            .new_subscription()
-            .eventgroup(eventgroup1)
-            .subscribe()
-            .await
-            .unwrap();
-        let mut sub2 = proxy
-            .new_subscription()
-            .eventgroup(eventgroup2)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub1 = proxy.subscribe(eventgroup1).await.unwrap();
+        let mut sub2 = proxy.subscribe(eventgroup2).await.unwrap();
         tracing::info!("Client subscribed to both eventgroups");
 
         // Collect events from sub1
@@ -1073,24 +1013,9 @@ fn no_delivery_to_wrong_eg() {
         let eventgroup2 = EventgroupId::new(0x0002).unwrap();
         let eventgroup3 = EventgroupId::new(0x0003).unwrap();
 
-        let mut sub1 = proxy
-            .new_subscription()
-            .eventgroup(eventgroup1)
-            .subscribe()
-            .await
-            .unwrap();
-        let mut sub2 = proxy
-            .new_subscription()
-            .eventgroup(eventgroup2)
-            .subscribe()
-            .await
-            .unwrap();
-        let mut sub3 = proxy
-            .new_subscription()
-            .eventgroup(eventgroup3)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub1 = proxy.subscribe(eventgroup1).await.unwrap();
+        let mut sub2 = proxy.subscribe(eventgroup2).await.unwrap();
+        let mut sub3 = proxy.subscribe(eventgroup3).await.unwrap();
 
         tracing::info!("Client subscribed to all three eventgroups");
 
@@ -1212,7 +1137,7 @@ fn server_deletes_subscription_on_error() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
+        let _subscription = proxy.subscribe(eventgroup).await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
@@ -1314,7 +1239,7 @@ fn client_resubscribes_on_timeout() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
+        let _subscription = proxy.subscribe(eventgroup).await.unwrap();
 
         // Client would resubscribe if no events received within timeout
         // (timeout-based resubscription is configurable per eventgroup)
@@ -1369,7 +1294,7 @@ fn client_subscribes_after_link_up() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let result = proxy.new_subscription().eventgroup(eventgroup).subscribe().await;
+        let result = proxy.subscribe(eventgroup).await;
         if result.is_ok() {
             *sub_flag.lock().unwrap() = true;
         }
@@ -1438,7 +1363,7 @@ fn client_udp_port_ready_before_subscribe() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
 
         // When subscribe() completes, client is ready to receive
-        let mut subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
+        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
 
         // Should receive event immediately (port was ready)
         let result = tokio::time::timeout(Duration::from_secs(2), subscription.next()).await;
@@ -1497,7 +1422,7 @@ fn client_tcp_ready_before_subscribe_reliable() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let result = proxy.new_subscription().eventgroup(eventgroup).subscribe().await;
+        let result = proxy.subscribe(eventgroup).await;
         if result.is_ok() {
             *sub_flag.lock().unwrap() = true;
         }
@@ -1568,7 +1493,7 @@ fn subscribe_timer_reset_on_offer() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
+        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
 
         // Collect events over time
         let mut event_count = 0;
@@ -1641,7 +1566,7 @@ fn no_cyclic_subscribe_if_not_configured() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let mut subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
+        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
 
         let result = tokio::time::timeout(Duration::from_secs(2), subscription.next()).await;
         if let Ok(Some(_)) = result {
@@ -1701,7 +1626,7 @@ fn implicit_registration_supported() {
 
         // Explicit registration (implicit would happen automatically via config)
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let result = proxy.new_subscription().eventgroup(eventgroup).subscribe().await;
+        let result = proxy.subscribe(eventgroup).await;
         if result.is_ok() {
             *sub_flag.lock().unwrap() = true;
         }
@@ -1781,7 +1706,7 @@ fn pubsub_state_machine_flow() {
         let eventgroup = EventgroupId::new(0x0001).unwrap();
 
         // State: Subscribe -> Subscribed
-        let mut subscription = proxy.new_subscription().eventgroup(eventgroup).subscribe().await.unwrap();
+        let mut subscription = proxy.subscribe(eventgroup).await.unwrap();
 
         // State: Receiving events
         let mut event_count = 0;

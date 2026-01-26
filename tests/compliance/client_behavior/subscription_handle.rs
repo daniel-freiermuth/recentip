@@ -80,9 +80,7 @@ fn test_subscribe_drop_unsubscribes_in_time() {
             .unwrap();
 
         let mut subscription = service
-            .new_subscription()
-            .eventgroup(EventgroupId::new(1).unwrap())
-            .subscribe()
+            .subscribe(EventgroupId::new(1).unwrap())
             .await
             .unwrap();
 
@@ -175,9 +173,7 @@ fn test_two_subscribers_one_drops() {
 
         let flow1 = async {
             let mut subscription = service
-                .new_subscription()
-                .eventgroup(EventgroupId::new(1).unwrap())
-                .subscribe()
+                .subscribe(EventgroupId::new(1).unwrap())
                 .await
                 .unwrap();
 
@@ -191,9 +187,7 @@ fn test_two_subscribers_one_drops() {
         };
         let flow2 = async {
             let mut subscription = service
-                .new_subscription()
-                .eventgroup(EventgroupId::new(1).unwrap())
-                .subscribe()
+                .subscribe(EventgroupId::new(1).unwrap())
                 .await
                 .unwrap();
 
@@ -313,9 +307,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
             .unwrap();
 
         let mut subscription1 = service
-            .new_subscription()
-            .eventgroup(EventgroupId::new(1).unwrap())
-            .subscribe()
+            .subscribe(EventgroupId::new(1).unwrap())
             .await
             .unwrap();
         tracing::info!("Subscription 1 established");
@@ -331,9 +323,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
 
         tracing::info!("Trying to subscribe again after dangling subscription");
         let mut subscription2 = service
-            .new_subscription()
-            .eventgroup(EventgroupId::new(1).unwrap())
-            .subscribe()
+            .subscribe(EventgroupId::new(1).unwrap())
             .await
             .unwrap();
         tracing::info!("Subscription 2 established");
@@ -411,9 +401,7 @@ fn test_two_subscribers_get_events() {
         async fn subscribe_and_listen(service: OfferedService) {
             tracing::info!("Starting subscription flow");
             let mut subscription = service
-                .new_subscription()
-                .eventgroup(EventgroupId::new(1).unwrap())
-                .subscribe()
+                .subscribe(EventgroupId::new(1).unwrap())
                 .await
                 .unwrap();
 

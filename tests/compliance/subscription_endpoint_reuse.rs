@@ -380,9 +380,7 @@ fn udp_different_services_reuse_endpoint() {
             .await
             .unwrap();
         let _sub1 = proxy1
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -393,9 +391,7 @@ fn udp_different_services_reuse_endpoint() {
             .await
             .unwrap();
         let _sub2 = proxy2
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -579,9 +575,7 @@ fn udp_different_instances_reuse_endpoint() {
             .await
             .unwrap();
         let _sub1 = proxy1
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -591,9 +585,7 @@ fn udp_different_instances_reuse_endpoint() {
             .await
             .unwrap();
         let _sub2 = proxy2
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -779,9 +771,7 @@ fn udp_different_major_versions_reuse_endpoint() {
             .await
             .unwrap();
         let _sub1 = proxy1
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -792,9 +782,7 @@ fn udp_different_major_versions_reuse_endpoint() {
             .await
             .unwrap();
         let _sub2 = proxy2
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -1000,9 +988,7 @@ fn tcp_different_services_reuse_connection() {
             .await
             .unwrap();
         let _sub1 = proxy1
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -1012,9 +998,7 @@ fn tcp_different_services_reuse_connection() {
             .await
             .unwrap();
         let _sub2 = proxy2
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -1212,9 +1196,7 @@ fn tcp_different_instances_reuse_connection() {
             .await
             .unwrap();
         let _sub1 = proxy1
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -1224,9 +1206,7 @@ fn tcp_different_instances_reuse_connection() {
             .await
             .unwrap();
         let _sub2 = proxy2
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -1428,9 +1408,7 @@ fn tcp_different_major_versions_reuse_connection() {
             .unwrap();
 
         let _sub1 = proxy_v1
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -1442,9 +1420,7 @@ fn tcp_different_major_versions_reuse_connection() {
             .unwrap();
 
         let _sub2 = proxy_v2
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
@@ -1662,17 +1638,13 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
 
         // Subscribe to S1 EG1 (contains Event1)
         let _sub_s1_eg1 = proxy_s1
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
         // Subscribe to S1 EG2 (contains Event1 + Event2)
         let _sub_s1_eg2 = proxy_s1
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0002).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0002).unwrap())
             .await
             .unwrap();
 
@@ -1685,17 +1657,13 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
 
         // Subscribe to S2 EG1 (contains Event1)
         let _sub_s2_eg1 = proxy_s2
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
         // Subscribe to S2 EG2 (contains Event1 + Event2)
         let _sub_s2_eg2 = proxy_s2
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0002).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0002).unwrap())
             .await
             .unwrap();
 
@@ -1950,17 +1918,13 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
 
         // Subscribe to S1 EG1 (contains Event1)
         let _sub_s1_eg1 = proxy_s1
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
         // Subscribe to S1 EG2 (contains Event1 + Event2)
         let _sub_s1_eg2 = proxy_s1
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0002).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0002).unwrap())
             .await
             .unwrap();
 
@@ -1973,17 +1937,13 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
 
         // Subscribe to S2 EG1 (contains Event1)
         let _sub_s2_eg1 = proxy_s2
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
             .await
             .unwrap();
 
         // Subscribe to S2 EG2 (contains Event1 + Event2)
         let _sub_s2_eg2 = proxy_s2
-            .new_subscription()
-            .eventgroup(recentip::EventgroupId::new(0x0002).unwrap())
-            .subscribe()
+            .subscribe(recentip::EventgroupId::new(0x0002).unwrap())
             .await
             .unwrap();
 

@@ -74,10 +74,7 @@ async fn main() -> Result<()> {
 
     // Subscribe to eventgroups
     let eg = EventgroupId::new(0x0001).unwrap();
-    let mut subscription = proxy
-        .new_subscription()
-        .eventgroup(eg)
-        .await?;
+    let mut subscription = proxy.subscribe(eg).await?;
 
     // Receive events
     while let Some(event) = subscription.next().await {

@@ -17,7 +17,7 @@ use crate::{Event, EventgroupId, InstanceId, ServiceId};
 
 /// Builder for subscribing to eventgroups.
 ///
-/// Created via [`OfferedService::new_subscription`](crate::handles::OfferedService::new_subscription).
+/// Created via [`OfferedService::subscribe`](crate::handles::OfferedService::subscribe).
 ///
 /// # Example
 ///
@@ -25,13 +25,16 @@ use crate::{Event, EventgroupId, InstanceId, ServiceId};
 /// use recentip::prelude::*;
 ///
 /// # async fn example(proxy: recentip::handles::OfferedService) -> Result<()> {
-/// let mut subscription = proxy
-///     .new_subscription()
-///     .eventgroup(EventgroupId::new(1).unwrap())
-///     .eventgroup(EventgroupId::new(2).unwrap())  // multiple eventgroups OK
+/// // Single eventgroup
+/// let mut sub = proxy.subscribe(EventgroupId::new(1).unwrap()).await?;
+///
+/// // Multiple eventgroups
+/// let mut sub = proxy
+///     .subscribe(EventgroupId::new(1).unwrap())
+///     .and(EventgroupId::new(2).unwrap())
 ///     .await?;
 ///
-/// while let Some(event) = subscription.next().await {
+/// while let Some(event) = sub.next().await {
 ///     println!("Event 0x{:04X}", event.event_id.value());
 /// }
 /// # Ok(())
@@ -47,27 +50,27 @@ pub struct SubscriptionBuilder {
 }
 
 impl SubscriptionBuilder {
-    /// Create a new subscription builder (internal use only)
+    /// Create a new subscription builder with the first eventgroup.
     pub(crate) fn new(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,
         major_version: u8,
+        first_eventgroup: EventgroupId,
     ) -> Self {
         Self {
             inner,
             service_id,
             instance_id,
             major_version,
-            eventgroups: Vec::new(),
+            eventgroups: vec![first_eventgroup],
         }
     }
 
-    /// Add an eventgroup to this subscription.
+    /// Add another eventgroup to this subscription.
     ///
-    /// Can be called multiple times to subscribe to multiple eventgroups.
-    /// All eventgroups will share the same network endpoint.
-    pub fn eventgroup(mut self, eventgroup: EventgroupId) -> Self {
+    /// All eventgroups share the same network endpoint.
+    pub fn and(mut self, eventgroup: EventgroupId) -> Self {
         self.eventgroups.push(eventgroup);
         self
     }
@@ -77,15 +80,14 @@ impl SubscriptionBuilder {
     /// Sends `SubscribeEventgroup` messages for all added eventgroups
     /// and waits for acknowledgments from the server.
     ///
-    /// Returns a [`Subscription`] handle that can be used to receive events
+    /// If subcribtions to all eventgroups are acknowledged successfully,
+    /// returns a [`Subscription`] handle that can be used to receive events
     /// from any of the subscribed eventgroups.
+    ///
+    /// Fails if at least one subscription could not be created.
+    ///
+    /// You can also just `.await` the builder directly.
     pub async fn subscribe(self) -> Result<Subscription> {
-        if self.eventgroups.is_empty() {
-            return Err(Error::Config(crate::error::ConfigError::new(
-                "At least one eventgroup must be specified",
-            )));
-        }
-
         let (events_tx, events_rx) = mpsc::channel(64);
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -107,6 +109,7 @@ impl SubscriptionBuilder {
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
 
+        // TODO: do we really send a runtime shutdown when sub were nacked?
         let subscription_id = response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
 
         Ok(Subscription::new(

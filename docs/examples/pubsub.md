@@ -95,10 +95,7 @@ async fn main() -> Result<()> {
 
     let sensor_eg = EventgroupId::new(0x0001).unwrap();
     
-    let mut subscription = proxy
-        .new_subscription()
-        .eventgroup(sensor_eg)
-        .await?;
+    let mut subscription = proxy.subscribe(sensor_eg).await?;
 
     while let Some(event) = subscription.next().await {
         println!("Received event 0x{:04x}", event.event_id.value());
@@ -124,11 +121,7 @@ async fn main() -> Result<()> {
     let status_eg = EventgroupId::new(0x0002).unwrap();
     
     // Subscribe to both eventgroups
-    let mut subscription = proxy
-        .new_subscription()
-        .eventgroup(sensor_eg)
-        .eventgroup(status_eg)
-        .await?;
+    let mut subscription = proxy.subscribe(sensor_eg).and(status_eg).await?;
 
     // Receive events from all subscribed eventgroups
     while let Some(event) = subscription.next().await {
@@ -195,10 +188,7 @@ async fn main() -> Result<()> {
 
     {
         let eg = EventgroupId::new(0x0001).unwrap();
-        let mut sub = proxy
-            .new_subscription()
-            .eventgroup(eg)
-            .await?;
+        let mut sub = proxy.subscribe(eg).await?;
         
         // Receive some events...
         if let Some(event) = sub.next().await {

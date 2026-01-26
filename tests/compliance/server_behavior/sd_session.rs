@@ -1170,9 +1170,7 @@ fn no_false_positive_on_session_wraparound_reboot_0() {
 
         let eventgroup = EventgroupId::new(1).unwrap();
         let mut subscription = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
+            .subscribe(eventgroup)
             .await
             .expect("Should subscribe successfully");
 
@@ -1576,9 +1574,7 @@ fn detect_peer_reboot_session_equal() {
 
         let eventgroup = EventgroupId::new(1).unwrap();
         let mut subscription = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
+            .subscribe(eventgroup)
             .await
             .expect("Should subscribe successfully");
 
@@ -4895,9 +4891,7 @@ fn client_closes_tcp_on_server_reboot_flag_0_to_1() {
         // Subscribe - will use TCP since client prefers it and server offers it
         let eventgroup = EventgroupId::new(1).unwrap();
         let mut subscription = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
+            .subscribe(eventgroup)
             .await
             .expect("Should subscribe successfully via TCP");
         tracing::info!("Subscription established via TCP");
@@ -5266,9 +5260,7 @@ fn client_keeps_tcp_on_normal_session_wraparound() {
 
         let eventgroup = EventgroupId::new(1).unwrap();
         let mut subscription = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
+            .subscribe(eventgroup)
             .await
             .expect("Should subscribe successfully via TCP");
 
@@ -5543,9 +5535,7 @@ fn client_closes_tcp_on_server_session_regression() {
 
         let eventgroup = EventgroupId::new(1).unwrap();
         let mut subscription = proxy
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
+            .subscribe(eventgroup)
             .await
             .expect("Should subscribe successfully via TCP");
         tracing::info!("Subscribed to eventgroup via TCP");
@@ -5860,18 +5850,8 @@ fn client_tracks_session_ids_per_server_independently() {
 
         let eventgroup = EventgroupId::new(1).unwrap();
 
-        let mut sub1 = proxy1
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
-        let mut sub2 = proxy2
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub1 = proxy1.subscribe(eventgroup).await.unwrap();
+        let mut sub2 = proxy2.subscribe(eventgroup).await.unwrap();
 
         // Phase 1: Receive events from both servers before server1 reboot
         for _ in 0..3 {
@@ -6218,18 +6198,8 @@ fn client_does_not_confuse_session_wraparound_between_servers() {
             .unwrap();
 
         let eventgroup = EventgroupId::new(1).unwrap();
-        let mut sub1 = proxy1
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
-        let mut sub2 = proxy2
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub1 = proxy1.subscribe(eventgroup).await.unwrap();
+        let mut sub2 = proxy2.subscribe(eventgroup).await.unwrap();
 
         // Receive events from both - server1 does wraparound, server2 doesn't
         for _ in 0..20 {
@@ -6559,18 +6529,8 @@ fn client_tracks_reboot_flags_per_server_independently() {
             .unwrap();
 
         let eventgroup = EventgroupId::new(1).unwrap();
-        let mut sub1 = proxy1
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
-        let mut sub2 = proxy2
-            .new_subscription()
-            .eventgroup(eventgroup)
-            .subscribe()
-            .await
-            .unwrap();
+        let mut sub1 = proxy1.subscribe(eventgroup).await.unwrap();
+        let mut sub2 = proxy2.subscribe(eventgroup).await.unwrap();
 
         // Phase 1: Both servers sending events
         for _ in 0..10 {

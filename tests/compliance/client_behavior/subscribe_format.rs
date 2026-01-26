@@ -166,13 +166,11 @@ fn subscribe_format_udp_only_cyclic_offers() {
         eprintln!("[client] Service discovered");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed, staying alive for cyclic offers...");
 
@@ -331,13 +329,11 @@ fn subscribe_format_tcp_only_cyclic_offers() {
         eprintln!("[client] Service discovered via TCP");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed via TCP, staying alive...");
         tokio::time::sleep(Duration::from_secs(6)).await;
@@ -474,13 +470,11 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_secs(6)).await;
         Ok(())
@@ -631,13 +625,11 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
             .expect("Service available");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_secs(6)).await;
         Ok(())
@@ -786,13 +778,11 @@ fn subscribe_format_client_adapts_to_available_transport() {
         );
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         tokio::time::sleep(Duration::from_secs(6)).await;
         Ok(())
@@ -1104,31 +1094,17 @@ fn subscribe_reuses_endpoint_port_after_resubscribe() {
         let eg4 = EventgroupId::new(0x0004).unwrap();
 
         // Phase 1: Subscribe to EG1+EG2 (sub1)
-        let sub1 = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy
-                .new_subscription()
-                .eventgroup(eg1)
-                .eventgroup(eg2)
-                .subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let sub1 = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eg1).and(eg2))
+            .await
+            .expect("Subscribe timeout")
+            .expect("Subscribe should succeed");
         eprintln!("[client] Subscription 1 (EG1+EG2) established");
 
         // Subscribe to EG3+EG4 (sub2)
-        let _sub2 = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy
-                .new_subscription()
-                .eventgroup(eg3)
-                .eventgroup(eg4)
-                .subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let _sub2 = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eg3).and(eg4))
+            .await
+            .expect("Subscribe timeout")
+            .expect("Subscribe should succeed");
         eprintln!("[client] Subscription 2 (EG3+EG4) established");
 
         // Wait for server to receive all subscriptions
@@ -1142,17 +1118,10 @@ fn subscribe_reuses_endpoint_port_after_resubscribe() {
         unsub_done_rx.await.expect("Unsub signal");
 
         // Phase 3: Re-subscribe to EG1+EG2
-        let _sub1_new = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy
-                .new_subscription()
-                .eventgroup(eg1)
-                .eventgroup(eg2)
-                .subscribe(),
-        )
-        .await
-        .expect("Re-subscribe timeout")
-        .expect("Re-subscribe should succeed");
+        let _sub1_new = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eg1).and(eg2))
+            .await
+            .expect("Re-subscribe timeout")
+            .expect("Re-subscribe should succeed");
         eprintln!("[client] Subscription 1 (EG1+EG2) re-established");
 
         // Wait for server to receive re-subscriptions
@@ -1474,32 +1443,18 @@ fn subscribe_tcp_reuses_endpoint_port_after_resubscribe() {
         let eg4 = EventgroupId::new(0x0004).unwrap();
 
         // Phase 1: Subscribe to EG1+EG2 (sub1) via TCP
-        let sub1 = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy
-                .new_subscription()
-                .eventgroup(eg1)
-                .eventgroup(eg2)
-                .subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let sub1 = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eg1).and(eg2))
+            .await
+            .expect("Subscribe timeout")
+            .expect("Subscribe should succeed");
 
         eprintln!("[client] TCP Subscription 1 (EG1+EG2) established");
 
         // Subscribe to EG3+EG4 (sub2)
-        let sub2 = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy
-                .new_subscription()
-                .eventgroup(eg3)
-                .eventgroup(eg4)
-                .subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let sub2 = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eg3).and(eg4))
+            .await
+            .expect("Subscribe timeout")
+            .expect("Subscribe should succeed");
 
         eprintln!("[client] TCP Subscription 2 (EG3+EG4) established");
 
@@ -1520,17 +1475,10 @@ fn subscribe_tcp_reuses_endpoint_port_after_resubscribe() {
             .expect("Channel closed");
 
         // Phase 3: Re-subscribe to EG1+EG2 (resub1)
-        let _resub1 = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy
-                .new_subscription()
-                .eventgroup(eg1)
-                .eventgroup(eg2)
-                .subscribe(),
-        )
-        .await
-        .expect("Re-subscribe timeout")
-        .expect("Re-subscribe should succeed");
+        let _resub1 = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eg1).and(eg2))
+            .await
+            .expect("Re-subscribe timeout")
+            .expect("Re-subscribe should succeed");
 
         eprintln!("[client] TCP Subscription 1 (EG1+EG2) re-established");
 

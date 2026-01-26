@@ -69,10 +69,7 @@
 //!
 //!     // Subscribe to events
 //!     let eg = EventgroupId::new(0x0001).unwrap();
-//!     let mut subscription = proxy
-//!         .new_subscription()
-//!         .eventgroup(eg)
-//!         .await?;
+//!     let mut subscription = proxy.subscribe(eg).await?;
 //!     
 //!     while let Some(event) = subscription.next().await {
 //!         println!("Event: {:?}", event);
@@ -259,9 +256,8 @@
 //!     let eg2 = EventgroupId::new(0x0002).unwrap();
 //!     
 //!     let mut subscription = proxy
-//!         .new_subscription()
-//!         .eventgroup(eg1)
-//!         .eventgroup(eg2)  // Optional: subscribe to multiple eventgroups
+//!         .subscribe(eg1)
+//!         .and(eg2)  // Optional: subscribe to multiple eventgroups
 //!         .await?;
 //!
 //!     while let Some(event) = subscription.next().await {

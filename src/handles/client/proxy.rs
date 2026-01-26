@@ -11,7 +11,7 @@ use tokio::sync::oneshot;
 use crate::error::{Error, Result};
 use crate::handles::runtime::RuntimeInner;
 use crate::runtime::Command;
-use crate::{InstanceId, MajorVersion, MethodId, Response, ServiceId};
+use crate::{EventgroupId, InstanceId, MajorVersion, MethodId, Response, ServiceId};
 
 use super::SubscriptionBuilder;
 
@@ -37,9 +37,7 @@ use super::SubscriptionBuilder;
 /// let response = proxy.call(MethodId::new(0x01).unwrap(), b"request").await?;
 ///
 /// // Subscribe to events
-/// let mut sub = proxy.new_subscription()
-///     .eventgroup(EventgroupId::new(1).unwrap())
-///     .await?;
+/// let mut sub = proxy.subscribe(EventgroupId::new(1).unwrap()).await?;
 ///
 /// while let Some(event) = sub.next().await {
 ///     println!("Event 0x{:04X}: {:?}", event.event_id.value(), event.payload);
@@ -162,18 +160,34 @@ impl OfferedService {
         Ok(())
     }
 
-    /// Start building a subscription to eventgroups.
+    /// Subscribe to an eventgroup (or multiple with `.and()`).
     ///
-    /// Returns a [`SubscriptionBuilder`] to add eventgroups and subscribe.
-    /// All eventgroups share the same network endpoint.
+    /// Returns a [`SubscriptionBuilder`] that can be awaited directly,
+    /// or chained with `.and()` to add more eventgroups.
     ///
-    /// See [`SubscriptionBuilder`] and [`Subscription`](super::Subscription) for details.
-    pub fn new_subscription(&self) -> SubscriptionBuilder {
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    ///
+    /// # async fn example(proxy: recentip::handles::OfferedService) -> Result<()> {
+    /// // Single eventgroup
+    /// let mut sub = proxy.subscribe(EventgroupId::new(1).unwrap()).await?;
+    ///
+    /// // Multiple eventgroups
+    /// let eg1 = EventgroupId::new(1).unwrap();
+    /// let eg2 = EventgroupId::new(2).unwrap();
+    /// let mut sub = proxy.subscribe(eg1).and(eg2).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn subscribe(&self, eventgroup: EventgroupId) -> SubscriptionBuilder {
         SubscriptionBuilder::new(
             Arc::clone(&self.inner),
             self.service_id,
             self.instance_id,
             self.major_version,
+            eventgroup,
         )
     }
 

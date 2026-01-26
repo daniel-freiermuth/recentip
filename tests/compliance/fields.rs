@@ -537,12 +537,7 @@ fn field_notifier_sends_updated_value() {
 
             // Subscribe to field notifications
             let eventgroup_id = EventgroupId::new(0x01).unwrap();
-            let mut subscription = proxy
-                .new_subscription()
-                .eventgroup(eventgroup_id)
-                .subscribe()
-                .await
-                .unwrap();
+            let mut subscription = proxy.subscribe(eventgroup_id).await.unwrap();
 
             // Wait for notification
             if let Some(event) = tokio::time::timeout(Duration::from_secs(5), subscription.next())
@@ -709,12 +704,7 @@ fn field_combines_getter_setter_notifier() {
 
             // Subscribe to get notifier updates
             let eventgroup_id = EventgroupId::new(0x01).unwrap();
-            let mut subscription = proxy
-                .new_subscription()
-                .eventgroup(eventgroup_id)
-                .subscribe()
-                .await
-                .unwrap();
+            let mut subscription = proxy.subscribe(eventgroup_id).await.unwrap();
 
             tokio::time::sleep(Duration::from_millis(50)).await;
 

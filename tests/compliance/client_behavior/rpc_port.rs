@@ -360,13 +360,11 @@ fn tcp_connection_established_before_subscribe_767() {
         eprintln!("[client] Service discovered (should be TCP-only)");
 
         let eventgroup = EventgroupId::new(0x0001).unwrap();
-        let _subscription = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy.new_subscription().eventgroup(eventgroup).subscribe(),
-        )
-        .await
-        .expect("Subscribe timeout")
-        .expect("Subscribe should succeed");
+        let _subscription =
+            tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                .await
+                .expect("Subscribe timeout")
+                .expect("Subscribe should succeed");
 
         eprintln!("[client] Subscribed successfully");
 

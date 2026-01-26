@@ -34,10 +34,7 @@
 //!
 //!     // 3. Subscribe to events
 //!     let eventgroup = EventgroupId::new(0x0001).unwrap();
-//!     let mut subscription = proxy
-//!         .new_subscription()
-//!         .eventgroup(eventgroup)
-//!         .await?;
+//!     let mut subscription = proxy.subscribe(eventgroup).await?;
 //!     while let Some(event) = subscription.next().await {
 //!         // Process event
 //!     }
