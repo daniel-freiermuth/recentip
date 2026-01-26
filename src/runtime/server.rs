@@ -692,7 +692,10 @@ pub fn spawn_rpc_socket_task<U: UdpSocket>(
                 result = rpc_socket.recv_from(&mut buf) => {
                     match result {
                         Ok((len, from)) => {
-                            let data = buf[..len].to_vec();
+                            let Some(received) = buf.get(..len) else {
+                                continue;
+                            };
+                            let data = received.to_vec();
                             let msg = RpcMessage { service_key: Some(service_key), data, from };
                             if rpc_tx_to_runtime.send(msg).await.is_err() {
                                 tracing::debug!("RPC socket task for service {}/{} shutting down - runtime closed",

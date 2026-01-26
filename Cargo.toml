@@ -93,7 +93,7 @@ unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
 todo = "deny"
-# indexing_slicing = "warn"
+indexing_slicing = "deny"
 fallible_impl_from = "deny"
 
 # Custom profiles for test performance

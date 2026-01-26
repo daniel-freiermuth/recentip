@@ -75,7 +75,10 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             result = sd_socket.recv_from(&mut buf) => {
                 match result {
                     Ok((len, from)) => {
-                        let mut data = &buf[..len];
+                        let Some(received) = buf.get(..len) else {
+                            continue;
+                        };
+                        let mut data: &[u8] = received;
 
                         let Some(header) = Header::parse(&mut data) else {
                             tracing::warn!("Received invalid SOME/IP header on SD socket from {}", from);

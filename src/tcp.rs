@@ -59,7 +59,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::net::{TcpListener, TcpStream};
-use crate::wire::{is_magic_cookie, magic_cookie_client, magic_cookie_server, Header};
+use crate::wire::{is_magic_cookie, magic_cookie_client, magic_cookie_server, parse_someip_length, Header};
 
 /// Message received from a TCP connection (client-side response or server-side request)
 #[derive(Debug)]
@@ -343,16 +343,18 @@ async fn handle_client_tcp_connection<T: TcpStream>(
                         break;
                     }
                     Ok(n) => {
-                        read_buffer.extend_from_slice(&read_buf[..n]);
+                        if let Some(received) = read_buf.get(..n) {
+                            read_buffer.extend_from_slice(received);
+                        }
 
                         // Try to parse complete messages
                         while read_buffer.len() >= Header::SIZE {
                             // Skip Magic Cookies (feat_req_someip_586)
                             if is_magic_cookie(&read_buffer) {
-                                let length = u32::from_be_bytes([
-                                    read_buffer[4], read_buffer[5], read_buffer[6], read_buffer[7]
-                                ]) as usize;
-                                let total_size = 8 + length;
+                                let Some(length) = parse_someip_length(&read_buffer) else {
+                                    break;
+                                };
+                                let total_size = 8 + length as usize;
                                 if read_buffer.len() >= total_size {
                                     read_buffer.advance(total_size);
                                     continue;
@@ -361,11 +363,11 @@ async fn handle_client_tcp_connection<T: TcpStream>(
                             }
 
                             // Parse length from header (offset 4-8, big-endian u32)
-                            let length = u32::from_be_bytes([
-                                read_buffer[4], read_buffer[5], read_buffer[6], read_buffer[7]
-                            ]) as usize;
+                            let Some(length) = parse_someip_length(&read_buffer) else {
+                                break;
+                            };
 
-                            let total_size = 8 + length;
+                            let total_size = 8 + length as usize;
 
                             if read_buffer.len() >= total_size {
                                 // Extract complete message
@@ -430,10 +432,21 @@ pub async fn read_framed_message<T: TcpStream>(
         // Check if we have enough data for a complete message
         if buffer.len() >= Header::SIZE {
             // Parse length from header (offset 4-8, big-endian u32)
-            let length = u32::from_be_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]) as usize;
+            let Some(length) = parse_someip_length(buffer) else {
+                // Should not happen since we checked len >= Header::SIZE
+                tracing::error!(
+                    "BUG: parse_someip_length failed despite buffer.len()={} >= Header::SIZE={}",
+                    buffer.len(),
+                    Header::SIZE
+                );
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Buffer too short for header",
+                ));
+            };
 
             // Total message size = 8 (service_id, method_id, length) + length
-            let total_size = 8 + length;
+            let total_size = 8 + length as usize;
 
             if buffer.len() >= total_size {
                 // We have a complete message
@@ -456,7 +469,9 @@ pub async fn read_framed_message<T: TcpStream>(
                 ))
             };
         }
-        buffer.extend_from_slice(&read_buf[..n]);
+        if let Some(received) = read_buf.get(..n) {
+            buffer.extend_from_slice(received);
+        }
     }
 }
 
@@ -616,16 +631,18 @@ async fn handle_tcp_connection<T: TcpStream>(
                         break;
                     }
                     Ok(n) => {
-                        read_buffer.extend_from_slice(&read_buf[..n]);
+                        if let Some(received) = read_buf.get(..n) {
+                            read_buffer.extend_from_slice(received);
+                        }
 
                         // Try to parse complete messages
                         while read_buffer.len() >= Header::SIZE {
                             // Skip Magic Cookies (feat_req_someip_586)
                             if is_magic_cookie(&read_buffer) {
-                                let length = u32::from_be_bytes([
-                                    read_buffer[4], read_buffer[5], read_buffer[6], read_buffer[7]
-                                ]) as usize;
-                                let total_size = 8 + length;
+                                let Some(length) = parse_someip_length(&read_buffer) else {
+                                    break;
+                                };
+                                let total_size = 8 + length as usize;
                                 if read_buffer.len() >= total_size {
                                     read_buffer.advance(total_size);
                                     continue;
@@ -634,11 +651,11 @@ async fn handle_tcp_connection<T: TcpStream>(
                             }
 
                             // Parse length from header (offset 4-8, big-endian u32)
-                            let length = u32::from_be_bytes([
-                                read_buffer[4], read_buffer[5], read_buffer[6], read_buffer[7]
-                            ]) as usize;
+                            let Some(length) = parse_someip_length(&read_buffer) else {
+                                break;
+                            };
 
-                            let total_size = 8 + length;
+                            let total_size = 8 + length as usize;
 
                             if read_buffer.len() >= total_size {
                                 // Extract complete message

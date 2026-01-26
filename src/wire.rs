@@ -165,15 +165,19 @@ pub fn magic_cookie_server() -> [u8; 16] {
 /// Returns true if the first 4 bytes match Magic Cookie pattern
 /// (Service ID 0xFFFF, Method ID 0x0000 or 0x8000).
 pub fn is_magic_cookie(data: &[u8]) -> bool {
-    if data.len() < 4 {
-        return false;
-    }
-    // Check Service ID is 0xFFFF
-    if data[0] != 0xFF || data[1] != 0xFF {
-        return false;
-    }
-    // Check Method ID is 0x0000 (client) or 0x8000 (server)
-    (data[2] == 0x00 && data[3] == 0x00) || (data[2] == 0x80 && data[3] == 0x00)
+    // Use pattern matching for safe access without indexing
+    matches!(data.get(..4), Some([0xFF, 0xFF, 0x00 | 0x80, 0x00]))
+}
+
+/// Extract the SOME/IP message length from bytes 4-7 of a buffer.
+///
+/// Returns `None` if the buffer has fewer than 8 bytes.
+/// The length field is the 32-bit big-endian value at offset 4.
+#[inline]
+pub fn parse_someip_length(data: &[u8]) -> Option<u32> {
+    data.get(4..8)
+        .and_then(|bytes| bytes.try_into().ok())
+        .map(u32::from_be_bytes)
 }
 
 // ============================================================================

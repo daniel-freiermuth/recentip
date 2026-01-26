@@ -7,7 +7,7 @@
 //! annotations before generating the documentation.
 
 // Build scripts run at compile time, so panicking primitives are acceptable here.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
 use std::collections::HashMap;
 use std::fs;

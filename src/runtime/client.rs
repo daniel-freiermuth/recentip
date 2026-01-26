@@ -114,7 +114,9 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
         loop {
             match socket.recv_from(&mut buf).await {
                 Ok((len, from)) => {
-                    let data = &buf[..len];
+                    let Some(data) = buf.get(..len) else {
+                        continue;
+                    };
                     let mut cursor = data;
 
                     // Parse SOME/IP header
@@ -158,7 +160,10 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
                         continue;
                     }
 
-                    let payload = Bytes::copy_from_slice(&cursor[..payload_len]);
+                    let Some(payload_slice) = cursor.get(..payload_len) else {
+                        continue;
+                    };
+                    let payload = Bytes::copy_from_slice(payload_slice);
                     let event = Event { event_id, payload };
 
                     // Route event directly to this subscription's channel

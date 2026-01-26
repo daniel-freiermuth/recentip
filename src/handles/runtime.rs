@@ -181,7 +181,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
                     result = client_method_socket.recv_from(&mut buf) => {
                         match result {
                             Ok((len, from)) => {
-                                let data = buf[..len].to_vec();
+                                let Some(received) = buf.get(..len) else {
+                                    continue;
+                                };
+                                let data = received.to_vec();
                                 // Forward to runtime task for processing
                                 let _ = client_method_tx_clone.send(RpcMessage {
                                     service_key: None,
