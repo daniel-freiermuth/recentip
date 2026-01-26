@@ -145,7 +145,7 @@ impl SomeIpBuilder {
     /// ```
     ///
     /// Default: `0.0.0.0:30490`
-    pub fn bind_addr(mut self, addr: SocketAddr) -> Self {
+    pub const fn bind_addr(mut self, addr: SocketAddr) -> Self {
         self.config.bind_addr = addr;
         self
     }
@@ -172,7 +172,7 @@ impl SomeIpBuilder {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn advertised_ip(mut self, ip: IpAddr) -> Self {
+    pub const fn advertised_ip(mut self, ip: IpAddr) -> Self {
         self.config.advertised_ip = Some(ip);
         self
     }
@@ -182,7 +182,7 @@ impl SomeIpBuilder {
     /// The port should match the port part of `bind_addr` to work correctly.
     ///
     /// Default: `239.255.0.1:30490`
-    pub fn sd_multicast(mut self, addr: SocketAddr) -> Self {
+    pub const fn sd_multicast(mut self, addr: SocketAddr) -> Self {
         self.config.sd_multicast = addr;
         self
     }
@@ -258,7 +258,7 @@ impl SomeIpBuilder {
     /// strictly less than `offer_ttl`.
     ///
     /// Default: 1000 ms
-    pub fn cyclic_offer_delay(mut self, delay_ms: u64) -> Self {
+    pub const fn cyclic_offer_delay(mut self, delay_ms: u64) -> Self {
         self.config.cyclic_offer_delay = delay_ms;
         self
     }
@@ -269,7 +269,7 @@ impl SomeIpBuilder {
     /// services that offer both transports.
     ///
     /// Default: `Transport::Udp`
-    pub fn preferred_transport(mut self, transport: Transport) -> Self {
+    pub const fn preferred_transport(mut self, transport: Transport) -> Self {
         self.config.preferred_transport = transport;
         self
     }
@@ -277,7 +277,7 @@ impl SomeIpBuilder {
     /// Enable or disable Magic Cookies for TCP (default: false)
     ///
     /// Magic Cookies allow resynchronization in testing/debugging scenarios.
-    pub fn magic_cookies(mut self, enabled: bool) -> Self {
+    pub const fn magic_cookies(mut self, enabled: bool) -> Self {
         self.config.magic_cookies = enabled;
         self
     }
@@ -299,6 +299,10 @@ impl SomeIpBuilder {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if socket binding fails or configuration is invalid.
     pub async fn start(
         self,
     ) -> Result<SomeIp<tokio::net::UdpSocket, tokio::net::TcpStream, tokio::net::TcpListener>> {
@@ -324,6 +328,10 @@ impl SomeIpBuilder {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if socket binding fails or configuration is invalid.
     pub async fn start_generic<U, T, L>(self) -> Result<SomeIp<U, T, L>>
     where
         U: UdpSocket,
@@ -354,6 +362,10 @@ impl SomeIpBuilder {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if socket binding fails or configuration is invalid.
     pub async fn start_turmoil(
         self,
     ) -> Result<SomeIp<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>>

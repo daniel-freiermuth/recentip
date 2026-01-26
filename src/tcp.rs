@@ -122,6 +122,10 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// When a new connection is established, a reader task is spawned to receive
     /// responses and forward them to the runtime via the `msg_tx` channel.
     /// Uses `subscription_id` 0 for RPC traffic (method calls/responses).
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if connection or send fails.
     pub async fn send(&self, target: SocketAddr, data: &[u8]) -> io::Result<()> {
         // Check if we have a sender for this connection (use subscription_id 0 for RPC)
         let key = (target, 0);
@@ -201,6 +205,10 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     ///
     /// The `subscription_id` allows multiple connections per server (one per subscription),
     /// mirroring UDP's per-subscription socket approach. Use 0 for RPC connections.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if connection establishment fails.
     pub async fn ensure_connected(
         &self,
         target: SocketAddr,
@@ -424,6 +432,10 @@ async fn handle_client_tcp_connection<T: TcpStream>(
 /// - Header is 16 bytes, includes length field at offset 4-8
 /// - Length field = 8 + payload length (includes `client_id` through end)
 /// - Total message size = 8 (first part of header) + length field value
+///
+/// # Errors
+///
+/// Returns an I/O error if reading fails or connection closes with partial data.
 pub async fn read_framed_message<T: TcpStream>(
     stream: &mut T,
     buffer: &mut BytesMut,
@@ -504,6 +516,10 @@ impl<T: TcpStream> TcpServer<T> {
     ///
     /// Returns the server handle and immediately starts accepting connections.
     /// Messages received from clients are forwarded via `msg_tx`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if retrieving the local address fails.
     pub fn spawn<L: TcpListener<Stream = T>>(
         listener: L,
         service_id: u16,

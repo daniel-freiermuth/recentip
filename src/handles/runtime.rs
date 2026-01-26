@@ -281,7 +281,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///     Ok(())
     /// }
     /// ```
-    pub fn find(&self, service_id: u16) -> FindBuilder<'_, U, T, L> {
+    pub const fn find(&self, service_id: u16) -> FindBuilder<'_, U, T, L> {
         FindBuilder::new(self, ServiceId::new(service_id))
     }
 
@@ -408,6 +408,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::RuntimeShutdown`] if the runtime has been dropped.
     pub async fn monitor_sd(&self) -> Result<mpsc::Receiver<SdEvent>> {
         let (tx, rx) = mpsc::channel(100);
         self.inner
@@ -420,7 +424,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
 
     /// Get a reference to the runtime inner for use by builders.
     #[doc(hidden)]
-    pub(crate) fn inner(&self) -> &Arc<RuntimeInner> {
+    pub(crate) const fn inner(&self) -> &Arc<RuntimeInner> {
         &self.inner
     }
 }
@@ -487,7 +491,7 @@ impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a
     /// Set the major and minor version for the service offering.
     ///
     /// This is required for proper SD announcements.
-    pub fn version(mut self, major: u8, minor: u32) -> Self {
+    pub const fn version(mut self, major: u8, minor: u32) -> Self {
         self.major_version = major;
         self.minor_version = minor;
         self
@@ -527,6 +531,12 @@ impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a
     ///
     /// If no transports are configured, falls back to the runtime's default
     /// transport configuration for backward compatibility.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::InvalidServiceId`] if the service ID is reserved (0x0000 or 0xFFFF).
+    /// - [`Error::AlreadyOffered`] if the service is already being offered.
+    /// - [`Error::RuntimeShutdown`] if the runtime has been dropped.
     pub async fn start(mut self) -> Result<ServiceOffering> {
         // Check for invalid service ID (reserved values)
         let Some(service_id) = self.service_id else {

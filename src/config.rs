@@ -257,25 +257,25 @@ impl OfferConfig {
     }
 
     /// Enable TCP transport with the default RPC port (30491).
-    pub fn tcp(mut self) -> Self {
+    pub const fn tcp(mut self) -> Self {
         self.tcp_port = Some(0); // 0 means use default
         self
     }
 
     /// Enable TCP transport with a specific port.
-    pub fn tcp_port(mut self, port: u16) -> Self {
+    pub const fn tcp_port(mut self, port: u16) -> Self {
         self.tcp_port = Some(port);
         self
     }
 
     /// Enable UDP transport with the default RPC port (30491).
-    pub fn udp(mut self) -> Self {
+    pub const fn udp(mut self) -> Self {
         self.udp_port = Some(0); // 0 means use default
         self
     }
 
     /// Enable UDP transport with a specific port.
-    pub fn udp_port(mut self, port: u16) -> Self {
+    pub const fn udp_port(mut self, port: u16) -> Self {
         self.udp_port = Some(port);
         self
     }
@@ -287,17 +287,17 @@ impl OfferConfig {
     }
 
     /// Check if any transport is configured.
-    pub fn has_transport(&self) -> bool {
+    pub const fn has_transport(&self) -> bool {
         self.tcp_port.is_some() || self.udp_port.is_some()
     }
 
     /// Check if TCP is enabled.
-    pub fn has_tcp(&self) -> bool {
+    pub const fn has_tcp(&self) -> bool {
         self.tcp_port.is_some()
     }
 
     /// Check if UDP is enabled.
-    pub fn has_udp(&self) -> bool {
+    pub const fn has_udp(&self) -> bool {
         self.udp_port.is_some()
     }
 }

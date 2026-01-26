@@ -79,12 +79,24 @@ pub trait UdpSocket: Send + Sync + Sized + 'static {
     ) -> impl Future<Output = io::Result<(usize, SocketAddr)>> + Send;
 
     /// Join a multicast group.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the multicast join fails.
     fn join_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()>;
 
     /// Leave a multicast group.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the multicast leave fails.
     fn leave_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()>;
 
     /// Get the local address this socket is bound to.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the address cannot be retrieved.
     fn local_addr(&self) -> io::Result<SocketAddr>;
 }
 
@@ -108,9 +120,17 @@ pub trait TcpStream: Send + Sized + 'static {
     fn write_all(&mut self, buf: &[u8]) -> impl Future<Output = io::Result<()>> + Send;
 
     /// Get the local address.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the address cannot be retrieved.
     fn local_addr(&self) -> io::Result<SocketAddr>;
 
     /// Get the peer address.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the peer address cannot be retrieved.
     fn peer_addr(&self) -> io::Result<SocketAddr>;
 }
 
@@ -128,5 +148,9 @@ pub trait TcpListener: Send + Sync + Sized + 'static {
     fn accept(&self) -> impl Future<Output = io::Result<(Self::Stream, SocketAddr)>> + Send;
 
     /// Get the local address.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the address cannot be retrieved.
     fn local_addr(&self) -> io::Result<SocketAddr>;
 }

@@ -73,7 +73,7 @@ pub struct ServiceKey {
 }
 
 impl ServiceKey {
-    pub(crate) fn new(service_id: ServiceId, instance_id: InstanceId, major_version: u8) -> Self {
+    pub(crate) const fn new(service_id: ServiceId, instance_id: InstanceId, major_version: u8) -> Self {
         Self {
             service_id: service_id.value(),
             instance_id: instance_id.value(),
@@ -84,7 +84,7 @@ impl ServiceKey {
     /// Check if this key matches another key (supports wildcards on both sides)
     /// - `instance_id` 0xFFFF matches any instance
     /// - `major_version` 0xFF matches any version
-    pub(crate) fn matches(self, other: Self) -> bool {
+    pub(crate) const fn matches(self, other: Self) -> bool {
         self.service_id == other.service_id
             && (self.instance_id == 0xFFFF
                 || self.instance_id == other.instance_id
@@ -591,7 +591,7 @@ impl RuntimeState {
     }
 
     /// Allocate a unique subscription ID for client-side subscriptions
-    pub(crate) fn next_subscription_id(&mut self) -> u64 {
+    pub(crate) const fn next_subscription_id(&mut self) -> u64 {
         let id = self.next_subscription_id;
         // The wrapping is a problem in it's own
         self.next_subscription_id = self.next_subscription_id.wrapping_add(1);
@@ -599,7 +599,7 @@ impl RuntimeState {
     }
 
     /// Get next session ID for multicast SD messages
-    pub(crate) fn next_multicast_session_id(&mut self) -> u16 {
+    pub(crate) const fn next_multicast_session_id(&mut self) -> u16 {
         let id = self.multicast_session_id;
         self.multicast_session_id = self.multicast_session_id.wrapping_add(1);
         if self.multicast_session_id == 0 {
@@ -610,7 +610,7 @@ impl RuntimeState {
     }
 
     /// Get next session ID for unicast SD messages
-    pub(crate) fn next_unicast_session_id(&mut self) -> u16 {
+    pub(crate) const fn next_unicast_session_id(&mut self) -> u16 {
         let id = self.unicast_session_id;
         self.unicast_session_id = self.unicast_session_id.wrapping_add(1);
         if self.unicast_session_id == 0 {
@@ -620,7 +620,7 @@ impl RuntimeState {
         id
     }
 
-    pub(crate) fn next_payload_session_id(&mut self) -> u16 {
+    pub(crate) const fn next_payload_session_id(&mut self) -> u16 {
         let id = self.payload_session_id;
         self.payload_session_id = self.payload_session_id.wrapping_add(1);
         if self.payload_session_id == 0 {
@@ -630,7 +630,7 @@ impl RuntimeState {
     }
 
     /// Get the SD flags byte with reboot flag based on current state
-    pub(crate) fn sd_flags(&self, unicast: bool) -> u8 {
+    pub(crate) const fn sd_flags(&self, unicast: bool) -> u8 {
         let mut flags = 0u8;
         if unicast {
             flags |= SdMessage::FLAG_UNICAST;

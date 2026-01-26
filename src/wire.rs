@@ -131,7 +131,7 @@ pub const MAGIC_COOKIE_SERVER_METHOD_ID: u16 = 0x8000;
 /// - Interface Version: 0x01
 /// - Message Type: 0x01 (Request)
 /// - Return Code: 0x00
-pub fn magic_cookie_client() -> [u8; 16] {
+pub const fn magic_cookie_client() -> [u8; 16] {
     [
         0xFF, 0xFF, // Service ID: 0xFFFF
         0x00, 0x00, // Method ID: 0x0000 (client)
@@ -146,7 +146,7 @@ pub fn magic_cookie_client() -> [u8; 16] {
 }
 
 /// Generate a server-side Magic Cookie message (16 bytes).
-pub fn magic_cookie_server() -> [u8; 16] {
+pub const fn magic_cookie_server() -> [u8; 16] {
     [
         0xFF, 0xFF, // Service ID: 0xFFFF
         0x80, 0x00, // Method ID: 0x8000 (server)
@@ -198,24 +198,24 @@ pub struct InterfaceVersion {
 
 impl InterfaceVersion {
     /// Create a new interface version
-    pub fn new(major: u8, minor: u32) -> Self {
+    pub const fn new(major: u8, minor: u32) -> Self {
         Self { major, minor }
     }
 
     /// Check if this version is compatible with another version.
     ///
     /// Compatible means same major version, and our minor >= required minor.
-    pub fn is_compatible_with(&self, required: &Self) -> bool {
+    pub const fn is_compatible_with(&self, required: &Self) -> bool {
         self.major == required.major && self.minor >= required.minor
     }
 
     /// Check if exact match (used for strict mode)
-    pub fn matches_exactly(&self, other: &Self) -> bool {
+    pub const fn matches_exactly(&self, other: &Self) -> bool {
         self.major == other.major && self.minor == other.minor
     }
 
     /// Get the major version byte for wire format
-    pub fn wire_major(&self) -> u8 {
+    pub const fn wire_major(&self) -> u8 {
         self.major
     }
 }
@@ -234,7 +234,11 @@ pub enum VersionError {
 /// Validate protocol version byte from header.
 ///
 /// Returns Ok if the version matches `PROTOCOL_VERSION` (0x01).
-pub fn validate_protocol_version(version_byte: u8) -> Result<(), VersionError> {
+///
+/// # Errors
+///
+/// Returns [`VersionError::ProtocolMismatch`] if the version doesn't match.
+pub const fn validate_protocol_version(version_byte: u8) -> Result<(), VersionError> {
     if version_byte == PROTOCOL_VERSION {
         Ok(())
     } else {
@@ -248,7 +252,11 @@ pub fn validate_protocol_version(version_byte: u8) -> Result<(), VersionError> {
 /// Validate interface version from header against expected.
 ///
 /// Only checks major version match (minor is SD-only).
-pub fn validate_interface_version(
+///
+/// # Errors
+///
+/// Returns [`VersionError::InterfaceMajorMismatch`] if versions don't match.
+pub const fn validate_interface_version(
     header_major: u8,
     expected: &InterfaceVersion,
 ) -> Result<(), VersionError> {
@@ -279,7 +287,7 @@ pub enum MessageType {
 }
 
 impl MessageType {
-    pub fn from_u8(value: u8) -> Option<Self> {
+    pub const fn from_u8(value: u8) -> Option<Self> {
         match value {
             0x00 => Some(Self::Request),
             0x01 => Some(Self::RequestNoReturn),
@@ -296,27 +304,27 @@ impl MessageType {
     }
 
     /// Check if this is a TP-flagged message type
-    pub fn is_tp(&self) -> bool {
+    pub const fn is_tp(&self) -> bool {
         (*self as u8) & 0x20 != 0
     }
 
     /// Check if this is a request type (expects response)
-    pub fn expects_response(&self) -> bool {
+    pub const fn expects_response(&self) -> bool {
         matches!(self, Self::Request | Self::TpRequest)
     }
 
     /// Check if this is a fire-and-forget request
-    pub fn is_fire_and_forget(&self) -> bool {
+    pub const fn is_fire_and_forget(&self) -> bool {
         matches!(self, Self::RequestNoReturn | Self::TpRequestNoReturn)
     }
 
     /// Check if this is a notification
-    pub fn is_notification(&self) -> bool {
+    pub const fn is_notification(&self) -> bool {
         matches!(self, Self::Notification | Self::TpNotification)
     }
 
     /// Check if this is a response type
-    pub fn is_response(&self) -> bool {
+    pub const fn is_response(&self) -> bool {
         matches!(
             self,
             Self::Response | Self::TpResponse | Self::Error | Self::TpError
@@ -324,7 +332,7 @@ impl MessageType {
     }
 
     /// Get the corresponding TP-flagged type
-    pub fn with_tp_flag(&self) -> Option<Self> {
+    pub const fn with_tp_flag(&self) -> Option<Self> {
         match self {
             Self::Request => Some(Self::TpRequest),
             Self::RequestNoReturn => Some(Self::TpRequestNoReturn),
@@ -336,7 +344,7 @@ impl MessageType {
     }
 
     /// Get the base type without TP flag
-    pub fn without_tp_flag(&self) -> Self {
+    pub const fn without_tp_flag(&self) -> Self {
         match self {
             Self::TpRequest => Self::Request,
             Self::TpRequestNoReturn => Self::RequestNoReturn,
@@ -348,7 +356,7 @@ impl MessageType {
     }
 
     /// Get the expected response type for this message type
-    pub fn expected_response_type(&self) -> Option<Self> {
+    pub const fn expected_response_type(&self) -> Option<Self> {
         match self {
             Self::Request => Some(Self::Response),
             Self::TpRequest => Some(Self::TpResponse),
@@ -357,7 +365,7 @@ impl MessageType {
     }
 
     /// Check if this type is valid as a response to the given request type
-    pub fn is_valid_response_to(&self, request_type: Self) -> bool {
+    pub const fn is_valid_response_to(&self, request_type: Self) -> bool {
         match request_type {
             Self::Request => matches!(self, Self::Response | Self::Error),
             Self::TpRequest => {
@@ -447,7 +455,7 @@ impl Header {
     }
 
     /// Get the payload length (excluding the 8 bytes counted in length field)
-    pub fn payload_length(&self) -> usize {
+    pub const fn payload_length(&self) -> usize {
         self.length.saturating_sub(8) as usize
     }
 }
@@ -503,7 +511,7 @@ pub enum L4Protocol {
 }
 
 impl L4Protocol {
-    pub fn from_u8(v: u8) -> Option<Self> {
+    pub const fn from_u8(v: u8) -> Option<Self> {
         match v {
             0x06 => Some(Self::Tcp),
             0x11 => Some(Self::Udp),
@@ -523,7 +531,7 @@ pub enum SdEntryType {
 }
 
 impl SdEntryType {
-    pub fn from_u8(v: u8) -> Option<Self> {
+    pub const fn from_u8(v: u8) -> Option<Self> {
         match v {
             0x00 => Some(Self::FindService),
             0x01 => Some(Self::OfferService),
@@ -591,7 +599,7 @@ impl SdEntry {
     pub const SIZE: usize = 16;
 
     /// Check if this is a stop/nack entry (TTL = 0)
-    pub fn is_stop(&self) -> bool {
+    pub const fn is_stop(&self) -> bool {
         self.ttl == 0
     }
 
@@ -670,7 +678,7 @@ impl SdEntry {
     }
 
     /// Create a `FindService` entry
-    pub fn find_service(
+    pub const fn find_service(
         service_id: u16,
         instance_id: u16,
         major_version: u8,
@@ -694,7 +702,7 @@ impl SdEntry {
     }
 
     /// Create an `OfferService` entry
-    pub fn offer_service(
+    pub const fn offer_service(
         service_id: u16,
         instance_id: u16,
         major_version: u8,
@@ -720,7 +728,7 @@ impl SdEntry {
     }
 
     /// Create a `StopOfferService` entry (`OfferService` with TTL=0)
-    pub fn stop_offer_service(
+    pub const fn stop_offer_service(
         service_id: u16,
         instance_id: u16,
         major_version: u8,
@@ -738,7 +746,7 @@ impl SdEntry {
     }
 
     /// Create a `SubscribeEventgroup` entry
-    pub fn subscribe_eventgroup(
+    pub const fn subscribe_eventgroup(
         service_id: u16,
         instance_id: u16,
         major_version: u8,
@@ -763,7 +771,7 @@ impl SdEntry {
     }
 
     /// Create a `SubscribeEventgroupAck` entry
-    pub fn subscribe_eventgroup_ack(
+    pub const fn subscribe_eventgroup_ack(
         service_id: u16,
         instance_id: u16,
         major_version: u8,
@@ -790,7 +798,7 @@ impl SdEntry {
     /// Create a `SubscribeEventgroupNack` entry (TTL=0 indicates rejection)
     ///
     /// Per `feat_req_someipsd_1137`: Respond with `SubscribeEventgroupNack` for invalid subscribe
-    pub fn subscribe_eventgroup_nack(
+    pub const fn subscribe_eventgroup_nack(
         service_id: u16,
         instance_id: u16,
         major_version: u8,
@@ -925,7 +933,7 @@ impl SdOption {
     }
 
     /// Size in bytes when serialized
-    pub fn size(&self) -> usize {
+    pub const fn size(&self) -> usize {
         match self {
             Self::Ipv4Endpoint { .. } | Self::Ipv4Multicast { .. } => 12, // 2 + 1 + 9
             Self::Unknown { data, .. } => 3 + data.len(),
@@ -948,7 +956,7 @@ impl SdMessage {
     pub const FLAG_UNICAST: u8 = 0x40;
 
     /// Create a new SD message
-    pub fn new(flags: u8) -> Self {
+    pub const fn new(flags: u8) -> Self {
         Self {
             flags,
             entries: Vec::new(),
@@ -957,7 +965,7 @@ impl SdMessage {
     }
 
     /// Create an SD message for initial announcement (reboot + unicast flags)
-    pub fn initial() -> Self {
+    pub const fn initial() -> Self {
         Self::new(Self::FLAG_REBOOT | Self::FLAG_UNICAST)
     }
 

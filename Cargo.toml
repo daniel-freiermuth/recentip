@@ -82,11 +82,11 @@ type_complexity = "allow"
 too_many_lines = "allow"
 
 # Disable doc-related lints for now
-missing_errors_doc = "allow"
-missing_panics_doc = "allow"
-missing_const_for_fn = "allow"
-cargo_common_metadata = "allow"
-multiple_crate_versions = "allow"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+missing_const_for_fn = "deny"
+cargo_common_metadata = "warn"
+multiple_crate_versions = "warn"
 
 # Deny critical issues
 unwrap_used = "deny"

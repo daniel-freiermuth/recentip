@@ -82,7 +82,7 @@ impl OfferedService {
     /// # Parameters
     /// - `find_criteria`: Original (`instance_id`, `major_version`) used in the find request.
     ///   Used for `StopFind` on drop. Pass `None` for static deployments.
-    pub(crate) fn new(
+    pub(crate) const fn new(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,
@@ -113,7 +113,7 @@ impl OfferedService {
     /// **This API is unstable and intended for testing/diagnostics only.**
     /// It may be removed or changed in future versions without notice.
     #[doc(hidden)]
-    pub fn transport(&self) -> crate::config::Transport {
+    pub const fn transport(&self) -> crate::config::Transport {
         self.transport
     }
 
@@ -121,6 +121,10 @@ impl OfferedService {
     ///
     /// The payload is copied internally. For large payloads where zero-copy
     /// matters, use `bytes::Bytes` directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the runtime is shut down or the call fails.
     pub async fn call(&self, method: MethodId, payload: impl AsRef<[u8]>) -> Result<Response> {
         let payload_bytes = bytes::Bytes::copy_from_slice(payload.as_ref());
         let (response_tx, response_rx) = oneshot::channel();
@@ -142,6 +146,10 @@ impl OfferedService {
     }
 
     /// Fire and forget - send a request without expecting a response.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::RuntimeShutdown`] if the runtime has been dropped.
     pub async fn fire_and_forget(&self, method: MethodId, payload: &[u8]) -> Result<()> {
         let payload_bytes = bytes::Bytes::copy_from_slice(payload);
 
@@ -192,17 +200,17 @@ impl OfferedService {
     }
 
     /// Get the service ID
-    pub fn service_id(&self) -> ServiceId {
+    pub const fn service_id(&self) -> ServiceId {
         self.service_id
     }
 
     /// Get the instance ID
-    pub fn instance_id(&self) -> InstanceId {
+    pub const fn instance_id(&self) -> InstanceId {
         self.instance_id
     }
 
     /// Get the endpoint address
-    pub fn endpoint(&self) -> std::net::SocketAddr {
+    pub const fn endpoint(&self) -> std::net::SocketAddr {
         self.endpoint
     }
 }

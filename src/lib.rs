@@ -466,7 +466,7 @@ pub struct ServiceId(u16);
 
 impl ServiceId {
     /// Create a new `ServiceId`. Returns None for reserved values.
-    pub fn new(id: u16) -> Option<Self> {
+    pub const fn new(id: u16) -> Option<Self> {
         match id {
             0x0000 | 0xFFFF => None,
             id => Some(Self(id)),
@@ -474,7 +474,7 @@ impl ServiceId {
     }
 
     /// Get the raw value
-    pub fn value(&self) -> u16 {
+    pub const fn value(&self) -> u16 {
         self.0
     }
 }
@@ -493,7 +493,7 @@ impl InstanceId {
     pub const ANY: Self = Self::Any;
 
     /// Create a specific instance ID. Returns None for reserved values.
-    pub fn new(id: u16) -> Option<Self> {
+    pub const fn new(id: u16) -> Option<Self> {
         match id {
             0x0000 => None,
             0xFFFF => Some(Self::Any),
@@ -502,7 +502,7 @@ impl InstanceId {
     }
 
     /// Get the raw value (0xFFFF for Any)
-    pub fn value(&self) -> u16 {
+    pub const fn value(&self) -> u16 {
         match self {
             Self::Any => 0xFFFF,
             Self::Id(id) => *id,
@@ -510,7 +510,7 @@ impl InstanceId {
     }
 
     /// Check if this is a wildcard
-    pub fn is_any(&self) -> bool {
+    pub const fn is_any(&self) -> bool {
         matches!(self, Self::Any)
     }
 }
@@ -521,7 +521,7 @@ pub struct MethodId(u16);
 
 impl MethodId {
     /// Create a new `MethodId`. Valid range: 0x0000-0x7FFF (high bit reserved for events)
-    pub fn new(id: u16) -> Option<Self> {
+    pub const fn new(id: u16) -> Option<Self> {
         if id >= 0x8000 {
             None // High bit set = event, not method
         } else {
@@ -529,7 +529,7 @@ impl MethodId {
         }
     }
 
-    pub fn value(&self) -> u16 {
+    pub const fn value(&self) -> u16 {
         self.0
     }
 }
@@ -542,7 +542,7 @@ pub struct EventId(u16);
 
 impl EventId {
     /// Create a new `EventId`. Valid range: 0x8000-0xFFFE
-    pub fn new(id: u16) -> Option<Self> {
+    pub const fn new(id: u16) -> Option<Self> {
         if id < 0x8000 || id == 0xFFFF {
             None
         } else {
@@ -550,7 +550,7 @@ impl EventId {
         }
     }
 
-    pub fn value(&self) -> u16 {
+    pub const fn value(&self) -> u16 {
         self.0
     }
 }
@@ -563,14 +563,14 @@ pub struct EventgroupId(u16);
 
 impl EventgroupId {
     /// Create a new `EventgroupId`. Valid range: 0x0001-0xFFFE
-    pub fn new(id: u16) -> Option<Self> {
+    pub const fn new(id: u16) -> Option<Self> {
         match id {
             0x0000 | 0xFFFF => None,
             id => Some(Self(id)),
         }
     }
 
-    pub fn value(&self) -> u16 {
+    pub const fn value(&self) -> u16 {
         self.0
     }
 }
@@ -586,7 +586,7 @@ pub enum MajorVersion {
 
 impl MajorVersion {
     /// Create a specific major version
-    pub fn new(version: u8) -> Self {
+    pub const fn new(version: u8) -> Self {
         if version == 0xFF {
             Self::Any
         } else {
@@ -595,7 +595,7 @@ impl MajorVersion {
     }
 
     /// Get the raw value (0xFF for Any)
-    pub fn value(&self) -> u8 {
+    pub const fn value(&self) -> u8 {
         match self {
             Self::Any => 0xFF,
             Self::Exact(v) => *v,
@@ -603,7 +603,7 @@ impl MajorVersion {
     }
 
     /// Check if this is a wildcard
-    pub fn is_any(&self) -> bool {
+    pub const fn is_any(&self) -> bool {
         matches!(self, Self::Any)
     }
 }
@@ -625,11 +625,11 @@ impl From<u8> for MajorVersion {
 pub struct MinorVersion(u32);
 
 impl MinorVersion {
-    pub fn new(version: u32) -> Self {
+    pub const fn new(version: u32) -> Self {
         Self(version)
     }
 
-    pub fn value(&self) -> u32 {
+    pub const fn value(&self) -> u32 {
         self.0
     }
 }

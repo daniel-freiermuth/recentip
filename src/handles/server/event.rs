@@ -42,7 +42,7 @@ pub struct EventBuilder {
 }
 
 impl EventBuilder {
-    pub(crate) fn new(
+    pub(crate) const fn new(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,
@@ -145,6 +145,10 @@ impl EventHandle {
     /// The notification is sent to subscribers of ALL eventgroups this event
     /// belongs to. Each subscriber receives the notification at most once,
     /// even if subscribed to multiple eventgroups containing this event.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::RuntimeShutdown`] if the runtime has been dropped.
     pub async fn notify(&self, payload: &[u8]) -> Result<()> {
         self.inner
             .cmd_tx
@@ -166,7 +170,7 @@ impl EventHandle {
     }
 
     /// Get the event ID.
-    pub fn id(&self) -> EventId {
+    pub const fn id(&self) -> EventId {
         self.event_id
     }
 

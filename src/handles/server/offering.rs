@@ -25,7 +25,7 @@ pub struct ServiceOffering {
 }
 
 impl ServiceOffering {
-    pub(crate) fn new(
+    pub(crate) const fn new(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,
@@ -174,12 +174,12 @@ impl ServiceOffering {
     }
 
     /// Get the service ID
-    pub fn service_id(&self) -> ServiceId {
+    pub const fn service_id(&self) -> ServiceId {
         self.service_id
     }
 
     /// Get the instance ID
-    pub fn instance_id(&self) -> InstanceId {
+    pub const fn instance_id(&self) -> InstanceId {
         self.instance_id
     }
 }

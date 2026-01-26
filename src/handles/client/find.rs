@@ -72,7 +72,7 @@ where
     /// Defaults:
     /// - Instance: `Any`
     /// - Major version: `Any`
-    pub(crate) fn new(runtime: &'a crate::SomeIp<U, T, L>, service_id: Option<ServiceId>) -> Self {
+    pub(crate) const fn new(runtime: &'a crate::SomeIp<U, T, L>, service_id: Option<ServiceId>) -> Self {
         Self {
             runtime,
             service_id,

@@ -87,6 +87,11 @@ impl SubscriptionBuilder {
     /// Fails if at least one subscription could not be created.
     ///
     /// You can also just `.await` the builder directly.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::SubscriptionRejected`] if the server sends a NACK.
+    /// - [`Error::RuntimeShutdown`] if the runtime has been dropped.
     pub async fn subscribe(self) -> Result<Subscription> {
         let (events_tx, events_rx) = mpsc::channel(64);
         let (response_tx, response_rx) = oneshot::channel();
@@ -109,7 +114,8 @@ impl SubscriptionBuilder {
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
 
-        // TODO: do we really send a runtime shutdown when sub were nacked?
+        // First `?` handles channel dropped (RuntimeShutdown).
+        // Second `?` handles NACK (SubscriptionRejected) or other errors from runtime.
         let subscription_id = response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
 
         Ok(Subscription::new(
@@ -154,7 +160,7 @@ pub struct Subscription {
 
 impl Subscription {
     /// Create a new subscription (internal use only)
-    pub(crate) fn new(
+    pub(crate) const fn new(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,
