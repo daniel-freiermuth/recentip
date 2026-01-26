@@ -28,7 +28,7 @@ tokio = { version = "1", features = ["net", "sync", "time", "rt", "macros", "io-
 bytes = "1"
 futures = "0.3"
 tracing = "0.1"
-socket2 = { version = "0.5", features = ["all"] }
+socket2 = { version = "0.6", features = ["all"] }
 turmoil = { version = "0.7", optional = true }
 
 [dev-dependencies]
