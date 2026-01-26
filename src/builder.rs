@@ -1,6 +1,84 @@
-//! Builder for configuring and starting SOME/IP runtimes
+//! Builder for configuring and starting SOME/IP runtimes.
+//!
+//! ## Quick Start
+//!
+//! For most applications, the defaults work out of the box:
+//!
+//! ```no_run
+//! # async fn example() -> recentip::Result<()> {
+//! let runtime = recentip::configure().start().await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Builder Pattern
+//!
+//! For custom configurations, use the builder:
+//!
+//! ```no_run
+//! use recentip::prelude::*;
+//! use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
+//!
+//! # async fn example() -> recentip::Result<()> {
+//! let someip = recentip::configure()
+//!     .bind_addr(SocketAddr::V4(SocketAddrV4::new(
+//!         Ipv4Addr::UNSPECIFIED,
+//!         30490
+//!     )))
+//!     .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
+//!     .preferred_transport(Transport::Tcp)  // Prefer TCP when service offers both
+//!     .offer_ttl(1800)  // 30 minutes
+//!     .cyclic_offer_delay(2000)  // 2 seconds
+//!     .magic_cookies(true)  // Enable for debugging
+//!     .start().await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## IP Address Configuration
+//!
+//! Understanding the different address settings is important for correct operation:
+//!
+//! ### `bind_addr` - Local Socket Binding
+//!
+//! The address to bind local sockets to. Default: `0.0.0.0:30490`.
+//!
+//! - **IP part**: Usually `0.0.0.0` (listen on all interfaces) or a specific interface IP
+//! - **Port part**: The SD port (30490 by default)
+//!
+//! This controls where sockets listen for incoming packets. Using `0.0.0.0` allows
+//! receiving on any interface.
+//!
+//! Note: Multicast loopback only seems to work when binding to `0.0.0.0`.
+//!
+//! ### `advertised_ip` - Endpoint Option Address
+//!
+//! The routable IP address for endpoint options in SD messages. Default: `None`.
+//!
+//! **Required for both offering and subscribing.** This IP is embedded in endpoint
+//! options of `OfferService` and `SubscribeEventgroup` messages, telling remote
+//! peers where to send traffic.
+//!
+//! - Must be a valid, routable IP address (not `0.0.0.0`)
+//! - Should be reachable by remote peers
+//!
+//! ### Why Both?
+//!
+//! - `bind_addr: 0.0.0.0` lets you listen on all interfaces
+//! - `advertised_ip` tells remote peers your specific routable address
+//!
+//! You cannot use `0.0.0.0` in endpoint options because remote peers wouldn't know
+//! where to send traffic. The SOME/IP-SD specification requires valid addresses.
+//!
+//! ### Fallback Behavior
+//!
+//! If `advertised_ip` is not set, the runtime attempts to use:
+//! 1. The IP from `bind_addr` (if not `0.0.0.0`)
+//! 2. The IP of the client method socket (if not `0.0.0.0`)
+//!
+//! If no valid IP is available, subscribe operations will fail with a configuration error
 
-use crate::config::{RuntimeConfig, Transport};
+use crate::config::{RuntimeConfig, Transport, clamp_ttl_to_24bit};
 use crate::error::Result;
 use crate::handles::SomeIp;
 use crate::net::{TcpListener, TcpStream, UdpSocket};
@@ -111,9 +189,13 @@ impl SomeIpBuilder {
 
     /// Set the TTL for `OfferService` entries (in seconds)
     ///
+    /// Values exceeding the 24-bit maximum (0xFFFFFF = 16,777,215) will be
+    /// clamped to `SD_TTL_INFINITE` to prevent silent truncation during
+    /// serialization.
+    ///
     /// Default: 3600 seconds
     pub fn offer_ttl(mut self, ttl: u32) -> Self {
-        self.config.offer_ttl = ttl;
+        self.config.offer_ttl = clamp_ttl_to_24bit(ttl, "offer_ttl");
         self
     }
 
@@ -122,19 +204,53 @@ impl SomeIpBuilder {
     /// So far, this option is pretty irrelevant as clients don't, but the
     /// behavior might change in the future.
     ///
+    /// Values exceeding the 24-bit maximum (0xFFFFFF = 16,777,215) will be
+    /// clamped to `SD_TTL_INFINITE` to prevent silent truncation during
+    /// serialization.
+    ///
     /// Default: 3600 seconds
     pub fn find_ttl(mut self, ttl: u32) -> Self {
-        self.config.find_ttl = ttl;
+        self.config.find_ttl = clamp_ttl_to_24bit(ttl, "find_ttl");
         self
     }
 
     /// Set the minimal TTL for `SubscribeEventgroup` entries (in seconds)
     ///
-    /// See [config module documentation](crate::config) for details on subscription TTL semantics.
+    /// This is a peculiar option. Intuitively, it sounds reasonable to set
+    /// this to the desired subscription duration. However, it turns out that
+    /// this duration is hardly known in reality. Typical values range thus
+    /// rather low (slightly higher than the other side's cyclic offer delay)
+    /// to very high (carrying the notion of a "long-lived" subscription).
+    ///
+    /// The key insight here is that the value does not really matter as
+    /// subscriptions need to be renewed upon every incomming offer anyway.
+    /// Thus it is important for uninterrupted subscriptions that this value is
+    /// set striclty higher than the remote side's cyclic offer delay. A value
+    /// that is unfortunately unknown to the client. `RecentIP` thus subscribes
+    /// with `TTL=max(configured_min_sub_ttl`, `remote_offer_ttl`) and hopes that
+    /// the other implementations do the same.
+    ///
+    /// So the subscription TTL rather carries beliefs about the
+    /// • expected network latency fluctuations
+    /// • expected offer -> resubscribe latency fluctuations
+    /// • expected packet loss (which again depends on the server's cyclic
+    ///   offer delay)
+    /// Then the subscription TTL offer a means to auto-cleanup stale
+    /// subscriptions.
+    ///
+    /// **Special Value**: Setting this to `SD_TTL_INFINITE` (0xFFFFFF) means
+    /// that the subscription should never expire. The protocol then also skips
+    /// offer renewals and relies on unsubscribe message to clean up
+    /// subscriptions.
+    ///
+    /// **In the end**, this setting is a question of detecting stale
+    /// subscriptions and thus carries beliefs about the network and SOME/IP
+    /// participant reliability. For events delivered via TCP, there is no
+    /// point in setting a finite subscription TTL.
     ///
     /// Default: 3600 seconds
     pub fn subscribe_ttl(mut self, ttl: u32) -> Self {
-        self.config.subscribe_ttl = ttl;
+        self.config.subscribe_ttl = clamp_ttl_to_24bit(ttl, "subscribe_ttl");
         self
     }
 

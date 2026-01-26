@@ -241,29 +241,6 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
         })
     }
 
-    /// Create a new runtime with a specific socket type.
-    ///
-    /// This is for backward compatibility and testing with turmoil.
-    /// New code should use [`configure()`](crate::configure) instead.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use recentip::prelude::*;
-    ///
-    /// # async fn example() -> Result<()> {
-    /// let config = RuntimeConfig::builder()
-    ///     .advertised_ip("192.168.1.100".parse().unwrap())
-    ///     .build();
-    /// let runtime = recentip::configure().start().await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[deprecated(since = "0.1.0", note = "Use `configure()` instead")]
-    pub async fn with_socket_type(config: RuntimeConfig) -> Result<Self> {
-        Self::new(config).await
-    }
-
     /// Find a remote SOME/IP service.
     ///
     /// Returns a [`FindBuilder`] to configure the find criteria, then `.await`

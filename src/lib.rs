@@ -233,17 +233,20 @@
 //!
 //! ## Configure Transport (UDP vs TCP)
 //!
-//! ```
-//! use recentip::{RuntimeConfig, Transport};
+//! ```no_run
+//! use recentip::prelude::*;
 //!
+//! # async fn example() -> Result<()> {
 //! // Default: UDP
-//! let config = RuntimeConfig::default();
+//! let someip = recentip::configure().start().await?;
 //!
 //! // Use TCP for RPC
-//! let config = RuntimeConfig::builder()
-//!     .transport(Transport::Tcp)
+//! let someip = recentip::configure()
+//!     .preferred_transport(Transport::Tcp)
 //!     .magic_cookies(true)  // Enable Magic Cookies for debugging
-//!     .build();
+//!     .start().await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Subscribe to Events
