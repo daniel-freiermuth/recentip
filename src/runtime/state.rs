@@ -720,6 +720,7 @@ impl RuntimeState {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use tokio::sync::mpsc;

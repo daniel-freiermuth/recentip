@@ -130,6 +130,12 @@ pub enum Error {
     ///
     /// This is recoverable - you can retry the discovery later.
     NotAvailable,
+
+    /// Invalid service ID (0x0000 or 0xFFFF are reserved).
+    ///
+    /// Service IDs 0x0000 and 0xFFFF are reserved by the SOME/IP specification
+    /// and cannot be used. Use a valid service ID in range 0x0001-0xFFFE.
+    InvalidServiceId,
 }
 
 impl fmt::Display for Error {
@@ -145,6 +151,9 @@ impl fmt::Display for Error {
             Self::AlreadyOffered => write!(f, "Service/instance is already offered or bound"),
             Self::SubscriptionRejected => write!(f, "Subscription rejected by server"),
             Self::NotAvailable => write!(f, "Service could not be found"),
+            Self::InvalidServiceId => {
+                write!(f, "Invalid service ID (0x0000 and 0xFFFF are reserved)")
+            }
         }
     }
 }

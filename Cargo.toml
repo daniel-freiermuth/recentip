@@ -89,8 +89,8 @@ cargo_common_metadata = "allow"
 multiple_crate_versions = "allow"
 
 # Deny critical issues
-# unwrap_used = "deny"
-# expect_used = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
 panic = "deny"
 todo = "deny"
 # indexing_slicing = "warn"

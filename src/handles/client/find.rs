@@ -56,7 +56,7 @@ where
     L: TcpListener<Stream = T>,
 {
     runtime: &'a crate::SomeIp<U, T, L>,
-    service_id: ServiceId,
+    service_id: Option<ServiceId>,
     instance_id: InstanceId,
     major_version: MajorVersion,
 }
@@ -72,7 +72,7 @@ where
     /// Defaults:
     /// - Instance: `Any`
     /// - Major version: `Any`
-    pub(crate) fn new(runtime: &'a crate::SomeIp<U, T, L>, service_id: ServiceId) -> Self {
+    pub(crate) fn new(runtime: &'a crate::SomeIp<U, T, L>, service_id: Option<ServiceId>) -> Self {
         Self {
             runtime,
             service_id,
@@ -104,9 +104,15 @@ where
     ///
     /// # Errors
     ///
+    /// - [`Error::InvalidServiceId`] - Service ID 0x0000 or 0xFFFF was used
     /// - [`Error::NotAvailable`] - No matching service found (all find repetitions exhausted)
     /// - [`Error::RuntimeShutdown`] - `SomeIp` was shut down during discovery
     pub async fn await_discovery(self) -> Result<OfferedService> {
+        // Check for invalid service ID (reserved values)
+        let Some(service_id) = self.service_id else {
+            return Err(Error::InvalidServiceId);
+        };
+
         // TODO maybe oneshot channel would be better?
         let (notify_tx, mut notify_rx) = mpsc::channel(1);
 
@@ -115,7 +121,7 @@ where
             .inner()
             .cmd_tx
             .send(Command::Find {
-                service_id: self.service_id,
+                service_id,
                 instance_id: self.instance_id,
                 major_version: self.major_version,
                 notify: notify_tx,
@@ -137,7 +143,7 @@ where
 
         Ok(OfferedService::new(
             Arc::clone(self.runtime.inner()),
-            self.service_id,
+            service_id,
             InstanceId::Id(discovered_instance_id),
             major_version,
             endpoint,

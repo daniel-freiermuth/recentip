@@ -110,15 +110,23 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
 
         match U::bind(rpc_addr).await {
             Ok(rpc_socket) => {
-                let (endpoint, rpc_send_tx) = spawn_rpc_socket_task(
+                match spawn_rpc_socket_task(
                     rpc_socket,
                     service_id.value(),
                     instance_id.value(),
                     major_version,
                     rpc_tx.clone(),
-                );
-                udp_endpoint = Some(endpoint);
-                udp_transport = Some(RpcTransportSender::Udp(rpc_send_tx));
+                ) {
+                    Ok((endpoint, rpc_send_tx)) => {
+                        udp_endpoint = Some(endpoint);
+                        udp_transport = Some(RpcTransportSender::Udp(rpc_send_tx));
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to get local address for UDP RPC: {}", e);
+                        let _ = response.send(Err(Error::Io(e)));
+                        return;
+                    }
+                }
             }
             Err(e) => {
                 tracing::error!("Failed to bind UDP RPC on {}: {}", rpc_addr, e);
@@ -665,10 +673,8 @@ pub fn spawn_rpc_socket_task<U: UdpSocket>(
     instance_id: u16,
     major_version: u8,
     rpc_tx_to_runtime: mpsc::Sender<RpcMessage>,
-) -> (SocketAddr, mpsc::Sender<RpcSendMessage>) {
-    let local_endpoint = rpc_socket
-        .local_addr()
-        .expect("Failed to get local address");
+) -> std::io::Result<(SocketAddr, mpsc::Sender<RpcSendMessage>)> {
+    let local_endpoint = rpc_socket.local_addr()?;
     let (send_tx, mut send_rx) = mpsc::channel::<RpcSendMessage>(100);
 
     let service_key = ServiceKey {
@@ -719,5 +725,5 @@ pub fn spawn_rpc_socket_task<U: UdpSocket>(
         }
     });
 
-    (local_endpoint, send_tx)
+    Ok((local_endpoint, send_tx))
 }

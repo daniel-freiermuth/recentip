@@ -394,6 +394,9 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
         return;
     };
 
+    // Extract sd_endpoint early - we'll need it later after mutable borrows of state
+    let sd_endpoint = discovered.sd_endpoint;
+
     let prefer_tcp = state.config.preferred_transport == Transport::Tcp;
     let Some((_method_endpoint, transport)) = discovered.method_endpoint(prefer_tcp) else {
         tracing::debug!(
@@ -548,9 +551,6 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
                 );
 
                 // Store subscription - NOT a dedicated socket since we're sharing
-                let discovered = state.discovered.get(&key).unwrap();
-                let sd_endpoint = discovered.sd_endpoint;
-
                 let subs = state.subscriptions.entry(key).or_default();
                 for &eventgroup_id in &eventgroup_ids {
                     subs.push(ClientSubscription {
@@ -642,9 +642,6 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
                     );
 
                     // Store subscription with dedicated socket flag
-                    let discovered = state.discovered.get(&key).unwrap();
-                    let sd_endpoint = discovered.sd_endpoint;
-
                     // Track all eventgroups with a shared events channel
                     let subs = state.subscriptions.entry(key).or_default();
                     for &eventgroup_id in &eventgroup_ids {
@@ -733,9 +730,6 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
             0,
         )
     };
-
-    let discovered = state.discovered.get(&key).unwrap();
-    let sd_endpoint = discovered.sd_endpoint;
 
     // Track all eventgroups with a shared events channel (cloned sender)
     let subs = state.subscriptions.entry(key).or_default();

@@ -6,6 +6,9 @@
 //! Automatically runs `scripts/extract_coverage.py` to extract test coverage
 //! annotations before generating the documentation.
 
+// Build scripts run at compile time, so panicking primitives are acceptable here.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;

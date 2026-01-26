@@ -279,8 +279,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     /// }
     /// ```
     pub fn find(&self, service_id: u16) -> FindBuilder<'_, U, T, L> {
-        let service_id = ServiceId::new(service_id).expect("Invalid service ID");
-        FindBuilder::new(self, service_id)
+        FindBuilder::new(self, ServiceId::new(service_id))
     }
 
     /// Offer a service with configurable transport endpoints.
@@ -322,8 +321,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     /// }
     /// ```
     pub fn offer(&self, service_id: u16, instance: InstanceId) -> OfferBuilder<'_, U, T, L> {
-        let service_id = ServiceId::new(service_id).expect("Invalid service ID");
-        OfferBuilder::new(self, service_id, instance)
+        OfferBuilder::new(self, ServiceId::new(service_id), instance)
     }
 
     /// Gracefully shutdown the runtime.
@@ -460,7 +458,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
 #[must_use]
 pub struct OfferBuilder<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> {
     runtime: &'a SomeIp<U, T, L>,
-    service_id: ServiceId,
+    service_id: Option<ServiceId>,
     instance: InstanceId,
     major_version: u8,
     minor_version: u32,
@@ -470,7 +468,7 @@ pub struct OfferBuilder<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = 
 impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a, U, T, L> {
     pub(crate) fn new(
         runtime: &'a SomeIp<U, T, L>,
-        service_id: ServiceId,
+        service_id: Option<ServiceId>,
         instance: InstanceId,
     ) -> Self {
         Self {
@@ -527,6 +525,11 @@ impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a
     /// If no transports are configured, falls back to the runtime's default
     /// transport configuration for backward compatibility.
     pub async fn start(mut self) -> Result<ServiceOffering> {
+        // Check for invalid service ID (reserved values)
+        let Some(service_id) = self.service_id else {
+            return Err(Error::InvalidServiceId);
+        };
+
         // Fallback to runtime config if no transport specified
         if !self.config.has_transport() {
             match self.runtime.inner.config.preferred_transport {
@@ -541,7 +544,7 @@ impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a
             .inner
             .cmd_tx
             .send(Command::Offer {
-                service_id: self.service_id,
+                service_id,
                 instance_id: self.instance,
                 major_version: self.major_version,
                 minor_version: self.minor_version,
@@ -555,7 +558,7 @@ impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a
 
         Ok(ServiceOffering::new(
             Arc::clone(&self.runtime.inner),
-            self.service_id,
+            service_id,
             self.instance,
             self.major_version,
             requests_rx,
