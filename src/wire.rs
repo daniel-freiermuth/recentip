@@ -462,13 +462,11 @@ impl Header {
 
 /// A complete SOME/IP message (header + payload)
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Used for future TCP framing
 pub struct Message {
     pub header: Header,
     pub payload: Bytes,
 }
 
-#[allow(dead_code)] // Used for future TCP framing
 impl Message {
     /// Parse a message from bytes
     pub fn parse(buf: &mut impl Buf) -> Option<Self> {
@@ -1098,7 +1096,6 @@ impl SdMessage {
     /// Get the TCP endpoint from options for an entry.
     ///
     /// Searches both option runs (first and second) as per SOME/IP-SD specification.
-    #[allow(dead_code)] // Will be used for TCP transport
     pub fn get_tcp_endpoint(&self, entry: &SdEntry) -> Option<SocketAddr> {
         self.get_endpoint_with_protocol(entry, L4Protocol::Tcp)
     }

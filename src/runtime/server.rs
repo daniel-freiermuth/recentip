@@ -495,7 +495,6 @@ pub fn handle_incoming_request(
             if let Some(rpc_transport) = rpc_transport {
                 let context = PendingServerResponse {
                     service_id: header.service_id,
-                    instance_id: service_key.instance_id,
                     method_id: header.method_id,
                     client_id: header.client_id,
                     session_id: header.session_id,

@@ -17,8 +17,6 @@
 //! NOTE: SOME/IP-TP is not yet implemented in the runtime. Integration tests
 //! are marked as ignored until the feature is available.
 
-#![allow(dead_code)]
-
 use std::time::Duration;
 
 use recentip::handle::ServiceEvent;
@@ -87,16 +85,6 @@ impl TpHeader {
         raw.to_be_bytes()
     }
 }
-
-// ============================================================================
-// TP Constants
-// ============================================================================
-
-/// Maximum segment payload for UDP (87 x 16 = 1392 bytes)
-pub const MAX_SEGMENT_SIZE: usize = 1392;
-
-/// TP-Flag bit position in Message Type
-pub const TP_FLAG_BIT: u8 = 0x20;
 
 // ============================================================================
 // Test Service Definition

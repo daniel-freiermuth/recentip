@@ -231,12 +231,8 @@ struct Requirement {
     id: String,
     reqtype: String,
     source_file: String,
-    #[allow(dead_code)]
-    line_number: u32,
     text: String,
     section: String,
-    #[allow(dead_code)]
-    status: String,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]

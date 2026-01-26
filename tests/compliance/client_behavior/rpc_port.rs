@@ -13,8 +13,10 @@
 //! - feat_req_someipsd_758: UDP endpoint used for source port of events
 //! - feat_req_someipsd_767: TCP connection before subscribe
 
+use crate::wire_format::helpers::build_response;
+
 use super::helpers::{
-    build_response, build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers,
+    build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers,
     parse_header, parse_sd_message, TEST_SERVICE_ID,
 };
 use recentip::prelude::*;

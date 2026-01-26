@@ -19,10 +19,8 @@
 //! - feat_req_someip_702: Multiple messages per segment supported
 //! - feat_req_someipsd_872: Reboot detection triggers TCP reset
 
-use bytes::Bytes;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use recentip::wire::Header;
 use recentip::Transport;
 use std::time::Duration;
 
@@ -41,56 +39,6 @@ const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/// Helper to parse a SOME/IP header from raw bytes
-#[allow(dead_code)]
-fn parse_header(data: &[u8]) -> Option<Header> {
-    if data.len() < Header::SIZE {
-        return None;
-    }
-    Header::parse(&mut Bytes::copy_from_slice(data))
-}
-
-/// Parse multiple SOME/IP messages from a TCP byte stream
-#[allow(dead_code)]
-fn parse_tcp_stream(data: &[u8]) -> Vec<Header> {
-    let mut headers = Vec::new();
-    let mut offset = 0;
-
-    while offset + 16 <= data.len() {
-        if let Some(header) = parse_header(&data[offset..]) {
-            let msg_len = 8 + header.length as usize; // First 8 bytes + length field
-            if offset + msg_len <= data.len() {
-                headers.push(header);
-                offset += msg_len;
-            } else {
-                break; // Incomplete message
-            }
-        } else {
-            break;
-        }
-    }
-
-    headers
-}
-
-/// Check if a byte sequence looks like a Magic Cookie
-#[allow(dead_code)]
-fn is_magic_cookie(data: &[u8]) -> bool {
-    // Magic Cookie: Service ID 0xFFFF, Method ID 0x0000 or specific pattern
-    if data.len() < 16 {
-        return false;
-    }
-    // Check for Magic Cookie pattern per spec
-    data[0] == 0xFF && data[1] == 0xFF && data[2] == 0x00 && data[3] == 0x00
-}
-
-// ============================================================================
-// Helper configuration for TCP tests
-// ============================================================================
-
-/// Create a RuntimeConfig for TCP transport
-// TCP config is now created inline with recentip::configure().preferred_transport(Transport::Tcp)
 
 // ============================================================================
 // TCP Connection Lifecycle Tests

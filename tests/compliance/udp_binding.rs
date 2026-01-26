@@ -48,7 +48,6 @@ fn parse_header(data: &[u8]) -> Option<Header> {
 }
 
 /// Parse multiple SOME/IP messages from a UDP datagram
-#[allow(dead_code)]
 fn parse_udp_datagram(data: &[u8]) -> Vec<Header> {
     let mut headers = Vec::new();
     let mut offset = 0;
@@ -71,7 +70,6 @@ fn parse_udp_datagram(data: &[u8]) -> Vec<Header> {
 }
 
 /// Check if an address is multicast
-#[allow(dead_code)]
 fn is_multicast(addr: &SocketAddr) -> bool {
     match addr {
         SocketAddr::V4(v4) => v4.ip().is_multicast(),

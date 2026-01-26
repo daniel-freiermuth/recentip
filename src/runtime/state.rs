@@ -308,7 +308,6 @@ pub struct OfferedService {
 ///
 /// Note: `major_version` is part of `DiscoveredServiceKey`, not stored here.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Fields used for version matching in future
 pub struct DiscoveredService {
     /// UDP endpoint for sending SOME/IP RPC messages (if using UDP transport)
     pub(crate) udp_endpoint: Option<SocketAddr>,
@@ -316,6 +315,7 @@ pub struct DiscoveredService {
     pub(crate) tcp_endpoint: Option<SocketAddr>,
     /// SD endpoint for sending SD messages (`SubscribeEventgroup`, etc.)
     pub(crate) sd_endpoint: SocketAddr,
+    #[allow(dead_code)] // Fields used for version matching in future
     pub(crate) minor_version: u32,
     pub(crate) ttl_expires: Instant,
 }
@@ -418,8 +418,6 @@ pub struct MultiEventgroupSubscription {
 #[derive(Debug, Clone)]
 pub struct PendingServerResponse {
     pub(crate) service_id: u16,
-    #[allow(dead_code)]
-    pub(crate) instance_id: u16,
     pub(crate) method_id: u16,
     pub(crate) client_id: u16,
     pub(crate) session_id: u16,

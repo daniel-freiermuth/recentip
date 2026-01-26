@@ -119,69 +119,6 @@ fn build_sd_offer_with_session(
     packet
 }
 
-/// Build a raw SOME/IP-SD OfferService message (legacy, uses session_id=1 and reboot=true)
-/*
-fn build_sd_offer(
-    service_id: u16,
-    instance_id: u16,
-    major_version: u8,
-    minor_version: u32,
-    endpoint_ip: Ipv4Addr,
-    endpoint_port: u16,
-    ttl: u32,
-) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(56);
-
-    // === SOME/IP Header (16 bytes) ===
-    packet.extend_from_slice(&0xFFFFu16.to_be_bytes()); // Service ID = SD
-    packet.extend_from_slice(&0x8100u16.to_be_bytes()); // Method ID = SD
-    let length_offset = packet.len();
-    packet.extend_from_slice(&0u32.to_be_bytes()); // Length placeholder
-    packet.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
-    packet.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
-    packet.push(0x01); // Protocol Version
-    packet.push(0x01); // Interface Version
-    packet.push(0x02); // Message Type = NOTIFICATION
-    packet.push(0x00); // Return Code = E_OK
-
-    // === SD Payload ===
-    packet.push(0xC0); // Flags: Unicast + Reboot
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
-
-    // Entries array length (16 bytes for one entry)
-    packet.extend_from_slice(&16u32.to_be_bytes());
-
-    // === OfferService Entry (16 bytes) ===
-    packet.push(0x01); // Type = OfferService
-    packet.push(0x00); // Index 1st options
-    packet.push(0x00); // Index 2nd options
-    packet.push(0x10); // # of opt 1 | # of opt 2
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&instance_id.to_be_bytes());
-    packet.push(major_version);
-    let ttl_bytes = ttl.to_be_bytes();
-    packet.extend_from_slice(&ttl_bytes[1..4]); // TTL (24-bit)
-    packet.extend_from_slice(&minor_version.to_be_bytes());
-
-    // Options array length (12 bytes for IPv4 endpoint)
-    packet.extend_from_slice(&12u32.to_be_bytes());
-
-    // === IPv4 Endpoint Option (12 bytes) ===
-    packet.extend_from_slice(&9u16.to_be_bytes()); // Length
-    packet.push(0x04); // Type = IPv4 Endpoint
-    packet.push(0x00); // Reserved
-    packet.extend_from_slice(&endpoint_ip.octets());
-    packet.push(0x00); // Reserved
-    packet.push(0x11); // L4 Protocol = UDP
-    packet.extend_from_slice(&endpoint_port.to_be_bytes());
-
-    // Fix up length field
-    let length = (packet.len() - 8) as u32;
-    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-
-    packet
-} */
-
 /// Build a raw SOME/IP-SD SubscribeEventgroupAck message with configurable session ID
 fn build_sd_subscribe_ack_with_session(
     service_id: u16,
@@ -235,60 +172,6 @@ fn build_sd_subscribe_ack_with_session(
 
     packet
 }
-
-/// Build a raw SOME/IP-SD SubscribeEventgroupAck message (legacy, uses session_id=1)
-/*
-fn build_sd_subscribe_ack(
-    service_id: u16,
-    instance_id: u16,
-    major_version: u8,
-    eventgroup_id: u16,
-    ttl: u32,
-) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(48);
-
-    // === SOME/IP Header (16 bytes) ===
-    packet.extend_from_slice(&0xFFFFu16.to_be_bytes()); // Service ID = SD
-    packet.extend_from_slice(&0x8100u16.to_be_bytes()); // Method ID = SD
-    let length_offset = packet.len();
-    packet.extend_from_slice(&0u32.to_be_bytes()); // Length placeholder
-    packet.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
-    packet.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
-    packet.push(0x01); // Protocol Version
-    packet.push(0x01); // Interface Version
-    packet.push(0x02); // Message Type = NOTIFICATION
-    packet.push(0x00); // Return Code = E_OK
-
-    // === SD Payload ===
-    packet.push(0xC0); // Flags: Unicast + Reboot
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
-
-    // Entries array length (16 bytes for one entry)
-    packet.extend_from_slice(&16u32.to_be_bytes());
-
-    // === SubscribeEventgroupAck Entry (16 bytes) ===
-    packet.push(0x07); // Type = SubscribeEventgroupAck
-    packet.push(0x00); // Index 1st options
-    packet.push(0x00); // Index 2nd options
-    packet.push(0x00); // # of options
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&instance_id.to_be_bytes());
-    packet.push(major_version);
-    let ttl_bytes = ttl.to_be_bytes();
-    packet.extend_from_slice(&ttl_bytes[1..4]); // TTL (24-bit)
-    packet.push(0x00); // Reserved
-    packet.push(0x00); // Reserved (counter high byte)
-    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
-
-    // Options array length (0 - no options)
-    packet.extend_from_slice(&0u32.to_be_bytes());
-
-    // Fix up length field
-    let length = (packet.len() - 8) as u32;
-    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-
-    packet
-} */
 
 /// Parse an SD message from raw bytes
 fn parse_sd_message(data: &[u8]) -> Option<(Header, SdMessage)> {

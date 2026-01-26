@@ -49,58 +49,6 @@ pub fn parse_sd_message(data: &[u8]) -> Option<(Header, SdMessage)> {
     }
 }
 
-/// Helper to extract SD flags from raw packet bytes
-#[allow(dead_code)]
-pub fn parse_sd_flags(data: &[u8]) -> Option<(bool, bool)> {
-    // SD flags are in byte 16 (first byte after SOME/IP header)
-    // Bit 7: Reboot flag
-    // Bit 6: Unicast flag
-    if data.len() < 17 {
-        return None;
-    }
-    let reboot_flag = (data[16] & 0x80) != 0;
-    let unicast_flag = (data[16] & 0x40) != 0;
-    Some((reboot_flag, unicast_flag))
-}
-
-/// Helper to parse an eventgroup entry from SD message entries
-#[allow(dead_code)]
-pub fn parse_eventgroup_entry(data: &[u8]) -> Option<EventgroupEntry> {
-    if data.len() < 16 {
-        return None;
-    }
-    Some(EventgroupEntry {
-        entry_type: data[0],
-        index_first_option: data[1],
-        index_second_option: data[2],
-        num_options: data[3],
-        service_id: u16::from_be_bytes([data[4], data[5]]),
-        instance_id: u16::from_be_bytes([data[6], data[7]]),
-        major_version: data[8],
-        ttl: u32::from_be_bytes([0, data[9], data[10], data[11]]),
-        reserved: data[12],
-        flags_and_counter: data[13],
-        eventgroup_id: u16::from_be_bytes([data[14], data[15]]),
-    })
-}
-
-/// Parsed eventgroup entry for verification
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct EventgroupEntry {
-    pub entry_type: u8,
-    pub index_first_option: u8,
-    pub index_second_option: u8,
-    pub num_options: u8,
-    pub service_id: u16,
-    pub instance_id: u16,
-    pub major_version: u8,
-    pub ttl: u32,
-    pub reserved: u8,
-    pub flags_and_counter: u8,
-    pub eventgroup_id: u16,
-}
-
 // ============================================================================
 // PACKET BUILDER FUNCTIONS
 // ============================================================================
@@ -236,60 +184,6 @@ pub fn build_sd_offer(
     packet
 }
 
-/// Build a raw SOME/IP-SD SubscribeEventgroup message
-#[allow(dead_code)]
-pub fn build_sd_subscribe(
-    service_id: u16,
-    instance_id: u16,
-    major_version: u8,
-    eventgroup_id: u16,
-    ttl: u32,
-) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(64);
-
-    // SOME/IP Header
-    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
-    packet.extend_from_slice(&0x8100u16.to_be_bytes());
-    let length_offset = packet.len();
-    packet.extend_from_slice(&0u32.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.push(0x01);
-    packet.push(0x01);
-    packet.push(0x02);
-    packet.push(0x00);
-
-    // SD Payload
-    packet.push(0xC0);
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
-
-    // Entries array
-    packet.extend_from_slice(&16u32.to_be_bytes());
-
-    // SubscribeEventgroup Entry
-    packet.push(0x06); // Type
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&instance_id.to_be_bytes());
-    packet.push(major_version);
-    let ttl_bytes = ttl.to_be_bytes();
-    packet.extend_from_slice(&ttl_bytes[1..4]);
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
-
-    // Options array (empty)
-    packet.extend_from_slice(&0u32.to_be_bytes());
-
-    // Fix up length field
-    let length = (packet.len() - 8) as u32;
-    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-
-    packet
-}
-
 /// Build a raw SOME/IP-SD SubscribeEventgroupAck message
 pub fn build_sd_subscribe_ack(
     service_id: u16,
@@ -399,72 +293,6 @@ pub fn build_sd_subscribe_with_udp_endpoint(
     packet.push(0x00); // Reserved
     packet.push(0x11); // L4 Protocol = UDP (0x11)
     packet.extend_from_slice(&client_port.to_be_bytes());
-
-    // Fix up length field
-    let length = (packet.len() - 8) as u32;
-    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-
-    packet
-}
-
-/// Build a raw SOME/IP-SD SubscribeEventgroup with a TCP endpoint option
-#[allow(dead_code)]
-pub fn build_sd_subscribe_with_tcp_endpoint(
-    service_id: u16,
-    instance_id: u16,
-    major_version: u8,
-    eventgroup_id: u16,
-    ttl: u32,
-    client_ip: std::net::Ipv4Addr,
-    client_port: u16,
-) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(80);
-
-    // === SOME/IP Header (16 bytes) ===
-    packet.extend_from_slice(&0xFFFFu16.to_be_bytes()); // Service ID = SD
-    packet.extend_from_slice(&0x8100u16.to_be_bytes()); // Method ID = SD
-    let length_offset = packet.len();
-    packet.extend_from_slice(&0u32.to_be_bytes()); // Length placeholder
-    packet.extend_from_slice(&0x0001u16.to_be_bytes()); // Client ID
-    packet.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
-    packet.push(0x01); // Protocol Version
-    packet.push(0x01); // Interface Version
-    packet.push(0x02); // Message Type = NOTIFICATION
-    packet.push(0x00); // Return Code = E_OK
-
-    // === SD Payload ===
-    packet.push(0xC0); // Flags (reboot + unicast)
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
-
-    // Entries array length - 16 bytes for eventgroup entry
-    packet.extend_from_slice(&16u32.to_be_bytes());
-
-    // === SubscribeEventgroup Entry (16 bytes) ===
-    packet.push(0x06); // Type = SubscribeEventgroup
-    packet.push(0x00); // Index 1st options = 0 (references our TCP endpoint)
-    packet.push(0x00); // Index 2nd options
-    packet.push(0x10); // # of opts: 1 in run1, 0 in run2 (0x10 = 1 option in 1st run)
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&instance_id.to_be_bytes());
-    packet.push(major_version);
-    let ttl_bytes = ttl.to_be_bytes();
-    packet.extend_from_slice(&ttl_bytes[1..4]); // TTL (24-bit)
-    packet.push(0x00); // Reserved
-    packet.push(0x00); // Flags + Counter
-    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
-
-    // === Options array ===
-    // Options array length (12 bytes for one IPv4 endpoint option)
-    packet.extend_from_slice(&12u32.to_be_bytes());
-
-    // IPv4 Endpoint Option (12 bytes total: 2 length + 1 type + 9 data)
-    packet.extend_from_slice(&9u16.to_be_bytes()); // Length = 9
-    packet.push(0x04); // Type = IPv4 Endpoint
-    packet.push(0x00); // Reserved
-    packet.extend_from_slice(&client_ip.octets()); // IPv4 address
-    packet.push(0x00); // Reserved
-    packet.push(0x06); // L4 Protocol = TCP (0x06)
-    packet.extend_from_slice(&client_port.to_be_bytes()); // Port
 
     // Fix up length field
     let length = (packet.len() - 8) as u32;

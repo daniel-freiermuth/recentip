@@ -1718,13 +1718,6 @@ fn parse_sd_message(data: &[u8]) -> Option<(SomeIpHeader, SdMessage)> {
     let header = SomeIpHeader {
         service_id: u16::from_be_bytes([data[0], data[1]]),
         method_id: u16::from_be_bytes([data[2], data[3]]),
-        length: u32::from_be_bytes([data[4], data[5], data[6], data[7]]),
-        client_id: u16::from_be_bytes([data[8], data[9]]),
-        session_id: u16::from_be_bytes([data[10], data[11]]),
-        protocol_version: data[12],
-        interface_version: data[13],
-        message_type: data[14],
-        return_code: data[15],
     };
 
     // Verify SD message (service=0xFFFF, method=0x8100)
@@ -1787,25 +1780,18 @@ fn parse_sd_message(data: &[u8]) -> Option<(SomeIpHeader, SdMessage)> {
 
 /// Simplified SOME/IP header for test parsing
 #[derive(Debug)]
-#[allow(dead_code)]
 struct SomeIpHeader {
     service_id: u16,
     method_id: u16,
-    length: u32,
-    client_id: u16,
-    session_id: u16,
-    protocol_version: u8,
-    interface_version: u8,
-    message_type: u8,
-    return_code: u8,
 }
 
 /// Simplified SD message for test parsing
 #[derive(Debug)]
-#[allow(dead_code)]
 struct SdMessage {
+    #[allow(dead_code)]
     flags: u8,
     entries: Vec<SdEntry>,
+    #[allow(dead_code)]
     options: Vec<SdOption>,
 }
 
@@ -1844,7 +1830,6 @@ impl From<u8> for SdEntryType {
 
 /// Placeholder for SD options
 #[derive(Debug)]
-#[allow(dead_code)]
 struct SdOption;
 
 /// Build a raw SOME/IP-SD OfferService message

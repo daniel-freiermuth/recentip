@@ -44,77 +44,6 @@ pub fn parse_sd_message(data: &[u8]) -> Option<(Header, SdMessage)> {
 // Packet builders
 // ============================================================================
 
-/// Build a raw SOME/IP request packet
-#[allow(dead_code)]
-pub fn build_request(
-    service_id: u16,
-    method_id: u16,
-    client_id: u16,
-    session_id: u16,
-    payload: &[u8],
-) -> Vec<u8> {
-    let length = 8 + payload.len() as u32;
-    let mut packet = Vec::with_capacity(16 + payload.len());
-
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&method_id.to_be_bytes());
-    packet.extend_from_slice(&length.to_be_bytes());
-    packet.extend_from_slice(&client_id.to_be_bytes());
-    packet.extend_from_slice(&session_id.to_be_bytes());
-    packet.push(0x01); // Protocol Version
-    packet.push(0x01); // Interface Version
-    packet.push(0x00); // Message Type (REQUEST)
-    packet.push(0x00); // Return Code (E_OK)
-    packet.extend_from_slice(payload);
-
-    packet
-}
-
-/// Build a raw SOME/IP fire-and-forget (REQUEST_NO_RETURN) packet
-#[allow(dead_code)]
-pub fn build_fire_and_forget_request(
-    service_id: u16,
-    method_id: u16,
-    client_id: u16,
-    session_id: u16,
-    payload: &[u8],
-) -> Vec<u8> {
-    let length = 8 + payload.len() as u32;
-    let mut packet = Vec::with_capacity(16 + payload.len());
-
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&method_id.to_be_bytes());
-    packet.extend_from_slice(&length.to_be_bytes());
-    packet.extend_from_slice(&client_id.to_be_bytes());
-    packet.extend_from_slice(&session_id.to_be_bytes());
-    packet.push(0x01); // Protocol Version
-    packet.push(0x01); // Interface Version
-    packet.push(0x01); // Message Type (REQUEST_NO_RETURN)
-    packet.push(0x00); // Return Code (E_OK)
-    packet.extend_from_slice(payload);
-
-    packet
-}
-
-/// Build a raw SOME/IP response packet based on a request header
-pub fn build_response(request: &Header, payload: &[u8]) -> Vec<u8> {
-    let length = 8 + payload.len() as u32;
-    let mut packet = Vec::with_capacity(16 + payload.len());
-
-    packet.extend_from_slice(&request.service_id.to_be_bytes());
-    packet.extend_from_slice(&request.method_id.to_be_bytes());
-    packet.extend_from_slice(&length.to_be_bytes());
-    packet.extend_from_slice(&request.client_id.to_be_bytes());
-    packet.extend_from_slice(&request.session_id.to_be_bytes());
-    packet.push(0x01); // Protocol Version
-    packet.push(request.interface_version);
-    packet.push(0x80); // Message Type (RESPONSE)
-    packet.push(0x00); // Return Code (E_OK)
-    packet.extend_from_slice(payload);
-
-    packet
-}
-
 /// Build a raw SOME/IP-SD OfferService message (UDP endpoint)
 pub fn build_sd_offer(
     service_id: u16,
@@ -374,53 +303,6 @@ pub fn build_sd_offer_dual_stack_with_session(
     packet.push(0x00);
     packet.push(0x06); // TCP
     packet.extend_from_slice(&tcp_port.to_be_bytes());
-
-    let length = (packet.len() - 8) as u32;
-    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-
-    packet
-}
-
-/// Build a raw SOME/IP-SD SubscribeEventgroup message (no endpoint option)
-#[allow(dead_code)]
-pub fn build_sd_subscribe(
-    service_id: u16,
-    instance_id: u16,
-    major_version: u8,
-    eventgroup_id: u16,
-    ttl: u32,
-) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(64);
-
-    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
-    packet.extend_from_slice(&0x8100u16.to_be_bytes());
-    let length_offset = packet.len();
-    packet.extend_from_slice(&0u32.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.push(0x01);
-    packet.push(0x01);
-    packet.push(0x02);
-    packet.push(0x00);
-
-    packet.push(0xC0);
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
-    packet.extend_from_slice(&16u32.to_be_bytes());
-
-    packet.push(0x06); // SubscribeEventgroup
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&instance_id.to_be_bytes());
-    packet.push(major_version);
-    let ttl_bytes = ttl.to_be_bytes();
-    packet.extend_from_slice(&ttl_bytes[1..4]);
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
-
-    packet.extend_from_slice(&0u32.to_be_bytes());
 
     let length = (packet.len() - 8) as u32;
     packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
