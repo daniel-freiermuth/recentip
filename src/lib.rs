@@ -357,156 +357,6 @@
 //!
 //! ---
 //!
-//! # Automotive Runtime Considerations
-//!
-//! SOME/IP is designed for automotive ECUs where runtime predictability can matter.
-//! This section documents the library's behavior for systems with timing requirements.
-//!
-//! ## Safety & Certification
-//!
-//! ⚠️ **This library is NOT ASIL-qualified and NOT suitable for safety-critical functions.**
-//!
-//! - No formal verification or safety certification
-//! - Not developed according to ISO 26262 processes
-//! - Use only for QM (non-safety) applications
-//! - For ASIL-rated functions, use a certified SOME/IP implementation
-//!
-//! ## Performance & Latency
-//!
-//! | Aspect | Status | Notes |
-//! |--------|--------|-------|
-//! | Throughput | Untested | No benchmarks yet; contributions welcome |
-//! | Latency bounds | ⚠️ Theoretical | Tokio guarantees exist but `MAX_DELAY` is unspecified |
-//! | Jitter | ❌ Variable | Work-stealing scheduler, GC-free but not deterministic |
-//! | Zero-copy | ❌ Not yet | Message parsing allocates; zero-copy design possible |
-//!
-//! ## Tokio Runtime Behavior
-//!
-//! This library uses [Tokio](https://tokio.rs/) as its async runtime. Key characteristics
-//! relevant to timing (see [Tokio runtime docs](https://docs.rs/tokio/latest/tokio/runtime/index.html)):
-//!
-//! **Bounded delay guarantee** (from Tokio docs):
-//!
-//! > Under the following two assumptions:
-//! > - There is some number `MAX_TASKS` such that the total number of tasks never exceeds `MAX_TASKS`.
-//! > - There is some number `MAX_SCHEDULE` such that calling `poll` on any task returns within `MAX_SCHEDULE` time units.
-//! >
-//! > Then, there is some number `MAX_DELAY` such that when a task is woken, it will be scheduled within `MAX_DELAY` time units.
-//!
-//! **What this means:** If you can prove bounded task count and bounded poll time, Tokio
-//! guarantees bounded scheduling delay. However:
-//!
-//! | Aspect | Tokio Provides | ASIL C/D Requires |
-//! |--------|----------------|-------------------|
-//! | Bound exists? | ✅ Yes | ✅ Needed |
-//! | Bound documented? | ❌ No | ✅ Must be specified |
-//! | Bound is tight? | ❌ No | ✅ Must be practical |
-//! | Preconditions provable? | ⚠️ Hard | ✅ Must be formal |
-//!
-//! **Additional runtime characteristics:**
-//! - Tasks may be scheduled in any order; no priority support
-//! - A task may be scheduled 5× before another ready task runs
-//! - Work-stealing between threads adds non-deterministic delays
-//! - IO/timer checks occur every ~61 scheduled tasks (`event_interval`)
-//! - Global queue checked every ~31 local tasks (`global_queue_interval`)
-//! - **Not NUMA-aware** — consider multiple runtimes on NUMA systems
-//!
-//! **What this means for SOME/IP:**
-//! - Message latency depends on system load and task count
-//! - No guarantee that high-priority responses arrive before low-priority work
-//! - Cyclic SD announcements may jitter under load
-//! - For ASIL A/B: empirical measurement with safety margin may suffice
-//! - For ASIL C/D: Tokio is not certifiable (unknown `MAX_DELAY`, unproven preconditions)
-//!
-//! ## Current Limitations
-//!
-//! This library is **not suitable for hard real-time** applications:
-//!
-//! | Concern | Status | Notes |
-//! |---------|--------|-------|
-//! | Heap allocation | ⚠️ Dynamic | Allocates during operation (buffers, connections) |
-//! | Async runtime | ⚠️ Tokio | Work-stealing scheduler, not deterministic |
-//! | Blocking | ⚠️ Possible | Async mutex in TCP connection pool |
-//! | Panic paths | ⚠️ Minimal | Few `unwrap()` calls remain (to be eliminated) |
-//! | Unsafe code | ✅ Forbidden | `#![forbid(unsafe_code)]` enforced |
-//! | Priority inversion | ⚠️ Possible | No priority-aware scheduling |
-//!
-//! ## Suitable Use Cases
-//!
-//! - **Prototyping and simulation** — Fast iteration on service interfaces
-//! - **Test environments** — Deterministic network simulation via turmoil
-//! - **Non-safety-critical ECUs** — Infotainment, logging, diagnostics
-//! - **Development tooling** — Service monitors, traffic analyzers
-//! - **Linux-based gateways** — Central compute platforms
-//!
-//! ## Future Directions
-//!
-//! For safety-critical or hard real-time deployments, consider:
-//!
-//! 1. **Alternative async runtimes** — The [`net`] module is abstracted; could support
-//!    [embassy](https://embassy.dev/) for embedded targets
-//! 2. **Pre-allocation** — Buffer pools and bounded collections could be added
-//! 3. **`no_std` support** — Currently requires std; a `no_std` core is architecturally possible
-//! 4. **Static configuration** — Compile-time service definitions to eliminate runtime allocation
-//!
-//! ## Relation to Real-Time Rust Ecosystems
-//!
-//! This library uses **Tokio**, designed for high-throughput servers, not real-time systems.
-//! For hard real-time requirements, consider these Rust ecosystems:
-//!
-//! ### Pure Rust Runtimes
-//!
-//! | Project | Model | Notes |
-//! |---------|-------|-------|
-//! | [RTIC](https://rtic.rs/) | Interrupt-driven, priority-based | Ideal for bare-metal MCUs |
-//! | [Embassy](https://embassy.dev/) | Async, `no_std`, embedded | Could backend our [`net`] abstraction |
-//! | [Drone OS](https://www.drone-os.com/) | Async, preemptive threads | RTOS with async/await |
-//! | [Hubris](https://hubris.oxide.computer/) | IPC-based microkernel | Oxide's secure embedded OS |
-//! | [Tock](https://www.tockos.org/) | Process isolation, embedded | Security-focused embedded OS |
-//!
-//! ### Traditional RTOSes with Rust Bindings
-//!
-//! | Project | Rust Support | Notes |
-//! |---------|--------------|-------|
-//! | [FreeRTOS](https://www.freertos.org/) | [`freertos-rust`](https://crates.io/crates/freertos-rust) | Industry standard, 40+ architectures |
-//! | [RIOT](https://riot-os.org/) | [`riot-wrappers`](https://crates.io/crates/riot-wrappers) | IoT-focused, threading, network stacks |
-//!
-//! ### Automotive-Focused Rust Frameworks
-//!
-//! | Project | Model | Notes |
-//! |---------|-------|-------|
-//! | [OxidOS](https://oxidos.io/) | Tock-based, sandboxed apps | Automotive ASIL targeting, RISC-V |
-//! | [Veecle OS](https://github.com/veecle/veecle-os) | Actor-based, OSAL | std/Embassy/FreeRTOS backends; has SOME/IP |
-//! | [veecle-pxros](https://github.com/veecle/veecle-pxros) | PXROS-HR runtime | AURIX, ASIL-D kernel |
-//!
-//! ### Robotics Middleware
-//!
-//! | Project | Rust Support | Notes |
-//! |---------|--------------|-------|
-//! | [ROS 2](https://docs.ros.org/) | [`ros2_rust`](https://github.com/ros2-rust/ros2_rust) | Pub/sub, services, zero-copy; ADAS/AD |
-//!
-//! ### Automotive Linux Distributions
-//!
-//! | Project | Rust Support | Notes |
-//! |---------|--------------|-------|
-//! | [Red Hat In-Vehicle OS](https://www.redhat.com/en/solutions/automotive) | Full Rust | RHEL-based, ASIL-B; VW, Audi |
-//! | [Automotive Grade Linux](https://www.automotivelinux.org/) | Full Rust | Toyota, Honda, Mazda, Subaru, Suzuki, Mercedes |
-//!
-//! **Potential integration paths:**
-//!
-//! - **RTIC/Embassy**: Port [`wire`] parsing and state machine logic; replace Tokio I/O
-//! - **Veecle OS**: Already has SOME/IP support; could potentially share wire-format code
-//! - **FreeRTOS/RIOT**: Use Rust bindings for threading/networking, port state machine logic
-//! - **ROS 2**: Bridge SOME/IP services to ROS 2 topics/services for ADAS integration
-//! - **Hypervisor**: Run this library in Linux alongside an RTOS partition
-//! - **Shared memory**: Use on Linux core, bridge to RTIC/Zephyr for safety-critical functions
-//!
-//! Currently, no Rust SOME/IP implementation targets `no_std` or real-time runtimes.
-//!
-//! Contributions toward these goals are welcome.
-//!
-//! ---
-//!
 //! # For Contributors
 //!
 //! ## Code Organization
@@ -518,21 +368,13 @@
 //! ## Testing
 //!
 //! ```bash
-//! # Run all tests (includes turmoil simulation tests)
-//! cargo nextest run --features turmoil
+//! # Run all tests (uses nextest)
+//! cargo nextest run
 //!
 //! # Run with coverage
-//! cargo tarpaulin --features turmoil
+//! cargo llvm-cov nextest --all-features
 //! ```
 //!
-//! ## Adding a New Feature
-//!
-//! 1. Add command variant to `runtime/command.rs` if handle→runtime communication needed
-//! 2. Add state to `runtime/state.rs` if persistent tracking required
-//! 3. Add handler to `runtime/client.rs` or `runtime/server.rs` depending on role
-//! 4. Update `runtime.rs` event loop to dispatch the new command
-//! 5. Add public API to `handles/`
-//! 6. Write compliance tests in `tests/compliance/`
 
 use std::net::SocketAddr;
 
@@ -559,12 +401,6 @@ pub use builder::SomeIpBuilder;
 pub use handles::{OfferBuilder, SomeIp};
 
 pub use config::{MethodConfig, RuntimeConfig, Transport};
-
-/// Deprecated: Use `SomeIp` instead.
-///
-/// This is a type alias for backward compatibility. New code should use [`SomeIp`] directly.
-#[deprecated(since = "0.1.0", note = "Use `SomeIp` instead")]
-pub type Runtime = SomeIp;
 
 pub use error::*;
 
