@@ -59,13 +59,15 @@ use bytes::{Buf, Bytes, BytesMut};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::net::{TcpListener, TcpStream};
-use crate::wire::{is_magic_cookie, magic_cookie_client, magic_cookie_server, parse_someip_length, Header};
+use crate::wire::{
+    is_magic_cookie, magic_cookie_client, magic_cookie_server, parse_someip_length, Header,
+};
 
 /// Message received from a TCP connection (client-side response or server-side request)
 #[derive(Debug)]
 pub struct TcpMessage {
     /// The raw message data including SOME/IP header
-    pub data: Vec<u8>,
+    pub data: Bytes,
     /// The peer address this message came from
     pub from: SocketAddr,
     /// The subscription ID this message is for (0 for RPC)
@@ -84,7 +86,7 @@ pub struct TcpConnectionPool<T: TcpStream> {
     /// Active connections indexed by (peer address, `subscription_id`)
     connections: Arc<Mutex<HashMap<(SocketAddr, u64), TcpConnectionHandle>>>,
     /// Sender for each connection
-    senders: Arc<Mutex<HashMap<(SocketAddr, u64), mpsc::Sender<Vec<u8>>>>>,
+    senders: Arc<Mutex<HashMap<(SocketAddr, u64), mpsc::Sender<Bytes>>>>,
     /// Channel to forward received messages to the runtime
     msg_tx: mpsc::Sender<TcpMessage>,
     /// Enable Magic Cookies for TCP resync (`feat_req_someip_586`)
@@ -126,7 +128,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// # Errors
     ///
     /// Returns an I/O error if connection or send fails.
-    pub async fn send(&self, target: SocketAddr, data: &[u8]) -> io::Result<()> {
+    pub async fn send(&self, target: SocketAddr, data: Bytes) -> io::Result<()> {
         // Check if we have a sender for this connection (use subscription_id 0 for RPC)
         let key = (target, 0);
         let sender = {
@@ -136,7 +138,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 
         if let Some(tx) = sender {
             // Use existing connection
-            tx.send(data.to_vec())
+            tx.send(data)
                 .await
                 .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Connection task closed"))?;
             return Ok(());
@@ -148,7 +150,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         let local_addr = stream.local_addr()?;
 
         // Create channel for sending data to this connection
-        let (send_tx, send_rx) = mpsc::channel::<Vec<u8>>(32);
+        let (send_tx, send_rx) = mpsc::channel::<Bytes>(32);
 
         // Spawn connection handler task
         let msg_tx = self.msg_tx.clone();
@@ -189,7 +191,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 
         // Send the data via the new connection
         send_tx
-            .send(data.to_vec())
+            .send(data)
             .await
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Connection task closed"))?;
 
@@ -232,7 +234,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         let local_addr = stream.local_addr()?;
 
         // Create channel for sending data to this connection
-        let (send_tx, send_rx) = mpsc::channel::<Vec<u8>>(32);
+        let (send_tx, send_rx) = mpsc::channel::<Bytes>(32);
 
         // Spawn connection handler task
         let msg_tx = self.msg_tx.clone();
@@ -331,8 +333,8 @@ async fn handle_client_tcp_connection<T: TcpStream>(
     mut stream: T,
     peer_addr: SocketAddr,
     msg_tx: mpsc::Sender<TcpMessage>,
-    mut send_rx: mpsc::Receiver<Vec<u8>>,
-    senders: Arc<Mutex<HashMap<(SocketAddr, u64), mpsc::Sender<Vec<u8>>>>>,
+    mut send_rx: mpsc::Receiver<Bytes>,
+    senders: Arc<Mutex<HashMap<(SocketAddr, u64), mpsc::Sender<Bytes>>>>,
     connections: Arc<Mutex<HashMap<(SocketAddr, u64), TcpConnectionHandle>>>,
     magic_cookies: bool,
     subscription_id: u64,
@@ -381,7 +383,7 @@ async fn handle_client_tcp_connection<T: TcpStream>(
                                 // Extract complete message
                                 let message_data = read_buffer.split_to(total_size);
                                 let msg = TcpMessage {
-                                    data: message_data.to_vec(),
+                                    data: message_data.freeze(),
                                     from: peer_addr,
                                     subscription_id,
                                 };
@@ -491,7 +493,7 @@ pub async fn read_framed_message<T: TcpStream>(
 #[derive(Debug)]
 pub struct TcpSendMessage {
     /// Data to send
-    pub data: Vec<u8>,
+    pub data: Bytes,
     /// Target peer address
     pub to: SocketAddr,
 }
@@ -533,7 +535,7 @@ impl<T: TcpStream> TcpServer<T> {
         let (send_tx, mut send_rx) = mpsc::channel::<TcpSendMessage>(100);
 
         // Track active client connections - maps peer addr to a response sender
-        let client_senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Vec<u8>>>>> =
+        let client_senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Bytes>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let client_senders_for_responses = Arc::clone(&client_senders);
 
@@ -551,7 +553,7 @@ impl<T: TcpStream> TcpServer<T> {
                                 );
 
                                 // Create per-connection response channel
-                                let (conn_send_tx, conn_send_rx) = mpsc::channel::<Vec<u8>>(32);
+                                let (conn_send_tx, conn_send_rx) = mpsc::channel::<Bytes>(32);
 
                                 // Register this connection
                                 {
@@ -628,8 +630,8 @@ async fn handle_tcp_connection<T: TcpStream>(
     service_id: u16,
     instance_id: u16,
     msg_tx: mpsc::Sender<TcpMessage>,
-    mut response_rx: mpsc::Receiver<Vec<u8>>,
-    client_senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Vec<u8>>>>>,
+    mut response_rx: mpsc::Receiver<Bytes>,
+    client_senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Bytes>>>>,
     magic_cookies: bool,
 ) {
     let mut read_buffer = BytesMut::new();
@@ -677,7 +679,7 @@ async fn handle_tcp_connection<T: TcpStream>(
                                 // Extract complete message
                                 let message_data = read_buffer.split_to(total_size);
                                 let msg = TcpMessage {
-                                    data: message_data.to_vec(),
+                                    data: message_data.freeze(),
                                     from: peer_addr,
                                     subscription_id: 0, // Server-side, no subscription
                                 };

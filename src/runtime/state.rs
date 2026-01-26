@@ -43,6 +43,7 @@
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
+use bytes::Bytes;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
@@ -73,7 +74,11 @@ pub struct ServiceKey {
 }
 
 impl ServiceKey {
-    pub(crate) const fn new(service_id: ServiceId, instance_id: InstanceId, major_version: u8) -> Self {
+    pub(crate) const fn new(
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        major_version: u8,
+    ) -> Self {
         Self {
             service_id: service_id.value(),
             instance_id: instance_id.value(),
@@ -241,7 +246,7 @@ pub struct RpcMessage {
 /// Message to send via an RPC socket task  
 #[derive(Debug)]
 pub struct RpcSendMessage {
-    pub(crate) data: Vec<u8>,
+    pub(crate) data: Bytes,
     pub(crate) to: SocketAddr,
 }
 
@@ -256,7 +261,7 @@ pub enum RpcTransportSender {
 
 impl RpcTransportSender {
     /// Send a message to the specified target
-    pub(crate) async fn send(&self, data: Vec<u8>, to: SocketAddr) -> Result<()> {
+    pub(crate) async fn send(&self, data: Bytes, to: SocketAddr) -> Result<()> {
         use crate::error::Error;
         match self {
             Self::Udp(tx) => tx

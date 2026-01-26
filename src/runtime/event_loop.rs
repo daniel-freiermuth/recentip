@@ -104,7 +104,9 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
             // Handle incoming messages from UDP data socket tasks
             Some(method_msg) = method_rx.recv() => {
-                let mut cursor = method_msg.data.as_slice();
+                // Convert to Bytes for unified handling (this is the one copy for UDP)
+                let data = Bytes::from(method_msg.data);
+                let mut cursor = &data[..];
                 let Some(header) = Header::parse(&mut cursor) else {
                     tracing::warn!("Received invalid SOME/IP header on method socket from {}", method_msg.from);
                     continue;
@@ -115,7 +117,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     continue;
                 }
 
-                if let Some(actions) = handle_method_message(&header, &mut cursor, method_msg.from, &mut state, method_msg.service_key, Transport::Udp, 0) {
+                if let Some(actions) = handle_method_message(&header, &data, method_msg.from, &mut state, method_msg.service_key, Transport::Udp, 0) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -126,7 +128,8 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             Some(tcp_msg) = tcp_rpc_rx.recv() => {
                 // For TCP messages, we need to find the service key by looking up which service
                 // this message is for (based on the service_id in the header)
-                let mut cursor = tcp_msg.data.as_slice();
+                // TCP data is already Bytes - zero-copy path
+                let mut cursor = &tcp_msg.data[..];
                 let Some(header) = Header::parse(&mut cursor) else {
                     tracing::warn!("Received invalid SOME/IP header on TCP server socket from {}", tcp_msg.from);
                     continue;
@@ -145,7 +148,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     .find(|(key, _)| key.service_id == header.service_id)
                     .map(|(key, _)| *key);
 
-                if let Some(actions) = handle_method_message(&header, &mut cursor, tcp_msg.from, &mut state, service_key, Transport::Tcp, tcp_msg.subscription_id) {
+                if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, service_key, Transport::Tcp, tcp_msg.subscription_id) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -156,7 +159,8 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             Some(tcp_msg) = tcp_client_rx.recv() => {
                 // These are responses to RPC calls we made as a client
                 // Process them like any other incoming packet
-                let mut cursor = tcp_msg.data.as_slice();
+                // TCP data is already Bytes - zero-copy path
+                let mut cursor = &tcp_msg.data[..];
                 let Some(header) = Header::parse(&mut cursor) else {
                     tracing::warn!("Received invalid SOME/IP header on TCP client socket from {}", tcp_msg.from);
                     continue;
@@ -168,7 +172,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                 }
 
                 // Protocol is weird. But it works anyway?
-                if let Some(actions) = handle_method_message(&header, &mut cursor, tcp_msg.from, &mut state, None, Transport::Udp, tcp_msg.subscription_id) {
+                if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, None, Transport::Udp, tcp_msg.subscription_id) {
                     for action in actions {
                         execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
@@ -232,7 +236,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             };
 
                             // Send response via the captured RPC transport
-                            if let Err(e) = context.rpc_transport.send(response_data.to_vec(), context.client_addr).await {
+                            if let Err(e) = context.rpc_transport.send(response_data, context.client_addr).await {
                                 tracing::error!("Failed to send response during shutdown: {}", e);
                             }
                         }
@@ -318,7 +322,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 // Send response via the captured RPC transport
                 // This works even if the service offering has been dropped
-                if let Err(e) = context.rpc_transport.send(response_data.to_vec(), context.client_addr).await {
+                if let Err(e) = context.rpc_transport.send(response_data, context.client_addr).await {
                     tracing::error!("Failed to send response via RPC transport: {}", e);
                 }
             }
@@ -396,7 +400,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             if transport == Transport::Tcp {
                 // Send via TCP connection pool (establishes connection if needed)
                 tracing::debug!("Sending via TCP pool to {}", target);
-                if let Err(e) = tcp_pool.send(target, &data).await {
+                if let Err(e) = tcp_pool.send(target, data).await {
                     tracing::error!("Failed to send client SOME/IP message via TCP: {}", e);
                 }
             } else {
@@ -404,10 +408,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                 // Per feat_req_someip_676: Port 30490 is only for SD, not for RPC
                 if let Err(e) = state
                     .client_rpc_tx
-                    .send(RpcSendMessage {
-                        data: data.to_vec(),
-                        to: target,
-                    })
+                    .send(RpcSendMessage { data, to: target })
                     .await
                 {
                     tracing::error!("Failed to send client SOME/IP message via UDP: {}", e);
@@ -427,7 +428,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                     crate::config::Transport::Udp => offered.udp_transport.as_ref(),
                 };
                 if let Some(method_transport) = method_transport {
-                    if let Err(e) = method_transport.send(data.to_vec(), target).await {
+                    if let Err(e) = method_transport.send(data, target).await {
                         tracing::error!("Failed to send server message via {:?}: {}", transport, e);
                     }
                 } else {
@@ -728,17 +729,19 @@ pub fn cluster_sd_actions(actions: Vec<Action>) -> Vec<Action> {
 }
 
 /// Handle an RPC message (Request, Response, etc.)
+///
+/// Takes a reference to message data as `Bytes` to enable zero-copy payload extraction
+/// via `Bytes::slice()`. For TCP messages this is truly zero-copy; for UDP messages
+/// the data is copied once when converting from the receive buffer to `Bytes`.
 fn handle_method_message(
     header: &Header,
-    cursor: &mut &[u8],
+    data: &Bytes,
     from: SocketAddr,
     state: &mut RuntimeState,
     service_key: Option<ServiceKey>,
     transport: Transport,
     subscription_id: u64,
 ) -> Option<Vec<Action>> {
-    use bytes::Buf;
-
     // Validate protocol version - silently drop messages with wrong version
     if validate_protocol_version(header.protocol_version).is_err() {
         tracing::trace!(
@@ -746,19 +749,19 @@ fn handle_method_message(
             header.protocol_version,
             from
         );
-        // Still consume the payload bytes from the cursor
-        let payload_len = header.payload_length();
-        if cursor.remaining() >= payload_len {
-            cursor.advance(payload_len);
-        }
         return None;
     }
 
     let payload_len = header.payload_length();
-    if cursor.remaining() < payload_len {
+    let payload_start = Header::SIZE;
+    let payload_end = payload_start + payload_len;
+
+    if data.len() < payload_end {
         return None;
     }
-    let payload = cursor.copy_to_bytes(payload_len);
+
+    // Zero-copy slice of the payload from the message buffer
+    let payload = data.slice(payload_start..payload_end);
 
     let mut actions = Vec::new();
 
