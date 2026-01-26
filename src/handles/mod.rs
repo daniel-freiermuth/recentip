@@ -135,8 +135,6 @@ pub mod runtime;
 pub mod server;
 
 // Re-export all public types for convenient access
-pub use client::{
-    FindBuilder, OfferedService, StaticEventListener, Subscription, SubscriptionBuilder,
-};
+pub use client::{FindBuilder, OfferedService, Subscription, SubscriptionBuilder};
 pub use runtime::{OfferBuilder, SomeIp};
 pub use server::{EventBuilder, EventHandle, Responder, ServiceEvent, ServiceOffering};

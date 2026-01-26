@@ -415,7 +415,6 @@ pub use handles::{
     Responder,
     ServiceEvent,
     ServiceOffering,
-    StaticEventListener,
     Subscription,
     SubscriptionBuilder,
 };

@@ -1,4 +1,7 @@
-//! Subscription handles for receiving events from SOME/IP services
+//! Event subscription types.
+//!
+//! - [`SubscriptionBuilder`]: Builder for subscribing to eventgroups
+//! - [`Subscription`]: Active subscription receiving events
 
 use std::sync::Arc;
 
@@ -10,12 +13,9 @@ use crate::handles::runtime::RuntimeInner;
 use crate::runtime::Command;
 use crate::{Event, EventgroupId, InstanceId, ServiceId};
 
-/// Builder for creating a subscription to one or more eventgroups.
+/// Builder for subscribing to eventgroups.
 ///
-/// Created by calling [`OfferedService::new_subscription()`](crate::handles::OfferedService::new_subscription).
-///
-/// All eventgroups added to this builder will share the same network endpoint,
-/// ensuring proper event deduplication per the SOME/IP specification.
+/// Created via [`OfferedService::new_subscription`](crate::handles::OfferedService::new_subscription).
 ///
 /// # Example
 ///
@@ -23,19 +23,15 @@ use crate::{Event, EventgroupId, InstanceId, ServiceId};
 /// use recentip::prelude::*;
 ///
 /// # async fn example(proxy: recentip::handles::OfferedService) -> Result<()> {
-/// let eg1 = EventgroupId::new(0x0001).unwrap();
-/// let eg2 = EventgroupId::new(0x0002).unwrap();
-///
 /// let mut subscription = proxy
 ///     .new_subscription()
-///     .eventgroup(eg1)
-///     .eventgroup(eg2)
+///     .eventgroup(EventgroupId::new(1).unwrap())
+///     .eventgroup(EventgroupId::new(2).unwrap())  // multiple eventgroups OK
 ///     .subscribe()
 ///     .await?;
 ///
-/// // Receive events from both eventgroups
 /// while let Some(event) = subscription.next().await {
-///     println!("Event: {:?}", event);
+///     println!("Event 0x{:04X}", event.event_id.value());
 /// }
 /// # Ok(())
 /// # }
@@ -124,14 +120,15 @@ impl SubscriptionBuilder {
     }
 }
 
-/// Active subscription to one or more eventgroups.
+/// Active subscription receiving events from one or more eventgroups.
 ///
-/// Events from any subscribed eventgroup are received via the `next()` method.
-/// The subscription is automatically stopped (`StopSubscribeEventgroup` sent for
-/// all eventgroups) when dropped.
+/// Created via [`SubscriptionBuilder::subscribe`]. Call [`next`](Self::next)
+/// to receive events.
 ///
-/// All eventgroups in a subscription share the same network endpoint, ensuring
-/// proper event deduplication per the SOME/IP specification.
+/// # Lifecycle
+///
+/// When dropped, sends `StopSubscribeEventgroup` (TTL=0) for all eventgroups.
+/// If the runtime is already shut down, cleanup relies on server-side TTL expiry.
 pub struct Subscription {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
@@ -217,29 +214,5 @@ impl Drop for Subscription {
                 }
             }
         }
-    }
-}
-
-/// Listener for events from a statically configured service.
-///
-/// Use `runtime.listen_static()` to create a listener.
-/// This is for static deployments where the service address is
-/// pre-configured and events are sent directly to this client.
-pub struct StaticEventListener {
-    pub(crate) eventgroup: EventgroupId,
-    pub(crate) events: mpsc::Receiver<Event>,
-}
-
-impl StaticEventListener {
-    /// Receive the next event.
-    ///
-    /// Returns `None` if the listener has been closed.
-    pub async fn next(&mut self) -> Option<Event> {
-        self.events.recv().await
-    }
-
-    /// Get the eventgroup ID this listener is subscribed to.
-    pub fn eventgroup(&self) -> EventgroupId {
-        self.eventgroup
     }
 }

@@ -1,4 +1,6 @@
-//! `OfferedService` for calling methods on remote SOME/IP services
+//! Client-side proxy for calling methods and subscribing to events.
+//!
+//! See [`OfferedService`] for the main type.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -13,88 +15,43 @@ use crate::{InstanceId, MajorVersion, MethodId, Response, ServiceId};
 
 use super::SubscriptionBuilder;
 
-/// Client-side proxy to a remote SOME/IP service.
+/// Client-side proxy to a discovered SOME/IP service.
 ///
-/// # Creating a Proxy
+/// Obtained via [`SomeIp::find`](crate::SomeIp::find). Provides methods for:
+/// - **RPC calls**: [`call`](Self::call), [`fire_and_forget`](Self::fire_and_forget)
+/// - **Event subscriptions**: [`new_subscription`](Self::new_subscription)
 ///
-/// Use [`SomeIp::find`](crate::SomeIp::find) to find and connect to a service:
+/// # Example
 ///
 /// ```no_run
 /// use recentip::prelude::*;
-///
-/// const MY_SERVICE_ID: u16 = 0x1234;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<()> {
 /// let runtime = recentip::configure().start().await?;
-/// let proxy = runtime.find(MY_SERVICE_ID).await?;
+///
+/// // Discover a service
+/// let proxy = runtime.find(0x1234).await?;
+///
+/// // Call a method
+/// let response = proxy.call(MethodId::new(0x01).unwrap(), b"request").await?;
+///
+/// // Subscribe to events
+/// let mut sub = proxy.new_subscription()
+///     .eventgroup(EventgroupId::new(1).unwrap())
+///     .subscribe().await?;
+///
+/// while let Some(event) = sub.next().await {
+///     println!("Event 0x{:04X}: {:?}", event.event_id.value(), event.payload);
+/// }
 /// # Ok(())
 /// # }
 /// ```
 ///
-/// # Calling Methods
+/// # Lifecycle
 ///
-/// Call methods with `.call()`:
-///
-/// ```no_run
-/// use recentip::prelude::*;
-/// use recentip::handles::OfferedService;
-///
-/// async fn call_method(proxy: &OfferedService) -> Result<()> {
-///     let method_id = MethodId::new(0x0001).unwrap();
-///     let response = proxy.call(method_id, b"request payload").await?;
-///     if response.return_code == ReturnCode::Ok {
-///         // Success
-///     }
-///     Ok(())
-/// }
-/// # fn main() {}
-/// ```
-///
-/// # Subscribing to Events
-///
-/// Subscribe to eventgroups to receive events:
-///
-/// ```no_run
-/// use recentip::prelude::*;
-/// use recentip::handles::OfferedService;
-///
-/// async fn subscribe_events(proxy: &OfferedService) -> Result<()> {
-///     let eg1 = EventgroupId::new(0x0001).unwrap();
-///     let eg2 = EventgroupId::new(0x0002).unwrap();
-///     
-///     let mut subscription = proxy
-///         .new_subscription()
-///         .eventgroup(eg1)
-///         .eventgroup(eg2)
-///         .subscribe()
-///         .await?;
-///     
-///     while let Some(event) = subscription.next().await {
-///         println!("Event: {:?}", event);
-///     }
-///     Ok(())
-/// }
-/// # fn main() {}
-/// ```
-///
-/// # Cloning
-///
-/// `OfferedService` is `Clone`. Clone it to share across tasks:
-///
-/// ```no_run
-/// use recentip::prelude::*;
-/// use recentip::handles::OfferedService;
-///
-/// async fn clone_example(proxy: OfferedService) {
-///     let method = MethodId::new(0x0001).unwrap();
-///     let proxy2 = proxy.clone();
-///     tokio::spawn(async move {
-///         let _ = proxy2.call(method, b"hello").await;
-///     });
-/// }
-/// # fn main() {}
-/// ```
+/// When dropped, sends `StopFind` to the runtime (for proxies created via discovery).
+/// This allows the runtime to stop listening for offers of this service.
 pub struct OfferedService {
     inner: Arc<RuntimeInner>,
     service_id: ServiceId,
@@ -164,29 +121,8 @@ impl OfferedService {
 
     /// Call a method and wait for the response.
     ///
-    /// Accepts any type that implements `AsRef<[u8]>`, including:
-    /// - `&[u8]`, `&[u8; N]` (will be copied)
-    /// - `Vec<u8>` (will be copied, but you can use `Bytes` for zero-copy)
-    /// - `b"string literals"`
-    ///
-    /// The payload is copied internally to ensure it lives long enough for
-    /// the async operation. For large payloads where zero-copy is important,
-    /// consider using `call_owned` with a `Bytes` value directly.
-    ///
-    /// For concurrent requests, clone the proxy handle:
-    /// ```no_run
-    /// use recentip::prelude::*;
-    /// use recentip::handles::OfferedService;
-    ///
-    /// async fn concurrent_calls(proxy: OfferedService) {
-    ///     let method = MethodId::new(0x0001).unwrap();
-    ///     let proxy2 = proxy.clone();
-    ///     tokio::spawn(async move {
-    ///         let _ = proxy2.call(method, b"hello").await;
-    ///     });
-    /// }
-    /// # fn main() {}
-    /// ```
+    /// The payload is copied internally. For large payloads where zero-copy
+    /// matters, use `bytes::Bytes` directly.
     pub async fn call(&self, method: MethodId, payload: impl AsRef<[u8]>) -> Result<Response> {
         let payload_bytes = bytes::Bytes::copy_from_slice(payload.as_ref());
         let (response_tx, response_rx) = oneshot::channel();
@@ -226,33 +162,12 @@ impl OfferedService {
         Ok(())
     }
 
-    /// Create a new subscription builder.
+    /// Start building a subscription to eventgroups.
     ///
-    /// Use the builder to subscribe to one or more eventgroups that share
-    /// the same network endpoint.
+    /// Returns a [`SubscriptionBuilder`] to add eventgroups and subscribe.
+    /// All eventgroups share the same network endpoint.
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use recentip::prelude::*;
-    ///
-    /// # async fn example(proxy: recentip::handles::OfferedService) -> Result<()> {
-    /// let eg1 = EventgroupId::new(0x0001).unwrap();
-    /// let eg2 = EventgroupId::new(0x0002).unwrap();
-    ///
-    /// let mut subscription = proxy
-    ///     .new_subscription()
-    ///     .eventgroup(eg1)
-    ///     .eventgroup(eg2)
-    ///     .subscribe()
-    ///     .await?;
-    ///
-    /// while let Some(event) = subscription.next().await {
-    ///     println!("Event: {:?}", event);
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// See [`SubscriptionBuilder`] and [`Subscription`](super::Subscription) for details.
     pub fn new_subscription(&self) -> SubscriptionBuilder {
         SubscriptionBuilder::new(
             Arc::clone(&self.inner),
