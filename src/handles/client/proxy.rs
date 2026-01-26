@@ -39,7 +39,7 @@ use super::SubscriptionBuilder;
 /// // Subscribe to events
 /// let mut sub = proxy.new_subscription()
 ///     .eventgroup(EventgroupId::new(1).unwrap())
-///     .subscribe().await?;
+///     .await?;
 ///
 /// while let Some(event) = sub.next().await {
 ///     println!("Event 0x{:04X}: {:?}", event.event_id.value(), event.payload);

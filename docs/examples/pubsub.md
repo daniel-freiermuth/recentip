@@ -98,7 +98,6 @@ async fn main() -> Result<()> {
     let mut subscription = proxy
         .new_subscription()
         .eventgroup(sensor_eg)
-        .subscribe()
         .await?;
 
     while let Some(event) = subscription.next().await {
@@ -129,7 +128,6 @@ async fn main() -> Result<()> {
         .new_subscription()
         .eventgroup(sensor_eg)
         .eventgroup(status_eg)
-        .subscribe()
         .await?;
 
     // Receive events from all subscribed eventgroups
@@ -200,7 +198,6 @@ async fn main() -> Result<()> {
         let mut sub = proxy
             .new_subscription()
             .eventgroup(eg)
-            .subscribe()
             .await?;
         
         // Receive some events...

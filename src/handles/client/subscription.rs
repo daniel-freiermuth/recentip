@@ -3,6 +3,8 @@
 //! - [`SubscriptionBuilder`]: Builder for subscribing to eventgroups
 //! - [`Subscription`]: Active subscription receiving events
 
+use std::future::{Future, IntoFuture};
+use std::pin::Pin;
 use std::sync::Arc;
 
 use tokio::sync::mpsc::error::TrySendError;
@@ -27,7 +29,6 @@ use crate::{Event, EventgroupId, InstanceId, ServiceId};
 ///     .new_subscription()
 ///     .eventgroup(EventgroupId::new(1).unwrap())
 ///     .eventgroup(EventgroupId::new(2).unwrap())  // multiple eventgroups OK
-///     .subscribe()
 ///     .await?;
 ///
 /// while let Some(event) = subscription.next().await {
@@ -117,6 +118,15 @@ impl SubscriptionBuilder {
             subscription_id,
             events_rx,
         ))
+    }
+}
+
+impl IntoFuture for SubscriptionBuilder {
+    type Output = Result<Subscription>;
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.subscribe())
     }
 }
 

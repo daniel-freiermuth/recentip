@@ -77,7 +77,6 @@ async fn main() -> Result<()> {
     let mut subscription = proxy
         .new_subscription()
         .eventgroup(eg)
-        .subscribe()
         .await?;
 
     // Receive events

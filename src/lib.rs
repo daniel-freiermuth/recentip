@@ -72,7 +72,6 @@
 //!     let mut subscription = proxy
 //!         .new_subscription()
 //!         .eventgroup(eg)
-//!         .subscribe()
 //!         .await?;
 //!     
 //!     while let Some(event) = subscription.next().await {
@@ -263,7 +262,6 @@
 //!         .new_subscription()
 //!         .eventgroup(eg1)
 //!         .eventgroup(eg2)  // Optional: subscribe to multiple eventgroups
-//!         .subscribe()
 //!         .await?;
 //!
 //!     while let Some(event) = subscription.next().await {

@@ -37,7 +37,6 @@
 //!     let mut subscription = proxy
 //!         .new_subscription()
 //!         .eventgroup(eventgroup)
-//!         .subscribe()
 //!         .await?;
 //!     while let Some(event) = subscription.next().await {
 //!         // Process event
