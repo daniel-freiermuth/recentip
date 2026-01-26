@@ -590,6 +590,7 @@ fn stop_subscribe_has_ttl_zero() {
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
+        .max_message_latency(Duration::from_millis(10))
         .build();
 
     // Raw socket acts as server - sends SD offers, receives subscribe and stop-subscribe

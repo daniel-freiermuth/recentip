@@ -427,6 +427,7 @@ fn udp_different_services_reuse_endpoint() {
 fn udp_different_instances_reuse_endpoint() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(10))
+        .max_message_latency(Duration::from_millis(10))
         .build();
 
     let endpoints_observed = Arc::new(Mutex::new(HashSet::new()));
@@ -620,6 +621,7 @@ fn udp_different_instances_reuse_endpoint() {
 fn udp_different_major_versions_reuse_endpoint() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(10))
+        .max_message_latency(Duration::from_millis(10))
         .build();
 
     let endpoints_observed = Arc::new(Mutex::new(HashSet::new()));
@@ -1254,6 +1256,7 @@ fn tcp_different_instances_reuse_connection() {
 fn tcp_different_major_versions_reuse_connection() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(10))
+        .max_message_latency(Duration::from_millis(10))
         .build();
 
     let connections_observed = Arc::new(Mutex::new(HashSet::new()));

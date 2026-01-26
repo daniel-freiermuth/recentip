@@ -2767,6 +2767,7 @@ fn subscription_valid_after_high_session_finds() {
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
+        .max_message_latency(Duration::from_millis(10))
         .build();
 
     // Server (library under test) - offers service with eventgroup

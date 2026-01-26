@@ -351,6 +351,7 @@ fn offer_triggers_subscribe_renewal() {
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
+        .max_message_latency(Duration::from_millis(10))
         .build();
 
     // Raw socket server - sends offers and counts subscribe responses
