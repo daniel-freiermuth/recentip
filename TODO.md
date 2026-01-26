@@ -26,6 +26,21 @@ True network isolation testing infrastructure needed:
 - Verify Runtime instances only discover services on their network
 - Requires `SO_BINDTODEVICE` (Linux) or `IP_PKTINFO` (others)
 
+### 4. Data Plane Bypass (Performance)
+Currently all RPC traffic flows through the central event loop. For high-throughput scenarios, separate control plane from data plane:
+- **Control plane (event loop)**: SD messages, commands, state mutations, periodic tasks
+- **Data plane (direct)**: RPC requests/responses bypass event loop, dispatch directly to handlers
+
+Benefits:
+- Event loop handles ~100 SD msgs/sec instead of potentially thousands of RPC msgs/sec
+- Lower latency for RPC (no channel hop through event loop)
+- Better scalability for many concurrent services
+
+Implementation approach:
+- Server socket readers dispatch directly to service handler (already know `ServiceKey`)
+- Client responses: use `Arc<DashMap>` for `pending_calls` lookup from reader task
+- Events already have direct channels to subscription handles
+
 ---
 
 ## Tasks
