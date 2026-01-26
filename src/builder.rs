@@ -78,7 +78,7 @@
 //!
 //! If no valid IP is available, subscribe operations will fail with a configuration error
 
-use crate::config::{RuntimeConfig, Transport, clamp_ttl_to_24bit};
+use crate::config::{clamp_ttl_to_24bit, RuntimeConfig, Transport};
 use crate::error::Result;
 use crate::handles::SomeIp;
 use crate::net::{TcpListener, TcpStream, UdpSocket};
