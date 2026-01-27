@@ -18,6 +18,10 @@ include = [
     "docs/examples/**/*",
 ]
 
+# Configure docs.rs to checkout git submodules
+[package.metadata.docs.rs]
+git-submodules = true
+
 [features]
 default = ["turmoil"]
 turmoil = ["dep:turmoil"]
