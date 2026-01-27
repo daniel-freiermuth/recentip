@@ -16,6 +16,7 @@ include = [
     "README.md",
     "spec-data/requirements.json",
     "docs/examples/**/*",
+    "docs/internals.md",
 ]
 
 # Configure docs.rs to checkout git submodules
