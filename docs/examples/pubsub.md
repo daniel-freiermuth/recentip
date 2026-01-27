@@ -91,11 +91,11 @@ use recentip::prelude::*;
 #[tokio::main]
 async fn main() -> Result<()> {
     let someip = recentip::configure().start().await?;
-    let proxy = someip.find(0x1234).await?;
+    let found_service = someip.find(0x1234).await?;
 
     let sensor_eg = EventgroupId::new(0x0001).unwrap();
     
-    let mut subscription = proxy.subscribe(sensor_eg).await?;
+    let mut subscription = found_service.subscribe(sensor_eg).await?;
 
     while let Some(event) = subscription.next().await {
         println!("Received event 0x{:04x}", event.event_id.value());
@@ -115,13 +115,13 @@ use recentip::prelude::*;
 #[tokio::main]
 async fn main() -> Result<()> {
     let someip = recentip::configure().start().await?;
-    let proxy = someip.find(0x1234).await?;
+    let found_service = someip.find(0x1234).await?;
 
     let sensor_eg = EventgroupId::new(0x0001).unwrap();
     let status_eg = EventgroupId::new(0x0002).unwrap();
     
     // Subscribe to both eventgroups
-    let mut subscription = proxy.subscribe(sensor_eg).and(status_eg).await?;
+    let mut subscription = found_service.subscribe(sensor_eg).and(status_eg).await?;
 
     // Receive events from all subscribed eventgroups
     while let Some(event) = subscription.next().await {
@@ -184,11 +184,11 @@ use recentip::prelude::*;
 #[tokio::main]
 async fn main() -> Result<()> {
     let someip = recentip::configure().start().await?;
-    let proxy = someip.find(0x1234).await?;
+    let found_service = someip.find(0x1234).await?;
 
     {
         let eg = EventgroupId::new(0x0001).unwrap();
-        let mut sub = proxy.subscribe(eg).await?;
+        let mut sub = found_service.subscribe(eg).await?;
         
         // Receive some events...
         if let Some(event) = sub.next().await {

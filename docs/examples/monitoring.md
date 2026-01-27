@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
     ).await;
 
     match result {
-        Ok(Ok(proxy)) => println!("Found service!"),
+        Ok(Ok(found_service)) => println!("Found service!"),
         Ok(Err(e)) => println!("Discovery error: {}", e),
         Err(_) => println!("Discovery timed out"),
     }
@@ -139,11 +139,11 @@ async fn main() -> Result<()> {
         }
 
         // Use the service
-        let proxy = someip.find(target_service).await?;
+        let found_service = someip.find(target_service).await?;
         
         // Monitor for unavailability while using
         tokio::select! {
-            result = use_service(&proxy) => {
+            result = use_service(&found_service) => {
                 if let Err(e) = result {
                     println!("Service error: {}", e);
                 }
@@ -162,10 +162,10 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn use_service(proxy: &recentip::OfferedService) -> Result<()> {
+async fn use_service(found_service: &recentip::OfferedService) -> Result<()> {
     let method = MethodId::new(0x0001).unwrap();
     loop {
-        proxy.call(method, b"ping").await?;
+        found_service.call(method, b"ping").await?;
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 }

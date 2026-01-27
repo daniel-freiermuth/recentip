@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
         .await?;
 
     // This will use TCP if the service offers it
-    let proxy = someip.find(0x1234).await?;
+    let found_service = someip.find(0x1234).await?;
 
     Ok(())
 }
@@ -97,13 +97,13 @@ async fn main() -> Result<()> {
     let someip = recentip::configure().start().await?;
 
     // Multiple calls to the same service reuse the TCP connection
-    let proxy = someip.find(0x1234).await?;
+    let found_service = someip.find(0x1234).await?;
     
     let method = MethodId::new(0x0001).unwrap();
     
     // All these calls use the same underlying TCP connection
     for i in 0..100 {
-        let _ = proxy.call(method, &[i as u8]).await?;
+        let _ = found_service.call(method, &[i as u8]).await?;
     }
 
     Ok(())
@@ -152,7 +152,7 @@ async fn main() -> Result<()> {
         .await?;
 
     // Now compatible with vsomeip services on the network
-    let proxy = someip.find(0x1234).await?;
+    let found_service = someip.find(0x1234).await?;
 
     Ok(())
 }

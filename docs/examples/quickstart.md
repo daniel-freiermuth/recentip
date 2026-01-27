@@ -70,11 +70,11 @@ use recentip::prelude::*;
 #[tokio::main]
 async fn main() -> Result<()> {
     let someip = recentip::configure().start().await?;
-    let proxy = someip.find(0x1234).await?;
+    let found_service = someip.find(0x1234).await?;
 
     // Subscribe to eventgroups
     let eg = EventgroupId::new(0x0001).unwrap();
-    let mut subscription = proxy.subscribe(eg).await?;
+    let mut subscription = found_service.subscribe(eg).await?;
 
     // Receive events
     while let Some(event) = subscription.next().await {

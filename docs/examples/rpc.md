@@ -14,12 +14,12 @@ use recentip::prelude::*;
 #[tokio::main]
 async fn main() -> Result<()> {
     let someip = recentip::configure().start().await?;
-    let proxy = someip.find(0x1234).await?;
+    let found_service = someip.find(0x1234).await?;
 
     let method = MethodId::new(0x0001).unwrap();
     
     // Synchronous call - waits for response
-    let response = proxy.call(method, b"request data").await?;
+    let response = found_service.call(method, b"request data").await?;
     
     match response.return_code {
         ReturnCode::Ok => println!("Success: {:?}", response.payload),
@@ -83,11 +83,11 @@ use recentip::prelude::*;
 #[tokio::main]
 async fn main() -> Result<()> {
     let someip = recentip::configure().start().await?;
-    let proxy = someip.find(0x1234).await?;
+    let found_service = someip.find(0x1234).await?;
 
     // Fire-and-forget - no response expected
     let method = MethodId::new(0x0010).unwrap();
-    proxy.fire_and_forget(method, b"log: button pressed").await?;
+    found_service.fire_and_forget(method, b"log: button pressed").await?;
 
     Ok(())
 }
