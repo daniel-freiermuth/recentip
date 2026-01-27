@@ -438,7 +438,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
 
     /// Get a list of currently discovered services.
     ///
-    /// Returns [`OfferedService`] handles for all services that have been discovered
+    /// Returns [`OfferedService`](crate::OfferedService) handles for all services that have been discovered
     /// via Service Discovery and have not yet expired. The returned handles can be
     /// used directly to call methods, subscribe to events, or check liveness.
     ///
@@ -447,7 +447,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     /// # Returns
     ///
-    /// A vector of [`OfferedService`] handles for all currently alive discovered services.
+    /// A vector of [`OfferedService`](crate::OfferedService) handles for all currently alive discovered services.
     /// Each handle provides access to the service's methods and events.
     ///
     /// # Examples

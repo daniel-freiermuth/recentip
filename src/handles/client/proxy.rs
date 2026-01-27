@@ -19,7 +19,7 @@ use super::SubscriptionBuilder;
 ///
 /// Obtained via [`SomeIp::find`](crate::SomeIp::find). Provides methods for:
 /// - **RPC calls**: [`call`](Self::call), [`fire_and_forget`](Self::fire_and_forget)
-/// - **Event subscriptions**: [`new_subscription`](Self::new_subscription)
+/// - **Event subscriptions**: [`subscribe`](Self::subscribe)
 ///
 /// # Example
 ///
@@ -122,7 +122,7 @@ impl OfferedService {
     ///
     /// # See Also
     ///
-    /// - [`SomeIp::find`] - For dynamic service discovery
+    /// - [`SomeIp::find`](crate::SomeIp::find) - For dynamic service discovery
     pub fn new<U, T, L>(
         runtime: &crate::SomeIp<U, T, L>,
         service_id: ServiceId,
