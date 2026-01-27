@@ -8,6 +8,7 @@ repository = "https://github.com/daniel-freiermuth/recentip"
 keywords = ["someip", "automotive", "rpc", "async", "tokio"]
 categories = ["asynchronous", "network-programming"]
 # Include bundled requirements for crate builds (specs submodule not available on crates.io)
+# Also include tests/compliance for coverage extraction at docs.rs build time
 include = [
     "src/**/*",
     "build.rs",
@@ -15,6 +16,8 @@ include = [
     "LICENSE",
     "README.md",
     "spec-data/requirements.json",
+    "scripts/extract_coverage.py",
+    "tests/compliance/**/*",
     "docs/examples/**/*",
     "docs/internals.md",
 ]
