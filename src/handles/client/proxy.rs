@@ -279,6 +279,11 @@ impl OfferedService {
         self.instance_id
     }
 
+    /// Get the major version
+    pub const fn major_version(&self) -> u8 {
+        self.major_version
+    }
+
     /// Get the endpoint address
     pub const fn endpoint(&self) -> std::net::SocketAddr {
         self.endpoint

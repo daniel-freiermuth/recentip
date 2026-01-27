@@ -2552,3 +2552,88 @@ fn test_is_offer_alive_static_proxy_with_sd() {
 
     sim.run().unwrap();
 }
+
+/// Test that discovered_services() returns correct discovered services
+#[test_log::test]
+fn test_discovered_services() {
+    let mut sim = turmoil::Builder::new().build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let _offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_secs(15)).await;
+        Ok(())
+    });
+
+    sim.client("client", async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Initially no services discovered
+        let discovered = runtime.discovered_services();
+        assert_eq!(
+            discovered.len(),
+            0,
+            "Should start with no discovered services"
+        );
+
+        // Start discovery
+        let _proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .major_version(1)
+            .await
+            .unwrap();
+
+        // Wait for discovery
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // Now should have one discovered service
+        let discovered = runtime.discovered_services();
+        assert_eq!(discovered.len(), 1, "Should have discovered one service");
+
+        let service = &discovered[0];
+        assert_eq!(
+            service.service_id(),
+            ServiceId::new(TEST_SERVICE_ID).unwrap()
+        );
+        assert_eq!(service.instance_id(), InstanceId::Id(0x0001));
+        assert_eq!(service.major_version(), 1);
+        assert_eq!(service.endpoint().ip(), turmoil::lookup("server"));
+
+        use recentip::config::Transport;
+        assert_eq!(service.transport(), Transport::Udp);
+
+        // The service should be alive
+        assert!(service.is_offer_alive(), "Service should be alive");
+
+        // Wait for TTL to approach expiry but service still offering
+        tokio::time::sleep(Duration::from_secs(4)).await;
+
+        // Should still be discovered
+        let discovered = runtime.discovered_services();
+        assert_eq!(
+            discovered.len(),
+            1,
+            "Service should still be discovered while being offered"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}

@@ -435,6 +435,83 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     pub(crate) const fn inner(&self) -> &Arc<RuntimeInner> {
         &self.inner
     }
+
+    /// Get a list of currently discovered services.
+    ///
+    /// Returns [`OfferedService`] handles for all services that have been discovered
+    /// via Service Discovery and have not yet expired. The returned handles can be
+    /// used directly to call methods, subscribe to events, or check liveness.
+    ///
+    /// Useful for introspection, monitoring, and accessing discovered services without
+    /// needing to call [`find`](Self::find) again.
+    ///
+    /// # Returns
+    ///
+    /// A vector of [`OfferedService`] handles for all currently alive discovered services.
+    /// Each handle provides access to the service's methods and events.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use recentip::SomeIp;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let runtime = recentip::configure().start().await?;
+    ///
+    /// // Wait for some services to be discovered
+    /// tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    ///
+    /// // Get all discovered services and use them
+    /// for service in runtime.discovered_services() {
+    ///     println!(
+    ///         "Service {:04X}:{:04X} v{} alive: {}",
+    ///         service.service_id().value(),
+    ///         service.instance_id().value(),
+    ///         service.major_version(),
+    ///         service.is_offer_alive()
+    ///     );
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn discovered_services(&self) -> Vec<crate::handle::OfferedService> {
+        self.inner
+            .discovered
+            .iter()
+            .filter_map(|entry| {
+                let key = entry.key();
+                let service = entry.value();
+
+                // Only include alive services that have an endpoint
+                if !service.is_alive() {
+                    return None;
+                }
+
+                // Get the endpoint based on config's preferred transport
+                let prefer_tcp = matches!(
+                    self.inner.config.preferred_transport,
+                    crate::config::Transport::Tcp
+                );
+
+                service
+                    .method_endpoint(prefer_tcp)
+                    .and_then(|(endpoint, transport)| {
+                        // Convert raw u16 values to newtypes
+                        let service_id = ServiceId::new(key.service_id)?;
+                        let instance_id = InstanceId::new(key.instance_id)?;
+
+                        // Create OfferedService handle using public constructor
+                        Some(crate::handle::OfferedService::new(
+                            self,
+                            service_id,
+                            instance_id,
+                            key.major_version,
+                            endpoint,
+                            transport,
+                        ))
+                    })
+            })
+            .collect()
+    }
 }
 
 // ============================================================================
