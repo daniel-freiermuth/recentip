@@ -77,12 +77,82 @@ impl Clone for OfferedService {
 }
 
 impl OfferedService {
-    /// Create a new `OfferedService` (for static deployments or after discovery).
+    /// Create a new `OfferedService` for a service at a known endpoint (static deployment).
+    ///
+    /// This bypasses service discovery and creates a proxy that directly communicates
+    /// with the specified endpoint. Useful for:
+    /// - Static/pre-configured deployments where endpoints are known at compile time
+    /// - Testing without SD machinery
+    /// - Scenarios where SD is disabled (`feat_req_someipsd_444`)
+    ///
+    /// # Arguments
+    ///
+    /// - `runtime`: Reference to the SOME/IP runtime
+    /// - `service_id`: Service ID (required, e.g., 0x1234)
+    /// - `instance_id`: Instance ID (required)
+    /// - `major_version`: Major version of the service interface
+    /// - `endpoint`: Socket address of the service (IP + port)
+    /// - `transport`: Transport protocol (TCP or UDP)
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    /// use std::net::{SocketAddr, Ipv4Addr};
+    ///
+    /// # async fn example() -> Result<()> {
+    /// let runtime = recentip::configure().start().await?;
+    ///
+    /// // Connect to a service at a known endpoint
+    /// let endpoint = SocketAddr::from((Ipv4Addr::new(192, 168, 1, 10), 30501));
+    /// let proxy = OfferedService::new(
+    ///     &runtime,
+    ///     ServiceId::new(0x1234).unwrap(), // service_id
+    ///     InstanceId::Id(1),               // instance_id
+    ///     1,                               // major_version
+    ///     endpoint,                        // endpoint
+    ///     Transport::Tcp,                  // transport
+    /// );
+    ///
+    /// // Use the proxy like any other
+    /// let response = proxy.call(MethodId::new(0x0001).unwrap(), b"request").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # See Also
+    ///
+    /// - [`SomeIp::find`] - For dynamic service discovery
+    pub fn new<U, T, L>(
+        runtime: &crate::SomeIp<U, T, L>,
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        major_version: u8,
+        endpoint: SocketAddr,
+        transport: crate::config::Transport,
+    ) -> Self
+    where
+        U: crate::net::UdpSocket,
+        T: crate::net::TcpStream,
+        L: crate::net::TcpListener<Stream = T>,
+    {
+        Self::from_inner(
+            Arc::clone(runtime.inner()),
+            service_id,
+            instance_id,
+            major_version,
+            endpoint,
+            transport,
+            None, // No find_criteria for static deployments
+        )
+    }
+
+    /// Internal constructor used by the find operation.
     ///
     /// # Parameters
     /// - `find_criteria`: Original (`instance_id`, `major_version`) used in the find request.
     ///   Used for `StopFind` on drop. Pass `None` for static deployments.
-    pub(crate) const fn new(
+    pub(crate) const fn from_inner(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,

@@ -90,6 +90,7 @@ Currently `unicast_session_id` is global. Should be `HashMap<IpAddr, u16>` per `
 
 Items not yet scheduled:
 
+- **Server-side static binding API** - Add `runtime.bind()` for server-side services without SD (parallel to client-side `OfferedService::new()`)
 - Multi-homed host testing infrastructure (Vagrant/Docker/netns options)
 - Port rotation tests
 - Configuration validation tests

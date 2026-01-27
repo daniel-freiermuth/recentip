@@ -2138,3 +2138,75 @@ fn test_same_event_id_different_services() {
 
     sim.run().unwrap();
 }
+
+/// Test creating a static proxy without service discovery
+#[test_log::test]
+fn test_static_proxy_creation() {
+    use recentip::config::Transport;
+    use recentip::handle::OfferedService;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(5))
+        .build();
+
+    // Server offers a service at a known endpoint
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp_port(30501)
+            .start()
+            .await
+            .unwrap();
+
+        // Handle one request
+        if let Some(ServiceEvent::Call {
+            method, responder, ..
+        }) = offering.next().await
+        {
+            assert_eq!(method, MethodId::new(0x0001).unwrap());
+            responder.reply(b"response").unwrap();
+        }
+
+        Ok(())
+    });
+
+    // Client connects directly without service discovery
+    sim.client("client", async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let server_ip = turmoil::lookup("server");
+        let endpoint = format!("{}:30501", server_ip).parse().unwrap();
+
+        // Create static proxy - no service discovery involved
+        let proxy = OfferedService::new(
+            &runtime,
+            ServiceId::new(TEST_SERVICE_ID).unwrap(),
+            InstanceId::Id(0x0001),
+            1, // major_version
+            endpoint,
+            Transport::Udp,
+        );
+
+        // Use the proxy like any other
+        let response = proxy
+            .call(MethodId::new(0x0001).unwrap(), b"request")
+            .await
+            .unwrap();
+        assert_eq!(&*response.payload, b"response");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}

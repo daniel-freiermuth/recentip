@@ -144,7 +144,7 @@ where
             return Err(Error::NotAvailable);
         };
 
-        Ok(OfferedService::new(
+        Ok(OfferedService::from_inner(
             Arc::clone(self.runtime.inner()),
             service_id,
             InstanceId::Id(discovered_instance_id),
