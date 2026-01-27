@@ -533,11 +533,17 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             let services_to_remove: Vec<_> = state
                 .discovered
                 .iter()
-                .filter(|(_, svc)| {
-                    svc.udp_endpoint.is_some_and(|addr| addr.ip() == peer)
-                        || svc.tcp_endpoint.is_some_and(|addr| addr.ip() == peer)
+                .filter(|entry| {
+                    entry
+                        .value()
+                        .udp_endpoint
+                        .is_some_and(|addr| addr.ip() == peer)
+                        || entry
+                            .value()
+                            .tcp_endpoint
+                            .is_some_and(|addr| addr.ip() == peer)
                 })
-                .map(|(key, _)| *key)
+                .map(|entry| *entry.key())
                 .collect();
 
             for key in services_to_remove {
@@ -1042,9 +1048,9 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
 
     // Check for expired discovered services
     let mut expired_discovered = Vec::new();
-    for (key, discovered) in &state.discovered {
-        if now >= discovered.ttl_expires {
-            expired_discovered.push(*key);
+    for entry in state.discovered.iter() {
+        if !entry.is_alive() {
+            expired_discovered.push(*entry.key());
         }
     }
 

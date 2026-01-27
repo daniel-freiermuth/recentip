@@ -42,8 +42,10 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use bytes::Bytes;
+use dashmap::DashMap;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
@@ -342,6 +344,11 @@ impl DiscoveredService {
                 })
         }
     }
+
+    /// Check if the service offer is still alive (TTL not expired)
+    pub(crate) fn is_alive(&self) -> bool {
+        Instant::now() < self.ttl_expires
+    }
 }
 
 // ============================================================================
@@ -449,8 +456,8 @@ pub struct RuntimeState {
     pub(crate) registered_events: HashMap<ServiceKey, HashSet<u16>>,
     /// Services we're looking for
     pub(crate) find_requests: HashMap<ServiceKey, FindRequest>,
-    /// Discovered remote services
-    pub(crate) discovered: HashMap<ServiceKey, DiscoveredService>,
+    /// Discovered remote services (shared with client handles for is_offer_alive())
+    pub(crate) discovered: Arc<DashMap<ServiceKey, DiscoveredService>>,
     /// Active subscriptions (client-side)
     pub(crate) subscriptions: HashMap<ServiceKey, Vec<ClientSubscription>>,
     /// Server-side subscribers (clients subscribed to our offered services)
@@ -520,7 +527,7 @@ impl RuntimeState {
             offered: HashMap::new(),
             registered_events: HashMap::new(),
             find_requests: HashMap::new(),
-            discovered: HashMap::new(),
+            discovered: Arc::new(DashMap::new()),
             subscriptions: HashMap::new(),
             server_subscribers: HashMap::new(),
             static_listeners: HashMap::new(),

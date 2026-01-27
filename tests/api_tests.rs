@@ -2210,3 +2210,345 @@ fn test_static_proxy_creation() {
 
     sim.run().unwrap();
 }
+
+/// Test that is_offer_alive() returns true after discovery
+#[test_log::test]
+fn test_is_offer_alive_after_discovery() {
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(10))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let _offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        // Keep offering throughout the test
+        tokio::time::sleep(Duration::from_secs(8)).await;
+
+        Ok(())
+    });
+
+    sim.client("client", async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Find the service
+        let proxy = runtime.find(TEST_SERVICE_ID).await.unwrap();
+
+        // Service should be alive right after discovery
+        assert!(
+            proxy.is_offer_alive(),
+            "Service should be alive immediately after discovery"
+        );
+
+        // Still alive after some time (within TTL)
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert!(
+            proxy.is_offer_alive(),
+            "Service should still be alive after 1s"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Test that is_offer_alive() returns false before discovery
+#[test_log::test]
+fn test_is_offer_alive_before_discovery() {
+    use recentip::config::Transport;
+    use recentip::handle::OfferedService;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(5))
+        .build();
+
+    sim.client("client", async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Create a static proxy to a non-existent service
+        let endpoint = "192.168.1.100:30501".parse().unwrap();
+        let proxy = OfferedService::new(
+            &runtime,
+            ServiceId::new(TEST_SERVICE_ID).unwrap(),
+            InstanceId::Id(0x0001),
+            1,
+            endpoint,
+            Transport::Udp,
+        );
+
+        // Service has never been discovered, should not be alive
+        assert!(
+            !proxy.is_offer_alive(),
+            "Service should not be alive when never discovered"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Test that is_offer_alive() returns false after TTL expires
+#[test_log::test]
+fn test_is_offer_alive_ttl_expiration() {
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    let server_stopped = Arc::new(AtomicBool::new(false));
+    let server_stopped_clone = Arc::clone(&server_stopped);
+
+    sim.host("server", move || {
+        let server_stopped = Arc::clone(&server_stopped_clone);
+        async move {
+            let runtime = recentip::configure()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .offer_ttl(3) // Short TTL for testing (3 seconds)
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let offering = runtime
+                .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(1, 0)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+
+            // Offer for a short time
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            // Stop offering - drop the offering handle
+            drop(offering);
+            server_stopped.store(true, std::sync::atomic::Ordering::SeqCst);
+
+            // Wait for TTL to expire
+            tokio::time::sleep(Duration::from_secs(10)).await;
+
+            Ok(())
+        }
+    });
+
+    sim.client("client", async move {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Find the service while it's being offered
+        let proxy = runtime.find(TEST_SERVICE_ID).await.unwrap();
+
+        // Should be alive initially
+        assert!(
+            proxy.is_offer_alive(),
+            "Service should be alive after discovery"
+        );
+
+        // Wait for server to stop and TTL to expire
+        // TTL is 3s, wait 5s to be sure
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
+        // Verify server has stopped
+        assert!(
+            server_stopped.load(std::sync::atomic::Ordering::SeqCst),
+            "Server should have stopped offering"
+        );
+
+        // Service should no longer be alive (TTL expired)
+        assert!(
+            !proxy.is_offer_alive(),
+            "Service should not be alive after TTL expiration"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Test that is_offer_alive() detects TTL expiry gap when cyclic delay exceeds TTL
+/// Uses a static proxy (no Find requests) to observe the gap between TTL expiry
+/// and the next cyclic offer. With offer_ttl=5s and cyclic_offer_delay=10s,
+/// there's a 5-second window where the service appears dead.
+#[test_log::test]
+fn test_is_offer_alive_ttl_cleanup() {
+    use recentip::config::Transport;
+    use recentip::handle::OfferedService;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(20))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .offer_ttl(5) // TTL: 5 seconds
+            .cyclic_offer_delay(10_000) // Cyclic delay: 10 seconds (exceeds TTL!)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let _offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp_port(30491)
+            .start()
+            .await
+            .unwrap();
+
+        // Keep offering throughout test (cyclic offers at t=0, t=10, etc.)
+        tokio::time::sleep(Duration::from_secs(18)).await;
+
+        Ok(())
+    });
+
+    sim.client("client", async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Wait for initial offer to be sent by server
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let server_ip = turmoil::lookup("server");
+        let endpoint = format!("{}:30491", server_ip).parse().unwrap();
+
+        // Create STATIC proxy (no Find requests, no unicast offer responses)
+        let proxy = OfferedService::new(
+            &runtime,
+            ServiceId::new(TEST_SERVICE_ID).unwrap(),
+            InstanceId::Id(0x0001),
+            1,
+            endpoint,
+            Transport::Udp,
+        );
+
+        // Wait for SD to discover the service (from multicast offer)
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        // Should be alive after initial discovery (t~2s, offer was at t~0.5s)
+        assert!(
+            proxy.is_offer_alive(),
+            "Service should be alive after initial multicast offer"
+        );
+
+        // Wait past TTL expiry but before next cyclic offer
+        // Initial offer at t~0.5s, TTL expires at t~5.5s, next offer at t~10.5s
+        // Wait until t~7s to be safely in the gap
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
+        // Service should NOT be alive in the gap (t~7s)
+        assert!(
+            !proxy.is_offer_alive(),
+            "Service should not be alive in gap between TTL expiry (5s) and next cyclic offer (10s)"
+        );
+
+        // Wait for next cyclic offer (wait until t~12s)
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
+        // Service should be alive again after cyclic refresh (t~12s, offer was at t~10.5s)
+        assert!(
+            proxy.is_offer_alive(),
+            "Service should be alive again after cyclic offer refresh"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Test that static proxy can check if service is alive via SD
+#[test_log::test]
+fn test_is_offer_alive_static_proxy_with_sd() {
+    use recentip::config::Transport;
+    use recentip::handle::OfferedService;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(10))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let _offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp_port(30501)
+            .start()
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_secs(8)).await;
+
+        Ok(())
+    });
+
+    sim.client("client", async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let server_ip = turmoil::lookup("server");
+        let endpoint = format!("{}:30501", server_ip).parse().unwrap();
+
+        // Create static proxy (bypasses SD for creation)
+        let proxy = OfferedService::new(
+            &runtime,
+            ServiceId::new(TEST_SERVICE_ID).unwrap(),
+            InstanceId::Id(0x0001),
+            1,
+            endpoint,
+            Transport::Udp,
+        );
+
+        // Initially not alive (not yet in discovered map)
+        assert!(
+            !proxy.is_offer_alive(),
+            "Static proxy should not show alive before SD discovers it"
+        );
+
+        // Wait for SD to discover the service
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // Now should be alive (SD has discovered it)
+        assert!(
+            proxy.is_offer_alive(),
+            "Static proxy should show alive after SD discovers the service"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}

@@ -229,10 +229,12 @@ pub fn handle_find(
     let found = state
         .discovered
         .iter()
-        .find(|(k, _v)| k.matches(key))
-        .and_then(|(k, v)| {
-            v.method_endpoint(prefer_tcp)
-                .map(|(ep, tr)| (k.instance_id, k.major_version, ep, tr))
+        .find(|entry| entry.key().matches(key))
+        .and_then(|entry| {
+            entry
+                .value()
+                .method_endpoint(prefer_tcp)
+                .map(|(ep, tr)| (entry.key().instance_id, entry.key().major_version, ep, tr))
         });
 
     if let Some((discovered_instance_id, discovered_major_version, endpoint, transport)) = found {
@@ -416,6 +418,12 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
         return;
     };
 
+    // Extract TCP endpoint if needed (before dropping the discovered guard)
+    let tcp_endpoint_opt = discovered.tcp_endpoint;
+
+    // Drop the DashMap guard to allow mutable borrows of state below
+    drop(discovered);
+
     // For TCP subscriptions, establish connection BEFORE subscribing (feat_req_someipsd_767)
     //
     // TCP connection sharing strategy (same as UDP endpoint sharing):
@@ -431,7 +439,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
     //
     // Returns (endpoint, tcp_conn_key) where tcp_conn_key is used for event routing
     let (endpoint_for_subscribe, tcp_conn_key) = if transport == Transport::Tcp {
-        let Some(tcp_endpoint) = discovered.tcp_endpoint else {
+        let Some(tcp_endpoint) = tcp_endpoint_opt else {
             tracing::error!(
                 "TCP transport selected but no TCP endpoint for {:04x}:{:04x}",
                 service_id.value(),
@@ -936,7 +944,7 @@ pub fn handle_unsubscribe(
         return;
     };
 
-    if let Some(discovered) = state.discovered.get(&key) {
+    let (transport, sd_endpoint) = if let Some(discovered) = state.discovered.get(&key) {
         let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
         let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
             // Server offers nothing
@@ -949,45 +957,8 @@ pub fn handle_unsubscribe(
             return;
         };
 
-        tracing::info!(
-            "Unsubscribing from {:04x}:{:04x} v{} eventgroup {:04x}",
-            service_id.value(),
-            instance_id.value(),
-            major_version,
-            eventgroup_id
-        );
-
-        // Determine the actual local IP address to put in the endpoint option
-        // Per feat_req_someipsd_814, we must provide a valid routable IP, not 0.0.0.0
-        let Some(endpoint_ip) = get_endpoint_ip(state) else {
-            tracing::error!(
-                "Cannot unsubscribe from {:04x}:{:04x} eventgroup {:04x}: \
-                 no valid IP address configured. Set RuntimeConfig::advertised_ip",
-                service_id.value(),
-                instance_id.value(),
-                eventgroup_id
-            );
-            return;
-        };
-
-        // Use the same endpoint that was used for the subscription
-        // Per feat_req_someipsd_1177: StopSubscribeEventgroup shall reference the same
-        // options the SubscribeEventgroup Entry referenced
-        let endpoint_for_unsubscribe = SocketAddr::new(endpoint_ip, subscription_endpoint.port());
-
-        let msg = build_unsubscribe_message(
-            service_id.value(),
-            instance_id.value(),
-            major_version,
-            eventgroup_id,
-            endpoint_for_unsubscribe,
-            subscription_endpoint.port(),
-            state.sd_flags(true),
-            transport,
-        );
-
-        // Queue unsubscribe for time-based clustering with other SD messages
-        state.queue_unicast_sd(msg, discovered.sd_endpoint);
+        let sd_endpoint = discovered.sd_endpoint;
+        (transport, sd_endpoint)
     } else {
         tracing::warn!(
             "Trying to unsubscribe from eventgroup {:04x} on service {:04x} instance {:04x}, but service not discovered",
@@ -995,7 +966,48 @@ pub fn handle_unsubscribe(
             service_id.value(),
             instance_id.value()
         );
-    }
+        return;
+    };
+
+    tracing::info!(
+        "Unsubscribing from {:04x}:{:04x} v{} eventgroup {:04x}",
+        service_id.value(),
+        instance_id.value(),
+        major_version,
+        eventgroup_id
+    );
+
+    // Determine the actual local IP address to put in the endpoint option
+    // Per feat_req_someipsd_814, we must provide a valid routable IP, not 0.0.0.0
+    let Some(endpoint_ip) = get_endpoint_ip(state) else {
+        tracing::error!(
+            "Cannot unsubscribe from {:04x}:{:04x} eventgroup {:04x}: \
+                 no valid IP address configured. Set RuntimeConfig::advertised_ip",
+            service_id.value(),
+            instance_id.value(),
+            eventgroup_id
+        );
+        return;
+    };
+
+    // Use the same endpoint that was used for the subscription
+    // Per feat_req_someipsd_1177: StopSubscribeEventgroup shall reference the same
+    // options the SubscribeEventgroup Entry referenced
+    let endpoint_for_unsubscribe = SocketAddr::new(endpoint_ip, subscription_endpoint.port());
+
+    let msg = build_unsubscribe_message(
+        service_id.value(),
+        instance_id.value(),
+        major_version,
+        eventgroup_id,
+        endpoint_for_unsubscribe,
+        subscription_endpoint.port(),
+        state.sd_flags(true),
+        transport,
+    );
+
+    // Queue unsubscribe for time-based clustering with other SD messages
+    state.queue_unicast_sd(msg, sd_endpoint);
 }
 
 // ============================================================================
@@ -1060,11 +1072,12 @@ pub fn handle_incoming_notification(
     let Some(key): Option<ServiceKey> = state
         .discovered
         .iter()
-        .find(|(key, disc)| {
-            key.service_id == header.service_id
-                && (disc.udp_endpoint == Some(from) || disc.tcp_endpoint == Some(from))
+        .find(|entry| {
+            entry.key().service_id == header.service_id
+                && (entry.value().udp_endpoint == Some(from)
+                    || entry.value().tcp_endpoint == Some(from))
         })
-        .map(|(key, _)| *key)
+        .map(|entry| *entry.key())
     else {
         tracing::warn!(
             "Received event {:04x} from unknown service {:04x} at {}",

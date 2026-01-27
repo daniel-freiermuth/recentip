@@ -57,6 +57,13 @@ pub(crate) struct RuntimeInner {
     pub(crate) cmd_tx: mpsc::Sender<Command>,
     /// `SomeIp` configuration (for static proxy creation)
     pub(crate) config: crate::config::RuntimeConfig,
+    /// Discovered services (shared for is_offer_alive() checks)
+    pub(crate) discovered: std::sync::Arc<
+        dashmap::DashMap<
+            crate::runtime::state::ServiceKey,
+            crate::runtime::state::DiscoveredService,
+        >,
+    >,
 }
 
 // ============================================================================
@@ -209,17 +216,18 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
         });
 
         // Spawn the runtime task
-        let inner = Arc::new(RuntimeInner {
-            cmd_tx,
-            config: config.clone(),
-        });
-
         let state = RuntimeState::new(
             local_addr,
             client_method_addr,
             client_method_send_tx,
             config.clone(),
         );
+
+        let inner = Arc::new(RuntimeInner {
+            cmd_tx,
+            config: config.clone(),
+            discovered: Arc::clone(&state.discovered),
+        });
 
         let runtime_task = tokio::spawn(async move {
             runtime_task::<U, T, L>(

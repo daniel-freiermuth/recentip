@@ -283,6 +283,45 @@ impl OfferedService {
     pub const fn endpoint(&self) -> std::net::SocketAddr {
         self.endpoint
     }
+
+    /// Check if the service offer is currently alive (TTL not expired).
+    ///
+    /// Returns `true` if the service was recently discovered or is still being offered
+    /// (TTL has not expired). Returns `false` if:
+    /// - The service has never been discovered via SD
+    /// - The service's TTL has expired without renewal
+    ///
+    /// This works for both discovered proxies (via `find()`) and static proxies
+    /// (via `new()`) - it checks if the actual service at the endpoint is currently
+    /// offering itself via SD.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    ///
+    /// # async fn example(proxy: OfferedService) -> Result<()> {
+    /// if proxy.is_offer_alive() {
+    ///     // Service is still being offered
+    ///     let response = proxy.call(MethodId::new(0x01).unwrap(), b"request").await?;
+    /// } else {
+    ///     // Service TTL expired or never discovered
+    ///     println!("Service is no longer available");
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn is_offer_alive(&self) -> bool {
+        let key = crate::runtime::state::ServiceKey::new(
+            self.service_id,
+            self.instance_id,
+            self.major_version,
+        );
+        self.inner
+            .discovered
+            .get(&key)
+            .is_some_and(|svc| svc.is_alive())
+    }
 }
 
 impl Drop for OfferedService {
