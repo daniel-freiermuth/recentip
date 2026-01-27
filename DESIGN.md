@@ -93,16 +93,15 @@ loop {
 client.on_event(|e| { ... });  // Hidden complexity
 ```
 
-### 2. Sync-First with Async Layer
+### 2. Async-First with Tokio
 
-**Decision**: Core library is synchronous; async is a separate layer on top.
+**Decision**: Core library is async using tokio; socket types are abstracted via traits.
 
 **Rationale**:
-- QNX has limited async ecosystem support
-- Embedded systems may not have async runtimes
-- Sync code is simpler to reason about and debug
-- Async can always wrap sync; sync cannot easily wrap async
-- Matches protocol's "tiny to large" scalability goal
+- Modern async/await is ergonomic and well-supported in Rust
+- Tokio provides excellent performance and ecosystem integration
+- Network abstraction traits enable swapping socket implementations
+- Testing uses turmoil for deterministic network simulation
 
 ### 3. Configuration via Structs + Builders
 
@@ -208,420 +207,161 @@ drop(service);  // Close sockets
 
 ---
 
-## Architecture: Layered Crates
+## Architecture: Single Crate with Modules
+
+The library is a single crate `recentip` with modular organization:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ someip-types                                                │
-│ no_std, zero dependencies                                   │
+│ recentip                                                    │
+│ async-first, tokio-based, trait-abstracted I/O              │
+├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│ • Protocol types: ServiceId, MethodId, EventgroupId, etc.  │
-│ • Header parsing/serialization                              │
-│ • SD message parsing/serialization                          │
-│ • Newtypes with validation                                  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│ someip-runtime                                              │
-│ std, sync, trait-based I/O                                  │
+│  wire/         Protocol types and parsing                   │
+│  ├── ServiceId, MethodId, EventgroupId, etc.               │
+│  ├── Header parsing/serialization                           │
+│  └── SD message parsing/serialization                       │
 │                                                             │
-│ • Client, Server, ServiceProxy, Subscription                │
-│ • SD state machines                                         │
-│ • Unified poll API: next(), try_next()                     │
-│ • I/O traits: UdpSocket, TcpStream                         │
-│ • Configuration and validation                              │
+│  handles/      User-facing API handles                      │
+│  ├── SomeIp (runtime)                                       │
+│  ├── OfferedService, Subscription (client)                  │
+│  └── ServiceOffering, Responder (server)                    │
+│                                                             │
+│  runtime/      Internal event loop and state                │
+│  ├── Event loop and command processing                      │
+│  ├── SD state machines                                      │
+│  └── Client/server handlers                                 │
+│                                                             │
+│  net/          Network abstraction traits                   │
+│  ├── UdpSocket, TcpStream, TcpListener traits               │
+│  ├── tokio_impl (production)                                │
+│  └── turmoil_impl (testing)                                 │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
-          │                                    │
-          ▼                                    ▼
-┌─────────────────────┐          ┌─────────────────────────────┐
-│ someip-tokio        │          │ someip-sys                  │
-│                     │          │                             │
-│ • AsyncClient       │          │ • C FFI bindings            │
-│ • AsyncSubscription │          │ • someip_next()             │
-│ • Tokio integration │          │ • Simple data types         │
-│ • Channel-based     │          │ • No callbacks              │
-│   distribution      │          │                             │
-└─────────────────────┘          └─────────────────────────────┘
 ```
 
-### Layer Responsibilities
+### Module Responsibilities
 
-| Layer | Responsibility | Dependencies | Audience |
-|-------|---------------|--------------|----------|
-| `someip-types` | Protocol data types | None (no_std) | Everyone |
-| `someip-runtime` | Protocol logic, sync I/O | std | Embedded, QNX, FFI |
-| `someip-tokio` | Async distribution | tokio | Linux services |
-| `someip-sys` | C/C++ FFI | someip-runtime | C++ applications |
+| Module | Responsibility | Notes |
+|--------|---------------|-------|
+| `wire` | Protocol data types, parsing | Low-level wire format |
+| `handles` | User-facing API | Client and server handles |
+| `runtime` | Event loop, state machines | Internal implementation |
+| `net` | Socket abstraction traits | Enables testing with turmoil |
 
 ---
 
-## I/O Abstraction Layer (IoContext)
+## Network Abstraction Layer
 
-The library is completely platform-agnostic. All platform-specific I/O (sockets, time, polling) is abstracted behind the `IoContext` trait. This enables:
+The library abstracts network I/O via async traits, enabling different socket implementations:
 
-- **Portability**: Same library code runs on Linux, QNX, embedded
-- **Zero-cost**: Generic parameters enable monomorphization
-- **Testing**: Simulated backend with time control, fault injection, introspection
+- **Production**: Real tokio sockets for actual network communication
+- **Testing**: Simulated [turmoil](https://docs.rs/turmoil) sockets for deterministic, fast network simulation
 
 ### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ someip-runtime                                              │
+│ Runtime<U: UdpSocket, T: TcpStream>                         │
 │                                                             │
-│ Generic over IoContext - knows nothing about:               │
-│ • epoll vs kqueue vs ionotify                              │
-│ • tokio vs std::net                                         │
-│ • real vs simulated network                                 │
-│                                                             │
-│ Just calls: ctx.bind_udp(), socket.recv_from(), ctx.now()  │
+│ Generic over socket traits - works with any implementation  │
+│ Just calls: U::bind(), socket.recv_from(), T::connect()    │
 └─────────────────────────────────────────────────────────────┘
                               │
           Uses trait ─────────┴─────────
                               │
-    ┌─────────────────────────┼─────────────────────────────────┐
-    │                         │                                 │
-    ▼                         ▼                                 ▼
-┌─────────────┐       ┌───────────────┐       ┌───────────────────────┐
-│StdIoContext │       │ QnxIoContext  │       │ SimulatedIoContext    │
-│             │       │               │       │                       │
-│ std::net    │       │ ionotify      │       │ Virtual network       │
-│ poll()      │       │ MsgReceive    │       │ Virtual time          │
-│ Instant     │       │ pulses        │       │ Fault injection       │
-└─────────────┘       └───────────────┘       └───────────────────────┘
-     │                       │                         │
-     ▼                       ▼                         ▼
-   Linux                    QNX                     Testing
+    ┌─────────────────────────┼─────────────────────────┐
+    │                         │                         │
+    ▼                         ▼                         ▼
+┌─────────────┐       ┌─────────────┐       ┌─────────────┐
+│ tokio_impl  │       │turmoil_impl│       │ (future)    │
+│             │       │             │       │             │
+│ tokio::net  │       │ turmoil::   │       │ std::net    │
+│ UdpSocket   │       │ net sockets │       │ for sync    │
+│ TcpStream   │       │ Simulated   │       │ embedded    │
+└─────────────┘       └─────────────┘       └─────────────┘
+     │                     │                     │
+     ▼                     ▼                     ▼
+  Production            Testing              Future
 ```
 
 ### Core Traits
 
 ```rust
-/// The I/O abstraction - network + time
-pub trait IoContext {
-    type UdpSocket: UdpSocketOps;
-    type TcpStream: TcpStreamOps;
-    type TcpListener: TcpListenerOps<Stream = Self::TcpStream>;
-    
-    /// Bind a UDP socket to a local address
-    fn bind_udp(&self, addr: SocketAddr) -> Result<Self::UdpSocket, IoError>;
-    
-    /// Connect a TCP stream to a remote address
-    fn connect_tcp(&self, addr: SocketAddr) -> Result<Self::TcpStream, IoError>;
-    
-    /// Listen for TCP connections
-    fn listen_tcp(&self, addr: SocketAddr) -> Result<Self::TcpListener, IoError>;
-    
-    /// Current time
-    fn now(&self) -> Instant;
-    
-    /// Sleep/block for duration
-    fn sleep(&self, duration: Duration);
+/// Async UDP socket abstraction
+pub trait UdpSocket: Send + Sync + Sized + 'static {
+    fn bind(addr: SocketAddr) -> impl Future<Output = io::Result<Self>> + Send;
+    fn send_to(&self, buf: &[u8], target: SocketAddr) -> impl Future<Output = io::Result<usize>> + Send;
+    fn recv_from(&self, buf: &mut [u8]) -> impl Future<Output = io::Result<(usize, SocketAddr)>> + Send;
+    fn join_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()>;
+    fn leave_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()>;
+    fn local_addr(&self) -> io::Result<SocketAddr>;
 }
 
-pub trait UdpSocketOps {
-    fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize, IoError>;
-    fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr), IoError>;
-    fn local_addr(&self) -> Result<SocketAddr, IoError>;
-    
-    /// Non-blocking receive
-    fn try_recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr), IoError>;
-    
-    /// Multicast group management
-    fn join_multicast_v4(&self, group: Ipv4Addr, interface: Ipv4Addr) -> Result<(), IoError>;
-    fn leave_multicast_v4(&self, group: Ipv4Addr, interface: Ipv4Addr) -> Result<(), IoError>;
-    
-    fn set_nonblocking(&self, nonblocking: bool) -> Result<(), IoError>;
+/// Async TCP stream abstraction
+pub trait TcpStream: Send + Sized + 'static {
+    type Listener: TcpListener<Stream = Self>;
+    fn connect(addr: SocketAddr) -> impl Future<Output = io::Result<Self>> + Send;
+    fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = io::Result<usize>> + Send;
+    fn write_all(&mut self, buf: &[u8]) -> impl Future<Output = io::Result<()>> + Send;
+    fn local_addr(&self) -> io::Result<SocketAddr>;
+    fn peer_addr(&self) -> io::Result<SocketAddr>;
 }
 
-pub trait TcpStreamOps {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError>;
-    fn write(&mut self, buf: &[u8]) -> Result<usize, IoError>;
-    fn flush(&mut self) -> Result<(), IoError>;
-    fn local_addr(&self) -> Result<SocketAddr, IoError>;
-    fn peer_addr(&self) -> Result<SocketAddr, IoError>;
-    fn shutdown(&self, how: Shutdown) -> Result<(), IoError>;
-    fn set_nonblocking(&self, nonblocking: bool) -> Result<(), IoError>;
-}
-
-pub trait TcpListenerOps {
-    type Stream: TcpStreamOps;
-    
-    fn accept(&self) -> Result<(Self::Stream, SocketAddr), IoError>;
-    fn local_addr(&self) -> Result<SocketAddr, IoError>;
-    fn set_nonblocking(&self, nonblocking: bool) -> Result<(), IoError>;
+/// Async TCP listener abstraction
+pub trait TcpListener: Send + Sync + Sized + 'static {
+    type Stream: TcpStream<Listener = Self>;
+    fn bind(addr: SocketAddr) -> impl Future<Output = io::Result<Self>> + Send;
+    fn accept(&self) -> impl Future<Output = io::Result<(Self::Stream, SocketAddr)>> + Send;
+    fn local_addr(&self) -> io::Result<SocketAddr>;
 }
 ```
 
-### Library Usage
+### Turmoil Testing
 
-The library code is generic over `IoContext`:
+Most tests use [turmoil](https://docs.rs/turmoil) for deterministic network simulation:
 
 ```rust
-impl<Io: IoContext> Runtime<Io> {
-    pub fn new(io: Io, config: RuntimeConfig) -> Result<Self> {
-        let sd_socket = io.bind_udp(config.sd_addr)?;
+#[test]
+fn test_service_discovery() {
+    let mut sim = turmoil::Builder::new().build();
+    
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await?;
+        
+        let mut offering = runtime.offer(0x1234u16, InstanceId::Id(1))
+            .udp().start().await?;
         // ...
-    }
+        Ok(())
+    });
     
-    fn process_sd(&mut self) -> Result<()> {
-        // Library doesn't know or care HOW recv works
-        let (len, from) = self.sd_socket.recv_from(&mut self.buffer)?;
-        // Protocol logic here - completely platform-agnostic
-    }
-}
-
-// Usage with different backends:
-let runtime = Runtime::new(StdIoContext::new(), config)?;           // Linux/std
-let runtime = Runtime::new(QnxIoContext::new(), config)?;           // QNX
-let runtime = Runtime::new(sim.create_node(addr), config)?;         // Testing
-```
-
-### Simulated I/O Backend
-
-The simulated backend enables powerful testing capabilities:
-
-```rust
-pub struct SimulatedNetwork {
-    time: Cell<SimulatedInstant>,
-    nodes: RefCell<HashMap<IpAddr, NodeState>>,
-    in_flight: RefCell<BinaryHeap<InFlightPacket>>,
-    tcp_connections: RefCell<HashMap<TcpConnectionId, TcpConnectionState>>,
-    
-    // Fault injection configuration
-    config: RefCell<SimConfig>,
-    
-    // Full history for introspection
-    history: RefCell<Vec<NetworkEvent>>,
-}
-
-pub struct SimConfig {
-    pub latency: Duration,
-    pub jitter: Duration,
-    pub drop_rate: f64,
-    pub partitions: HashSet<(IpAddr, IpAddr)>,
-}
-
-impl SimulatedNetwork {
-    pub fn new() -> Self { ... }
-    
-    /// Create a node (ECU) in the simulation
-    pub fn create_node(&self, ip: IpAddr) -> SimulatedIoContext<'_>;
-    
-    /// Create N nodes with sequential IPs (192.168.1.10, .11, .12, ...)
-    /// Returns: (network, Vec<IoContext>)
-    pub fn new_multi(count: usize) -> (Self, Vec<SimulatedIoContext<'static>>);
-}
-```
-
-#### Time Control
-
-```rust
-impl SimulatedNetwork {
-    /// Advance simulation time, delivering packets that become due
-    pub fn advance(&self, duration: Duration) {
-        let target = self.time.get() + duration;
+    sim.host("client", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await?;
         
-        while let Some(packet) = self.next_due_packet(target) {
-            self.time.set(packet.delivery_time);
-            self.deliver_packet(packet);
-        }
-        
-        self.time.set(target);
-    }
+        let proxy = runtime.find(0x1234u16).await?;
+        // ...
+        Ok(())
+    });
     
-    /// Run until no more pending events
-    pub fn run_until_idle(&self) {
-        while let Some(next_time) = self.next_event_time() {
-            self.advance(next_time - self.time.get());
-        }
-    }
+    sim.run().unwrap();
 }
 ```
 
-#### Fault Injection
+### Benefits of Turmoil
 
-```rust
-impl SimulatedNetwork {
-    /// Set packet drop probability (0.0 - 1.0)
-    pub fn set_drop_rate(&self, rate: f64);
-    
-    /// Set network latency
-    pub fn set_latency(&self, latency: Duration);
-    
-    /// Create network partition between two nodes
-    pub fn partition(&self, a: IpAddr, b: IpAddr);
-    
-    /// Heal network partition
-    pub fn heal(&self, a: IpAddr, b: IpAddr);
-    
-    /// Force-break a TCP connection (simulate RST)
-    pub fn break_tcp(&self, conn: TcpConnectionId);
-}
-```
-
-#### Introspection
-
-```rust
-/// Events recorded by the simulation
-#[derive(Debug, Clone)]
-pub enum NetworkEvent {
-    PacketSent { time: Instant, from: IpAddr, to: IpAddr, packet: PacketRecord },
-    PacketDelivered { time: Instant, from: IpAddr, to: IpAddr },
-    PacketDropped { time: Instant, from: IpAddr, to: IpAddr, reason: DropReason },
-    TcpConnected { time: Instant, client: SocketAddr, server: SocketAddr },
-    TcpClosed { time: Instant, client: SocketAddr, server: SocketAddr },
-    TcpReset { time: Instant, client: SocketAddr, server: SocketAddr },
-    MulticastJoin { time: Instant, node: IpAddr, group: Ipv4Addr },
-    MulticastLeave { time: Instant, node: IpAddr, group: Ipv4Addr },
-}
-
-impl SimulatedNetwork {
-    /// Get full event history
-    pub fn history(&self) -> Vec<NetworkEvent>;
-    
-    /// Get packets sent by a specific node
-    pub fn packets_sent_by(&self, ip: IpAddr) -> Vec<PacketRecord>;
-    
-    /// Get packets between two nodes
-    pub fn packets_between(&self, from: IpAddr, to: IpAddr) -> Vec<PacketRecord>;
-    
-    /// Get current multicast group members
-    pub fn multicast_members(&self, group: Ipv4Addr) -> Vec<IpAddr>;
-}
-```
-
-#### Simulation Testing Examples
-
-```rust
-#[test]
-fn test_sd_retries_on_packet_loss() {
-    let sim = SimulatedNetwork::new();
-    
-    let server_io = sim.create_node("192.168.1.10".parse().unwrap());
-    let client_io = sim.create_node("192.168.1.20".parse().unwrap());
-    
-    let mut server = Runtime::new(server_io, server_config())?;
-    let mut client = Runtime::new(client_io, client_config())?;
-    
-    let _offering = server.offer(service_config())?;
-    
-    // Drop first few SD packets
-    sim.set_drop_rate(1.0);
-    sim.advance(Duration::from_millis(500));
-    
-    // Verify service not yet discovered
-    let proxy = client.require(ServiceId::new(0x1234).unwrap(), InstanceId::ANY);
-    assert!(proxy.try_available().is_err());
-    
-    // Allow packets through
-    sim.set_drop_rate(0.0);
-    sim.run_until_idle();
-    
-    // Now service should be discovered (SD retries worked)
-    assert!(proxy.try_available().is_ok());
-    
-    // Verify SD retry behavior from history
-    let sd_packets = sim.packets_sent_by("192.168.1.10".parse().unwrap());
-    assert!(sd_packets.len() > 1, "Expected SD retries");
-}
-
-#[test]
-fn test_subscription_survives_temporary_partition() {
-    let sim = SimulatedNetwork::new();
-    
-    // ... setup server and client ...
-    
-    let mut subscription = available.subscribe(EventgroupId(0x01))?;
-    sim.run_until_idle();
-    
-    // Create network partition
-    sim.partition(server_ip, client_ip);
-    
-    // Server sends events (will be dropped)
-    offering.notify(EventgroupId(0x01), EventId(0x8001), &[1, 2, 3])?;
-    sim.advance(Duration::from_secs(1));
-    
-    // Heal partition
-    sim.heal(server_ip, client_ip);
-    
-    // Next event should work
-    offering.notify(EventgroupId(0x01), EventId(0x8001), &[4, 5, 6])?;
-    sim.run_until_idle();
-    
-    let event = subscription.try_next_event()?.expect("should receive event");
-    assert_eq!(event.payload, &[4, 5, 6]);
-}
-
-#[test]
-fn test_tcp_connection_reset_handling() {
-    let sim = SimulatedNetwork::new();
-    
-    // ... setup with TCP subscription ...
-    
-    // Find the TCP connection from history
-    let tcp_conn = sim.history()
-        .iter()
-        .find_map(|e| match e {
-            NetworkEvent::TcpConnected { client, server, .. } => Some((*client, *server)),
-            _ => None
-        })
-        .expect("TCP connection should exist");
-    
-    // Force connection reset
-    sim.break_tcp(tcp_conn);
-    sim.run_until_idle();
-    
-    // Verify client handles it gracefully
-    match subscription.next_event() {
-        Ok(None) => { /* connection closed cleanly */ }
-        Err(e) if e.kind() == ErrorKind::ConnectionReset => { /* expected */ }
-        other => panic!("Unexpected result: {:?}", other),
-    }
-    
-    // Verify reset was logged
-    assert!(sim.history().iter().any(|e| matches!(e, NetworkEvent::TcpReset { .. })));
-}
-
-#[test]
-fn test_multicast_delivery() {
-    let sim = SimulatedNetwork::new();
-    
-    let server_io = sim.create_node("192.168.1.10".parse().unwrap());
-    let client1_io = sim.create_node("192.168.1.20".parse().unwrap());
-    let client2_io = sim.create_node("192.168.1.30".parse().unwrap());
-    
-    // ... setup subscriptions ...
-    
-    sim.run_until_idle();
-    
-    // Verify multicast group membership
-    let members = sim.multicast_members("239.192.1.1".parse().unwrap());
-    assert!(members.contains(&"192.168.1.20".parse().unwrap()));
-    assert!(members.contains(&"192.168.1.30".parse().unwrap()));
-    
-    // Send multicast event
-    offering.notify(EventgroupId(0x01), EventId(0x8001), &[42])?;
-    sim.run_until_idle();
-    
-    // Both clients should receive
-    assert!(sub1.try_next_event()?.is_some());
-    assert!(sub2.try_next_event()?.is_some());
-}
-```
-
-### Simulation Capabilities Summary
-
-| Capability | Use Case |
-|------------|----------|
-| **Time control** | Deterministic tests, fast-forward through delays |
-| **Packet loss** | Test retry logic, resilience |
-| **Latency** | Test timeout handling |
-| **Partitions** | Test split-brain scenarios, reconnection |
-| **TCP reset** | Test connection error handling |
-| **Multicast tracking** | Verify group membership, delivery |
-| **Full history** | Debug test failures, verify timing |
+| Capability | Benefit |
+|------------|--------|
+| **Deterministic execution** | Same test, same result every time |
+| **Fast** | No real network delays, tests run in milliseconds |
+| **Time control** | Fast-forward through delays, timeouts |
+| **Network partitions** | Test split-brain scenarios |
+| **Packet inspection** | Debug network issues |
 
 ---
 
@@ -651,143 +391,68 @@ The type system guides users through valid protocol states:
 ### Client-Side Type Flow
 
 ```
-Client
+SomeIp (Runtime)
    │
-   └── require() ──► ServiceProxy<Unavailable>
-                          │
-                          └── wait_available() ──► ServiceProxy<Available>
-                                                        │
-                                ┌───────────────────────┼────────────────────┐
-                                │                       │                    │
-                          &subscribe()            &subscribe()          call()
-                                │                       │                    │
-                                ▼                       ▼                    ▼
-                          Subscription          Subscription         PendingResponse
-                          (eventgroup 1)       (eventgroup 2)
-                                │
-                          next_event() ──► Event
+   └── find() ──────────────────► OfferedService (after discovery)
+                                        │
+                    ┌───────────────────┼────────────────────┐
+                    │                   │                    │
+              subscribe()          subscribe()           call()
+                    │                   │                    │
+                    ▼                   ▼                    ▼
+              Subscription        Subscription          Response
+              (eventgroup 1)     (eventgroup 2)
+                    │
+              next() ──► Event
 
-Note: subscribe(&self, ...) takes a reference, so the Available proxy 
-      remains usable for additional subscriptions and RPC calls.
+Note: subscribe() takes &self, so OfferedService remains usable 
+      for additional subscriptions and RPC calls.
 ```
 
-### Server-Side Type Flow
+### Server-Side Type Flow (Current Implementation)
+
+The current implementation uses a simpler approach with `ServiceOffering`:
 
 ```
-Runtime
+SomeIp (Runtime)
    │
-   └── bind() ──► ServiceBuilder
+   └── offer() ──► OfferBuilder
                        │
-                       └── build() ──► ServiceInstance<Bound>
+                       └── start() ──► ServiceOffering
                                            │
                     ┌──────────────────────┼───────────────────────┐
                     │                      │                       │
-              next()                 announce()               (drop = close)
-              notify_static()              │
-              (serve static clients)       ▼
-                    │            ServiceInstance<Announced>
+                next()               send_event()            (drop = close)
                     │                      │
-                    │         ┌────────────┼──────────────┐
-                    │         │            │              │
-                    │       next()   notify()    stop_announcing()
-                    │       has_subscribers()         │
-                    │         │                       ▼
-                    │         ▼              ServiceInstance<Bound>
-                    │   ServiceEvent                  │
-                    │         │                       │
-                    │   ┌─────┼─────────┐             │
-                    │   │     │         │             │
-                    │ MethodCall  Subscribe  (other)  │
-                    │   │           │                 │
-                    │ .responder  .ack                │
-                    │   │           │                 │
-                    │ send_ok()  accept()/reject()    │
-                    │ send_error() (must consume)     │
-                    │ (must consume)                  │
-                    └─────────────────────────────────┘
+                    ▼                      ▼
+              ServiceEvent          Sends to subscribers
+                    │
+              ┌─────┼─────────┐
+              │     │         │
+            Call  Subscribe  (other)
+              │       │
+         .responder   │
+              │       │
+          reply()     │
+         (must use)   │
 
-// Drop behavior:
-// - ServiceInstance<Announced>: sends StopOfferService, then closes socket
-// - ServiceInstance<Bound>: just closes socket
+// Drop behavior: sends StopOfferService, closes sockets
 ```
+
+**Note**: The typestate `ServiceInstance<Bound>` → `ServiceInstance<Announced>` pattern
+described in Design Decision #10 is a future enhancement. The current `ServiceOffering`
+automatically announces on creation.
 
 ### Compile-Time Enforcement
 
 | Invalid State/Behavior | How Rust Prevents It |
 |------------------------|----------------------|
-| Subscribe before available | `subscribe()` only on `ServiceProxy<Available>` |
-| Get events without subscribing | `next_event()` only on `Subscription` |
+| Subscribe before available | `subscribe()` only on `OfferedService` (after find) |
+| Get events without subscribing | `next()` only on `Subscription` |
 | Ignore method request | `Responder` must be consumed (panics on drop) |
 | Respond twice | `Responder` moved on first use |
-| Ignore subscription request | `SubscribeAck` must be consumed |
-| Use reserved Instance ID 0x0000 | `ConcreteInstanceId::new()` returns `None` |
-| App traffic on SD port 30490 | `AppPort::new(30490)` returns `None` |
-| TCP multicast | Type doesn't exist |
-| Notify dynamic subscribers before announce | `notify()` only on `ServiceInstance<Announced>` |
-| Announce twice | `announce()` consumes `ServiceInstance<Bound>` |
-
-### ServiceInstance<State> API
-
-The server-side API uses typestate to separate **network binding** from **SD announcement**:
-
-```rust
-pub struct ServiceInstance<State> { /* ... */ }
-
-pub struct Bound;      // Listening on endpoint, not announced
-pub struct Announced;  // Listening + announced via SD
-
-// ─────────────────────────────────────────────────────────────
-// Common to both states
-// ─────────────────────────────────────────────────────────────
-impl<S> ServiceInstance<S> {
-    /// Receive next service event (RPC, subscription requests, etc.)
-    pub async fn next(&mut self) -> Option<ServiceEvent>;
-    
-    /// Get local endpoint info
-    pub fn local_endpoint(&self) -> Endpoint;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Bound: listening but not announced
-// ─────────────────────────────────────────────────────────────
-impl ServiceInstance<Bound> {
-    /// Announce via SD (sends OfferService) → transitions to Announced
-    pub async fn announce(self) -> Result<ServiceInstance<Announced>, Error>;
-    
-    /// Send events to pre-configured (static) subscribers
-    /// For deployments without SD (per feat_req_someipsd_444)
-    pub async fn notify_static(
-        &self, 
-        eventgroup: EventgroupId, 
-        event: EventId, 
-        data: &[u8]
-    ) -> Result<(), Error>;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Announced: listening + announced via SD
-// ─────────────────────────────────────────────────────────────
-impl ServiceInstance<Announced> {
-    /// Send events to dynamically subscribed clients
-    pub async fn notify(
-        &self, 
-        eventgroup: EventgroupId, 
-        event: EventId, 
-        data: &[u8]
-    ) -> Result<(), Error>;
-    
-    /// Check if anyone is subscribed to an eventgroup
-    pub fn has_subscribers(&self, eventgroup: EventgroupId) -> bool;
-    
-    /// Stop announcing (sends StopOfferService) → transitions back to Bound
-    /// Enables graceful shutdown: stop accepting new clients, drain existing
-    pub async fn stop_announcing(self) -> Result<ServiceInstance<Bound>, Error>;
-}
-
-// Drop behavior:
-// - ServiceInstance<Announced>: sends StopOfferService, then closes socket
-// - ServiceInstance<Bound>: just closes socket (no SD message)
-```
+| Use reserved Instance ID 0x0000 | `InstanceId::new(0)` returns `None` |
+| Use reserved Service ID 0x0000/0xFFFF | `ServiceId::new()` returns `None` |
 
 ### Validated Newtypes
 
@@ -827,24 +492,20 @@ The SOME/IP protocol defines specific communication patterns. This section shows
 
 ```rust
 // Client side
-let available = proxy.wait_available()?;
-let pending = available.call(MethodId(0x0001), &request_payload)?;
-let response = pending.wait()?;  // Blocks until response
-match response {
-    Ok(data) => { /* success */ }
-    Err(code) => { /* method returned error */ }
-}
+let proxy = runtime.find(0x1234u16).await?;
+let response = proxy.call(MethodId::new(1).unwrap(), b"request").await?;
+// response contains the reply payload
 
 // Server side
-match offering.next()? {
-    ServiceEvent::MethodCall { request } => {
-        let result = process(&request.payload);
-        request.responder.send_ok(&result)?;  // Must respond
+while let Some(event) = offering.next().await {
+    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+        let result = process(&payload);
+        responder.reply(&result)?;  // Must respond
     }
 }
 ```
 
-**Type Safety**: `PendingResponse` ensures you don't forget the response. `Responder` must be consumed.
+**Type Safety**: `Responder` must be consumed - panics if dropped without replying.
 
 ---
 
@@ -856,13 +517,13 @@ match offering.next()? {
 
 ```rust
 // Client side
-let available = proxy.wait_available()?;
-available.fire_and_forget(MethodId(0x0002), &payload)?;
-// No PendingResponse - nothing to wait for
+let proxy = runtime.find(0x1234u16).await?;
+proxy.fire(MethodId::new(2).unwrap(), b"payload").await?;
+// No response - returns immediately after sending
 
 // Server side
-match offering.next()? {
-    ServiceEvent::FireAndForget { method, payload } => {
+while let Some(event) = offering.next().await {
+    if let ServiceEvent::FireAndForget { method, payload, .. } = event {
         process(&payload);
         // No responder - nothing to send back
     }
@@ -881,137 +542,60 @@ match offering.next()? {
 
 ```rust
 // Client side
-let available = proxy.wait_available()?;
-let mut subscription = available.subscribe(EventgroupId(0x01))?;
+let proxy = runtime.find(0x1234u16).await?;
+let mut subscription = proxy.subscribe(EventgroupId::new(1).unwrap()).await?;
 
-loop {
-    match subscription.next_event()? {
-        Some(Event { event_id, payload }) => {
-            process_sensor_data(&payload);
-        }
-        None => break,  // Service went away or unsubscribed
-    }
+while let Some(event) = subscription.next().await {
+    process_sensor_data(&event.payload);
 }
 // subscription drops -> StopSubscribeEventgroup sent automatically
 
-// Server side
-match offering.next()? {
-    ServiceEvent::Subscribe { eventgroup, ack, .. } => {
-        ack.accept()?;  // Must accept or reject
+// Server side - handle subscription requests
+while let Some(event) = offering.next().await {
+    if let ServiceEvent::Subscribe { eventgroup, client, .. } = event {
+        // Subscription is auto-acknowledged
     }
 }
 
-// Later, when data changes:
-if offering.has_subscribers(EventgroupId(0x01)) {
-    offering.notify(EventgroupId(0x01), EventId(0x8001), &sensor_data)?;
-}
+// Server side - send events
+let event_handle = offering.event(EventgroupId::new(1).unwrap()).build().await?;
+event_handle.send(EventId::new(0x8001).unwrap(), b"sensor data").await?;
 ```
 
 **Type Safety**: 
 - Can't receive events without `Subscription` (type enforced)
-- Can't subscribe without service available (type enforced)
 - Subscription drop auto-unsubscribes (RAII)
-- `SubscribeAck` must be consumed
 
 ---
 
-### Pattern 4: Fields (Getter/Setter/Notifier)
-
-**Protocol**: A field represents remote state. Can be read (getter), written (setter), and/or watched for changes (notifier). Initial value sent on subscription.
-
-**Use when**: Configuration parameters, status values, any stateful property.
-
-```rust
-// Client side: Get current value
-let available = proxy.wait_available()?;
-let pending = available.get_field(FieldId(0x01))?;
-let current_value = pending.wait()?;
-
-// Client side: Set value
-let pending = available.set_field(FieldId(0x01), &new_value)?;
-pending.wait()?;  // Confirms write succeeded
-
-// Client side: Watch for changes (subscribe to notifier)
-let mut subscription = available.subscribe(EventgroupId(0x01))?;
-// First event is the initial value
-let initial = subscription.next_event()?;
-
-loop {
-    match subscription.next_event()? {
-        Some(event) => {
-            // Field value changed
-            update_local_cache(event.payload);
-        }
-        None => break,
-    }
-}
-
-// Server side
-match offering.next()? {
-    ServiceEvent::GetField { field_id, responder } => {
-        responder.send_ok(&current_value)?;
-    }
-    ServiceEvent::SetField { field_id, value, responder } => {
-        update_field(field_id, &value)?;
-        responder.send_ok_empty()?;
-        // Notify subscribers of change
-        offering.notify_field(field_id, &value)?;
-    }
-}
-```
-
-**Type Safety**: Same as request/response - responders must be consumed.
-
----
-
-### Pattern 5: Service Discovery
+### Pattern 4: Service Discovery
 
 **Protocol**: Clients find services, servers announce availability. Handles service coming/going dynamically.
 
 **Use when**: Always - this is how clients and servers find each other.
 
 ```rust
-// Client side: Waiting for a specific service
-let proxy = client.require(ServiceId::new(0x1234).unwrap(), InstanceId::ANY);
+// Client side: Find and wait for a service
+let proxy = runtime.find(0x1234u16).await?;  // Waits until discovered
+// proxy is now ready for use
 
-// Blocking wait
-let available = proxy.wait_available()?;
-
-// Or non-blocking poll
-loop {
-    match proxy.try_available()? {
-        Either::Right(available) => {
-            // Service found!
-            break;
-        }
-        Either::Left(still_waiting) => {
-            // Do other work
-            proxy = still_waiting;
-        }
-    }
-}
-
-// Or integrate with poll/select
-let fd = proxy.as_raw_fd();
-// ... use in poll()
-
-// Server side: Bind then announce
-let service = runtime.bind::<MyService>(instance).build()?;
-// Service listening but not discoverable
-
-let mut service = service.announce()?;  // Sends OfferService
+// Server side: Offer a service
+let mut offering = runtime.offer(0x1234u16, InstanceId::Id(1))
+    .udp()
+    .start()
+    .await?;
 // Now discoverable via SD
 
-// Graceful shutdown:
-let service = service.stop_announcing()?;  // Sends StopOfferService
-drop(service);  // Closes sockets
+// Handle requests...
+while let Some(event) = offering.next().await {
+    // ...
+}
+// Drop sends StopOfferService
 ```
 
 **Type Safety**: 
-- `ServiceProxy<Unavailable>` → must wait → `ServiceProxy<Available>`
-- `ServiceInstance<Bound>` → must announce → `ServiceInstance<Announced>`
-- Can't call methods or subscribe without `Available` (type enforced)
-- Can't send to dynamic subscribers without `Announced` (type enforced)
+- `find()` only returns after service is discovered
+- Dropping `ServiceOffering` automatically sends StopOfferService
 
 ---
 
@@ -1019,207 +603,104 @@ drop(service);  // Closes sockets
 
 | Pattern | Client API | Server API | Key Type Safety |
 |---------|-----------|-----------|-----------------|
-| **Request/Response** | `call()` → `PendingResponse` | `MethodCall` + `Responder` | Must handle response |
-| **Fire & Forget** | `fire_and_forget()` | `FireAndForget` (no responder) | No accidental response |
-| **Publish/Subscribe** | `subscribe()` → `Subscription` | `Subscribe` + `SubscribeAck`, `notify()` | Must subscribe first |
-| **Fields** | `get_field()`, `set_field()`, `subscribe()` | `GetField`, `SetField` + `Responder` | Must handle response |
-| **Discovery** | `require()` → `wait_available()` | `bind()` → `announce()` | Must wait/announce |
-| **Static Mode** | Pre-configured endpoints | `bind()` + `notify_static()` | No SD required |
+| **Request/Response** | `call()` → response | `Call` + `Responder` | Must reply |
+| **Fire & Forget** | `fire()` | `FireAndForget` (no responder) | No accidental response |
+| **Publish/Subscribe** | `subscribe()` → `Subscription` | `event().send()` | Must subscribe first |
+| **Discovery** | `find()` (async) | `offer().start()` | Waits for discovery |
 
 ---
 
 ## Deployment Use Cases
 
-### Use Case 1: Embedded Sensor Server (QNX)
+### Use Case 1: Linux Service (Tokio)
 
-**Scenario**: ECU providing temperature sensor data, handling method calls, publishing events on change.
-
-**Requirements**: No async, minimal overhead, explicit control.
+**Scenario**: Service providing sensor data, handling method calls, publishing events.
 
 ```rust
-use someip_runtime::{Runtime, ServiceInstance, ServiceEvent, Bound, Announced};
-
-fn main() -> Result<()> {
-    let mut runtime = Runtime::new(QnxSockets::new()?, RuntimeConfig::default())?;
-    
-    // Phase 1: Bind to endpoint (not yet announced)
-    let mut service: ServiceInstance<Bound> = runtime
-        .bind::<TemperatureService>(ConcreteInstanceId::new(0x0001).unwrap())
-        .endpoint("192.168.1.10", |e| e.udp(AppPort::new(30501).unwrap()))
-        .eventgroup(EventgroupId(0x01))
-        .build()?;
-    
-    // Phase 2: Initialize hardware before going live
-    let sensor = initialize_temperature_sensor()?;
-    
-    // Phase 3: Announce availability (sends OfferService)
-    let mut service: ServiceInstance<Announced> = service.announce()?;
-
-    loop {
-        match service.next()? {
-            ServiceEvent::MethodCall { request } => {
-                match request.method.0 {
-                    0x0001 => {
-                        let temp = sensor.read();
-                        request.responder.send_ok(&temp.to_bytes())?;
-                    }
-                    _ => request.responder.send_error(ReturnCode::UnknownMethod)?,
-                }
-            }
-            ServiceEvent::Subscribe { ack, .. } => {
-                ack.accept()?;
-            }
-            ServiceEvent::Tick => {
-                if sensor.value_changed() {
-                    service.notify(EventgroupId(0x01), EventId(0x8001), &sensor.value())?;
-                }
-            }
-            _ => {}
-        }
-    }
-    
-    // Graceful shutdown (if we exit the loop)
-    // service.stop_announcing()?;  // sends StopOfferService
-}
-```
-
-### Use Case 2: Linux Service Client (Tokio)
-
-**Scenario**: Service consuming sensor data, subscribing to events, calling methods.
-
-**Requirements**: Async integration, multiple concurrent operations.
-
-```rust
-use someip_tokio::{AsyncRuntime, AsyncSubscription};
+use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let runtime = AsyncRuntime::new(config).await?;
+    let runtime = recentip::configure().start().await?;
+    
+    // Offer a service
+    let mut offering = runtime.offer(0x1234u16, InstanceId::Id(1))
+        .udp()
+        .start()
+        .await?;
+    
+    // Create event handle for publishing
+    let event_handle = offering.event(EventgroupId::new(1).unwrap())
+        .build().await?;
+    
+    loop {
+        tokio::select! {
+            Some(event) = offering.next() => {
+                match event {
+                    ServiceEvent::Call { method, payload, responder, .. } => {
+                        responder.reply(b"response")?;
+                    }
+                    ServiceEvent::Subscribe { .. } => { }
+                    _ => {}
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                // Periodic event publishing
+                event_handle.send(
+                    EventId::new(0x8001).unwrap(), 
+                    b"sensor data"
+                ).await?;
+            }
+        }
+    }
+}
+```
+
+### Use Case 2: Client Consuming Events
+
+**Scenario**: Service consuming sensor data, subscribing to events, calling methods.
+
+```rust
+use recentip::prelude::*;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let runtime = recentip::configure().start().await?;
     
     // Find and wait for service
-    let proxy = runtime.require(ServiceId::new(0x1234).unwrap(), InstanceId::ANY);
-    let available = proxy.wait_available().await?;
+    let proxy = runtime.find(0x1234u16).await?;
     
     // Subscribe - this is our event source
-    let mut subscription = available.subscribe(EventgroupId(0x01)).await?;
+    let mut subscription = proxy.subscribe(EventgroupId::new(1).unwrap()).await?;
     
-    // Handle events
+    // Handle events in a task
     tokio::spawn(async move {
-        while let Some(event) = subscription.next_event().await {
-            process_sensor_reading(event.payload);
+        while let Some(event) = subscription.next().await {
+            process_sensor_reading(&event.payload);
         }
     });
     
-    // Call methods concurrently
-    let response = available.call(MethodId(0x0002), &config_data).await?;
+    // Call methods
+    let response = proxy.call(MethodId::new(2).unwrap(), b"config").await?;
     
     Ok(())
 }
 ```
 
-### Use Case 3: Mixed Client/Server (Automotive Gateway)
-
-**Scenario**: ECU that both provides services and consumes others.
-
-```rust
-use someip_runtime::{Runtime, RuntimeEvent, ServiceInstance, Announced};
-
-fn main() -> Result<()> {
-    let mut runtime = Runtime::new(sockets, config)?;
-    
-    // Bind and announce our service
-    let my_service = runtime
-        .bind::<GatewayService>(ConcreteInstanceId::new(0x0001).unwrap())
-        .build()?;
-    let mut my_service: ServiceInstance<Announced> = my_service.announce()?;
-    
-    // Require remote service
-    let remote_proxy = runtime.require(remote_service_id, InstanceId::ANY);
-    let remote = remote_proxy.wait_available()?;
-    let mut remote_events = remote.subscribe(EventgroupId(0x01))?;
-    
-    loop {
-        match runtime.next()? {
-            RuntimeEvent::Service(event) => {
-                handle_incoming_request(&mut my_service, event)?;
-            }
-            RuntimeEvent::Subscription(event) => {
-                let data = event.payload;
-                // Forward to our subscribers
-                my_service.notify(EventgroupId(0x02), EventId(0x8002), &data)?;
-            }
-        }
-    }
-}
-```
-
-### Use Case 4: C++ Integration
-
-**Scenario**: Existing C++ application needs SOME/IP support.
-
-```cpp
-#include <someip.h>
-
-int main() {
-    someip_config_t config = { /* ... */ };
-    someip_client_t* client = someip_client_new(&config);
-    
-    // Wait for service
-    while (someip_wait_available(client, 1000) != SOMEIP_OK) {
-        // Retry
-    }
-    
-    // Subscribe
-    someip_subscribe(client, 0x01);
-    
-    // Main loop
-    someip_message_t msg;
-    while (someip_next(client, &msg, -1) == SOMEIP_OK) {
-        switch (msg.type) {
-            case SOMEIP_MSG_EVENT:
-                handle_event(&msg);
-                break;
-            case SOMEIP_MSG_RESPONSE:
-                handle_response(&msg);
-                break;
-        }
-    }
-    
-    someip_client_free(client);
-    return 0;
-}
-```
-
 ---
 
-## Platform-Specific Considerations
+## Platform Considerations
 
-### Linux
+### Linux (Current Focus)
 
-- Full tokio async support via `someip-tokio`
-- epoll integration via `as_raw_fd()`
-- Channel-based distribution to worker threads
+- Full tokio async support
+- Uses turmoil for deterministic testing
+- Channel-based communication between handles and event loop
 
-### QNX
+### Future: QNX / Embedded
 
-- Sync API only (`someip-runtime`)
-- ionotify/pulse integration via `as_raw_fd()`
-- No async runtime dependency
-- Explicit resource control
-
-### Embedded/RTOS
-
-- `someip-types` is no_std compatible
-- User provides socket abstraction via traits
-- No hidden allocations
-- Explicit polling, no background threads
-
-### C++ Bindings
-
-- Clean C API via `someip-sys`
-- No callbacks across FFI boundary
-- Simple data types (structs, enums)
-- User manages threading
+- Network traits could be implemented for platform-specific sockets
+- Not yet implemented
 
 ---
 
@@ -1258,102 +739,78 @@ pub enum ConfigWarning {
 ### Core Design Principles
 
 1. **Types as Rails**: The type system guides users through valid protocol states
-2. **Sync-First**: Core library works everywhere; async is an optional layer
-3. **Explicit over Magic**: User controls the event loop, threading, distribution
-4. **Configuration Agnostic**: Library accepts config structs, not file formats
+2. **Async-First with Tokio**: Ergonomic async/await with trait-based socket abstraction
+3. **Explicit over Magic**: User controls service lifecycle, no hidden state
+4. **Configuration Agnostic**: Library accepts config via builders, not file formats
 5. **Protocol Compliant**: Invalid protocol states are unrepresentable where possible
 
 ### Trade-offs Made
 
 | Choice | Benefit | Cost |
 |--------|---------|------|
-| Sync-first | Works on QNX, embedded | Async requires wrapper layer |
+| Async-first | Ergonomic, efficient | Requires tokio runtime |
 | Explicit polling | Full user control | More code than callbacks |
 | Strict types | Compile-time safety | More types to understand |
-| No config parsing | No parser dependencies | User must provide parsers |
+| Turmoil for testing | Deterministic, fast tests | Adds dev dependency |
 
 ### Success Criteria
 
 - [x] Type-safe API where invalid states are unrepresentable
-- [ ] Compiles on Linux and QNX
-- [ ] Zero undefined behavior
-- [ ] Protocol-compliant message handling
-- [ ] Clean C FFI for C++ integration
-- [ ] No hidden allocations or spawned threads in core
+- [x] Compiles on Linux
+- [x] Protocol-compliant message handling
+- [x] Comprehensive test suite with turmoil
+- [ ] Full SOME/IP-TP support
+- [ ] QNX / embedded support
 
 ---
 
 ## Implementation Status
 
-### API Surface (src/lib.rs)
+### API Surface
 
-The top-level API has been defined with:
+**Entry Point**:
+- `recentip::configure()` → `SomeIpBuilder` → `SomeIp` (runtime handle)
 
-**Protocol Identifiers** (validated newtypes):
+**Protocol Identifiers** (validated newtypes in `src/lib.rs`):
 - `ServiceId` - validates against reserved values 0x0000, 0xFFFF
-- `ConcreteInstanceId` - for servers, no wildcards (0xFFFF rejected)
-- `InstanceId` - for clients, allows `ANY` (0xFFFF)
+- `InstanceId` - enum with `Any` (wildcard) or `Id(u16)`
 - `EventId` - validates high bit set (0x8000-0xFFFE)
 - `EventgroupId` - validates non-zero
-- `MethodId` - method/field identifier
-- `AppPort` - validates not 30490 (SD reserved)
+- `MethodId` - method identifier (0x0000-0x7FFF)
 
-**Client API**:
-- `Client<Io>` - client runtime
-- `ServiceProxy<Io, State>` - typestate proxy (Unavailable → Available)
-- `Subscription<Io>` - active subscription, IS the event source
-- `PendingResponse<Io>` - awaiting method response
+**Client API** (`src/handles/client.rs`):
+- `FindBuilder` - configure service discovery
+- `OfferedService` - discovered service proxy for RPC and subscriptions
+- `Subscription` - active event subscription, IS the event source
 
-**Server API**:
-- `ServiceInstance<Io, State>` - typestate service (Bound → Announced)
-  - `Bound`: listening on endpoint, not announced via SD
-  - `Announced`: listening + announced via SD (sends OfferService)
-- `ServiceEvent` - method calls, subscriptions, etc.
+**Server API** (`src/handles/server.rs`):
+- `OfferBuilder` - configure service offering
+- `ServiceOffering` - handle for incoming requests and sending events
 - `Responder` - must-use response sender (panics if dropped)
-- `SubscribeAck` - must-use subscription handler
+- `ServiceEvent` - method calls, subscriptions, etc.
 
-**Additional Types**:
-- `AvailableInstance` - discovered instance with `instance_id()`, `endpoint()`
-- `ConcreteInstanceId` now implements `Ord, PartialOrd` for sorting
+**Network Abstraction** (`src/net/`):
+- `UdpSocket`, `TcpStream`, `TcpListener` traits
+- `tokio_impl` - production implementation
+- `turmoil_impl` - testing implementation
 
-**I/O Abstraction**:
-- `IoContext` - platform abstraction trait
-- `UdpSocketOps`, `TcpStreamOps`, `TcpListenerOps` - socket traits
-- `IoResult<T>` - I/O result type
+### Test Suite
 
-### Test Suite (199 total tests)
+**Current Status**: 365 tests pass, 19 ignored (see TODO.md for details)
 
-**Compliance Test Modules**:
-| Module | Tests | Description |
-|--------|-------|-------------|
-| api_types | 16 | ID types, ranges, reserved values |
-| wire_format | 22 | Header parsing, message structure |
-| service_discovery | 18 | SD protocol, entries, options |
-| transport_protocol | 28 | TP segmentation, reassembly |
-| tcp_binding | 15 | TCP framing, magic cookies |
-| udp_binding | 12 | UDP message handling |
-| rpc_flow | 10 | Request/response patterns |
-| events | 17 | Pub/sub, multiple subscriptions |
-| fields | 8 | Getter/setter/notifier |
-| error_scenarios | 13 | Error handling, malformed messages |
-| session_edge_cases | 9 | Session ID wrap, request matching |
-| instances | 10 | Multi-instance discovery |
-| multi_party | 10 | N-party network scenarios |
+| Category | Notes |
+|----------|-------|
+| Wire format | Header parsing, SD messages |
+| Service discovery | Offer, find, subscribe flows |
+| RPC | Request/response, fire-and-forget |
+| Events | Pub/sub, subscriptions |
+| Session handling | Reboot detection, session IDs |
+| Transport Protocol | 9 stub tests, implementation pending |
 
-**Simulated Network** (tests/simulated.rs):
-- UDP roundtrip
-- Multicast delivery
-- Network partitioning
-- TCP connect and transfer
-- `new_multi(count)` for N-party testing
-
-### Running Tests
-
+**Testing with Turmoil**:
 ```bash
-cd rust-api-design
-cargo test --test api_usage   # Type safety tests
-cargo test --test simulated   # Simulated network tests
-cargo test --test compliance  # Full compliance suite
+cargo test                    # All tests (uses turmoil by default)
+cargo test --test compliance  # Compliance suite
 ```
 
 ---
