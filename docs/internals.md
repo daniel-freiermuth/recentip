@@ -2,6 +2,28 @@
 
 Documentation for contributors and maintainers.
 
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      User Application                       │
+│ SomeIp-Handle     OfferedService          ServiceOffering   │
+└────┬────────────────────┬─────────────────────┬─────────────┘
+     │                    │▲ Events             │▲ Events
+     │           Commands ▼│           Commands ▼│
+┌─────────────────────────────────────────────────────────────┐
+│                     SomeIp (Event Loop)                     │
+│   Multiplexes: commands, SD, RPC, TCP, timers               │
+└─────────────────────────────────────────────────────────────┘
+           │                              │
+           ▼                              ▼
+    ┌─────────────┐                ┌─────────────────────────┐
+    │ SD Socket   │                │ Pub/Sub and RPC Sockets │
+    │ UDP:30490   │                │ UDP/TCP                 │
+    └─────────────┘                └─────────────────────────┘
+```
+
+Handles (`OfferedService`, `ServiceOffering`) don't perform I/O directly—they send commands to the central event loop, which owns all sockets and state.
+
+
 ## Module Structure
 
 | Module | Visibility | Responsibility |
@@ -23,11 +45,41 @@ The [`SomeIp`](crate::SomeIp) runtime is a single-task event loop using `tokio::
 ```text
 loop {
     select! {
-        cmd = command_rx.recv() => { /* handle user commands */ }
+        // User commands from handles (find, offer, call, subscribe, etc.)
+        cmd = command_rx.recv() => { /* dispatch command */ }
+        
+        // Service Discovery (multicast UDP:30490)
         msg = sd_socket.recv() => { /* handle SD messages */ }
-        msg = rpc_socket.recv() => { /* handle RPC messages */ }
-        _ = timer.tick() => { /* cyclic offers, TTL expiry */ }
-        // ... TCP connections
+        
+        // RPC over UDP (unicast)
+        msg = udp_rpc_socket.recv() => {
+            // Request → route to ServiceOffering handle
+            // Response → match session ID, complete pending call future
+            // Notification → route to Subscription handle
+        }
+        
+        // TCP listener for incoming connections
+        conn = tcp_listener.accept() => {
+            // Add to connection pool, spawn reader task
+        }
+        
+        // TCP connection data (for each active connection)
+        msg = tcp_connections.next() => {
+            // Same as UDP: Request/Response/Notification
+            // Plus: connection close handling, reconnect logic
+        }
+        
+        // Timers
+        _ = offer_timer.tick() => {
+            // Send cyclic OfferService for each offered service
+        }
+        _ = ttl_timer.tick() => {
+            // Expire stale discovered services
+            // Expire stale subscriptions
+        }
+        _ = find_timer.tick() => {
+            // Retry pending FindService requests
+        }
     }
 }
 ```
@@ -37,20 +89,6 @@ the event loop processes them atomically. This design:
 
 - Eliminates data races (single owner of all state)
 - Enables efficient socket multiplexing
-- Simplifies testing (deterministic message ordering with turmoil)
-
-## Session ID Management
-
-Per SOME/IP spec, session IDs:
-
-- Are 16-bit counters wrapping from 0xFFFF → 0x0001 (never 0x0000)
-- Have **separate counters** for multicast vs unicast SD messages
-- Use a "reboot flag" (bit in SD header) to signal restart
-
-Tracked in `RuntimeState`:
-- `multicast_session_id: u16`
-- `unicast_session_id: u16` (TODO: should be per-peer `HashMap<IpAddr, u16>`)
-- `reboot_flag: bool` (set on first message after boot)
 
 ## Service Discovery Flow
 
@@ -70,16 +108,8 @@ Tracked in `RuntimeState`:
 4. Incoming `OfferService` → create `DiscoveredService`, resolve find future
 5. User gets `OfferedService` handle for RPC/subscribe
 
-## Testing Strategy
-
-- **Turmoil**: Deterministic network simulation for most tests
-- **Real network tests**: Marked with `#[ignore]` or feature-gated
-- **Compliance tests**: In `tests/compliance/`, organized by spec area
-- **Doc tests**: All examples compile-checked via `cargo test --doc`
-
 ## Code Conventions
 
-- `#![forbid(unsafe_code)]` — no unsafe anywhere
-- Prefer explicit error handling over panics (goal: zero-panic)
+- Clippy is configured to prevent unsafe code and code, that could panic.
 - Use `profiling::scope!()` for performance-sensitive paths
 - Internal modules are `pub(crate)`, documented for contributors

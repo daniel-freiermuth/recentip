@@ -1,10 +1,10 @@
-//! # recentip
+//! # RecentIP
 //!
 //! [![Crate](https://img.shields.io/crates/v/recentip.svg)](https://crates.io/crates/recentip)
 //! [![Docs](https://docs.rs/recentip/badge.svg)](https://docs.rs/recentip)
 //! [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](https://github.com/daniel-freiermuth/recentip/blob/main/LICENSE)
 //!
-//! A **type-safe, async SOME/IP protocol implementation** for [tokio](https://tokio.rs).
+//! An **async SOME/IP protocol implementation** for [tokio](https://tokio.rs).
 //!
 //! ## Quick Start
 //!
@@ -30,14 +30,31 @@
 //! }
 //! ```
 //!
-//! ## Key Types
+//! ## Configuration
+//!
+//! ```no_run
+//! use recentip::prelude::*;
+//!
+//! # async fn example() -> Result<()> {
+//! let someip = recentip::configure()
+//!     .preferred_transport(Transport::Tcp)  // Prefer TCP when service offers both
+//!     .magic_cookies(true)                  // Enable Magic Cookies for debugging
+//!     .offer_ttl(3)                         // Service offer TTL in seconds
+//!     .start().await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## API Overview
 //!
 //! | Type | Role |
 //! |------|------|
-//! | [`SomeIp`] | Runtime — start with [`configure()`] |
-//! | [`OfferedService`] | Client proxy for RPC and subscriptions |
-//! | [`ServiceOffering`] | Server handle for requests and events |
-//! | [`Subscription`] | Receive events from subscribed eventgroups |
+//! | [`SomeIp`] | Central coordinator, owns sockets |
+//! | [`OfferedService`] | Client proxy to remote service |
+//! | [`ServiceOffering`] | Server handle for offered service |
+//! | [`SubscriptionBuilder`] | Build subscription to eventgroups |
+//! | [`Subscription`] | Receive events from eventgroups |
+//! | [`Responder`] | Reply to incoming RPC request |
 //!
 //! ## Learn More
 //!
