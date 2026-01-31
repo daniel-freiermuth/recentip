@@ -2,7 +2,7 @@
 
 Documentation for contributors and maintainers.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                      User Application                       │
 │ SomeIp-Handle     OfferedService          ServiceOffering   │
