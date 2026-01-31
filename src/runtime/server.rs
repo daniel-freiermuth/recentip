@@ -320,15 +320,12 @@ pub fn handle_notify(
     state: &RuntimeState,
     actions: &mut Vec<Action>,
 ) {
+    // manually reviewed: 2026-01-31
     let service_key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Collect all unique subscribers across all eventgroups
     // Deduplicate by endpoint to avoid sending the same event multiple times to the same client.
-    // For UDP: Each eventgroup subscription has its own socket (unique port), so dedup is per-EG.
-    // For TCP: Multiple eventgroup subscriptions share one connection, so we send once and let
-    //          the client route internally based on which EGs it subscribed to.
     let mut seen_subscribers = std::collections::HashSet::new();
-    let mut subscribers: Vec<(SocketAddr, crate::config::Transport)> = Vec::new();
 
     for &eventgroup_id in eventgroup_ids {
         let sub_key = SubscriberKey {
@@ -340,14 +337,12 @@ pub fn handle_notify(
 
         if let Some(subs) = state.server_subscribers.get(&sub_key) {
             for s in subs {
-                if seen_subscribers.insert((s.endpoint, s.transport)) {
-                    subscribers.push((s.endpoint, s.transport));
-                }
+                seen_subscribers.insert((s.endpoint, s.transport));
             }
         }
     }
 
-    if !subscribers.is_empty() {
+    if !seen_subscribers.is_empty() {
         // Build notification message
         let notification_data = build_notification(
             service_id.value(),
@@ -358,7 +353,7 @@ pub fn handle_notify(
             payload,
         );
 
-        for (subscriber, transport) in subscribers {
+        for (subscriber, transport) in seen_subscribers {
             actions.push(Action::SendServerMessage {
                 service_key,
                 data: notification_data.clone(),
