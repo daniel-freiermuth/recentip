@@ -13,11 +13,11 @@ An opinionated **async and boring SOME/IP protocol implementation**.
 
 ## Features
 
+- **Zero-panic** expect, unwrap, indexing forbidden by clippy rule
+- **Lock-free hot paths** Data is passed using channels for uninterrupted non-blocking flows
+- **Tokio-backed async** scales from single to multicore execution
 - **Spec compliance testsuite and report**
 - **Lint rule for proper usage**
-- **Zero-panic** expect, unwrap, indexing forbidden by clippy rule
-- **Few mutexes** Most data is passed using channels for uninterrupted non-blocking flows
-- **Tokio-backed async** scales from single to multicore execution
 - **No-unsafe** forbidden by clippy rule
 
 ## Supported SOME/IP
