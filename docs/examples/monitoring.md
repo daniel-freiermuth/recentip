@@ -24,12 +24,14 @@ async fn main() -> Result<()> {
             SdEvent::ServiceAvailable { 
                 service_id, 
                 instance_id, 
-                endpoint,
+                udp_endpoint,
+                tcp_endpoint,
                 major_version,
                 minor_version,
                 .. 
             } => {
-                println!("✓ Service 0x{:04x}:{} AVAILABLE at {} (v{}.{})",
+                let endpoint = tcp_endpoint.or(udp_endpoint);
+                println!("✓ Service 0x{:04x}:{} AVAILABLE at {:?} (v{}.{})",
                     service_id, 
                     instance_id,
                     endpoint,

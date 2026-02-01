@@ -56,7 +56,7 @@ use crate::error::Result;
 use crate::runtime::event_loop::cluster_sd_actions;
 use crate::tcp::TcpSendMessage;
 use crate::wire::SdMessage;
-use crate::{InstanceId, ServiceId};
+use crate::{InstanceId, OfferedEndpoints, ServiceId};
 
 // ============================================================================
 // SERVICE KEYS
@@ -345,9 +345,8 @@ pub struct OfferedService {
 #[derive(Debug, Clone)]
 pub struct DiscoveredService {
     /// UDP endpoint for sending SOME/IP RPC messages (if using UDP transport)
-    pub(crate) udp_endpoint: Option<SocketAddr>,
     /// TCP endpoint for sending SOME/IP RPC messages (if using TCP transport)
-    pub(crate) tcp_endpoint: Option<SocketAddr>,
+    pub(crate) offered_endpoints: OfferedEndpoints,
     /// SD endpoint for sending SD messages (`SubscribeEventgroup`, etc.)
     pub(crate) sd_endpoint: SocketAddr,
     #[allow(dead_code)] // Fields used for version matching in future
@@ -356,28 +355,6 @@ pub struct DiscoveredService {
 }
 
 impl DiscoveredService {
-    /// Get the RPC endpoint and transport based on preferred transport
-    pub(crate) fn method_endpoint(
-        &self,
-        prefer_tcp: bool,
-    ) -> Option<(SocketAddr, crate::config::Transport)> {
-        if prefer_tcp {
-            self.tcp_endpoint
-                .map(|ep| (ep, crate::config::Transport::Tcp))
-                .or_else(|| {
-                    self.udp_endpoint
-                        .map(|ep| (ep, crate::config::Transport::Udp))
-                })
-        } else {
-            self.udp_endpoint
-                .map(|ep| (ep, crate::config::Transport::Udp))
-                .or_else(|| {
-                    self.tcp_endpoint
-                        .map(|ep| (ep, crate::config::Transport::Tcp))
-                })
-        }
-    }
-
     /// Check if the service offer is still alive (TTL not expired)
     pub(crate) fn is_alive(&self) -> bool {
         Instant::now() < self.ttl_expires
@@ -402,12 +379,14 @@ pub struct ClientSubscription {
     pub(crate) events_tx: mpsc::Sender<crate::Event>,
     /// Local endpoint for this subscription (events are received on this port)
     pub(crate) local_endpoint: SocketAddr,
+    pub(crate) transport: crate::config::Transport,
     /// True if this subscription has a dedicated socket task (UDP subscriptions only)
     /// TCP subscriptions receive events via the shared TCP connection handler
     pub(crate) has_dedicated_socket: bool,
     /// The connection key used for TCP subscriptions (0 = shared connection, >0 = dedicated)
     /// Used for routing: events from `conn_key=0` only go to subscriptions with `conn_key=0`
     pub(crate) tcp_conn_key: u64,
+    // pub(crate) sd_endpoint: SocketAddr,
 }
 
 /// Pending RPC call (client-side)

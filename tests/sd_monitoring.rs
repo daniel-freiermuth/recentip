@@ -242,8 +242,9 @@ fn monitor_sd_event_metadata_accuracy() {
             instance_id,
             major_version,
             minor_version,
-            endpoint,
             ttl,
+            udp_endpoint,
+            tcp_endpoint,
         } => {
             assert_eq!(service_id, 0x5678, "Service ID should match AnotherService");
             assert_eq!(instance_id, 0x0042, "Instance ID should match");
@@ -257,7 +258,11 @@ fn monitor_sd_event_metadata_accuracy() {
             );
             assert!(ttl > 0, "TTL should be positive");
             // Endpoint should be valid (port > 0)
-            assert!(endpoint.port() > 0, "Endpoint port should be valid");
+            assert!(
+                udp_endpoint.unwrap().port() > 0,
+                "Endpoint port should be valid"
+            );
+            assert!(tcp_endpoint.is_none(), "TCP endpoint should be None");
         }
         other => panic!("Expected got {:?}", other),
     }

@@ -134,10 +134,9 @@ where
 
         // Wait for availability notification
         let Some(ServiceAvailability::Available {
-            endpoint,
-            transport,
-            instance_id: discovered_instance_id,
-            major_version,
+            key,
+            offered_endpoints,
+            // sd_endpoint,
         }) = notify_rx.recv().await
         else {
             // Channel closed - either runtime shut down or find request expired
@@ -147,12 +146,12 @@ where
         Ok(OfferedService::from_inner(
             Arc::clone(self.runtime.inner()),
             service_id,
-            InstanceId::Id(discovered_instance_id),
-            major_version,
-            endpoint,
-            transport,
+            InstanceId::Id(key.instance_id),
+            key.major_version,
             // Pass original find criteria for proper StopFind on drop
             Some((self.instance_id, self.major_version)),
+            offered_endpoints,
+            // sd_endpoint,
         ))
     }
 }

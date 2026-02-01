@@ -2,7 +2,7 @@
 
 use crate::helpers::configure_tracing;
 use recentip::handle::ServiceEvent;
-use recentip::{EventId, EventgroupId, InstanceId, MethodId, ServiceId};
+use recentip::{EventId, EventgroupId, InstanceId, MethodId, OfferedEndpoints, ServiceId};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -2143,7 +2143,6 @@ fn test_same_event_id_different_services() {
 /// Test creating a static proxy without service discovery
 #[test_log::test]
 fn test_static_proxy_creation() {
-    use recentip::config::Transport;
     use recentip::handle::OfferedService;
 
     let mut sim = turmoil::Builder::new()
@@ -2195,8 +2194,8 @@ fn test_static_proxy_creation() {
             ServiceId::new(TEST_SERVICE_ID).unwrap(),
             InstanceId::Id(0x0001),
             1, // major_version
-            endpoint,
-            Transport::Udp,
+            OfferedEndpoints::UdpOnly(endpoint),
+            // SocketAddr::new(turmoil::lookup("server"), 30490),
         );
 
         // Use the proxy like any other
@@ -2272,7 +2271,6 @@ fn test_is_offer_alive_after_discovery() {
 /// Test that is_offer_alive() returns false before discovery
 #[test_log::test]
 fn test_is_offer_alive_before_discovery() {
-    use recentip::config::Transport;
     use recentip::handle::OfferedService;
 
     let mut sim = turmoil::Builder::new()
@@ -2293,8 +2291,8 @@ fn test_is_offer_alive_before_discovery() {
             ServiceId::new(TEST_SERVICE_ID).unwrap(),
             InstanceId::Id(0x0001),
             1,
-            endpoint,
-            Transport::Udp,
+            OfferedEndpoints::UdpOnly(endpoint),
+            // SocketAddr::new(turmoil::lookup("server"), 30490),
         );
 
         // Service has never been discovered, should not be alive
@@ -2395,7 +2393,6 @@ fn test_is_offer_alive_ttl_expiration() {
 /// there's a 5-second window where the service appears dead.
 #[test_log::test]
 fn test_is_offer_alive_ttl_cleanup() {
-    use recentip::config::Transport;
     use recentip::handle::OfferedService;
 
     let mut sim = turmoil::Builder::new()
@@ -2444,8 +2441,8 @@ fn test_is_offer_alive_ttl_cleanup() {
             ServiceId::new(TEST_SERVICE_ID).unwrap(),
             InstanceId::Id(0x0001),
             1,
-            endpoint,
-            Transport::Udp,
+            OfferedEndpoints::UdpOnly(endpoint),
+            // SocketAddr::new(turmoil::lookup("server"), 30490),
         );
 
         // Wait for SD to discover the service (from multicast offer)
@@ -2486,7 +2483,6 @@ fn test_is_offer_alive_ttl_cleanup() {
 /// Test that static proxy can check if service is alive via SD
 #[test_log::test]
 fn test_is_offer_alive_static_proxy_with_sd() {
-    use recentip::config::Transport;
     use recentip::handle::OfferedService;
 
     let mut sim = turmoil::Builder::new()
@@ -2529,8 +2525,8 @@ fn test_is_offer_alive_static_proxy_with_sd() {
             ServiceId::new(TEST_SERVICE_ID).unwrap(),
             InstanceId::Id(0x0001),
             1,
-            endpoint,
-            Transport::Udp,
+            OfferedEndpoints::UdpOnly(endpoint),
+            // SocketAddr::new(turmoil::lookup("server"), 30490),
         );
 
         // Initially not alive (not yet in discovered map)

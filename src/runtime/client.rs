@@ -68,7 +68,7 @@ use super::state::{
 use crate::config::{Transport, DEFAULT_FIND_REPETITIONS};
 use crate::net::UdpSocket;
 use crate::wire::{Header, MessageType};
-use crate::{Event, EventId, Response, ReturnCode};
+use crate::{Event, EventId, OfferedEndpoints, Response, ReturnCode};
 use tokio::sync::mpsc;
 
 // ============================================================================
@@ -219,32 +219,24 @@ pub fn handle_find(
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    let key = ServiceKey::new(service_id, instance_id, major_version.value());
-    let prefer_tcp = state.config.preferred_transport == Transport::Tcp;
+    let search_key = ServiceKey::new(service_id, instance_id, major_version.value());
 
     // Check if we already have a matching discovered service
     // Use wildcard-aware matching via DiscoveredServiceKey::matches()
     let found = state
         .discovered
         .iter()
-        .find(|entry| entry.key().matches(key))
-        .and_then(|entry| {
-            entry
-                .value()
-                .method_endpoint(prefer_tcp)
-                .map(|(ep, tr)| (entry.key().instance_id, entry.key().major_version, ep, tr))
-        });
+        .find(|entry| entry.key().matches(search_key));
 
-    if let Some((discovered_instance_id, discovered_major_version, endpoint, transport)) = found {
+    if let Some(discovered_service) = found {
         let _ = notify.try_send(ServiceAvailability::Available {
-            endpoint,
-            transport,
-            instance_id: discovered_instance_id,
-            major_version: discovered_major_version,
+            key: *discovered_service.key(),
+            offered_endpoints: discovered_service.value().offered_endpoints.clone(),
+            // sd_endpoint: discovered_service.value().sd_endpoint,
         });
     } else {
         state.find_requests.insert(
-            key,
+            search_key,
             FindRequest {
                 notify,
                 repetitions_left: DEFAULT_FIND_REPETITIONS,
@@ -371,8 +363,8 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     instance_id: crate::InstanceId,
     major_version: u8,
     eventgroup_ids: vec1::Vec1<u16>,
-    events: tokio::sync::mpsc::Sender<Event>,
-    response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
+    incoming_events_channel: tokio::sync::mpsc::Sender<Event>,
+    result_response_channel: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     sd_endpoint: SocketAddr,
     state: &mut RuntimeState,
 ) {
@@ -390,7 +382,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             instance_id.value(),
             eventgroup_ids
         );
-        let _ = response.send(Err(crate::error::Error::Config(
+        let _ = result_response_channel.send(Err(crate::error::Error::Config(
             crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
         )));
         return;
@@ -433,15 +425,16 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                 subs.push(ClientSubscription {
                     subscription_id,
                     eventgroup_id,
-                    events_tx: events.clone(),
+                    events_tx: incoming_events_channel.clone(),
                     local_endpoint: reused_endpoint,
-                    has_dedicated_socket: false,
+                    has_dedicated_socket: false, // Shared endpoint
                     tcp_conn_key: 0,
+                    transport: Transport::Udp,
                 });
             }
 
             // Send subscribe messages
-            let mut response_opt = Some(response);
+            let mut response_opt = Some(result_response_channel);
 
             let mut eventgroups_to_subscribe = Vec::new();
             for &eventgroup_id in &eventgroup_ids {
@@ -494,7 +487,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         // No reusable endpoint found - create a new dedicated socket
         match spawn_udp_subscription_socket::<U>(
             endpoint_ip,
-            events.clone(),
+            incoming_events_channel.clone(),
             service_id,
             instance_id,
             *eventgroup_ids.first(),
@@ -503,12 +496,12 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         {
             Ok(dedicated_endpoint) => {
                 tracing::debug!(
-                    "Created dedicated UDP socket {} for subscription to {:04x}:{:04x} eventgroups {:?} (no reusable endpoint)",
-                    dedicated_endpoint,
-                    service_id.value(),
-                    instance_id.value(),
-                    eventgroup_ids
-                );
+                        "Created dedicated UDP socket {} for subscription to {:04x}:{:04x} eventgroups {:?} (no reusable endpoint)",
+                        dedicated_endpoint,
+                        service_id.value(),
+                        instance_id.value(),
+                        eventgroup_ids
+                    );
 
                 // Register this new endpoint's usage
                 state.register_subscription_endpoint(
@@ -518,20 +511,22 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                 );
 
                 // Store subscription with dedicated socket flag
+                // Track all eventgroups with a shared events channel
                 let subs = state.subscriptions.entry(key).or_default();
                 for &eventgroup_id in &eventgroup_ids {
                     subs.push(ClientSubscription {
                         subscription_id,
                         eventgroup_id,
-                        events_tx: events.clone(),
+                        events_tx: incoming_events_channel.clone(),
                         local_endpoint: dedicated_endpoint,
-                        has_dedicated_socket: true,
-                        tcp_conn_key: 0,
+                        has_dedicated_socket: true, // Events received on dedicated socket
+                        tcp_conn_key: 0,            // Not used for UDP subscriptions
+                        transport: Transport::Udp,
                     });
                 }
 
                 // Track pending subscriptions and send subscribe messages
-                let mut response_opt = Some(response);
+                let mut response_opt = Some(result_response_channel);
 
                 let mut eventgroups_to_subscribe = Vec::new();
                 for &eventgroup_id in &eventgroup_ids {
@@ -585,7 +580,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                     "Failed to create dedicated UDP socket for subscription: {}",
                     e
                 );
-                let _ = response.send(Err(crate::error::Error::Io(e)));
+                let _ = result_response_channel.send(Err(crate::error::Error::Io(e)));
                 return;
             }
         }
@@ -605,17 +600,18 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         subs.push(ClientSubscription {
             subscription_id,
             eventgroup_id,
-            events_tx: events.clone(),
+            events_tx: incoming_events_channel.clone(),
             local_endpoint: endpoint_for_subscribe,
-            has_dedicated_socket: false,
-            tcp_conn_key: 0,
+            has_dedicated_socket: false, // Both UDP and TCP use shared sockets/connections; events route via handle_incoming_notification
+            tcp_conn_key: 0, // Track whicho TCP connection this subscription uses for event routing
+            transport: Transport::Udp,
         });
     }
 
     // Track pending subscriptions for all eventgroups
     // For multi-eventgroup subscriptions, use "all or nothing" tracking
     let is_multi_eventgroup = eventgroup_ids.len() > 1;
-    let mut response_opt = Some(response);
+    let mut response_opt = Some(result_response_channel);
 
     if is_multi_eventgroup {
         let multi_key = MultiEventgroupSubscriptionKey {
@@ -700,7 +696,7 @@ pub fn handle_unsubscribe(
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
     // First, gather info we need while holding an immutable borrow, then modify
-    let (removed_endpoint, remaining_for_eventgroup, port_still_in_use) = {
+    let (removed_endpoint, remaining_for_eventgroup, port_still_in_use, transport) = {
         let Some(subs) = state.subscriptions.get_mut(&key) else {
             tracing::warn!(
                 "Unsubscribe for unknown service sub_id {} on {:04x}:{:04x} v{} eventgroup {:04x}",
@@ -717,10 +713,13 @@ pub fn handle_unsubscribe(
         // Note: A multi-eventgroup subscription has multiple entries (one per eventgroup),
         // all sharing the same subscription_id but with different eventgroup_ids.
         // We need to find and remove only the entry for this specific eventgroup.
-        let removed_endpoint = subs
+        let endpoint_transport = subs
             .iter()
             .find(|s| s.subscription_id == subscription_id && s.eventgroup_id == eventgroup_id)
-            .map(|s| s.local_endpoint);
+            .map(|s| (s.local_endpoint, s.transport));
+
+        let removed_endpoint = endpoint_transport.map(|(endpoint, _transport)| endpoint);
+        let transport = endpoint_transport.map(|(_, transport)| transport);
 
         // Remove only the entry for this specific eventgroup (not all entries with this subscription_id)
         subs.retain(|s| {
@@ -743,6 +742,7 @@ pub fn handle_unsubscribe(
             removed_endpoint,
             remaining_for_eventgroup,
             port_still_in_use,
+            transport,
         )
     };
 
@@ -764,6 +764,7 @@ pub fn handle_unsubscribe(
         }
     }
 
+    // TODO looks fishy: We should unsub for every port
     // Only send SD StopSubscribe if this was the last subscription for this eventgroup
     if remaining_for_eventgroup > 0 {
         tracing::debug!(
@@ -790,21 +791,9 @@ pub fn handle_unsubscribe(
         return;
     };
 
-    let (transport, sd_endpoint) = if let Some(discovered) = state.discovered.get(&key) {
-        let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
-        let Some(transport) = discovered.method_endpoint(prefer_tcp).map(|(_ep, t)| t) else {
-            // Server offers nothing
-            tracing::error!(
-                "Trying to unsubscribe from eventgroup {:04x} on service {:04x} instance {:04x}, but server offers no transport endpoints",
-                eventgroup_id,
-                service_id.value(),
-                instance_id.value()
-            );
-            return;
-        };
-
-        let sd_endpoint = discovered.sd_endpoint;
-        (transport, sd_endpoint)
+    // We should ge this from the subscription
+    let sd_endpoint = if let Some(discovered) = state.discovered.get(&key) {
+        discovered.sd_endpoint
     } else {
         tracing::warn!(
             "Trying to unsubscribe from eventgroup {:04x} on service {:04x} instance {:04x}, but service not discovered",
@@ -840,6 +829,17 @@ pub fn handle_unsubscribe(
     // Per feat_req_someipsd_1177: StopSubscribeEventgroup shall reference the same
     // options the SubscribeEventgroup Entry referenced
     let endpoint_for_unsubscribe = SocketAddr::new(endpoint_ip, subscription_endpoint.port());
+
+    let Some(transport) = transport else {
+        tracing::error!(
+            "Cannot unsubscribe from {:04x}:{:04x} eventgroup {:04x}: \
+                 subscription transport type unknown",
+            service_id.value(),
+            instance_id.value(),
+            eventgroup_id
+        );
+        return;
+    };
 
     let msg = build_unsubscribe_message(
         service_id.value(),
@@ -915,13 +915,17 @@ pub fn handle_incoming_notification(
 
     // Determine which service instance this event is from by looking up the 'from' address
     // in discovered services
+    // TODO: we need to be more precise here
     let Some(key): Option<ServiceKey> = state
         .discovered
         .iter()
         .find(|entry| {
             entry.key().service_id == header.service_id
-                && (entry.value().udp_endpoint == Some(from)
-                    || entry.value().tcp_endpoint == Some(from))
+                && match entry.value().offered_endpoints {
+                    OfferedEndpoints::UdpOnly(socket_addr) => socket_addr == from,
+                    OfferedEndpoints::TcpOnly(socket_addr) => socket_addr == from,
+                    OfferedEndpoints::Both { udp, tcp } => udp == from || tcp == from,
+                }
         })
         .map(|entry| *entry.key())
     else {

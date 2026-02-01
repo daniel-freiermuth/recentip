@@ -139,10 +139,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(event) = sd_events.recv() => {
                 let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
                 match event {
-                    SdEvent::ServiceAvailable { service_id, instance_id, major_version, minor_version, endpoint, ttl } => {
+                    SdEvent::ServiceAvailable { service_id, instance_id, major_version, minor_version, ttl, udp_endpoint, tcp_endpoint } => {
                         println!(
-                            "[{}] ✓ Service 0x{:04X}:{} AVAILABLE at {} (v{}.{}, TTL={}s)",
-                            timestamp, service_id, instance_id, endpoint, major_version, minor_version, ttl
+                            "[{}] ✓ Service 0x{:04X}:{} AVAILABLE at UDP {} TCP {} (v{}.{}, TTL={}s)",
+                            timestamp, service_id, instance_id,
+                            udp_endpoint.map(|addr| addr.to_string()).unwrap_or("none".to_string()),
+                            tcp_endpoint.map(|addr| addr.to_string()).unwrap_or("none".to_string()),
+                            major_version, minor_version, ttl
                         );
                     }
                     SdEvent::ServiceUnavailable { service_id, instance_id } => {

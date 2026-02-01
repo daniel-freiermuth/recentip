@@ -60,13 +60,13 @@ use std::time::Duration;
 use bytes::Bytes;
 use tokio::time::Instant;
 
-use super::command::ServiceAvailability;
 use super::state::{
     DiscoveredService, MultiEventgroupSubscriptionKey, OfferedService, PendingServerResponse,
     PendingSubscriptionKey, RuntimeState, ServerSubscription, ServiceKey, SubscriberKey,
 };
 use crate::config::{Transport, SD_TTL_INFINITE};
 use crate::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
+use crate::OfferedEndpoints;
 
 // ============================================================================
 // ACTION TYPE
@@ -82,7 +82,8 @@ pub enum Action {
     /// Notify find requests about a discovered service
     NotifyFound {
         key: ServiceKey,
-        availability: ServiceAvailability,
+        endpoints: OfferedEndpoints,
+        // sd_endpoint: SocketAddr,
     },
     /// Send a SOME/IP RPC message as a client (uses client RPC socket or TCP pool)
     SendClientMessage {
@@ -141,6 +142,7 @@ pub fn handle_offer(
     // If the endpoint has unspecified IP (0.0.0.0), use the source IP with the option's port
     let udp_endpoint = match sd_message.get_udp_endpoint(entry) {
         Some(ep) if !ep.ip().is_unspecified() => Some(ep),
+        // TODO Taking the source here is wrong
         Some(ep) => Some(SocketAddr::new(from.ip(), ep.port())),
         None => None,
     };
@@ -148,29 +150,25 @@ pub fn handle_offer(
     // Get TCP endpoint from SD option if present
     let tcp_endpoint = match sd_message.get_tcp_endpoint(entry) {
         Some(ep) if !ep.ip().is_unspecified() => Some(ep),
+        // TODO Taking the source here is wrong
         Some(ep) => Some(SocketAddr::new(from.ip(), ep.port())),
         None => None,
     };
 
-    // Select endpoint based on client's preferred_transport
-    // If preferred is available, use it; otherwise use whatever is available
-    let prefer_tcp = state.config.preferred_transport == crate::config::Transport::Tcp;
-    // might deduplicated with the DiscoveredService helper
-    let Some((effective_endpoint, effective_transport)) = (if prefer_tcp {
-        tcp_endpoint
-            .map(|ep| (ep, crate::config::Transport::Tcp))
-            .or_else(|| udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
-    } else {
-        udp_endpoint
-            .map(|ep| (ep, crate::config::Transport::Udp))
-            .or_else(|| tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))
-    }) else {
-        tracing::error!(
-            "Received OfferService for {:04x}:{:04x} but no transport endpoints offered",
-            entry.service_id,
-            entry.instance_id
-        );
-        return;
+    let offered_endpoints = match (udp_endpoint, tcp_endpoint) {
+        (None, Some(tcp_endpoint)) => OfferedEndpoints::TcpOnly(tcp_endpoint),
+        (Some(udp_endpoint), None) => OfferedEndpoints::UdpOnly(udp_endpoint),
+        (Some(udp), Some(tcp)) => OfferedEndpoints::Both { udp, tcp },
+        (None, None) => {
+            tracing::error!(
+                "Received OfferService for {:04x}:{:04x} v{} with no valid endpoints from {}",
+                entry.service_id,
+                entry.instance_id,
+                entry.major_version,
+                from
+            );
+            return;
+        }
     };
 
     let key = ServiceKey {
@@ -182,12 +180,11 @@ pub fn handle_offer(
     let ttl_duration = Duration::from_secs(u64::from(entry.ttl));
 
     tracing::debug!(
-        "Discovered service {:04x}:{:04x} at udp={:?} tcp={:?} transport={:?} (TTL={})",
+        "Discovered service {:04x}:{:04x} at udp={:?} tcp={:?} (TTL={})",
         entry.service_id,
         entry.instance_id,
         udp_endpoint,
         tcp_endpoint,
-        effective_transport,
         entry.ttl
     );
 
@@ -195,8 +192,7 @@ pub fn handle_offer(
     state.discovered.insert(
         key,
         DiscoveredService {
-            udp_endpoint,
-            tcp_endpoint,
+            offered_endpoints: offered_endpoints.clone(),
             sd_endpoint: from, // Store the SD source for Subscribe messages
             minor_version: entry.minor_version,
             ttl_expires: Instant::now() + ttl_duration,
@@ -218,12 +214,8 @@ pub fn handle_offer(
     if is_new {
         actions.push(Action::NotifyFound {
             key,
-            availability: ServiceAvailability::Available {
-                endpoint: effective_endpoint,
-                transport: effective_transport,
-                instance_id: entry.instance_id,
-                major_version: entry.major_version,
-            },
+            endpoints: offered_endpoints,
+            // sd_endpoint: from,
         });
 
         // Emit SD event to monitors
@@ -233,7 +225,8 @@ pub fn handle_offer(
                 instance_id: entry.instance_id,
                 major_version: entry.major_version,
                 minor_version: entry.minor_version,
-                endpoint: effective_endpoint,
+                udp_endpoint,
+                tcp_endpoint,
                 ttl: entry.ttl,
             },
         });
@@ -259,6 +252,7 @@ pub fn handle_offer(
     } else if !state.local_endpoint.ip().is_unspecified() {
         state.local_endpoint.ip()
     } else if !state.client_rpc_endpoint.ip().is_unspecified() {
+        // TODO We shouldn't take this one
         state.client_rpc_endpoint.ip()
     } else {
         // No valid IP available - cannot renew subscriptions
@@ -271,73 +265,71 @@ pub fn handle_offer(
         return;
     };
 
-    let sd_flags = state.sd_flags(true);
+    let sd_flags = state.sd_flags(true); // We should have a better signature
 
     let mut sd_messages_to_be_queued = Vec::new();
 
-    if let Some(subscriptions) = state.subscriptions.get(&key) {
-        for sub in subscriptions {
-            // Skip if TTL is infinite (0xFFFFFF) - no renewal needed
-            if state.config.subscribe_ttl == SD_TTL_INFINITE {
-                tracing::trace!(
-                    "Skipping renewal for {:04x}:{:04x} eventgroup {:04x} (infinite TTL)",
-                    entry.service_id,
-                    entry.instance_id,
-                    sub.eventgroup_id
-                );
-                continue;
-            }
-
-            // Skip if this subscription has a pending ACK - don't send duplicate Subscribe
-            // This can happen when we receive a periodic Offer while waiting for ACK/NACK
-            let pending_key = PendingSubscriptionKey {
-                service_id: entry.service_id,
-                instance_id: entry.instance_id,
-                major_version: entry.major_version,
-                eventgroup_id: sub.eventgroup_id,
-            };
-            if state.pending_subscriptions.contains_key(&pending_key) {
-                tracing::trace!(
-                    "Skipping renewal for {:04x}:{:04x} eventgroup {:04x} (pending ACK)",
-                    entry.service_id,
-                    entry.instance_id,
-                    sub.eventgroup_id
-                );
-                continue;
-            }
-
-            // Use this subscription's local endpoint for renewal
-            let endpoint_for_subscribe =
-                std::net::SocketAddr::new(endpoint_ip, sub.local_endpoint.port());
-            tracing::debug!(
-                "Queueing offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroups {:?} via {:?} (port {}) for time-based clustering",
+    for sub in subscriptions {
+        // Skip if TTL is infinite (0xFFFFFF) - no renewal needed
+        if state.config.subscribe_ttl == SD_TTL_INFINITE {
+            tracing::trace!(
+                "Skipping renewal for {:04x}:{:04x} eventgroup {:04x} (infinite TTL)",
                 entry.service_id,
                 entry.instance_id,
-                entry.major_version,
-                sub.eventgroup_id,
-                effective_transport,
-                endpoint_for_subscribe.port()
+                sub.eventgroup_id
             );
+            continue;
+        }
 
-            // Build SubscribeEventgroup message with all eventgroups
-            let msg = build_subscribe_message(
+        // Skip if this subscription has a pending ACK - don't send duplicate Subscribe
+        // This can happen when we receive a periodic Offer while waiting for ACK/NACK
+        let pending_key = PendingSubscriptionKey {
+            service_id: entry.service_id,
+            instance_id: entry.instance_id,
+            major_version: entry.major_version,
+            eventgroup_id: sub.eventgroup_id,
+        };
+        if state.pending_subscriptions.contains_key(&pending_key) {
+            tracing::trace!(
+                "Skipping renewal for {:04x}:{:04x} eventgroup {:04x} (pending ACK)",
                 entry.service_id,
                 entry.instance_id,
-                entry.major_version,
-                sub.eventgroup_id,
-                endpoint_for_subscribe,
-                endpoint_for_subscribe.port(),
-                sd_flags,
-                state.config.subscribe_ttl,
-                effective_transport,
+                sub.eventgroup_id
             );
+            continue;
+        }
 
-            // Queue for time-based clustering instead of sending immediately
-            sd_messages_to_be_queued.push((msg, from));
-        }
-        for (message, target) in sd_messages_to_be_queued {
-            state.queue_unicast_sd(message, target);
-        }
+        // Use this subscription's local endpoint for renewal
+        let endpoint_for_subscribe =
+            std::net::SocketAddr::new(endpoint_ip, sub.local_endpoint.port());
+        tracing::debug!(
+            "Queueing offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroups {:?} via {:?} (port {}) for time-based clustering",
+            entry.service_id,
+            entry.instance_id,
+            entry.major_version,
+            sub.eventgroup_id,
+            sub.transport,
+            endpoint_for_subscribe.port()
+        );
+
+        // Build SubscribeEventgroup message with all eventgroups
+        let msg = build_subscribe_message(
+            entry.service_id,
+            entry.instance_id,
+            entry.major_version,
+            sub.eventgroup_id,
+            endpoint_for_subscribe,
+            endpoint_for_subscribe.port(),
+            sd_flags,
+            state.config.subscribe_ttl,
+            sub.transport,
+        );
+
+        // Queue for time-based clustering instead of sending immediately
+        sd_messages_to_be_queued.push((msg, from));
+    }
+    for (message, target) in sd_messages_to_be_queued {
+        state.queue_unicast_sd(message, target);
     }
 }
 
@@ -362,28 +354,24 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
         // so that subscription.next() returns None
         state.subscriptions.remove(&key);
 
+        let offered_tcp_endpoint = match service.offered_endpoints {
+            OfferedEndpoints::TcpOnly(tcp) => Some(tcp),
+            OfferedEndpoints::UdpOnly(_) => None,
+            OfferedEndpoints::Both { tcp, .. } => Some(tcp),
+        };
+
         // Queue TCP cleanup if this service had a TCP endpoint
         // Per feat_req_someipsd_872: TCP connections should be reset when service stops
-        if let Some(tcp_endpoint) = service.tcp_endpoint {
+        if let Some(tcp_endpoint) = offered_tcp_endpoint {
             let peer_ip = tcp_endpoint.ip();
             let client_port = tcp_endpoint.port();
 
-            // Check if we have any other active services from this peer
-            let has_other_services = state.discovered.iter().any(|entry| {
-                entry
-                    .value()
-                    .tcp_endpoint
-                    .as_ref()
-                    .is_some_and(|ep| ep.ip() == peer_ip)
-            });
-
             tracing::debug!(
-                "Queuing TCP cleanup for stopped service {:04x}:{:04x} at {}:{} (close_pool={})",
+                "Queuing TCP cleanup for stopped service {:04x}:{:04x} at {}:{}",
                 entry.service_id,
                 entry.instance_id,
                 peer_ip,
                 client_port,
-                !has_other_services
             );
 
             actions.push(Action::ResetPeerTcpConnections {

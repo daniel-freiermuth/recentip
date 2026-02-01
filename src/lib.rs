@@ -523,6 +523,13 @@ pub struct ClientInfo {
     pub transport: crate::config::Transport,
 }
 
+#[derive(Debug, Clone)]
+pub enum OfferedEndpoints {
+    UdpOnly(SocketAddr),
+    TcpOnly(SocketAddr),
+    Both { udp: SocketAddr, tcp: SocketAddr },
+}
+
 // ============================================================================
 // RE-EXPORTS
 // ============================================================================

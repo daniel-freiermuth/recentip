@@ -122,6 +122,7 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                     local_endpoint: endpoint_for_subscribe,
                     has_dedicated_socket: false,
                     tcp_conn_key: conn_key,
+                    transport: Transport::Tcp,
                 });
             }
 

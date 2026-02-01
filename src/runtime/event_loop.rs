@@ -22,6 +22,7 @@ use tokio::sync::mpsc;
 use crate::config::{RuntimeConfig, Transport};
 use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
+use crate::runtime::ServiceAvailability;
 use crate::runtime::{
     client,
     client_concurrent::handle_subscribe_tcp,
@@ -42,6 +43,7 @@ use crate::wire::{
     validate_protocol_version, Header, L4Protocol, MessageType, SdEntry, SdEntryType, SdMessage,
     SdOption, SD_METHOD_ID, SD_SERVICE_ID,
 };
+use crate::OfferedEndpoints;
 
 // ============================================================================
 // SUBSCRIBE STATE UPDATE TYPES
@@ -291,27 +293,14 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     // Special handling for Subscribe
                     // - TCP subscriptions: spawn as concurrent task to avoid blocking on connection establishment (feat_req_someipsd_767)
                     // - UDP subscriptions: handle inline since binding is instant and doesn't block
-                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response }) => {
+                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response, transport, remote_endpoint }) => {
                         let service_key = ServiceKey::new(service_id, instance_id, major_version);
 
                         // Determine transport and extract endpoints (if discovered)
-                        let prefer_tcp = config.preferred_transport == Transport::Tcp;
-                        let (sd_endpoint, endpoint, transport) = {
+                        let sd_endpoint = {
                             let Some(discovered) = state.discovered.get(&service_key) else {
                                 tracing::error!(
-                                    "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: service not discovered (discovered services: {:?})",
-                                    service_id.value(),
-                                    instance_id.value(),
-                                    major_version,
-                                    eventgroup_ids,
-                                    state.discovered.iter().map(|e| (*e.key(), e.value().udp_endpoint, e.value().tcp_endpoint)).collect::<Vec<_>>()
-                                );
-                                let _ = response.send(Err(Error::ServiceUnavailable));
-                                continue;
-                            };
-                            let Some((endpoint, transport)) = discovered.method_endpoint(prefer_tcp) else {
-                                tracing::error!(
-                                    "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: no valid endpoint",
+                                    "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: service not discovered",
                                     service_id.value(),
                                     instance_id.value(),
                                     major_version,
@@ -320,7 +309,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                 let _ = response.send(Err(Error::ServiceUnavailable));
                                 continue;
                             };
-                            (discovered.sd_endpoint, endpoint, transport)
+                            discovered.sd_endpoint
                         };
 
                         if transport == Transport::Tcp {
@@ -346,7 +335,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                     tcp_pool_clone,
                                     update_tx,
                                     sd_endpoint,
-                                    endpoint,
+                                    remote_endpoint,
                                     subscription_id,
                                     sd_flags,
                                     subscribe_ttl,
@@ -496,11 +485,19 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                 tracing::error!("Failed to send SD message: {}", e);
             }
         }
-        Action::NotifyFound { key, availability } => {
+        Action::NotifyFound {
+            key: found_key,
+            endpoints,
+            // sd_endpoint,
+        } => {
             // Find all matching find requests and notify them
             for (req_key, request) in &state.find_requests {
-                if req_key.matches(key) {
-                    let _ = request.notify.try_send(availability.clone());
+                if req_key.matches(found_key) {
+                    let _ = request.notify.try_send(ServiceAvailability::Available {
+                        key: found_key,
+                        offered_endpoints: endpoints.clone(),
+                        // sd_endpoint,
+                    });
                 }
             }
         }
@@ -805,14 +802,26 @@ fn expire_services_from_rebooted_peer(
                 // Collect TCP endpoint of this service for connection cleanup.
                 // We store the full SocketAddr (not just port) so that in split-server
                 // topologies the TCP connection can be found by its actual remote IP.
-                if let Some(tcp_ep) = svc.tcp_endpoint {
-                    removed_service_tcp_endpoints.push(tcp_ep);
-                    tracing::debug!(
-                        "Marking TCP endpoint {} for closure (service {:04X}:{:04X} removed)",
-                        tcp_ep,
-                        key.service_id,
-                        key.instance_id
-                    );
+                match svc.offered_endpoints {
+                    OfferedEndpoints::TcpOnly(ep) => {
+                        removed_service_tcp_endpoints.push(ep);
+                        tracing::debug!(
+                            "Marking TCP endpoint {} for closure (service {:04X}:{:04X} removed)",
+                            ep,
+                            key.service_id,
+                            key.instance_id
+                        );
+                    }
+                    OfferedEndpoints::UdpOnly(_) => { /* no TCP endpoint to track */ }
+                    OfferedEndpoints::Both { udp: _, tcp } => {
+                        removed_service_tcp_endpoints.push(tcp);
+                        tracing::debug!(
+                            "Marking TCP endpoint {} for closure (service {:04X}:{:04X} removed)",
+                            tcp,
+                            key.service_id,
+                            key.instance_id
+                        );
+                    }
                 }
 
                 state.find_requests.remove(&key);

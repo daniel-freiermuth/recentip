@@ -490,29 +490,16 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
                     return None;
                 }
 
-                // Get the endpoint based on config's preferred transport
-                let prefer_tcp = matches!(
-                    self.inner.config.preferred_transport,
-                    crate::config::Transport::Tcp
-                );
-
-                service
-                    .method_endpoint(prefer_tcp)
-                    .and_then(|(endpoint, transport)| {
-                        // Convert raw u16 values to newtypes
-                        let service_id = ServiceId::new(key.service_id)?;
-                        let instance_id = InstanceId::new(key.instance_id)?;
-
-                        // Create OfferedService handle using public constructor
-                        Some(crate::handle::OfferedService::new(
-                            self,
-                            service_id,
-                            instance_id,
-                            key.major_version,
-                            endpoint,
-                            transport,
-                        ))
-                    })
+                let service_id = ServiceId::new(key.service_id)?;
+                let instance_id = InstanceId::new(key.instance_id)?;
+                Some(crate::handle::OfferedService::new(
+                    self,
+                    service_id,
+                    instance_id,
+                    key.major_version,
+                    service.offered_endpoints.clone(),
+                    // service.sd_endpoint,
+                ))
             })
             .collect()
     }

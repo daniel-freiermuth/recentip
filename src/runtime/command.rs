@@ -62,7 +62,8 @@ use bytes::Bytes;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::Result;
-use crate::{InstanceId, MajorVersion, ServiceId};
+use crate::runtime::state::ServiceKey;
+use crate::{InstanceId, MajorVersion, OfferedEndpoints, ServiceId};
 
 /// Commands sent from handles to the runtime task
 pub enum Command {
@@ -125,6 +126,9 @@ pub enum Command {
         events: mpsc::Sender<crate::Event>,
         /// Returns `subscription_id` on success for tracking unsubscribe
         response: oneshot::Sender<Result<u64>>,
+        transport: crate::config::Transport,
+        remote_endpoint: std::net::SocketAddr,
+        // sd_endpoint: SocketAddr,
     },
     /// Unsubscribe from an eventgroup
     Unsubscribe {
@@ -167,7 +171,8 @@ pub enum SdEvent {
         instance_id: u16,
         major_version: u8,
         minor_version: u32,
-        endpoint: SocketAddr,
+        udp_endpoint: Option<SocketAddr>,
+        tcp_endpoint: Option<SocketAddr>,
         ttl: u32,
     },
     /// A service has been explicitly stopped (`StopOfferService` entry)
@@ -180,10 +185,9 @@ pub enum SdEvent {
 #[derive(Debug, Clone)]
 pub enum ServiceAvailability {
     Available {
-        endpoint: SocketAddr,
-        transport: crate::config::Transport,
-        instance_id: u16,
-        major_version: u8,
+        key: ServiceKey,
+        offered_endpoints: OfferedEndpoints,
+        // sd_endpoint: SocketAddr,
     },
 }
 

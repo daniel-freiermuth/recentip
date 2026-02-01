@@ -47,6 +47,9 @@ pub struct SubscriptionBuilder {
     instance_id: InstanceId,
     major_version: u8,
     eventgroups: vec1::Vec1<EventgroupId>,
+    transport: crate::config::Transport,
+    remote_endpoint: std::net::SocketAddr,
+    // sd_endpoint: std::net::SocketAddr,
 }
 
 impl SubscriptionBuilder {
@@ -57,6 +60,9 @@ impl SubscriptionBuilder {
         instance_id: InstanceId,
         major_version: u8,
         first_eventgroup: EventgroupId,
+        transport: crate::config::Transport,
+        remote_endpoint: std::net::SocketAddr,
+        // sd_endpoint: std::net::SocketAddr,
     ) -> Self {
         Self {
             inner,
@@ -64,6 +70,9 @@ impl SubscriptionBuilder {
             instance_id,
             major_version,
             eventgroups: vec1::vec1![first_eventgroup],
+            transport,
+            remote_endpoint,
+            // sd_endpoint,
         }
     }
 
@@ -109,6 +118,9 @@ impl SubscriptionBuilder {
                 eventgroup_ids: self.eventgroups.mapped(|id| id.value()),
                 events: events_tx,
                 response: response_tx,
+                transport: self.transport,
+                remote_endpoint: self.remote_endpoint,
+                // sd_endpoint: self.sd_endpoint,
             })
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
