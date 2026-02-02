@@ -9,7 +9,9 @@
 //! # Requirements Covered
 //! - feat_req_someip_92: Interface Version shall contain Major Version of Service Interface
 
-use super::helpers::{build_sd_subscribe_with_udp_endpoint, covers, parse_header, parse_sd_message};
+use super::helpers::{
+    build_sd_subscribe_with_udp_endpoint, covers, parse_header, parse_sd_message,
+};
 use recentip::prelude::*;
 use recentip::wire::MessageType;
 use recentip::ServiceEvent;
@@ -125,8 +127,7 @@ fn notification_interface_version_matches_major_version() {
 
         // SD socket for subscribe messages (port 30490)
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket
-            .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         // Event receive socket - client's UDP endpoint for notifications
         let event_socket = turmoil::net::UdpSocket::bind("0.0.0.0:40001").await?;
@@ -210,11 +211,9 @@ fn notification_interface_version_matches_major_version() {
         let mut service_b_interface_version: Option<u8> = None;
 
         for _ in 0..50 {
-            let result = tokio::time::timeout(
-                Duration::from_millis(200),
-                event_socket.recv_from(&mut buf),
-            )
-            .await;
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), event_socket.recv_from(&mut buf))
+                    .await;
 
             if let Ok(Ok((len, _from))) = result {
                 if let Some(header) = parse_header(&buf[..len]) {
@@ -235,10 +234,8 @@ fn notification_interface_version_matches_major_version() {
         }
 
         // Verify: feat_req_someip_92 - Interface Version = Major Version
-        let iv_a = service_a_interface_version
-            .expect("Should receive notification from service A");
-        let iv_b = service_b_interface_version
-            .expect("Should receive notification from service B");
+        let iv_a = service_a_interface_version.expect("Should receive notification from service A");
+        let iv_b = service_b_interface_version.expect("Should receive notification from service B");
 
         assert_eq!(
             iv_a, SERVICE_A_MAJOR,
