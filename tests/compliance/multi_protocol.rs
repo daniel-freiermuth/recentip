@@ -25,7 +25,7 @@
 //! 2. Store both TCP and UDP endpoints when advertised
 //! 3. Use the appropriate transport for each RPC call
 //!
-//! Run with: cargo test --features turmoil --test compliance multi_protocol
+//! Run with: cargo nextest run multi_protocol
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;

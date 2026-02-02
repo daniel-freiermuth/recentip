@@ -3,7 +3,7 @@
 //! This module contains tests that verify compliance with the RECENT/IP specification.
 //! Each test function documents which requirement ID(s) it covers.
 //!
-//! Run with: cargo test --features turmoil --test compliance
+//! Run with: cargo nextest run compliance
 //!
 //! # Test Organization
 //!

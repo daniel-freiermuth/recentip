@@ -25,7 +25,7 @@
 //! on the wire, while the client uses the library. This allows precise control over
 //! offer timing and verification that the client responds correctly.
 //!
-//! Run with: cargo test --features turmoil --test compliance sd_pubsub_offer_subscribe
+//! Run with: cargo nextest run sd_pubsub_offer_subscribe
 
 use bytes::Bytes;
 use recentip::prelude::*;

@@ -10,7 +10,7 @@
 //! - A platform with `SO_REUSEPORT` support (Linux, recent macOS)
 //! - Separate machines or containers with their own network stacks
 //!
-//! The turmoil-based tests (run with `--features turmoil`) provide comprehensive
+//! The turmoil-based tests provide comprehensive
 //! network testing with simulated separate hosts.
 
 use recentip::{EventId, EventgroupId, InstanceId, MethodId, ServiceEvent, Transport};
