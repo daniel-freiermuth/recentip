@@ -74,6 +74,19 @@ pub struct TcpMessage {
     pub subscription_id: u64,
 }
 
+/// Request to clean up a TCP connection.
+///
+/// Sent by connection handler tasks when they exit. The event loop verifies
+/// ownership via `connection_id` before removing — this prevents a race where
+/// closing an old connection removes a newer connection's entry.
+#[derive(Debug)]
+pub struct TcpCleanupRequest {
+    /// The connection key (peer address, subscription_id)
+    pub key: (SocketAddr, u64),
+    /// Unique ID assigned when the connection was created
+    pub connection_id: u64,
+}
+
 /// TCP connection pool manages connections to remote peers.
 ///
 /// Connections are keyed by (`remote_endpoint`, `subscription_id`) to allow
@@ -82,13 +95,17 @@ pub struct TcpMessage {
 ///
 /// For client-side TCP: When a connection is established, a reader task is spawned
 /// to receive responses and forward them to the runtime.
-pub struct TcpConnectionPool<T: TcpStream> {
+pub(crate) struct TcpConnectionPool<T: TcpStream> {
     /// Active connections indexed by (peer address, `subscription_id`)
-    connections: Arc<Mutex<HashMap<(SocketAddr, u64), TcpConnectionHandle>>>,
-    /// Sender for each connection
-    senders: Arc<Mutex<HashMap<(SocketAddr, u64), mpsc::Sender<Bytes>>>>,
+    connections: HashMap<(SocketAddr, u64), TcpConnectionHandle>,
+    /// Sender for each connection, with connection_id for ownership verification
+    senders: HashMap<(SocketAddr, u64), (mpsc::Sender<Bytes>, u64)>,
     /// Channel to forward received messages to the runtime
     msg_tx: mpsc::Sender<TcpMessage>,
+    /// Channel to send cleanup requests to the event loop
+    cleanup_tx: mpsc::Sender<TcpCleanupRequest>,
+    /// Counter for generating unique connection IDs
+    next_connection_id: u64,
     /// Enable Magic Cookies for TCP resync (`feat_req_someip_586`)
     magic_cookies: bool,
     /// Phantom data for the stream type - use `fn()` -> T for Send+Sync
@@ -101,15 +118,27 @@ struct TcpConnectionHandle {
     local_addr: SocketAddr,
     /// Handle to abort the reader task
     task_handle: tokio::task::AbortHandle,
+    /// Unique ID for this connection (for cleanup verification)
+    connection_id: u64,
 }
 
 impl<T: TcpStream> TcpConnectionPool<T> {
-    /// Create a new connection pool with a message receiver channel
-    pub fn new(msg_tx: mpsc::Sender<TcpMessage>, magic_cookies: bool) -> Self {
+    /// Create a new connection pool with a message receiver channel.
+    ///
+    /// The `cleanup_tx` channel is used to send cleanup requests to the event loop
+    /// when connections close. This ensures proper synchronization and prevents
+    /// race conditions where closing an old connection could remove a newer one.
+    pub fn new(
+        msg_tx: mpsc::Sender<TcpMessage>,
+        cleanup_tx: mpsc::Sender<TcpCleanupRequest>,
+        magic_cookies: bool,
+    ) -> Self {
         Self {
-            connections: Arc::new(Mutex::new(HashMap::new())),
-            senders: Arc::new(Mutex::new(HashMap::new())),
+            connections: HashMap::new(),
+            senders: HashMap::new(),
             msg_tx,
+            cleanup_tx,
+            next_connection_id: 1,
             magic_cookies,
             _phantom: std::marker::PhantomData,
         }
@@ -128,15 +157,11 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// # Errors
     ///
     /// Returns an I/O error if connection or send fails.
-    pub async fn send(&self, target: SocketAddr, data: Bytes) -> io::Result<()> {
+    pub async fn send(&mut self, target: SocketAddr, data: Bytes) -> io::Result<()> {
         // Check if we have a sender for this connection (use subscription_id 0 for RPC)
         let key = (target, 0);
-        let sender = {
-            let senders = self.senders.lock().await;
-            senders.get(&key).cloned()
-        };
 
-        if let Some(tx) = sender {
+        if let Some((tx, _connection_id)) = self.senders.get(&key) {
             // Use existing connection
             tx.send(data)
                 .await
@@ -149,13 +174,16 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         let stream = T::connect(target).await?;
         let local_addr = stream.local_addr()?;
 
+        // Allocate unique connection ID for cleanup verification
+        let connection_id = self.next_connection_id;
+        self.next_connection_id += 1;
+
         // Create channel for sending data to this connection
         let (send_tx, send_rx) = mpsc::channel::<Bytes>(32);
 
         // Spawn connection handler task
         let msg_tx = self.msg_tx.clone();
-        let senders = Arc::clone(&self.senders);
-        let connections = Arc::clone(&self.connections);
+        let cleanup_tx = self.cleanup_tx.clone();
         let magic_cookies = self.magic_cookies;
 
         let task = tokio::spawn(async move {
@@ -164,8 +192,8 @@ impl<T: TcpStream> TcpConnectionPool<T> {
                 target,
                 msg_tx,
                 send_rx,
-                senders,
-                connections,
+                cleanup_tx,
+                connection_id,
                 magic_cookies,
                 0, // subscription_id 0 for RPC
             )
@@ -174,20 +202,15 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 
         // Store the sender and connection handle (use subscription_id 0 for RPC)
         let key = (target, 0);
-        {
-            let mut senders = self.senders.lock().await;
-            senders.insert(key, send_tx.clone());
-        }
-        {
-            let mut connections = self.connections.lock().await;
-            connections.insert(
-                key,
-                TcpConnectionHandle {
-                    local_addr,
-                    task_handle: task.abort_handle(),
-                },
-            );
-        }
+        self.senders.insert(key, (send_tx.clone(), connection_id));
+        self.connections.insert(
+            key,
+            TcpConnectionHandle {
+                local_addr,
+                task_handle: task.abort_handle(),
+                connection_id,
+            },
+        );
 
         // Send the data via the new connection
         send_tx
@@ -212,17 +235,14 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     ///
     /// Returns an I/O error if connection establishment fails.
     pub async fn ensure_connected(
-        &self,
+        &mut self,
         target: SocketAddr,
         subscription_id: u64,
     ) -> io::Result<SocketAddr> {
         let key = (target, subscription_id);
         // Check if we already have a connection
-        {
-            let connections = self.connections.lock().await;
-            if let Some(handle) = connections.get(&key) {
-                return Ok(handle.local_addr);
-            }
+        if let Some(handle) = self.connections.get(&key) {
+            return Ok(handle.local_addr);
         }
 
         // Establish new connection
@@ -233,13 +253,16 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         let stream = T::connect(target).await?;
         let local_addr = stream.local_addr()?;
 
+        // Allocate unique connection ID for cleanup verification
+        let connection_id = self.next_connection_id;
+        self.next_connection_id += 1;
+
         // Create channel for sending data to this connection
         let (send_tx, send_rx) = mpsc::channel::<Bytes>(32);
 
         // Spawn connection handler task
         let msg_tx = self.msg_tx.clone();
-        let senders = Arc::clone(&self.senders);
-        let connections = Arc::clone(&self.connections);
+        let cleanup_tx = self.cleanup_tx.clone();
         let magic_cookies = self.magic_cookies;
 
         let task = tokio::spawn(async move {
@@ -248,8 +271,8 @@ impl<T: TcpStream> TcpConnectionPool<T> {
                 target,
                 msg_tx,
                 send_rx,
-                senders,
-                connections,
+                cleanup_tx,
+                connection_id,
                 magic_cookies,
                 subscription_id,
             )
@@ -257,52 +280,76 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         });
 
         // Store the sender and connection handle
-        {
-            let mut senders = self.senders.lock().await;
-            senders.insert(key, send_tx);
-        }
-        {
-            let mut connections = self.connections.lock().await;
-            connections.insert(
-                key,
-                TcpConnectionHandle {
-                    local_addr,
-                    task_handle: task.abort_handle(),
-                },
-            );
-        }
+        self.senders.insert(key, (send_tx, connection_id));
+        self.connections.insert(
+            key,
+            TcpConnectionHandle {
+                local_addr,
+                task_handle: task.abort_handle(),
+                connection_id,
+            },
+        );
 
         Ok(local_addr)
     }
 
+    /// Handle a cleanup request from a connection task.
+    ///
+    /// Only removes the connection if the `connection_id` matches the currently
+    /// stored connection. This prevents a race where closing an old connection
+    /// would incorrectly remove a newer connection that replaced it.
+    pub fn handle_cleanup(&mut self, request: &TcpCleanupRequest) {
+        let key = request.key;
+
+        // Check if the connection still belongs to this task before removing
+        let should_remove = self
+            .connections
+            .get(&key)
+            .is_some_and(|handle| handle.connection_id == request.connection_id);
+
+        if should_remove {
+            tracing::debug!(
+                "Cleaning up TCP connection to {:?} (connection_id={})",
+                key,
+                request.connection_id
+            );
+            self.connections.remove(&key);
+            self.senders.remove(&key);
+        } else {
+            tracing::debug!(
+                "Ignoring cleanup for {:?} (connection_id={}): connection was replaced",
+                key,
+                request.connection_id
+            );
+        }
+    }
+
     /// Close connection to a peer (RPC connection, `subscription_id` 0)
-    pub async fn close(&self, target: &SocketAddr) {
+    pub fn close(&mut self, target: &SocketAddr) {
         tracing::debug!("Closing TCP connection to {}", target);
         let key = (*target, 0);
 
         // Abort the task to force TCP connection closure
-        if let Some(handle) = self.connections.lock().await.remove(&key) {
+        if let Some(handle) = self.connections.remove(&key) {
             handle.task_handle.abort();
         }
 
         // Remove the sender (will close when all clones are dropped)
-        self.senders.lock().await.remove(&key);
+        self.senders.remove(&key);
     }
 
     /// Close ALL connections to a peer IP address (for reboot handling)
     ///
     /// This closes all connections to the given peer IP, regardless of port or
     /// `subscription_id`. Used when a peer reboot is detected per `feat_req_someipsd_872`.
-    pub async fn close_all_to_peer(&self, peer_ip: std::net::IpAddr) {
+    pub fn close_all_to_peer(&mut self, peer_ip: std::net::IpAddr) {
         // Collect keys to close
-        let keys_to_close: Vec<_> = {
-            let connections = self.connections.lock().await;
-            connections
-                .keys()
-                .filter(|(addr, _)| addr.ip() == peer_ip)
-                .copied()
-                .collect()
-        };
+        let keys_to_close: Vec<_> = self
+            .connections
+            .keys()
+            .filter(|(addr, _)| addr.ip() == peer_ip)
+            .copied()
+            .collect();
 
         if keys_to_close.is_empty() {
             return;
@@ -316,10 +363,10 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 
         // Close each connection
         for key in keys_to_close {
-            if let Some(handle) = self.connections.lock().await.remove(&key) {
+            if let Some(handle) = self.connections.remove(&key) {
                 handle.task_handle.abort();
             }
-            self.senders.lock().await.remove(&key);
+            self.senders.remove(&key);
         }
     }
 }
@@ -329,13 +376,17 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 /// When `magic_cookies` is enabled:
 /// - Each write is prepended with a Magic Cookie (`feat_req_someip_591`)
 /// - Magic Cookies in received data are skipped (`feat_req_someip_586`)
+///
+/// On exit, sends a cleanup request to the event loop (via `cleanup_tx`) with the
+/// `connection_id`. The event loop verifies ownership before removing the entry,
+/// preventing a race where closing an old connection removes a newer one.
 async fn handle_client_tcp_connection<T: TcpStream>(
     mut stream: T,
     peer_addr: SocketAddr,
     msg_tx: mpsc::Sender<TcpMessage>,
     mut send_rx: mpsc::Receiver<Bytes>,
-    senders: Arc<Mutex<HashMap<(SocketAddr, u64), mpsc::Sender<Bytes>>>>,
-    connections: Arc<Mutex<HashMap<(SocketAddr, u64), TcpConnectionHandle>>>,
+    cleanup_tx: mpsc::Sender<TcpCleanupRequest>,
+    connection_id: u64,
     magic_cookies: bool,
     subscription_id: u64,
 ) {
@@ -422,10 +473,11 @@ async fn handle_client_tcp_connection<T: TcpStream>(
         }
     }
 
-    // Clean up
+    // Request cleanup via channel - event loop will verify ownership before removing
     let key = (peer_addr, subscription_id);
-    senders.lock().await.remove(&key);
-    connections.lock().await.remove(&key);
+    let _ = cleanup_tx
+        .send(TcpCleanupRequest { key, connection_id })
+        .await;
 }
 
 /// Read SOME/IP messages from a TCP stream with framing.

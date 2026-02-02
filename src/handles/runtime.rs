@@ -38,7 +38,7 @@ use crate::runtime::{
     state::{RpcMessage, RpcSendMessage, RuntimeState},
     Command,
 };
-use crate::tcp::{TcpConnectionPool, TcpMessage};
+use crate::tcp::{TcpCleanupRequest, TcpConnectionPool, TcpMessage};
 use crate::{InstanceId, SdEvent, ServiceId};
 
 // ============================================================================
@@ -162,9 +162,12 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
         // Create TCP client message channel (for responses received on client TCP connections)
         let (tcp_client_tx, tcp_client_rx) = mpsc::channel::<TcpMessage>(100);
 
+        // Create TCP cleanup channel (for connection tasks to request cleanup via event loop)
+        let (tcp_cleanup_tx, tcp_cleanup_rx) = mpsc::channel::<TcpCleanupRequest>(100);
+
         // Create TCP connection pool for client-side TCP connections
         let tcp_pool: TcpConnectionPool<T> =
-            TcpConnectionPool::new(tcp_client_tx, config.magic_cookies);
+            TcpConnectionPool::new(tcp_client_tx, tcp_cleanup_tx, config.magic_cookies);
 
         // Create dedicated client RPC socket (ephemeral port)
         // Per feat_req_someip_676: Port 30490 is only for SD, not for RPC
@@ -239,6 +242,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
                 tcp_method_rx,
                 tcp_method_tx,
                 tcp_client_rx,
+                tcp_cleanup_rx,
                 state,
                 tcp_pool,
             )

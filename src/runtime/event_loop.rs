@@ -34,7 +34,7 @@ use crate::runtime::{
     },
     Command,
 };
-use crate::tcp::{TcpConnectionPool, TcpMessage};
+use crate::tcp::{TcpCleanupRequest, TcpConnectionPool, TcpMessage};
 use crate::wire::{
     validate_protocol_version, Header, L4Protocol, MessageType, SdEntry, SdEntryType, SdMessage,
     SdOption, SD_METHOD_ID, SD_SERVICE_ID,
@@ -54,8 +54,9 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
     mut tcp_rpc_rx: mpsc::Receiver<TcpMessage>,
     tcp_rpc_tx: mpsc::Sender<TcpMessage>,
     mut tcp_client_rx: mpsc::Receiver<TcpMessage>,
+    mut tcp_cleanup_rx: mpsc::Receiver<TcpCleanupRequest>,
     mut state: RuntimeState,
-    tcp_pool: TcpConnectionPool<T>,
+    mut tcp_pool: TcpConnectionPool<T>,
 ) {
     let mut buf = [0u8; 65535];
     let cycle_interval = Duration::from_millis(config.cyclic_offer_delay);
@@ -92,7 +93,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                         if let Some(actions) = handle_sd_message(&header, &mut data, from, &mut state) {
                             for action in actions {
-                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
                             }
                         }
                     }
@@ -119,7 +120,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &data, method_msg.from, &mut state, method_msg.service_key, Transport::Udp, 0) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
                     }
                 }
             }
@@ -150,7 +151,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, service_key, Transport::Tcp, tcp_msg.subscription_id) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
                     }
                 }
             }
@@ -173,9 +174,14 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, None, Transport::Tcp, tcp_msg.subscription_id) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
                     }
                 }
+            }
+
+            // Handle TCP connection cleanup requests
+            Some(cleanup_request) = tcp_cleanup_rx.recv() => {
+                tcp_pool.handle_cleanup(&cleanup_request);
             }
 
             // Flush pending initial offers if deadline has passed AND we're not too close to periodic cycle
@@ -188,15 +194,15 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             } => {
                 if let Some(actions) = flush_pending_initial_offers(&config, &mut state) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
                     }
                 }
             }
 
             // Flush pending unicast SD actions when deadline is reached
             () = state.await_pending_unicast_sd_flush_deadline() => {
-                for action in state.flush_pending_unicast_sd(&tcp_pool) {
-                    execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                for action in state.flush_pending_unicast_sd(&mut tcp_pool) {
+                    execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
                 }
             }
 
@@ -252,13 +258,13 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response }) => {
                         client::handle_subscribe_command::<U, T>(
                             service_id, instance_id, major_version, eventgroup_ids, events, response,
-                            &mut state, &tcp_pool
+                            &mut state, &mut tcp_pool
                         ).await;
                     }
                     Some(cmd) => {
                         if let Some(actions) = handle_command(cmd, &mut state) {
                             for action in actions {
-                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
                             }
                         }
                     }
@@ -277,13 +283,13 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                 // Also flush any pending initial offers at this time
                 if let Some(actions) = flush_pending_initial_offers(&config, &mut state) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
                     }
                 }
 
                 if let Some(actions) = handle_periodic(&mut state) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
                     }
                 }
             }
@@ -340,7 +346,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             Box<dyn std::future::Future<Output = (PendingServerResponse, Result<Bytes>)> + Send>,
         >,
     >,
-    tcp_pool: &TcpConnectionPool<T>,
+    tcp_pool: &mut TcpConnectionPool<T>,
 ) {
     match action {
         Action::SendSd { message, target } => {
@@ -465,7 +471,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
 
             // Close ALL TCP connections to this peer (both RPC and subscription connections)
             // Per feat_req_someipsd_872: reset TCP state on peer reboot
-            tcp_pool.close_all_to_peer(peer).await;
+            tcp_pool.close_all_to_peer(peer);
         }
         Action::ExpirePeerSubscriptions { peer } => {
             // Per feat_req_someipsd_871: On peer reboot, expire all subscriptions
