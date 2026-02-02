@@ -356,7 +356,7 @@ pub fn handle_notify(
             event_id,
             state.client_id,
             0, // No session handling for events (see comment above)
-            1, // interface version
+            major_version,
             payload,
         );
 

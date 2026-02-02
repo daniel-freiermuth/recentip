@@ -9,6 +9,7 @@
 
 pub mod event_dedup;
 mod helpers;
+pub mod notification_header;
 pub mod offer_timing;
 pub mod sd_session;
 pub mod subscription_nack;
