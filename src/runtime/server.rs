@@ -344,11 +344,18 @@ pub fn handle_notify(
 
     if !seen_subscribers.is_empty() {
         // Build notification message
+        //
+        // Session ID = 0: We intentionally do not use session handling for events.
+        // Per feat_req_someip_667, session handling is optional for events/notifications
+        // ("shall use session handling if required by the application").
+        // Per feat_req_someip_700, session_id=0 indicates no session handling.
+        // Note: If SOME/IP-TP is ever needed for large events, session handling
+        // becomes mandatory (feat_req_someiptp_762) and this must change.
         let notification_data = build_notification(
             service_id.value(),
             event_id,
             state.client_id,
-            0,
+            0, // No session handling for events (see comment above)
             1, // interface version
             payload,
         );
