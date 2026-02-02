@@ -13,6 +13,8 @@
 //! - Configured per service
 //! - Client/server must match major version
 
+mod wire_format;
+
 use bytes::Bytes;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
@@ -22,6 +24,7 @@ use recentip::wire::{
 };
 use std::net::SocketAddr;
 use std::time::Duration;
+use wire_format::helpers::SomeIpPacketBuilder;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -54,33 +57,6 @@ fn parse_sd_message(data: &[u8]) -> Option<(Header, SdMessage)> {
     } else {
         None
     }
-}
-
-/// Build a raw SOME/IP request with custom protocol version
-fn build_request_with_protocol_version(
-    service_id: u16,
-    method_id: u16,
-    client_id: u16,
-    session_id: u16,
-    protocol_version: u8,
-    interface_version: u8,
-    payload: &[u8],
-) -> Vec<u8> {
-    let length = 8 + payload.len() as u32;
-    let mut packet = Vec::with_capacity(16 + payload.len());
-
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&method_id.to_be_bytes());
-    packet.extend_from_slice(&length.to_be_bytes());
-    packet.extend_from_slice(&client_id.to_be_bytes());
-    packet.extend_from_slice(&session_id.to_be_bytes());
-    packet.push(protocol_version);
-    packet.push(interface_version);
-    packet.push(0x00); // Message type: REQUEST
-    packet.push(0x00); // Return code
-    packet.extend_from_slice(payload);
-
-    packet
 }
 
 /// Build SD offer with specific major version
@@ -191,17 +167,11 @@ fn rpc_request_has_protocol_version_0x01() {
                 assert_eq!(header.protocol_version, 0x01);
 
                 // Send response
-                let mut response = build_request_with_protocol_version(
-                    0x1234,
-                    0x0001,
-                    header.client_id,
-                    header.session_id,
-                    0x01,
-                    0x01,
-                    b"ok",
-                );
-                // Change message type to RESPONSE
-                response[14] = 0x80;
+                let response = SomeIpPacketBuilder::response(0x1234, 0x0001)
+                    .client_id(header.client_id)
+                    .session_id(header.session_id)
+                    .payload(b"ok")
+                    .build();
                 rpc_socket.send_to(&response, _from).await?;
                 break;
             }
@@ -325,27 +295,21 @@ fn server_ignores_wrong_protocol_version() {
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
 
         // Send request with WRONG protocol version (0x02)
-        let bad_request = build_request_with_protocol_version(
-            0x1234,
-            0x0001,
-            0xABCD,
-            0x0001,
-            0x02, // Wrong protocol version!
-            0x01,
-            b"bad_request",
-        );
+        let bad_request = SomeIpPacketBuilder::request(0x1234, 0x0001)
+            .client_id(0xABCD)
+            .session_id(0x0001)
+            .protocol_version(0x02) // Wrong!
+            .payload(b"bad_request")
+            .build();
         rpc_socket.send_to(&bad_request, server_addr).await?;
 
         // Also send with version 0x00
-        let bad_request_v0 = build_request_with_protocol_version(
-            0x1234,
-            0x0001,
-            0xABCD,
-            0x0002,
-            0x00, // Wrong protocol version!
-            0x01,
-            b"bad_request",
-        );
+        let bad_request_v0 = SomeIpPacketBuilder::request(0x1234, 0x0001)
+            .client_id(0xABCD)
+            .session_id(0x0002)
+            .protocol_version(0x00) // Wrong!
+            .payload(b"bad_request")
+            .build();
         rpc_socket.send_to(&bad_request_v0, server_addr).await?;
 
         tokio::time::sleep(Duration::from_millis(300)).await;
@@ -401,16 +365,11 @@ fn rpc_request_has_interface_version_at_offset_13() {
                 assert_eq!(header.interface_version, 0x01);
 
                 // Send response
-                let mut response = build_request_with_protocol_version(
-                    0x1234,
-                    0x0001,
-                    header.client_id,
-                    header.session_id,
-                    0x01,
-                    0x01,
-                    b"ok",
-                );
-                response[14] = 0x80; // RESPONSE
+                let response = SomeIpPacketBuilder::response(0x1234, 0x0001)
+                    .client_id(header.client_id)
+                    .session_id(header.session_id)
+                    .payload(b"ok")
+                    .build();
                 rpc_socket.send_to(&response, from).await?;
                 break;
             }
@@ -594,10 +553,11 @@ fn response_preserves_interface_version() {
         let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
 
         // Send request with interface version 0x01
-        let request = build_request_with_protocol_version(
-            0x1234, 0x0001, 0xABCD, 0x1234, 0x01, 0x01, // interface version 1
-            b"test",
-        );
+        let request = SomeIpPacketBuilder::request(0x1234, 0x0001)
+            .client_id(0xABCD)
+            .session_id(0x1234)
+            .payload(b"test")
+            .build();
         rpc_socket.send_to(&request, server_addr).await?;
 
         // Receive response
@@ -610,6 +570,250 @@ fn response_preserves_interface_version() {
         assert_eq!(
             response.interface_version, 0x01,
             "Response must preserve interface version from request"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+// ============================================================================
+// INTERFACE VERSION MISMATCH TESTS (SERVER BEHAVIOR)
+// ============================================================================
+
+/// [feat_req_someip_92, feat_req_someip_371] Server returns E_WRONG_INTERFACE_VERSION
+/// when request has mismatched interface version.
+///
+/// Per feat_req_someip_92: Interface Version contains the Major Version.
+/// Per feat_req_someip_371: E_WRONG_INTERFACE_VERSION (0x08) for interface version mismatch.
+/// Per feat_req_someip_718: Check order includes "Interface Version configured for Service ID?"
+#[test_log::test]
+fn server_returns_wrong_interface_version_error() {
+    covers!(feat_req_someip_92, feat_req_someip_371, feat_req_someip_718);
+
+    const E_WRONG_INTERFACE_VERSION: u8 = 0x08;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Library server with major version 1
+    sim.client("server", async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, 0) // Major version 1
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        // The server should NOT receive requests with wrong interface version
+        // They should be rejected at the protocol level
+        let result = tokio::time::timeout(Duration::from_secs(3), offering.next()).await;
+
+        // Should timeout - wrong interface version requests are rejected before reaching app
+        assert!(
+            result.is_err(),
+            "Server should not receive requests with wrong interface version"
+        );
+
+        Ok(())
+    });
+
+    // Raw client sends request with mismatched interface version
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut server_endpoint: Option<SocketAddr> = None;
+        let mut buf = [0u8; 1500];
+
+        // Wait for SD offer
+        for _ in 0..20 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x01 && entry.service_id == TEST_SERVICE_ID {
+                            if let Some(opt) = sd_msg.options.first() {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
+                                    addr, port, ..
+                                } = opt
+                                {
+                                    let ip = if addr.is_unspecified() {
+                                        from.ip()
+                                    } else {
+                                        std::net::IpAddr::V4(*addr)
+                                    };
+                                    server_endpoint = Some(SocketAddr::new(ip, *port));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+
+        let server_addr = server_endpoint.expect("Should find server via SD");
+        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+
+        // Send request with WRONG interface version (0x02 instead of 0x01)
+        let bad_request = SomeIpPacketBuilder::request(TEST_SERVICE_ID, 0x0001)
+            .client_id(0xABCD)
+            .session_id(0x1234)
+            .interface_version(0x02) // WRONG - server expects 0x01
+            .payload(b"test_payload")
+            .build();
+        rpc_socket.send_to(&bad_request, server_addr).await?;
+
+        // Should receive error response with E_WRONG_INTERFACE_VERSION
+        let result =
+            tokio::time::timeout(Duration::from_secs(3), rpc_socket.recv_from(&mut buf)).await;
+
+        let (len, _) = result.expect("Should receive error response")?;
+        let response = parse_header(&buf[..len]).expect("Valid response header");
+
+        // Verify error response
+        assert_eq!(
+            response.return_code, E_WRONG_INTERFACE_VERSION,
+            "Server must return E_WRONG_INTERFACE_VERSION (0x08) for interface version mismatch"
+        );
+
+        // Verify header fields are echoed back (per feat_req_someip_655)
+        assert_eq!(response.service_id, TEST_SERVICE_ID);
+        assert_eq!(response.method_id, 0x0001);
+        assert_eq!(response.client_id, 0xABCD);
+        assert_eq!(response.session_id, 0x1234);
+
+        // Message type should be RESPONSE (0x80) or ERROR (0x81)
+        assert!(
+            response.message_type == recentip::wire::MessageType::Response
+                || response.message_type == recentip::wire::MessageType::Error,
+            "Error response should have message type RESPONSE or ERROR, got {:?}",
+            response.message_type
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// [feat_req_someip_654] Fire-and-forget with wrong interface version is silently ignored
+///
+/// Per feat_req_someip_654: No error response shall be sent for fire-and-forget methods.
+/// Even with wrong interface version, fire-and-forget should be silently dropped.
+#[test_log::test]
+fn fire_forget_with_wrong_interface_version_is_ignored() {
+    covers!(feat_req_someip_654, feat_req_someip_92);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Library server with major version 1
+    sim.client("server", async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, 0) // Major version 1
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        // Server should NOT receive fire-and-forget with wrong interface version
+        let result = tokio::time::timeout(Duration::from_secs(2), offering.next()).await;
+
+        assert!(
+            result.is_err(),
+            "Server should not receive fire-and-forget with wrong interface version"
+        );
+
+        Ok(())
+    });
+
+    // Raw client sends fire-and-forget with wrong interface version
+    sim.client("raw_client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut server_endpoint: Option<SocketAddr> = None;
+        let mut buf = [0u8; 1500];
+
+        // Wait for SD offer
+        for _ in 0..20 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        if entry.entry_type as u8 == 0x01 && entry.service_id == TEST_SERVICE_ID {
+                            if let Some(opt) = sd_msg.options.first() {
+                                if let recentip::wire::SdOption::Ipv4Endpoint {
+                                    addr, port, ..
+                                } = opt
+                                {
+                                    let ip = if addr.is_unspecified() {
+                                        from.ip()
+                                    } else {
+                                        std::net::IpAddr::V4(*addr)
+                                    };
+                                    server_endpoint = Some(SocketAddr::new(ip, *port));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if server_endpoint.is_some() {
+                break;
+            }
+        }
+
+        let server_addr = server_endpoint.expect("Should find server via SD");
+        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+
+        // Send fire-and-forget with WRONG interface version
+        let bad_fnf = SomeIpPacketBuilder::fire_and_forget(TEST_SERVICE_ID, 0x0001)
+            .client_id(0xABCD)
+            .session_id(0x1234)
+            .interface_version(0x02) // WRONG - server expects 0x01
+            .payload(b"test_payload")
+            .build();
+        rpc_socket.send_to(&bad_fnf, server_addr).await?;
+
+        // Per feat_req_someip_654: No error response for fire-and-forget
+        let result =
+            tokio::time::timeout(Duration::from_millis(500), rpc_socket.recv_from(&mut buf)).await;
+
+        assert!(
+            result.is_err(),
+            "Fire-and-forget with wrong interface version should NOT receive any response"
         );
 
         Ok(())

@@ -431,6 +431,12 @@ pub fn handle_incoming_request(
     };
 
     if let Some((service_key, offered)) = offering {
+        // Determine transport for response
+        let rpc_transport = match transport {
+            crate::config::Transport::Tcp => offered.tcp_transport.clone(),
+            crate::config::Transport::Udp => offered.udp_transport.clone(),
+        };
+
         // Validate method_id early: high bit set means event ID, not method ID
         // Per SOME/IP spec: method IDs are 0x0000-0x7FFF, event IDs are 0x8000-0xFFFE
         if header.method_id >= 0x8000 {
@@ -440,12 +446,6 @@ pub fn handle_incoming_request(
                 from
             );
 
-            // Determine transport for response
-            let rpc_transport = match transport {
-                crate::config::Transport::Tcp => offered.tcp_transport.clone(),
-                crate::config::Transport::Udp => offered.udp_transport.clone(),
-            };
-
             // Send E_MALFORMED_MESSAGE (0x09) response
             let response_data = build_response(
                 header.service_id,
@@ -454,6 +454,41 @@ pub fn handle_incoming_request(
                 header.session_id,
                 header.interface_version,
                 0x09, // E_MALFORMED_MESSAGE - method_id field contains an event ID
+                &[],
+                offered.method_config.uses_exception(header.method_id),
+            );
+
+            if rpc_transport.is_some() {
+                actions.push(Action::SendServerMessage {
+                    service_key: *service_key,
+                    data: response_data,
+                    target: from,
+                    transport,
+                });
+            }
+            return;
+        }
+
+        // Validate interface version (which equals major version per feat_req_someip_92)
+        // Per feat_req_someip_371: return E_WRONG_INTERFACE_VERSION (0x08) on mismatch
+        // Per feat_req_someip_718: this check comes after service ID check
+        if header.interface_version != offered.major_version {
+            tracing::warn!(
+                "Interface version mismatch for service 0x{:04x}: expected 0x{:02x}, got 0x{:02x} from {}",
+                header.service_id,
+                offered.major_version,
+                header.interface_version,
+                from
+            );
+
+            // Send E_WRONG_INTERFACE_VERSION (0x08) response
+            let response_data = build_response(
+                header.service_id,
+                header.method_id,
+                header.client_id,
+                header.session_id,
+                header.interface_version, // Echo back the client's interface version
+                0x08,                     // E_WRONG_INTERFACE_VERSION
                 &[],
                 offered.method_config.uses_exception(header.method_id),
             );
@@ -488,12 +523,6 @@ pub fn handle_incoming_request(
             .is_ok()
         {
             // Track this pending response - will be polled in the main loop
-            // Use the transport that the request came in on
-            let rpc_transport = match transport {
-                crate::config::Transport::Tcp => offered.tcp_transport.clone(),
-                crate::config::Transport::Udp => offered.udp_transport.clone(),
-            };
-
             if let Some(rpc_transport) = rpc_transport {
                 let context = PendingServerResponse {
                     service_id: header.service_id,
@@ -570,6 +599,20 @@ pub fn handle_incoming_fire_forget(
     };
 
     if let Some(offered) = offering {
+        // Validate interface version (which equals major version per feat_req_someip_92)
+        // Per feat_req_someip_654: no error response for fire-and-forget, just silently drop
+        if header.interface_version != offered.major_version {
+            tracing::warn!(
+                "Fire-and-forget interface version mismatch for service 0x{:04x}: expected 0x{:02x}, got 0x{:02x} from {}",
+                header.service_id,
+                offered.major_version,
+                header.interface_version,
+                from
+            );
+            // Silently ignore - fire-and-forget doesn't get error responses
+            return;
+        }
+
         // Send fire-and-forget request to the offering handle (no response channel)
         let _ = offered.requests_tx.try_send(ServiceRequest::FireForget {
             method_id: header.method_id,

@@ -418,12 +418,6 @@ pub enum ApplicationError {
     /// and return this error for unknown ones.
     UnknownMethod,
 
-    /// Interface version mismatch (0x08).
-    ///
-    /// Use this when the client's interface version doesn't match what
-    /// your service expects. Check the version in the request header.
-    WrongInterfaceVersion,
-
     /// Payload deserialization error (0x09).
     ///
     /// Use this when you cannot deserialize the request payload.
@@ -479,7 +473,6 @@ impl ApplicationError {
         match self {
             Self::NotOk => 0x01,
             Self::UnknownMethod => 0x03,
-            Self::WrongInterfaceVersion => 0x08,
             Self::MalformedMessage => 0x09,
             Self::ServiceSpecific(code) => *code,
         }

@@ -53,6 +53,108 @@ pub fn parse_sd_message(data: &[u8]) -> Option<(Header, SdMessage)> {
 // PACKET BUILDER FUNCTIONS
 // ============================================================================
 
+/// Builder for constructing raw SOME/IP packets for wire-level testing.
+///
+/// Provides a fluent API for creating test packets with customizable fields.
+/// Defaults to protocol version 0x01 and interface version 0x01.
+///
+/// # Example
+/// ```ignore
+/// let packet = SomeIpPacketBuilder::request(0x1234, 0x0001)
+///     .client_id(0xABCD)
+///     .session_id(0x1234)
+///     .interface_version(0x02)
+///     .payload(b"test")
+///     .build();
+/// ```
+pub struct SomeIpPacketBuilder {
+    service_id: u16,
+    method_id: u16,
+    client_id: u16,
+    session_id: u16,
+    protocol_version: u8,
+    interface_version: u8,
+    message_type: u8,
+    return_code: u8,
+    payload: Vec<u8>,
+}
+
+impl SomeIpPacketBuilder {
+    /// Create a new REQUEST packet builder with default protocol/interface version
+    pub fn request(service_id: u16, method_id: u16) -> Self {
+        Self {
+            service_id,
+            method_id,
+            client_id: 0x0000,
+            session_id: 0x0001,
+            protocol_version: 0x01,
+            interface_version: 0x01,
+            message_type: 0x00, // REQUEST
+            return_code: 0x00,
+            payload: Vec::new(),
+        }
+    }
+
+    /// Create a REQUEST_NO_RETURN (fire-and-forget) packet builder
+    pub fn fire_and_forget(service_id: u16, method_id: u16) -> Self {
+        Self {
+            message_type: 0x01, // REQUEST_NO_RETURN
+            ..Self::request(service_id, method_id)
+        }
+    }
+
+    /// Create a RESPONSE packet builder
+    pub fn response(service_id: u16, method_id: u16) -> Self {
+        Self {
+            message_type: 0x80, // RESPONSE
+            ..Self::request(service_id, method_id)
+        }
+    }
+
+    pub fn client_id(mut self, client_id: u16) -> Self {
+        self.client_id = client_id;
+        self
+    }
+
+    pub fn session_id(mut self, session_id: u16) -> Self {
+        self.session_id = session_id;
+        self
+    }
+
+    pub fn protocol_version(mut self, version: u8) -> Self {
+        self.protocol_version = version;
+        self
+    }
+
+    pub fn interface_version(mut self, version: u8) -> Self {
+        self.interface_version = version;
+        self
+    }
+
+    pub fn payload(mut self, payload: &[u8]) -> Self {
+        self.payload = payload.to_vec();
+        self
+    }
+
+    pub fn build(self) -> Vec<u8> {
+        let length = 8 + self.payload.len() as u32;
+        let mut packet = Vec::with_capacity(16 + self.payload.len());
+
+        packet.extend_from_slice(&self.service_id.to_be_bytes());
+        packet.extend_from_slice(&self.method_id.to_be_bytes());
+        packet.extend_from_slice(&length.to_be_bytes());
+        packet.extend_from_slice(&self.client_id.to_be_bytes());
+        packet.extend_from_slice(&self.session_id.to_be_bytes());
+        packet.push(self.protocol_version);
+        packet.push(self.interface_version);
+        packet.push(self.message_type);
+        packet.push(self.return_code);
+        packet.extend_from_slice(&self.payload);
+
+        packet
+    }
+}
+
 /// Build a raw SOME/IP request packet
 pub fn build_request(
     service_id: u16,
@@ -61,21 +163,11 @@ pub fn build_request(
     session_id: u16,
     payload: &[u8],
 ) -> Vec<u8> {
-    let length = 8 + payload.len() as u32;
-    let mut packet = Vec::with_capacity(16 + payload.len());
-
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&method_id.to_be_bytes());
-    packet.extend_from_slice(&length.to_be_bytes());
-    packet.extend_from_slice(&client_id.to_be_bytes());
-    packet.extend_from_slice(&session_id.to_be_bytes());
-    packet.push(0x01); // Protocol Version
-    packet.push(0x01); // Interface Version
-    packet.push(0x00); // Message Type (REQUEST)
-    packet.push(0x00); // Return Code (E_OK)
-    packet.extend_from_slice(payload);
-
-    packet
+    SomeIpPacketBuilder::request(service_id, method_id)
+        .client_id(client_id)
+        .session_id(session_id)
+        .payload(payload)
+        .build()
 }
 
 /// Build a raw SOME/IP fire-and-forget (REQUEST_NO_RETURN) packet
@@ -86,40 +178,21 @@ pub fn build_fire_and_forget_request(
     session_id: u16,
     payload: &[u8],
 ) -> Vec<u8> {
-    let length = 8 + payload.len() as u32;
-    let mut packet = Vec::with_capacity(16 + payload.len());
-
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&method_id.to_be_bytes());
-    packet.extend_from_slice(&length.to_be_bytes());
-    packet.extend_from_slice(&client_id.to_be_bytes());
-    packet.extend_from_slice(&session_id.to_be_bytes());
-    packet.push(0x01); // Protocol Version
-    packet.push(0x01); // Interface Version
-    packet.push(0x01); // Message Type (REQUEST_NO_RETURN)
-    packet.push(0x00); // Return Code (E_OK)
-    packet.extend_from_slice(payload);
-
-    packet
+    SomeIpPacketBuilder::fire_and_forget(service_id, method_id)
+        .client_id(client_id)
+        .session_id(session_id)
+        .payload(payload)
+        .build()
 }
 
 /// Build a raw SOME/IP response packet based on a request header
 pub fn build_response(request: &Header, payload: &[u8]) -> Vec<u8> {
-    let length = 8 + payload.len() as u32;
-    let mut packet = Vec::with_capacity(16 + payload.len());
-
-    packet.extend_from_slice(&request.service_id.to_be_bytes());
-    packet.extend_from_slice(&request.method_id.to_be_bytes());
-    packet.extend_from_slice(&length.to_be_bytes());
-    packet.extend_from_slice(&request.client_id.to_be_bytes());
-    packet.extend_from_slice(&request.session_id.to_be_bytes());
-    packet.push(0x01); // Protocol Version
-    packet.push(request.interface_version);
-    packet.push(0x80); // Message Type (RESPONSE)
-    packet.push(0x00); // Return Code (E_OK)
-    packet.extend_from_slice(payload);
-
-    packet
+    SomeIpPacketBuilder::response(request.service_id, request.method_id)
+        .client_id(request.client_id)
+        .session_id(request.session_id)
+        .interface_version(request.interface_version)
+        .payload(payload)
+        .build()
 }
 
 /// Build a raw SOME/IP-SD OfferService message
