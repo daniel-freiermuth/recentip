@@ -330,9 +330,8 @@ fn subscribe_multiple_eventgroups() {
     let executed = Arc::new(Mutex::new(false));
     let exec_flag = Arc::clone(&executed);
 
-    sim.host("server", move || {
-        let flag = Arc::clone(&exec_flag);
-        async move {
+    let flag = Arc::clone(&exec_flag);
+    sim.client("server", async move {
             let runtime = recentip::configure()
                 .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
                 .start_turmoil()
@@ -347,7 +346,7 @@ fn subscribe_multiple_eventgroups() {
                 .await
                 .unwrap();
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(Duration::from_millis(1000)).await;
 
             // Send to different eventgroups with different event IDs
             let eg1 = EventgroupId::new(0x0001).unwrap();
@@ -373,10 +372,9 @@ fn subscribe_multiple_eventgroups() {
             tokio::time::sleep(Duration::from_millis(500)).await;
             *flag.lock().unwrap() = true;
             Ok(())
-        }
     });
 
-    sim.host("client", || async {
+    sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
@@ -426,8 +424,113 @@ fn subscribe_multiple_eventgroups() {
         Ok(())
     });
 
-    sim.client("driver", async move {
-        tokio::time::sleep(Duration::from_millis(2000)).await;
+    sim.run().unwrap();
+    assert!(*executed.lock().unwrap(), "Test should have executed");
+}
+
+/// TCP variant: Multiple eventgroups can be subscribed over TCP
+#[test_log::test]
+fn subscribe_multiple_eventgroups_tcp() {
+    covers!(feat_req_someipsd_109);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    let executed = Arc::new(Mutex::new(false));
+    let exec_flag = Arc::clone(&executed);
+
+    let flag = Arc::clone(&exec_flag);
+    sim.client("server", async move {
+            let runtime = recentip::configure()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let offering = runtime
+                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+                .tcp()
+                .start()
+                .await
+                .unwrap();
+
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+
+            // Send to different eventgroups with different event IDs
+            let eg1 = EventgroupId::new(0x0001).unwrap();
+            let eg2 = EventgroupId::new(0x0002).unwrap();
+            let event_id1 = EventId::new(0x8001).unwrap();
+            let event_id2 = EventId::new(0x8002).unwrap();
+            let event_handle1 = offering
+                .event(event_id1)
+                .eventgroup(eg1)
+                .create()
+                .await
+                .unwrap();
+            let event_handle2 = offering
+                .event(event_id2)
+                .eventgroup(eg2)
+                .create()
+                .await
+                .unwrap();
+
+            event_handle1.notify(b"group1_event").await.unwrap();
+            event_handle2.notify(b"group2_event").await.unwrap();
+
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            *flag.lock().unwrap() = true;
+            Ok(())
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = runtime.find(EVENT_SERVICE_ID);
+        let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        // Subscribe to both eventgroups
+        let eg1 = EventgroupId::new(0x0001).unwrap();
+        let eg2 = EventgroupId::new(0x0002).unwrap();
+
+        let mut sub1 = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eg1))
+            .await
+            .expect("Sub1 timeout")
+            .expect("Sub1 should succeed");
+
+        let mut sub2 = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eg2))
+            .await
+            .expect("Sub2 timeout")
+            .expect("Sub2 should succeed");
+
+        // Receive from both subscriptions
+        // With TCP, each subscription to a different eventgroup uses a separate connection
+        // (conn_key), so events are properly routed to the correct subscription
+        let event1 = tokio::time::timeout(Duration::from_secs(5), sub1.next())
+            .await
+            .expect("Event1 timeout");
+        let event2 = tokio::time::timeout(Duration::from_secs(5), sub2.next())
+            .await
+            .expect("Event2 timeout");
+
+        // Verify both events were received
+        assert!(event1.is_some());
+        assert!(event2.is_some());
+
+        // Each subscription receives only its eventgroup's events
+        assert_eq!(event1.unwrap().payload.as_ref(), b"group1_event");
+        assert_eq!(event2.unwrap().payload.as_ref(), b"group2_event");
+
         Ok(())
     });
 
