@@ -375,7 +375,7 @@ pub async fn handle_subscribe_command<U: UdpSocket, T: TcpStream>(
     events: tokio::sync::mpsc::Sender<Event>,
     response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     state: &mut RuntimeState,
-    tcp_pool: &mut TcpConnectionPool<T>,
+    tcp_pool: &TcpConnectionPool<T>,
 ) {
     if eventgroup_ids.is_empty() {
         let _ = response.send(Err(crate::error::Error::Config(

@@ -287,64 +287,75 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             service_id, instance_id, major_version, minor_version, offer_config, response,
                             &config, &mut state, &rpc_tx, &tcp_rpc_tx
                         ).await;                    }
-                    // Special handling for Subscribe - spawn as concurrent task to avoid blocking on TCP connections
+                    // Special handling for Subscribe
+                    // - TCP subscriptions: spawn as concurrent task to avoid blocking on connection establishment (feat_req_someipsd_767)
+                    // - UDP subscriptions: handle synchronously since they need state access for socket creation and don't block
                     Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response }) => {
-                        // Clone data needed by the spawned task
-                        let tcp_pool_clone = Arc::clone(&tcp_pool);
-                        let update_tx = subscribe_update_tx.clone();
-                        let config_clone = config.clone();
-
-                        // Extract data from state that the task needs (without borrowing state)
-                        let discovered_opt = state.discovered.get(&ServiceKey::new(service_id, instance_id, major_version))
-                            .map(|d| (d.sd_endpoint, d.tcp_endpoint, d.method_endpoint(config.preferred_transport == Transport::Tcp)));
-
-                        let subscription_id = state.next_subscription_id();
-                        let client_rpc_endpoint = state.client_rpc_endpoint;
-                        let advertised_ip = state.config.advertised_ip;
-                        let sd_flags = state.sd_flags(true);
-                        let subscribe_ttl = state.config.subscribe_ttl;
-
-                        // Check existing subscriptions for this service
                         let service_key = ServiceKey::new(service_id, instance_id, major_version);
-                        let service_already_has_subscription = state.subscriptions.get(&service_key)
-                            .is_some_and(|subs| !subs.is_empty());
+                        
+                        // Determine transport preference
+                        let prefer_tcp = config.preferred_transport == Transport::Tcp;
+                        let uses_tcp = state.discovered.get(&service_key)
+                            .and_then(|d| d.method_endpoint(prefer_tcp))
+                            .is_some_and(|(_, transport)| transport == Transport::Tcp);
 
-                        // Find reusable endpoint if needed
-                        let reusable_endpoint_port = if service_already_has_subscription {
-                            state.find_reusable_subscription_endpoint(service_id.value(), instance_id.value())
-                        } else {
-                            None
-                        };
+                        if uses_tcp {
+                            // TCP path: Use concurrent handling to avoid blocking on connection establishment
+                            let tcp_pool_clone = Arc::clone(&tcp_pool);
+                            let update_tx = subscribe_update_tx.clone();
+                            let config_clone = config.clone();
 
-                        // Get used conn_keys for TCP connection slot allocation
-                        let used_conn_keys: std::collections::HashSet<u64> = state.subscriptions.get(&service_key)
-                            .map_or_else(std::collections::HashSet::default, |subs| {
-                                subs.iter().map(|sub| sub.tcp_conn_key).collect()
+                            let discovered_opt = state.discovered.get(&service_key)
+                                .map(|d| (d.sd_endpoint, d.tcp_endpoint, d.method_endpoint(prefer_tcp)));
+                            let subscription_id = state.next_subscription_id();
+                            let client_rpc_endpoint = state.client_rpc_endpoint;
+                            let advertised_ip = state.config.advertised_ip;
+                            let sd_flags = state.sd_flags(true);
+                            let subscribe_ttl = state.config.subscribe_ttl;
+
+                            let service_already_has_subscription = state.subscriptions.get(&service_key)
+                                .is_some_and(|subs| !subs.is_empty());
+
+                            let reusable_endpoint_port = if service_already_has_subscription {
+                                state.find_reusable_subscription_endpoint(service_id.value(), instance_id.value())
+                            } else {
+                                None
+                            };
+
+                            let used_conn_keys: std::collections::HashSet<u64> = state.subscriptions.get(&service_key)
+                                .map_or_else(std::collections::HashSet::default, |subs| {
+                                    subs.iter().map(|sub| sub.tcp_conn_key).collect()
+                                });
+
+                            tokio::spawn(async move {
+                                handle_subscribe_command_concurrent::<T>(
+                                    service_id,
+                                    instance_id,
+                                    major_version,
+                                    eventgroup_ids,
+                                    events,
+                                    response,
+                                    tcp_pool_clone,
+                                    update_tx,
+                                    discovered_opt,
+                                    subscription_id,
+                                    client_rpc_endpoint,
+                                    advertised_ip,
+                                    sd_flags,
+                                    subscribe_ttl,
+                                    config_clone.preferred_transport,
+                                    service_already_has_subscription,
+                                    reusable_endpoint_port,
+                                    used_conn_keys,
+                                ).await;
                             });
-
-                        // Spawn Subscribe handling as a background task
-                        tokio::spawn(async move {
-                            handle_subscribe_command_concurrent::<T>(
-                                service_id,
-                                instance_id,
-                                major_version,
-                                eventgroup_ids,
-                                events,
-                                response,
-                                tcp_pool_clone,
-                                update_tx,
-                                discovered_opt,
-                                subscription_id,
-                                client_rpc_endpoint,
-                                advertised_ip,
-                                sd_flags,
-                                subscribe_ttl,
-                                config_clone.preferred_transport,
-                                service_already_has_subscription,
-                                reusable_endpoint_port,
-                                used_conn_keys,
+                        } else {
+                            // UDP path: Handle synchronously - no connection delay, needs state for socket creation
+                            client::handle_subscribe_command::<U, T>(
+                                service_id, instance_id, major_version, eventgroup_ids,
+                                events, response, &mut state, &tcp_pool
                             ).await;
-                        });
+                        }
                     }
                     Some(cmd) => {
                         if let Some(actions) = handle_command(cmd, &mut state) {
