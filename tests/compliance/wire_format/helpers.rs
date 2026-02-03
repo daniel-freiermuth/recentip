@@ -111,6 +111,14 @@ impl SomeIpPacketBuilder {
         }
     }
 
+    /// Create a NOTIFICATION packet builder (typically for SD messages)
+    pub fn notification(service_id: u16, method_id: u16) -> Self {
+        Self {
+            message_type: 0x02, // NOTIFICATION
+            ..Self::request(service_id, method_id)
+        }
+    }
+
     pub fn client_id(mut self, client_id: u16) -> Self {
         self.client_id = client_id;
         self
@@ -205,56 +213,45 @@ pub fn build_sd_offer(
     endpoint_port: u16,
     ttl: u32,
 ) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(56);
-
-    // SOME/IP Header
-    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
-    packet.extend_from_slice(&0x8100u16.to_be_bytes());
-    let length_offset = packet.len();
-    packet.extend_from_slice(&0u32.to_be_bytes()); // placeholder
-    packet.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
-    packet.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
-    packet.push(0x01); // Protocol Version
-    packet.push(0x01); // Interface Version
-    packet.push(0x02); // Message Type (NOTIFICATION)
-    packet.push(0x00); // Return Code
+    let mut payload = Vec::with_capacity(40);
 
     // SD Payload
-    packet.push(0xC0); // Flags (Unicast + Reboot)
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
+    payload.push(0xC0); // Flags (Unicast + Reboot)
+    payload.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
 
     // Entries array
-    packet.extend_from_slice(&16u32.to_be_bytes()); // Length
+    payload.extend_from_slice(&16u32.to_be_bytes()); // Length
 
     // OfferService Entry
-    packet.push(0x01); // Type
-    packet.push(0x00); // Index 1st options
-    packet.push(0x00); // Index 2nd options
-    packet.push(0x10); // # of options (1 in run 1)
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&instance_id.to_be_bytes());
-    packet.push(major_version);
+    payload.push(0x01); // Type
+    payload.push(0x00); // Index 1st options
+    payload.push(0x00); // Index 2nd options
+    payload.push(0x10); // # of options (1 in run 1)
+    payload.extend_from_slice(&service_id.to_be_bytes());
+    payload.extend_from_slice(&instance_id.to_be_bytes());
+    payload.push(major_version);
     let ttl_bytes = ttl.to_be_bytes();
-    packet.extend_from_slice(&ttl_bytes[1..4]);
-    packet.extend_from_slice(&minor_version.to_be_bytes());
+    payload.extend_from_slice(&ttl_bytes[1..4]);
+    payload.extend_from_slice(&minor_version.to_be_bytes());
 
     // Options array
-    packet.extend_from_slice(&12u32.to_be_bytes()); // Length
+    payload.extend_from_slice(&12u32.to_be_bytes()); // Length
 
     // IPv4 Endpoint Option
-    packet.extend_from_slice(&9u16.to_be_bytes()); // Length
-    packet.push(0x04); // Type
-    packet.push(0x00); // Reserved
-    packet.extend_from_slice(&endpoint_ip.octets());
-    packet.push(0x00); // Reserved
-    packet.push(0x11); // L4 Protocol (UDP)
-    packet.extend_from_slice(&endpoint_port.to_be_bytes());
+    payload.extend_from_slice(&9u16.to_be_bytes()); // Length
+    payload.push(0x04); // Type
+    payload.push(0x00); // Reserved
+    payload.extend_from_slice(&endpoint_ip.octets());
+    payload.push(0x00); // Reserved
+    payload.push(0x11); // L4 Protocol (UDP)
+    payload.extend_from_slice(&endpoint_port.to_be_bytes());
 
-    // Fix up length field
-    let length = (packet.len() - 8) as u32;
-    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-
-    packet
+    // Build SOME/IP-SD packet using builder (service_id=0xFFFF, method_id=0x8100, NOTIFICATION type)
+    SomeIpPacketBuilder::notification(SD_SERVICE_ID, SD_METHOD_ID)
+        .client_id(0x0000)
+        .session_id(0x0001)
+        .payload(payload.as_slice())
+        .build()
 }
 
 /// Build a raw SOME/IP-SD SubscribeEventgroupAck message
@@ -265,49 +262,38 @@ pub fn build_sd_subscribe_ack(
     eventgroup_id: u16,
     ttl: u32,
 ) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(64);
-
-    // SOME/IP Header
-    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
-    packet.extend_from_slice(&0x8100u16.to_be_bytes());
-    let length_offset = packet.len();
-    packet.extend_from_slice(&0u32.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.push(0x01);
-    packet.push(0x01);
-    packet.push(0x02);
-    packet.push(0x00);
+    let mut payload = Vec::with_capacity(48);
 
     // SD Payload
-    packet.push(0xC0);
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+    payload.push(0xC0);
+    payload.extend_from_slice(&[0x00, 0x00, 0x00]);
 
     // Entries array
-    packet.extend_from_slice(&16u32.to_be_bytes());
+    payload.extend_from_slice(&16u32.to_be_bytes());
 
     // SubscribeEventgroupAck Entry
-    packet.push(0x07); // Type
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&instance_id.to_be_bytes());
-    packet.push(major_version);
+    payload.push(0x07); // Type
+    payload.push(0x00);
+    payload.push(0x00);
+    payload.push(0x00);
+    payload.extend_from_slice(&service_id.to_be_bytes());
+    payload.extend_from_slice(&instance_id.to_be_bytes());
+    payload.push(major_version);
     let ttl_bytes = ttl.to_be_bytes();
-    packet.extend_from_slice(&ttl_bytes[1..4]);
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
+    payload.extend_from_slice(&ttl_bytes[1..4]);
+    payload.push(0x00);
+    payload.push(0x00);
+    payload.extend_from_slice(&eventgroup_id.to_be_bytes());
 
     // Options array (empty)
-    packet.extend_from_slice(&0u32.to_be_bytes());
+    payload.extend_from_slice(&0u32.to_be_bytes());
 
-    // Fix up length field
-    let length = (packet.len() - 8) as u32;
-    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-
-    packet
+    // Build SOME/IP-SD packet using builder
+    SomeIpPacketBuilder::notification(SD_SERVICE_ID, SD_METHOD_ID)
+        .client_id(0x0001)
+        .session_id(0x0001)
+        .payload(payload.as_slice())
+        .build()
 }
 
 /// Build a raw SOME/IP-SD SubscribeEventgroup with a UDP endpoint option
@@ -320,56 +306,45 @@ pub fn build_sd_subscribe_with_udp_endpoint(
     client_ip: std::net::Ipv4Addr,
     client_port: u16,
 ) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(80);
+    let mut payload = Vec::with_capacity(64);
 
-    // === SOME/IP Header (16 bytes) ===
-    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
-    packet.extend_from_slice(&0x8100u16.to_be_bytes());
-    let length_offset = packet.len();
-    packet.extend_from_slice(&0u32.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.push(0x01);
-    packet.push(0x01);
-    packet.push(0x02);
-    packet.push(0x00);
-
-    // === SD Payload ===
-    packet.push(0xC0);
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
+    // SD Payload
+    payload.push(0xC0);
+    payload.extend_from_slice(&[0x00, 0x00, 0x00]);
 
     // Entries array length
-    packet.extend_from_slice(&16u32.to_be_bytes());
+    payload.extend_from_slice(&16u32.to_be_bytes());
 
-    // === SubscribeEventgroup Entry ===
-    packet.push(0x06); // Type = SubscribeEventgroup
-    packet.push(0x00); // Index 1st options = 0
-    packet.push(0x00); // Index 2nd options
-    packet.push(0x10); // # of opts: 1 in run1, 0 in run2
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&instance_id.to_be_bytes());
-    packet.push(major_version);
+    // SubscribeEventgroup Entry
+    payload.push(0x06); // Type = SubscribeEventgroup
+    payload.push(0x00); // Index 1st options = 0
+    payload.push(0x00); // Index 2nd options
+    payload.push(0x10); // # of opts: 1 in run1, 0 in run2
+    payload.extend_from_slice(&service_id.to_be_bytes());
+    payload.extend_from_slice(&instance_id.to_be_bytes());
+    payload.push(major_version);
     let ttl_bytes = ttl.to_be_bytes();
-    packet.extend_from_slice(&ttl_bytes[1..4]);
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
+    payload.extend_from_slice(&ttl_bytes[1..4]);
+    payload.push(0x00);
+    payload.push(0x00);
+    payload.extend_from_slice(&eventgroup_id.to_be_bytes());
 
-    // === Options array ===
-    packet.extend_from_slice(&12u32.to_be_bytes());
+    // Options array
+    payload.extend_from_slice(&12u32.to_be_bytes());
 
     // IPv4 Endpoint Option with UDP
-    packet.extend_from_slice(&9u16.to_be_bytes()); // Length = 9
-    packet.push(0x04); // Type = IPv4 Endpoint
-    packet.push(0x00); // Reserved
-    packet.extend_from_slice(&client_ip.octets());
-    packet.push(0x00); // Reserved
-    packet.push(0x11); // L4 Protocol = UDP (0x11)
-    packet.extend_from_slice(&client_port.to_be_bytes());
+    payload.extend_from_slice(&9u16.to_be_bytes()); // Length = 9
+    payload.push(0x04); // Type = IPv4 Endpoint
+    payload.push(0x00); // Reserved
+    payload.extend_from_slice(&client_ip.octets());
+    payload.push(0x00); // Reserved
+    payload.push(0x11); // L4 Protocol = UDP (0x11)
+    payload.extend_from_slice(&client_port.to_be_bytes());
 
-    // Fix up length field
-    let length = (packet.len() - 8) as u32;
-    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-
-    packet
+    // Build SOME/IP-SD packet using builder
+    SomeIpPacketBuilder::notification(SD_SERVICE_ID, SD_METHOD_ID)
+        .client_id(0x0001)
+        .session_id(0x0001)
+        .payload(payload.as_slice())
+        .build()
 }
