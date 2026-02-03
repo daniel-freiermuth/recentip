@@ -201,7 +201,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
             // Flush pending unicast SD actions when deadline is reached
             () = state.await_pending_unicast_sd_flush_deadline() => {
-                for action in state.flush_pending_unicast_sd(&mut tcp_pool) {
+                for action in state.flush_pending_unicast_sd() {
                     execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
                 }
             }

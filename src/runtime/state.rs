@@ -576,10 +576,7 @@ impl RuntimeState {
     /// Flush pending unicast SD actions (time-based clustering)
     /// Clusters all pending SD actions by target and sends them together
     /// This handles: initial subscribes, offer-triggered subscribes, find-triggered offers, subscribe ACKs/NACKs
-    pub(crate) fn flush_pending_unicast_sd<T: TcpStream>(
-        &mut self,
-        _tcp_pool: &TcpConnectionPool<T>,
-    ) -> Vec<Action> {
+    pub(crate) fn flush_pending_unicast_sd(&mut self) -> Vec<Action> {
         self.pending_unicast_sd_deadline = None;
 
         tracing::debug!(

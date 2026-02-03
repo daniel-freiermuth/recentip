@@ -324,20 +324,6 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         }
     }
 
-    /// Close connection to a peer (RPC connection, `subscription_id` 0)
-    pub fn close(&mut self, target: &SocketAddr) {
-        tracing::debug!("Closing TCP connection to {}", target);
-        let key = (*target, 0);
-
-        // Abort the task to force TCP connection closure
-        if let Some(handle) = self.connections.remove(&key) {
-            handle.task_handle.abort();
-        }
-
-        // Remove the sender (will close when all clones are dropped)
-        self.senders.remove(&key);
-    }
-
     /// Close ALL connections to a peer IP address (for reboot handling)
     ///
     /// This closes all connections to the given peer IP, regardless of port or
