@@ -11,6 +11,7 @@
 //! - Periodic tasks (cyclic offers, TTL expiry)
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -23,6 +24,7 @@ use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::runtime::{
     client,
+    client_concurrent::handle_subscribe_command_concurrent,
     sd::{
         build_find_message, build_offer_message, handle_find_request, handle_offer,
         handle_stop_offer as handle_sd_stop_offer, handle_subscribe_ack, handle_subscribe_nack,
@@ -41,6 +43,31 @@ use crate::wire::{
 };
 
 // ============================================================================
+// SUBSCRIBE STATE UPDATE TYPES
+// ============================================================================
+
+/// State update from a Subscribe command task back to the event loop.
+///
+/// Subscribe commands are processed concurrently in spawned tasks to avoid
+/// blocking the event loop during TCP connection establishment. The task
+/// sends state updates back to the event loop via a channel, and the event
+/// loop applies these updates to RuntimeState.
+pub enum SubscribeStateUpdate {
+    /// Subscribe operation completed successfully - apply state changes
+    Success {
+        /// Closure that applies all state changes (subscriptions, pending, etc.)
+        apply_state: Box<dyn FnOnce(&mut RuntimeState) + Send>,
+    },
+    /// Subscribe operation failed - send error to response channel
+    Failed {
+        /// The response channel to send the error to
+        response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
+        /// The error that occurred
+        error: crate::error::Error,
+    },
+}
+
+// ============================================================================
 // RUNTIME TASK
 // ============================================================================
 
@@ -56,8 +83,14 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
     mut tcp_client_rx: mpsc::Receiver<TcpMessage>,
     mut tcp_cleanup_rx: mpsc::Receiver<TcpCleanupRequest>,
     mut state: RuntimeState,
-    mut tcp_pool: TcpConnectionPool<T>,
+    tcp_pool: TcpConnectionPool<T>,
 ) {
+    // TcpConnectionPool now uses DashMap internally for lock-free concurrent access
+    let tcp_pool = Arc::new(tcp_pool);
+
+    // Channel for Subscribe state updates from spawned tasks
+    let (subscribe_update_tx, mut subscribe_update_rx) = mpsc::channel::<SubscribeStateUpdate>(32);
+
     let mut buf = [0u8; 65535];
     let cycle_interval = Duration::from_millis(config.cyclic_offer_delay);
     let mut next_periodic_cycle_at = tokio::time::Instant::now() + cycle_interval;
@@ -93,7 +126,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                         if let Some(actions) = handle_sd_message(&header, &mut data, from, &mut state) {
                             for action in actions {
-                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
+                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                             }
                         }
                     }
@@ -120,7 +153,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &data, method_msg.from, &mut state, method_msg.service_key, Transport::Udp, 0) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -151,7 +184,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, service_key, Transport::Tcp, tcp_msg.subscription_id) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -174,7 +207,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, None, Transport::Tcp, tcp_msg.subscription_id) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -194,7 +227,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             } => {
                 if let Some(actions) = flush_pending_initial_offers(&config, &mut state) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -202,7 +235,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             // Flush pending unicast SD actions when deadline is reached
             () = state.await_pending_unicast_sd_flush_deadline() => {
                 for action in state.flush_pending_unicast_sd() {
-                    execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
+                    execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                 }
             }
 
@@ -254,19 +287,85 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             service_id, instance_id, major_version, minor_version, offer_config, response,
                             &config, &mut state, &rpc_tx, &tcp_rpc_tx
                         ).await;                    }
-                    // Special handling for Subscribe - handles multiple eventgroups with shared endpoint
+                    // Special handling for Subscribe - spawn as concurrent task to avoid blocking on TCP connections
                     Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response }) => {
-                        client::handle_subscribe_command::<U, T>(
-                            service_id, instance_id, major_version, eventgroup_ids, events, response,
-                            &mut state, &mut tcp_pool
-                        ).await;
+                        // Clone data needed by the spawned task
+                        let tcp_pool_clone = Arc::clone(&tcp_pool);
+                        let update_tx = subscribe_update_tx.clone();
+                        let config_clone = config.clone();
+
+                        // Extract data from state that the task needs (without borrowing state)
+                        let discovered_opt = state.discovered.get(&ServiceKey::new(service_id, instance_id, major_version))
+                            .map(|d| (d.sd_endpoint, d.tcp_endpoint, d.method_endpoint(config.preferred_transport == Transport::Tcp)));
+
+                        let subscription_id = state.next_subscription_id();
+                        let client_rpc_endpoint = state.client_rpc_endpoint;
+                        let advertised_ip = state.config.advertised_ip;
+                        let sd_flags = state.sd_flags(true);
+                        let subscribe_ttl = state.config.subscribe_ttl;
+
+                        // Check existing subscriptions for this service
+                        let service_key = ServiceKey::new(service_id, instance_id, major_version);
+                        let service_already_has_subscription = state.subscriptions.get(&service_key)
+                            .is_some_and(|subs| !subs.is_empty());
+
+                        // Find reusable endpoint if needed
+                        let reusable_endpoint_port = if service_already_has_subscription {
+                            state.find_reusable_subscription_endpoint(service_id.value(), instance_id.value())
+                        } else {
+                            None
+                        };
+
+                        // Get used conn_keys for TCP connection slot allocation
+                        let used_conn_keys: std::collections::HashSet<u64> = state.subscriptions.get(&service_key)
+                            .map_or_else(std::collections::HashSet::default, |subs| {
+                                subs.iter().map(|sub| sub.tcp_conn_key).collect()
+                            });
+
+                        // Spawn Subscribe handling as a background task
+                        tokio::spawn(async move {
+                            handle_subscribe_command_concurrent::<T>(
+                                service_id,
+                                instance_id,
+                                major_version,
+                                eventgroup_ids,
+                                events,
+                                response,
+                                tcp_pool_clone,
+                                update_tx,
+                                discovered_opt,
+                                subscription_id,
+                                client_rpc_endpoint,
+                                advertised_ip,
+                                sd_flags,
+                                subscribe_ttl,
+                                config_clone.preferred_transport,
+                                service_already_has_subscription,
+                                reusable_endpoint_port,
+                                used_conn_keys,
+                            ).await;
+                        });
                     }
                     Some(cmd) => {
                         if let Some(actions) = handle_command(cmd, &mut state) {
                             for action in actions {
-                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
+                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                             }
                         }
+                    }
+                }
+            }
+
+            // Handle Subscribe state updates from spawned tasks
+            Some(update) = subscribe_update_rx.recv() => {
+                match update {
+                    SubscribeStateUpdate::Success { apply_state } => {
+                        // Apply state changes from the Subscribe task
+                        apply_state(&mut state);
+                    }
+                    SubscribeStateUpdate::Failed { response, error } => {
+                        // Send error back to caller
+                        let _ = response.send(Err(error));
                     }
                 }
             }
@@ -283,13 +382,13 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                 // Also flush any pending initial offers at this time
                 if let Some(actions) = flush_pending_initial_offers(&config, &mut state) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
 
                 if let Some(actions) = handle_periodic(&mut state) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &mut tcp_pool).await;
+                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -346,7 +445,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             Box<dyn std::future::Future<Output = (PendingServerResponse, Result<Bytes>)> + Send>,
         >,
     >,
-    tcp_pool: &mut TcpConnectionPool<T>,
+    tcp_pool: &Arc<TcpConnectionPool<T>>,
 ) {
     match action {
         Action::SendSd { message, target } => {

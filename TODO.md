@@ -12,13 +12,25 @@ This file tracks active work items organized by granularity. Completed tasks sho
 
 ## Epics
 
-### 1. SOME/IP-TP Implementation
+### 1. Concurrent Subscribe Command Processing
+The event loop currently processes Subscribe commands sequentially, which causes one slow/hanging TCP connection to block all other subscription attempts. This is a known architectural limitation documented in test `tcp_slow_service_doesnt_block_other_services`.
+
+**Impact**: In production, subscribing to 10 services at startup where 1 service is slow will delay all 10 subscriptions by the TCP timeout (2s).
+
+**Solution**: Spawn Subscribe handling as background tasks that send state updates back to the event loop via channels.
+
+**Requirements**:
+- RuntimeState cannot be shared across tasks (not Clone, contains DashMap)
+- TCP connection must complete before sending Subscribe SD message (feat_req_someipsd_767)
+- State updates must be serialized through the event loop for correctness
+
+### 2. SOME/IP-TP Implementation
 Transport Protocol for segmentation/reassembly of large messages. Currently **NOT implemented** - the 9 TP tests are empty stubs with only `covers!()` macros. The TP header parsing utilities exist, but actual segmentation/reassembly in runtime is missing.
 
-### 2. Full Spec Compliance Testing
+### 3. Full Spec Compliance Testing
 Comprehensive test coverage with traceability matrix documenting which requirements are tested and why untested ones are excluded. Currently 354/354 tests pass, 19 ignored.
 
-### 3. Multi-Homed Host Support
+### 4. Multi-Homed Host Support
 True network isolation testing infrastructure needed:
 - Two separate networks with different SD multicast groups
 - Host with two network interfaces (one per network)
@@ -26,7 +38,7 @@ True network isolation testing infrastructure needed:
 - Verify Runtime instances only discover services on their network
 - Requires `SO_BINDTODEVICE` (Linux) or `IP_PKTINFO` (others)
 
-### 4. Data Plane Bypass (Performance)
+### 5. Data Plane Bypass (Performance)
 Currently all RPC traffic flows through the central event loop. For high-throughput scenarios, separate control plane from data plane:
 - **Control plane (event loop)**: SD messages, commands, state mutations, periodic tasks
 - **Data plane (direct)**: RPC requests/responses bypass event loop, dispatch directly to handlers
@@ -45,7 +57,25 @@ Implementation approach:
 
 ## Tasks
 
-### Implement SOME/IP-TP (Epic 1)
+### Optimize TcpConnectionPool for true concurrent connections
+**Status**: Optional performance optimization
+
+**Context**: Subscribe commands now spawn as concurrent tasks (Epic 1 complete), but TCP connection attempts still serialize due to `Arc<Mutex<TcpConnectionPool>>`. One slow TCP connection (2s timeout) blocks other Subscribe tasks from starting their connections.
+
+**Impact**: 
+- ✅ Event loop remains responsive (Subscribe doesn't block main loop)
+- ✅ Other commands (Find, Call, Unsubscribe) process normally
+- ✅ UDP subscriptions are unaffected
+- ⚠️ Multiple concurrent TCP subscriptions wait for each other
+
+**Solution**: Refactor `TcpConnectionPool::ensure_connected()` to not hold mutex during TCP connect:
+- Option 1: Per-target fine-grained locks (DashMap of connection states)
+- Option 2: Optimistic connection start, then lock only to register/store
+- Option 3: Lock-free connection tracking with async coordination
+
+**Priority**: Medium - current behavior is acceptable for most use cases
+
+### Implement SOME/IP-TP (Epic 2)
 - [ ] Implement TP segmentation for outgoing messages exceeding MTU
 - [ ] Implement TP reassembly for incoming segmented messages
 - [ ] Integrate TP with runtime event loop

@@ -50,13 +50,13 @@
 //! The [`TcpServer`] handles incoming connections for an offered service.
 //! It spawns reader tasks for each accepted connection.
 
-use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use bytes::{Buf, Bytes, BytesMut};
-use tokio::sync::{mpsc, Mutex};
+use dashmap::DashMap;
+use tokio::sync::mpsc;
 
 use crate::net::{TcpListener, TcpStream};
 use crate::wire::{
@@ -95,17 +95,19 @@ pub struct TcpCleanupRequest {
 ///
 /// For client-side TCP: When a connection is established, a reader task is spawned
 /// to receive responses and forward them to the runtime.
+///
+/// Uses DashMap for lock-free concurrent access to different connections.
 pub(crate) struct TcpConnectionPool<T: TcpStream> {
     /// Active connections indexed by (peer address, `subscription_id`)
-    connections: HashMap<(SocketAddr, u64), TcpConnectionHandle>,
+    connections: Arc<DashMap<(SocketAddr, u64), TcpConnectionHandle>>,
     /// Sender for each connection, with connection_id for ownership verification
-    senders: HashMap<(SocketAddr, u64), (mpsc::Sender<Bytes>, u64)>,
+    senders: Arc<DashMap<(SocketAddr, u64), (mpsc::Sender<Bytes>, u64)>>,
     /// Channel to forward received messages to the runtime
     msg_tx: mpsc::Sender<TcpMessage>,
     /// Channel to send cleanup requests to the event loop
     cleanup_tx: mpsc::Sender<TcpCleanupRequest>,
-    /// Counter for generating unique connection IDs
-    next_connection_id: u64,
+    /// Counter for generating unique connection IDs (atomic for thread-safety)
+    next_connection_id: Arc<std::sync::atomic::AtomicU64>,
     /// Enable Magic Cookies for TCP resync (`feat_req_someip_586`)
     magic_cookies: bool,
     /// Phantom data for the stream type - use `fn()` -> T for Send+Sync
@@ -134,11 +136,11 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         magic_cookies: bool,
     ) -> Self {
         Self {
-            connections: HashMap::new(),
-            senders: HashMap::new(),
+            connections: Arc::new(DashMap::new()),
+            senders: Arc::new(DashMap::new()),
             msg_tx,
             cleanup_tx,
-            next_connection_id: 1,
+            next_connection_id: Arc::new(std::sync::atomic::AtomicU64::new(1)),
             magic_cookies,
             _phantom: std::marker::PhantomData,
         }
@@ -157,12 +159,13 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// # Errors
     ///
     /// Returns an I/O error if connection or send fails.
-    pub async fn send(&mut self, target: SocketAddr, data: Bytes) -> io::Result<()> {
+    pub async fn send(&self, target: SocketAddr, data: Bytes) -> io::Result<()> {
         // Check if we have a sender for this connection (use subscription_id 0 for RPC)
         let key = (target, 0);
 
-        if let Some((tx, _connection_id)) = self.senders.get(&key) {
+        if let Some(entry) = self.senders.get(&key) {
             // Use existing connection
+            let (tx, _connection_id) = entry.value();
             tx.send(data)
                 .await
                 .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Connection task closed"))?;
@@ -175,8 +178,9 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         let local_addr = stream.local_addr()?;
 
         // Allocate unique connection ID for cleanup verification
-        let connection_id = self.next_connection_id;
-        self.next_connection_id += 1;
+        let connection_id = self
+            .next_connection_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         // Create channel for sending data to this connection
         let (send_tx, send_rx) = mpsc::channel::<Bytes>(32);
@@ -231,31 +235,52 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// The `subscription_id` allows multiple connections per server (one per subscription),
     /// mirroring UDP's per-subscription socket approach. Use 0 for RPC connections.
     ///
+    /// This method uses DashMap for lock-free concurrent connection establishment to
+    /// different targets. Multiple calls to the same target use an optimistic approach:
+    /// one connection wins, others detect and reuse it.
+    ///
     /// # Errors
     ///
     /// Returns an I/O error if connection establishment fails.
     pub async fn ensure_connected(
-        &mut self,
+        &self,
         target: SocketAddr,
         subscription_id: u64,
     ) -> io::Result<SocketAddr> {
         let key = (target, subscription_id);
+
         // Check if we already have a connection
         if let Some(handle) = self.connections.get(&key) {
             return Ok(handle.local_addr);
         }
 
-        // Establish new connection
+        // No connection exists - establish one without holding any locks
         tracing::debug!(
             "Establishing TCP connection to {} for subscription (feat_req_someipsd_767)",
             target
         );
-        let stream = T::connect(target).await?;
+
+        // Add timeout to prevent blocking indefinitely on connection attempts
+        // Use a relatively short timeout (2s) to avoid excessive wait times
+        let connect_timeout = std::time::Duration::from_secs(2);
+        let stream = tokio::time::timeout(connect_timeout, T::connect(target))
+            .await
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!(
+                        "TCP connection to {target} timed out after {:?}",
+                        connect_timeout
+                    ),
+                )
+            })??;
+
         let local_addr = stream.local_addr()?;
 
         // Allocate unique connection ID for cleanup verification
-        let connection_id = self.next_connection_id;
-        self.next_connection_id += 1;
+        let connection_id = self
+            .next_connection_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         // Create channel for sending data to this connection
         let (send_tx, send_rx) = mpsc::channel::<Bytes>(32);
@@ -280,17 +305,27 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         });
 
         // Store the sender and connection handle
-        self.senders.insert(key, (send_tx, connection_id));
-        self.connections.insert(
-            key,
-            TcpConnectionHandle {
-                local_addr,
-                task_handle: task.abort_handle(),
-                connection_id,
-            },
-        );
+        // Use entry API to handle potential race: if another task just connected,
+        // use their connection and abort ours
+        let handle = TcpConnectionHandle {
+            local_addr,
+            task_handle: task.abort_handle(),
+            connection_id,
+        };
 
-        Ok(local_addr)
+        match self.connections.entry(key) {
+            dashmap::mapref::entry::Entry::Occupied(entry) => {
+                // Another task beat us to it - abort our connection and use theirs
+                task.abort();
+                Ok(entry.get().local_addr)
+            }
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                // We won the race - store our connection
+                entry.insert(handle);
+                self.senders.insert(key, (send_tx, connection_id));
+                Ok(local_addr)
+            }
+        }
     }
 
     /// Handle a cleanup request from a connection task.
@@ -298,7 +333,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// Only removes the connection if the `connection_id` matches the currently
     /// stored connection. This prevents a race where closing an old connection
     /// would incorrectly remove a newer connection that replaced it.
-    pub fn handle_cleanup(&mut self, request: &TcpCleanupRequest) {
+    pub fn handle_cleanup(&self, request: &TcpCleanupRequest) {
         let key = request.key;
 
         // Check if the connection still belongs to this task before removing
@@ -328,13 +363,13 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     ///
     /// This closes all connections to the given peer IP, regardless of port or
     /// `subscription_id`. Used when a peer reboot is detected per `feat_req_someipsd_872`.
-    pub fn close_all_to_peer(&mut self, peer_ip: std::net::IpAddr) {
+    pub fn close_all_to_peer(&self, peer_ip: std::net::IpAddr) {
         // Collect keys to close
         let keys_to_close: Vec<_> = self
             .connections
-            .keys()
-            .filter(|(addr, _)| addr.ip() == peer_ip)
-            .copied()
+            .iter()
+            .filter(|entry| entry.key().0.ip() == peer_ip)
+            .map(|entry| *entry.key())
             .collect();
 
         if keys_to_close.is_empty() {
@@ -349,7 +384,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 
         // Close each connection
         for key in keys_to_close {
-            if let Some(handle) = self.connections.remove(&key) {
+            if let Some((_, handle)) = self.connections.remove(&key) {
                 handle.task_handle.abort();
             }
             self.senders.remove(&key);
@@ -573,8 +608,8 @@ impl<T: TcpStream> TcpServer<T> {
         let (send_tx, mut send_rx) = mpsc::channel::<TcpSendMessage>(100);
 
         // Track active client connections - maps peer addr to a response sender
-        let client_senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Bytes>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let client_senders: Arc<DashMap<SocketAddr, mpsc::Sender<Bytes>>> =
+            Arc::new(DashMap::new());
         let client_senders_for_responses = Arc::clone(&client_senders);
 
         // Spawn the main server task
@@ -594,10 +629,7 @@ impl<T: TcpStream> TcpServer<T> {
                                 let (conn_send_tx, conn_send_rx) = mpsc::channel::<Bytes>(32);
 
                                 // Register this connection
-                                {
-                                    let mut senders = client_senders.lock().await;
-                                    senders.insert(peer_addr, conn_send_tx);
-                                }
+                                client_senders.insert(peer_addr, conn_send_tx);
 
                                 // Spawn task to handle this client connection
                                 let msg_tx = msg_tx.clone();
@@ -625,8 +657,7 @@ impl<T: TcpStream> TcpServer<T> {
                     // Route responses to the appropriate client connection - exit when channel closes
                     msg = send_rx.recv() => {
                         if let Some(send_msg) = msg {
-                            let senders = client_senders_for_responses.lock().await;
-                            if let Some(sender) = senders.get(&send_msg.to) {
+                            if let Some(sender) = client_senders_for_responses.get(&send_msg.to) {
                                 if sender.send(send_msg.data).await.is_err() {
                                     tracing::warn!("Failed to send response to {}: connection closed", send_msg.to);
                                 }
@@ -669,7 +700,7 @@ async fn handle_tcp_connection<T: TcpStream>(
     instance_id: u16,
     msg_tx: mpsc::Sender<TcpMessage>,
     mut response_rx: mpsc::Receiver<Bytes>,
-    client_senders: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Bytes>>>>,
+    client_senders: Arc<DashMap<SocketAddr, mpsc::Sender<Bytes>>>,
     magic_cookies: bool,
 ) {
     let mut read_buffer = BytesMut::new();
@@ -760,8 +791,7 @@ async fn handle_tcp_connection<T: TcpStream>(
     }
 
     // Clean up: remove from senders map
-    let mut senders = client_senders.lock().await;
-    senders.remove(&peer_addr);
+    client_senders.remove(&peer_addr);
 }
 
 #[cfg(test)]
