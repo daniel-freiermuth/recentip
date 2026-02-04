@@ -1651,3 +1651,584 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
         *sub2_events
     );
 }
+
+// ============================================================================
+// TCP CONNECTION SHARING ACROSS SERVICES
+// ============================================================================
+
+/// Test TCP connection sharing across different services
+///
+/// Wire-level server offers two different services over TCP (same port).
+/// Library client subscribes to both services concurrently.
+/// Only ONE TCP connection should be established (connection sharing).
+/// Server sends events for both services - both subscriptions receive their respective events.
+#[test_log::test]
+fn tcp_connection_shared_across_services_concurrent_subscribe() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::collections::HashSet;
+
+    let tcp_connections = Arc::new(AtomicUsize::new(0));
+    let tcp_connections_server = Arc::clone(&tcp_connections);
+    
+    let events1 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events2 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let events1_clone = Arc::clone(&events1);
+    let events2_clone = Arc::clone(&events2);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .max_message_latency(Duration::from_millis(30))
+        .build();
+
+    // Wire-level server offering two services over TCP
+    sim.host("server", move || {
+        let tcp_conn_count = Arc::clone(&tcp_connections_server);
+        async move {
+            // SD socket for service discovery
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490")
+                .await
+                .unwrap();
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())
+                .unwrap();
+
+            // TCP listener for subscriptions (both services use same port)
+            let tcp_listener = turmoil::net::TcpListener::bind("0.0.0.0:30492")
+                .await
+                .unwrap();
+
+            // Track TCP connections: port -> (stream, subscribed_services)
+            // When we receive a subscription, we extract the client's port from the endpoint option
+            // When a TCP connection arrives, we match it by port and associate it with services
+            let tcp_streams: Arc<Mutex<std::collections::HashMap<u16, (turmoil::net::TcpStream, HashSet<u16>)>>> = 
+                Arc::new(Mutex::new(std::collections::HashMap::new()));
+            let tcp_conn_for_accept = Arc::clone(&tcp_conn_count);
+            let streams_for_accept = Arc::clone(&tcp_streams);
+            tokio::spawn(async move {
+                loop {
+                    match tcp_listener.accept().await {
+                        Ok((stream, addr)) => {
+                            let count = tcp_conn_for_accept.fetch_add(1, Ordering::SeqCst) + 1;
+                            let port = addr.port();
+                            tracing::info!("TCP connection #{} from {} (port {})", count, addr, port);
+                            
+                            // Store stream indexed by client port
+                            streams_for_accept.lock().unwrap().insert(port, (stream, HashSet::new()));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+
+            let mut buf = vec![0u8; 65535];
+            let mut unicast_session_id = 1u16;
+            let mut multicast_session_id = 1u16;
+            let mut subscriptions = HashSet::new(); // Track (service_id, instance_id, eventgroup_id)
+            let mut events_sent = false;
+
+            // Set overall timeout for the SD loop
+            let sd_deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+
+            loop {
+                if tokio::time::Instant::now() > sd_deadline {
+                    tracing::warn!("SD loop timeout reached");
+                    break;
+                }
+                
+                let (len, from) = match tokio::time::timeout(
+                    Duration::from_secs(2),
+                    sd_socket.recv_from(&mut buf),
+                )
+                .await
+                {
+                    Ok(Ok(result)) => result,
+                    Ok(Err(_)) => continue,
+                    Err(_) => {
+                        // Timeout - check if we should send events
+                        tracing::info!("Recv timeout: events_sent={}, subscriptions.len()={}", events_sent, subscriptions.len());
+                        if !events_sent && subscriptions.len() == 2 {
+                            tokio::time::sleep(Duration::from_millis(200)).await;
+                            
+                            tracing::info!("Both subscriptions complete, {} TCP connections", tcp_conn_count.load(Ordering::SeqCst));
+                            
+                            let event1 = build_event_message(0x5555, 0x0001, 0x8001, b"event_from_service1");
+                            let event2 = build_event_message(0x6666, 0x0002, 0x8002, b"event_from_service2");
+                            
+                            let mut streams = tcp_streams.lock().unwrap();
+                            for (port, (stream, services)) in streams.iter_mut() {
+                                use tokio::io::AsyncWriteExt;
+                                
+                                if services.contains(&0x5555) {
+                                    let _ = AsyncWriteExt::write_all(stream, &event1).await;
+                                    tracing::info!("Sent event1 (service 0x5555) to TCP port {}", port);
+                                }
+                                
+                                if services.contains(&0x6666) {
+                                    let _ = AsyncWriteExt::write_all(stream, &event2).await;
+                                    tracing::info!("Sent event2 (service 0x6666) to TCP port {}", port);
+                                }
+                            }
+                            
+                            tokio::time::sleep(Duration::from_millis(2000)).await;
+                            break;
+                        }
+                        continue;
+                    }
+                };
+
+                let data = &buf[..len];
+                if data.len() < 16 {
+                    continue;
+                }
+
+                let service_id = u16::from_be_bytes([data[0], data[1]]);
+                let method_id = u16::from_be_bytes([data[2], data[3]]);
+
+                if service_id != 0xFFFF || method_id != 0x8100 {
+                    continue;
+                }
+
+                if data.len() < 36 {
+                    continue;
+                }
+                let entry_type = data[24];
+
+                match entry_type {
+                    0x00 => {
+                        // FindService - respond with offers for both services
+                        let server_ip = turmoil::lookup("server");
+                        let ip_bytes = match server_ip {
+                            std::net::IpAddr::V4(addr) => addr.octets(),
+                            _ => continue,
+                        };
+
+                        // Offer Service 1 (0x5555)
+                        let offer1 = build_offer_sd_message(
+                            0x5555,
+                            0x0001,
+                            1,
+                            0,
+                            ip_bytes,
+                            30492,
+                            0x06, // TCP
+                            0xFFFFFF,
+                            multicast_session_id,
+                            true,
+                        );
+                        multicast_session_id += 1;
+                        let _ = sd_socket.send_to(&offer1, from).await;
+
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+
+                        // Offer Service 2 (0x6666)
+                        let offer2 = build_offer_sd_message(
+                            0x6666,
+                            0x0002,
+                            1,
+                            0,
+                            ip_bytes,
+                            30492, // Same TCP port
+                            0x06,  // TCP
+                            0xFFFFFF,
+                            multicast_session_id,
+                            true,
+                        );
+                        multicast_session_id += 1;
+                        let _ = sd_socket.send_to(&offer2, from).await;
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                    }
+                    0x06 => {
+                        // SubscribeEventgroup - parse ALL entries in the message
+                        // A single SD message can contain multiple subscription entries
+                        
+                        if data.len() < 24 {
+                            continue;
+                        }
+                        
+                        let entries_len = u32::from_be_bytes([data[20], data[21], data[22], data[23]]) as usize;
+                        let options_start = 24 + entries_len;
+                        
+                        // Parse options array first (same for all entries in this message)
+                        let mut client_port = None;
+                        if data.len() > options_start + 4 {
+                            let options_len = u32::from_be_bytes([
+                                data[options_start],
+                                data[options_start + 1],
+                                data[options_start + 2],
+                                data[options_start + 3],
+                            ]) as usize;
+                            
+                            if options_len > 0 {
+                                let opt_start = options_start + 4;
+                                if data.len() >= opt_start + 2 {
+                                    let opt_len = u16::from_be_bytes([data[opt_start], data[opt_start + 1]]);
+                                    let opt_type = data[opt_start + 2];
+                                    
+                                    if opt_type == 0x04 && data.len() >= opt_start + 2 + 1 + 1 + 4 + 1 + 1 + 2 {
+                                        let ip_offset = opt_start + 2 + 1 + 1;
+                                        let port_offset = ip_offset + 4 + 1 + 1;
+                                        client_port = Some(u16::from_be_bytes([
+                                            data[port_offset],
+                                            data[port_offset + 1],
+                                        ]));
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Parse all entries (each entry is 16 bytes)
+                        let num_entries = entries_len / 16;
+                        for i in 0..num_entries {
+                            let entry_offset = 24 + (i * 16);
+                            if entry_offset + 16 > data.len() {
+                                break;
+                            }
+                            
+                            let entry_type = data[entry_offset];
+                            if entry_type != 0x06 {
+                                // Not a Subscribe entry, skip
+                                continue;
+                            }
+                            
+                            let service_id = u16::from_be_bytes([data[entry_offset + 4], data[entry_offset + 5]]);
+                            let instance_id = u16::from_be_bytes([data[entry_offset + 6], data[entry_offset + 7]]);
+                            let major_version = data[entry_offset + 8];
+                            let ttl_bytes = [0, data[entry_offset + 9], data[entry_offset + 10], data[entry_offset + 11]];
+                            let ttl = u32::from_be_bytes(ttl_bytes);
+                            let eventgroup_id = u16::from_be_bytes([data[entry_offset + 14], data[entry_offset + 15]]);
+                            
+                            tracing::info!(
+                                "Subscribe entry {}/{}: service {:04x}:{:04x} EG {:04x}",
+                                i + 1,
+                                num_entries,
+                                service_id,
+                                instance_id,
+                                eventgroup_id
+                            );
+                            
+                            subscriptions.insert((service_id, instance_id, eventgroup_id));
+                            
+                            // Associate this service with the client's TCP connection
+                            if let Some(port) = client_port {
+                                let mut streams_guard = tcp_streams.lock().unwrap();
+                                if let Some((_, services)) = streams_guard.get_mut(&port) {
+                                    services.insert(service_id);
+                                    tracing::info!(
+                                        "Associated service {:04x} with TCP connection on port {}",
+                                        service_id,
+                                        port
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        "Client port {} not found in TCP connections (service {:04x})",
+                                        port,
+                                        service_id
+                                    );
+                                }
+                            }
+                            
+                            // Send SubscribeEventgroupAck for THIS entry
+                            let ack = build_subscribe_ack_sd_message(
+                                service_id,
+                                instance_id,
+                                major_version,
+                                eventgroup_id,
+                                ttl,
+                                unicast_session_id,
+                                true,
+                            );
+                            unicast_session_id += 1;
+                            let _ = sd_socket.send_to(&ack, from).await;
+                            
+                            tracing::info!(
+                                "Subscription ACK sent for service {:04x}:{:04x} EG {:04x}",
+                                service_id,
+                                instance_id,
+                                eventgroup_id
+                            );
+                            
+                            // Wait 50ms between SD messages to prevent out-of-order delivery
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                        }
+                        
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        
+                        // Check if we now have both subscriptions and should send events
+                        if !events_sent && subscriptions.len() == 2 {
+                            tokio::time::sleep(Duration::from_millis(200)).await;
+                            
+                            tracing::info!("Both subscriptions complete, {} TCP connections", tcp_conn_count.load(Ordering::SeqCst));
+                            
+                            let event1 = build_event_message(0x5555, 0x0001, 0x8001, b"event_from_service1");
+                            let event2 = build_event_message(0x6666, 0x0002, 0x8002, b"event_from_service2");
+                            
+                            let mut streams = tcp_streams.lock().unwrap();
+                            for (port, (stream, services)) in streams.iter_mut() {
+                                use tokio::io::AsyncWriteExt;
+                                
+                                if services.contains(&0x5555) {
+                                    let _ = AsyncWriteExt::write_all(stream, &event1).await;
+                                    tracing::info!("Sent event1 (service 0x5555) to TCP port {}", port);
+                                }
+                                
+                                if services.contains(&0x6666) {
+                                    let _ = AsyncWriteExt::write_all(stream, &event2).await;
+                                    tracing::info!("Sent event2 (service 0x6666) to TCP port {}", port);
+                                }
+                            }
+                            events_sent = true;
+                            
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            
+            tracing::info!("Server SD loop exiting");
+            Ok(())
+        }
+    });
+
+    // Library client
+    sim.client("client", async move {
+        let events1 = Arc::clone(&events1_clone);
+        let events2 = Arc::clone(&events2_clone);
+        
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+            let runtime = recentip::configure()
+                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            // Find both services
+            let service1_fut = runtime.find(0x5555u16);
+            let service2_fut = runtime.find(0x6666u16);
+
+            let (proxy1_res, proxy2_res) = tokio::join!(
+                tokio::time::timeout(Duration::from_secs(3), service1_fut),
+                tokio::time::timeout(Duration::from_secs(3), service2_fut)
+            );
+
+            let proxy1 = proxy1_res
+                .expect("Service 1 discovery timeout")
+                .expect("Service 1 should be available");
+            let proxy2 = proxy2_res
+                .expect("Service 2 discovery timeout")
+                .expect("Service 2 should be available");
+
+            tracing::info!("Both services discovered");
+
+            // Subscribe to both services concurrently
+            let eg1 = EventgroupId::new(0x0001).unwrap();
+            let eg2 = EventgroupId::new(0x0001).unwrap();
+
+            let sub1_fut = proxy1.subscribe(eg1);
+            let sub2_fut = proxy2.subscribe(eg2);
+
+            let (sub1_res, sub2_res) = tokio::join!(
+                tokio::time::timeout(Duration::from_secs(3), sub1_fut),
+                tokio::time::timeout(Duration::from_secs(3), sub2_fut)
+            );
+
+            let mut subscription1 = sub1_res
+                .expect("Sub1 timeout")
+                .expect("Sub1 should succeed");
+            let mut subscription2 = sub2_res
+                .expect("Sub2 timeout")
+                .expect("Sub2 should succeed");
+
+            tracing::info!("Both subscriptions established");
+
+            // Collect events from both subscriptions
+            let deadline = tokio::time::Instant::now() + Duration::from_millis(1500);
+            while tokio::time::Instant::now() < deadline {
+                tokio::select! {
+                    event = subscription1.next() => {
+                        if let Some(e) = event {
+                            tracing::info!("Subscription1 received: {:?}", String::from_utf8_lossy(&e.payload));
+                            events1.lock().unwrap().push(e.payload.to_vec());
+                        }
+                    }
+                    event = subscription2.next() => {
+                        if let Some(e) = event {
+                            tracing::info!("Subscription2 received: {:?}", String::from_utf8_lossy(&e.payload));
+                            events2.lock().unwrap().push(e.payload.to_vec());
+                        }
+                    }
+                    _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+                }
+                
+                // Break early if we got both events
+                if !events1.lock().unwrap().is_empty() && !events2.lock().unwrap().is_empty() {
+                    break;
+                }
+            }
+
+            Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Verify TCP connection sharing
+    let connection_count = tcp_connections.load(Ordering::SeqCst);
+    
+    assert_eq!(
+        connection_count, 1,
+        "Expected exactly 1 TCP connection (shared across services), but got {}",
+        connection_count
+    );
+    
+    // Verify events were received correctly
+    let events1_vec = events1.lock().unwrap();
+    let events2_vec = events2.lock().unwrap();
+    
+    tracing::info!("Service 0x5555 events: {:?}", events1_vec.iter().map(|e| String::from_utf8_lossy(e)).collect::<Vec<_>>());
+    tracing::info!("Service 0x6666 events: {:?}", events2_vec.iter().map(|e| String::from_utf8_lossy(e)).collect::<Vec<_>>());
+    
+    assert!(!events1_vec.is_empty(), "Should receive at least one event from service 0x5555");
+    assert!(!events2_vec.is_empty(), "Should receive at least one event from service 0x6666");
+    
+    assert!(
+        events1_vec.iter().all(|e| e == b"event_from_service1"),
+        "Service 0x5555 should receive 'event_from_service1'"
+    );
+    assert!(
+        events2_vec.iter().all(|e| e == b"event_from_service2"),
+        "Service 0x6666 should receive 'event_from_service2'"
+    );
+}
+
+// Helper functions for building SD messages
+fn build_offer_sd_message(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    minor_version: u32,
+    ip: [u8; 4],
+    port: u16,
+    protocol: u8,
+    ttl: u32,
+    session_id: u16,
+    reboot_flag: bool,
+) -> Vec<u8> {
+    let mut msg = Vec::new();
+
+    // SOME/IP Header (16 bytes)
+    msg.extend_from_slice(&0xFFFFu16.to_be_bytes()); // Service ID (SD)
+    msg.extend_from_slice(&0x8100u16.to_be_bytes()); // Method ID (SD)
+    let length = 8 + 12 + 16 + 12; // Flags(1) + Reserved(3) + EntriesArray + OptionsArray
+    msg.extend_from_slice(&(length as u32).to_be_bytes()); // Length
+    msg.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
+    msg.extend_from_slice(&session_id.to_be_bytes()); // Session ID
+    msg.push(0x01); // Protocol Version
+    msg.push(0x01); // Interface Version
+    msg.push(0x02); // Message Type (NOTIFICATION)
+    msg.push(0x00); // Return Code
+    let flags = if reboot_flag { 0x80 } else { 0x00 };
+    msg.push(flags); // Flags (Reboot)
+    msg.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
+
+    // Entries Array
+    msg.extend_from_slice(&16u32.to_be_bytes()); // Length of entries
+    msg.push(0x01); // Entry Type (OfferService)
+    msg.push(0x00); // Index 1st options (starts at 0)
+    msg.push(0x00); // Index 2nd options (0 = no 2nd option)
+    msg.push(0x10); // # of opt 1 | # of opt 2 (1 option for 1st, 0 for 2nd)
+    msg.extend_from_slice(&service_id.to_be_bytes());
+    msg.extend_from_slice(&instance_id.to_be_bytes());
+    msg.push(major_version);
+    let ttl_bytes = ttl.to_be_bytes();
+    msg.extend_from_slice(&[ttl_bytes[1], ttl_bytes[2], ttl_bytes[3]]);
+    msg.extend_from_slice(&minor_version.to_be_bytes());
+
+    // Options Array
+    msg.extend_from_slice(&12u32.to_be_bytes()); // Length of options array (12 bytes total)
+    msg.extend_from_slice(&9u16.to_be_bytes()); // Individual option length (9 bytes)
+    msg.push(0x04); // IPv4 Endpoint option
+    msg.push(0x00); // Reserved
+    msg.extend_from_slice(&ip);
+    msg.push(0x00); // Reserved
+    msg.push(protocol);
+    msg.extend_from_slice(&port.to_be_bytes());
+
+    msg
+}
+
+fn build_subscribe_ack_sd_message(
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    eventgroup_id: u16,
+    ttl: u32,
+    session_id: u16,
+    reboot_flag: bool,
+) -> Vec<u8> {
+    let mut msg = Vec::new();
+
+    // SOME/IP Header
+    msg.extend_from_slice(&0xFFFFu16.to_be_bytes());
+    msg.extend_from_slice(&0x8100u16.to_be_bytes());
+    let length = 8 + 12 + 16;
+    msg.extend_from_slice(&(length as u32).to_be_bytes());
+    msg.extend_from_slice(&0x0000u16.to_be_bytes());
+    msg.extend_from_slice(&session_id.to_be_bytes());
+    msg.push(0x01);
+    msg.push(0x01);
+    msg.push(0x02);
+    msg.push(0x00);
+    let mut flags = 0x40; // Unicast flag
+    if reboot_flag {
+        flags |= 0x80; // Add reboot flag if needed
+    }
+    msg.push(flags);
+    msg.extend_from_slice(&[0x00, 0x00, 0x00]);
+
+    // Entries Array
+    msg.extend_from_slice(&16u32.to_be_bytes());
+    msg.push(0x07); // SubscribeEventgroupAck
+    msg.push(0x00);
+    msg.push(0x00);
+    msg.push(0x00);
+    msg.extend_from_slice(&service_id.to_be_bytes());
+    msg.extend_from_slice(&instance_id.to_be_bytes());
+    msg.push(major_version);
+    let ttl_bytes = ttl.to_be_bytes();
+    msg.extend_from_slice(&[ttl_bytes[1], ttl_bytes[2], ttl_bytes[3]]);
+    msg.push(0x00); // Reserved
+    msg.push(0x00); // Counter
+    msg.extend_from_slice(&eventgroup_id.to_be_bytes());
+
+    // Options Array (empty)
+    msg.extend_from_slice(&0u32.to_be_bytes());
+
+    msg
+}
+
+fn build_event_message(
+    service_id: u16,
+    _instance_id: u16,
+    event_id: u16,
+    payload: &[u8],
+) -> Vec<u8> {
+    let mut msg = Vec::new();
+
+    // SOME/IP Header
+    msg.extend_from_slice(&service_id.to_be_bytes()); // Service ID
+    msg.extend_from_slice(&event_id.to_be_bytes()); // Method/Event ID
+    let length = 8 + payload.len(); // Header remainder + payload
+    msg.extend_from_slice(&(length as u32).to_be_bytes()); // Length
+    msg.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
+    msg.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
+    msg.push(0x01); // Protocol Version
+    msg.push(0x01); // Interface Version
+    msg.push(0x02); // Message Type (NOTIFICATION for events)
+    msg.push(0x00); // Return Code
+    
+    // Payload
+    msg.extend_from_slice(payload);
+
+    msg
+}
