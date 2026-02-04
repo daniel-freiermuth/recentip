@@ -102,6 +102,11 @@ pub(crate) struct TcpConnectionPool<T: TcpStream> {
     connections: Arc<DashMap<(SocketAddr, u64), TcpConnectionHandle>>,
     /// Sender for each connection, with connection_id for ownership verification
     senders: Arc<DashMap<(SocketAddr, u64), (mpsc::Sender<Bytes>, u64)>>,
+    /// Pending connection attempts - used to coordinate concurrent connection requests
+    /// to the same endpoint. When multiple tasks try to connect simultaneously, only one
+    /// actually connects while others wait on the broadcast channel for the result.
+    pending_connections:
+        Arc<DashMap<(SocketAddr, u64), tokio::sync::broadcast::Sender<Result<SocketAddr, String>>>>,
     /// Channel to forward received messages to the runtime
     msg_tx: mpsc::Sender<TcpMessage>,
     /// Channel to send cleanup requests to the event loop
@@ -138,6 +143,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         Self {
             connections: Arc::new(DashMap::new()),
             senders: Arc::new(DashMap::new()),
+            pending_connections: Arc::new(DashMap::new()),
             msg_tx,
             cleanup_tx,
             next_connection_id: Arc::new(std::sync::atomic::AtomicU64::new(1)),
@@ -235,9 +241,9 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// The `subscription_id` allows multiple connections per server (one per subscription),
     /// mirroring UDP's per-subscription socket approach. Use 0 for RPC connections.
     ///
-    /// This method uses DashMap for lock-free concurrent connection establishment to
-    /// different targets. Multiple calls to the same target use an optimistic approach:
-    /// one connection wins, others detect and reuse it.
+    /// This method coordinates concurrent connection attempts to the same endpoint:
+    /// only one task actually establishes the connection while others wait on the result.
+    /// This prevents multiple TCP connections being established to the same endpoint.
     ///
     /// # Errors
     ///
@@ -249,82 +255,140 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     ) -> io::Result<SocketAddr> {
         let key = (target, subscription_id);
 
-        // Check if we already have a connection
-        if let Some(handle) = self.connections.get(&key) {
-            return Ok(handle.local_addr);
-        }
+        // Use entry API to atomically check/insert pending connection tracker
+        loop {
+            // Check again if connection was established while we were waiting
+            if let Some(handle) = self.connections.get(&key) {
+                return Ok(handle.local_addr);
+            }
 
-        // No connection exists - establish one without holding any locks
-        tracing::debug!(
-            "Establishing TCP connection to {} for subscription (feat_req_someipsd_767)",
-            target
-        );
+            // Try to become the connecting task, or get a receiver to wait on
+            let maybe_receiver = match self.pending_connections.entry(key) {
+                dashmap::mapref::entry::Entry::Occupied(entry) => {
+                    // Another task is already connecting - subscribe to their result
+                    Some(entry.get().subscribe())
+                }
+                dashmap::mapref::entry::Entry::Vacant(entry) => {
+                    // We're the first - create a broadcast channel and become the connector
+                    let (tx, _rx) = tokio::sync::broadcast::channel(1);
+                    entry.insert(tx);
+                    None
+                }
+            };
 
-        // Add timeout to prevent blocking indefinitely on connection attempts
-        // Use a relatively short timeout (2s) to avoid excessive wait times
-        let connect_timeout = std::time::Duration::from_secs(2);
-        let stream = tokio::time::timeout(connect_timeout, T::connect(target))
-            .await
-            .map_err(|_| {
-                io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    format!(
+            if let Some(mut receiver) = maybe_receiver {
+                // Wait for the connecting task to finish
+                tracing::debug!(
+                    "Waiting for existing connection attempt to {} (subscription_id={})",
+                    target,
+                    subscription_id
+                );
+                match receiver.recv().await {
+                    Ok(Ok(local_addr)) => return Ok(local_addr),
+                    Ok(Err(err_msg)) => {
+                        // Connection failed - loop around and try again
+                        // (the pending entry was removed by the failed connector)
+                        tracing::debug!("Previous connection attempt failed: {}", err_msg);
+                        continue;
+                    }
+                    Err(_) => {
+                        // Channel closed without result (connector task crashed?) - retry
+                        tracing::debug!("Connection broadcast channel closed, retrying");
+                        continue;
+                    }
+                }
+            }
+
+            // We became the connector - but check connections again!
+            // Another task might have completed between our first check and
+            // inserting into pending_connections.
+            if let Some(handle) = self.connections.get(&key) {
+                // Connection exists now - notify any waiters and remove our pending entry
+                let local_addr = handle.local_addr;
+                if let Some((_, tx)) = self.pending_connections.remove(&key) {
+                    let _ = tx.send(Ok(local_addr));
+                }
+                return Ok(local_addr);
+            }
+
+            // We're the connecting task - establish the connection
+            tracing::debug!(
+                "Establishing TCP connection to {} for subscription (feat_req_someipsd_767)",
+                target
+            );
+
+            // Add timeout to prevent blocking indefinitely on connection attempts
+            let connect_timeout = std::time::Duration::from_secs(2);
+            let connect_result = tokio::time::timeout(connect_timeout, T::connect(target)).await;
+
+            let stream = match connect_result {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(e)) => {
+                    // Connection failed - notify waiters and clean up
+                    let err_msg = e.to_string();
+                    if let Some((_, tx)) = self.pending_connections.remove(&key) {
+                        let _ = tx.send(Err(err_msg));
+                    }
+                    return Err(e);
+                }
+                Err(_) => {
+                    // Timeout - notify waiters and clean up
+                    let err_msg = format!(
                         "TCP connection to {target} timed out after {:?}",
                         connect_timeout
-                    ),
+                    );
+                    if let Some((_, tx)) = self.pending_connections.remove(&key) {
+                        let _ = tx.send(Err(err_msg.clone()));
+                    }
+                    return Err(io::Error::new(io::ErrorKind::TimedOut, err_msg));
+                }
+            };
+
+            let local_addr = stream.local_addr()?;
+
+            // Allocate unique connection ID for cleanup verification
+            let connection_id = self
+                .next_connection_id
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+            // Create channel for sending data to this connection
+            let (send_tx, send_rx) = mpsc::channel::<Bytes>(32);
+
+            // Spawn connection handler task
+            let msg_tx = self.msg_tx.clone();
+            let cleanup_tx = self.cleanup_tx.clone();
+            let magic_cookies = self.magic_cookies;
+
+            let task = tokio::spawn(async move {
+                handle_client_tcp_connection(
+                    stream,
+                    target,
+                    msg_tx,
+                    send_rx,
+                    cleanup_tx,
+                    connection_id,
+                    magic_cookies,
+                    subscription_id,
                 )
-            })??;
+                .await;
+            });
 
-        let local_addr = stream.local_addr()?;
-
-        // Allocate unique connection ID for cleanup verification
-        let connection_id = self
-            .next_connection_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        // Create channel for sending data to this connection
-        let (send_tx, send_rx) = mpsc::channel::<Bytes>(32);
-
-        // Spawn connection handler task
-        let msg_tx = self.msg_tx.clone();
-        let cleanup_tx = self.cleanup_tx.clone();
-        let magic_cookies = self.magic_cookies;
-
-        let task = tokio::spawn(async move {
-            handle_client_tcp_connection(
-                stream,
-                target,
-                msg_tx,
-                send_rx,
-                cleanup_tx,
+            // Store the connection handle
+            let handle = TcpConnectionHandle {
+                local_addr,
+                task_handle: task.abort_handle(),
                 connection_id,
-                magic_cookies,
-                subscription_id,
-            )
-            .await;
-        });
+            };
 
-        // Store the sender and connection handle
-        // Use entry API to handle potential race: if another task just connected,
-        // use their connection and abort ours
-        let handle = TcpConnectionHandle {
-            local_addr,
-            task_handle: task.abort_handle(),
-            connection_id,
-        };
+            self.connections.insert(key, handle);
+            self.senders.insert(key, (send_tx, connection_id));
 
-        match self.connections.entry(key) {
-            dashmap::mapref::entry::Entry::Occupied(entry) => {
-                // Another task beat us to it - abort our connection and use theirs
-                task.abort();
-                Ok(entry.get().local_addr)
+            // Notify waiters and clean up pending entry
+            if let Some((_, tx)) = self.pending_connections.remove(&key) {
+                let _ = tx.send(Ok(local_addr));
             }
-            dashmap::mapref::entry::Entry::Vacant(entry) => {
-                // We won the race - store our connection
-                entry.insert(handle);
-                self.senders.insert(key, (send_tx, connection_id));
-                Ok(local_addr)
-            }
+
+            return Ok(local_addr);
         }
     }
 
