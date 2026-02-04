@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::helpers::configure_tracing;
+use crate::wire_format::helpers::{SdOfferBuilder, SdSubscribeAckBuilder, SomeIpPacketBuilder};
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -1751,8 +1752,12 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                             
                             tracing::info!("Both subscriptions complete, {} TCP connections", tcp_conn_count.load(Ordering::SeqCst));
                             
-                            let event1 = build_event_message(0x5555, 0x0001, 0x8001, b"event_from_service1");
-                            let event2 = build_event_message(0x6666, 0x0002, 0x8002, b"event_from_service2");
+                            let event1 = SomeIpPacketBuilder::notification(0x5555, 0x8001)
+                                .payload(b"event_from_service1")
+                                .build();
+                            let event2 = SomeIpPacketBuilder::notification(0x6666, 0x8002)
+                                .payload(b"event_from_service2")
+                                .build();
                             
                             let mut streams = tcp_streams.lock().unwrap();
                             for (port, (stream, services)) in streams.iter_mut() {
@@ -1796,43 +1801,26 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                 match entry_type {
                     0x00 => {
                         // FindService - respond with offers for both services
-                        let server_ip = turmoil::lookup("server");
-                        let ip_bytes = match server_ip {
-                            std::net::IpAddr::V4(addr) => addr.octets(),
+                        let server_ip: std::net::Ipv4Addr = match turmoil::lookup("server") {
+                            std::net::IpAddr::V4(addr) => addr,
                             _ => continue,
                         };
 
                         // Offer Service 1 (0x5555)
-                        let offer1 = build_offer_sd_message(
-                            0x5555,
-                            0x0001,
-                            1,
-                            0,
-                            ip_bytes,
-                            30492,
-                            0x06, // TCP
-                            0xFFFFFF,
-                            multicast_session_id,
-                            true,
-                        );
+                        let offer1 = SdOfferBuilder::new(0x5555, 0x0001, server_ip.into(), 30492)
+                            .tcp()
+                            .session_id(multicast_session_id)
+                            .build();
                         multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer1, from).await;
 
                         tokio::time::sleep(Duration::from_millis(50)).await;
 
                         // Offer Service 2 (0x6666)
-                        let offer2 = build_offer_sd_message(
-                            0x6666,
-                            0x0002,
-                            1,
-                            0,
-                            ip_bytes,
-                            30492, // Same TCP port
-                            0x06,  // TCP
-                            0xFFFFFF,
-                            multicast_session_id,
-                            true,
-                        );
+                        let offer2 = SdOfferBuilder::new(0x6666, 0x0002, server_ip.into(), 30492)
+                            .tcp()
+                            .session_id(multicast_session_id)
+                            .build();
                         multicast_session_id += 1;
                         let _ = sd_socket.send_to(&offer2, from).await;
                         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -1928,15 +1916,11 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                             }
                             
                             // Send SubscribeEventgroupAck for THIS entry
-                            let ack = build_subscribe_ack_sd_message(
-                                service_id,
-                                instance_id,
-                                major_version,
-                                eventgroup_id,
-                                ttl,
-                                unicast_session_id,
-                                true,
-                            );
+                            let ack = SdSubscribeAckBuilder::new(service_id, instance_id, eventgroup_id)
+                                .major_version(major_version)
+                                .ttl(ttl)
+                                .session_id(unicast_session_id)
+                                .build();
                             unicast_session_id += 1;
                             let _ = sd_socket.send_to(&ack, from).await;
                             
@@ -1959,8 +1943,12 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                             
                             tracing::info!("Both subscriptions complete, {} TCP connections", tcp_conn_count.load(Ordering::SeqCst));
                             
-                            let event1 = build_event_message(0x5555, 0x0001, 0x8001, b"event_from_service1");
-                            let event2 = build_event_message(0x6666, 0x0002, 0x8002, b"event_from_service2");
+                            let event1 = SomeIpPacketBuilder::notification(0x5555, 0x8001)
+                                .payload(b"event_from_service1")
+                                .build();
+                            let event2 = SomeIpPacketBuilder::notification(0x6666, 0x8002)
+                                .payload(b"event_from_service2")
+                                .build();
                             
                             let mut streams = tcp_streams.lock().unwrap();
                             for (port, (stream, services)) in streams.iter_mut() {
@@ -2099,136 +2087,4 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
         events2_vec.iter().all(|e| e == b"event_from_service2"),
         "Service 0x6666 should receive 'event_from_service2'"
     );
-}
-
-// Helper functions for building SD messages
-fn build_offer_sd_message(
-    service_id: u16,
-    instance_id: u16,
-    major_version: u8,
-    minor_version: u32,
-    ip: [u8; 4],
-    port: u16,
-    protocol: u8,
-    ttl: u32,
-    session_id: u16,
-    reboot_flag: bool,
-) -> Vec<u8> {
-    let mut msg = Vec::new();
-
-    // SOME/IP Header (16 bytes)
-    msg.extend_from_slice(&0xFFFFu16.to_be_bytes()); // Service ID (SD)
-    msg.extend_from_slice(&0x8100u16.to_be_bytes()); // Method ID (SD)
-    let length = 8 + 12 + 16 + 12; // Flags(1) + Reserved(3) + EntriesArray + OptionsArray
-    msg.extend_from_slice(&(length as u32).to_be_bytes()); // Length
-    msg.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
-    msg.extend_from_slice(&session_id.to_be_bytes()); // Session ID
-    msg.push(0x01); // Protocol Version
-    msg.push(0x01); // Interface Version
-    msg.push(0x02); // Message Type (NOTIFICATION)
-    msg.push(0x00); // Return Code
-    let flags = if reboot_flag { 0x80 } else { 0x00 };
-    msg.push(flags); // Flags (Reboot)
-    msg.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
-
-    // Entries Array
-    msg.extend_from_slice(&16u32.to_be_bytes()); // Length of entries
-    msg.push(0x01); // Entry Type (OfferService)
-    msg.push(0x00); // Index 1st options (starts at 0)
-    msg.push(0x00); // Index 2nd options (0 = no 2nd option)
-    msg.push(0x10); // # of opt 1 | # of opt 2 (1 option for 1st, 0 for 2nd)
-    msg.extend_from_slice(&service_id.to_be_bytes());
-    msg.extend_from_slice(&instance_id.to_be_bytes());
-    msg.push(major_version);
-    let ttl_bytes = ttl.to_be_bytes();
-    msg.extend_from_slice(&[ttl_bytes[1], ttl_bytes[2], ttl_bytes[3]]);
-    msg.extend_from_slice(&minor_version.to_be_bytes());
-
-    // Options Array
-    msg.extend_from_slice(&12u32.to_be_bytes()); // Length of options array (12 bytes total)
-    msg.extend_from_slice(&9u16.to_be_bytes()); // Individual option length (9 bytes)
-    msg.push(0x04); // IPv4 Endpoint option
-    msg.push(0x00); // Reserved
-    msg.extend_from_slice(&ip);
-    msg.push(0x00); // Reserved
-    msg.push(protocol);
-    msg.extend_from_slice(&port.to_be_bytes());
-
-    msg
-}
-
-fn build_subscribe_ack_sd_message(
-    service_id: u16,
-    instance_id: u16,
-    major_version: u8,
-    eventgroup_id: u16,
-    ttl: u32,
-    session_id: u16,
-    reboot_flag: bool,
-) -> Vec<u8> {
-    let mut msg = Vec::new();
-
-    // SOME/IP Header
-    msg.extend_from_slice(&0xFFFFu16.to_be_bytes());
-    msg.extend_from_slice(&0x8100u16.to_be_bytes());
-    let length = 8 + 12 + 16;
-    msg.extend_from_slice(&(length as u32).to_be_bytes());
-    msg.extend_from_slice(&0x0000u16.to_be_bytes());
-    msg.extend_from_slice(&session_id.to_be_bytes());
-    msg.push(0x01);
-    msg.push(0x01);
-    msg.push(0x02);
-    msg.push(0x00);
-    let mut flags = 0x40; // Unicast flag
-    if reboot_flag {
-        flags |= 0x80; // Add reboot flag if needed
-    }
-    msg.push(flags);
-    msg.extend_from_slice(&[0x00, 0x00, 0x00]);
-
-    // Entries Array
-    msg.extend_from_slice(&16u32.to_be_bytes());
-    msg.push(0x07); // SubscribeEventgroupAck
-    msg.push(0x00);
-    msg.push(0x00);
-    msg.push(0x00);
-    msg.extend_from_slice(&service_id.to_be_bytes());
-    msg.extend_from_slice(&instance_id.to_be_bytes());
-    msg.push(major_version);
-    let ttl_bytes = ttl.to_be_bytes();
-    msg.extend_from_slice(&[ttl_bytes[1], ttl_bytes[2], ttl_bytes[3]]);
-    msg.push(0x00); // Reserved
-    msg.push(0x00); // Counter
-    msg.extend_from_slice(&eventgroup_id.to_be_bytes());
-
-    // Options Array (empty)
-    msg.extend_from_slice(&0u32.to_be_bytes());
-
-    msg
-}
-
-fn build_event_message(
-    service_id: u16,
-    _instance_id: u16,
-    event_id: u16,
-    payload: &[u8],
-) -> Vec<u8> {
-    let mut msg = Vec::new();
-
-    // SOME/IP Header
-    msg.extend_from_slice(&service_id.to_be_bytes()); // Service ID
-    msg.extend_from_slice(&event_id.to_be_bytes()); // Method/Event ID
-    let length = 8 + payload.len(); // Header remainder + payload
-    msg.extend_from_slice(&(length as u32).to_be_bytes()); // Length
-    msg.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
-    msg.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
-    msg.push(0x01); // Protocol Version
-    msg.push(0x01); // Interface Version
-    msg.push(0x02); // Message Type (NOTIFICATION for events)
-    msg.push(0x00); // Return Code
-    
-    // Payload
-    msg.extend_from_slice(payload);
-
-    msg
 }
