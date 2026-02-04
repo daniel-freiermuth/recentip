@@ -333,46 +333,46 @@ fn subscribe_multiple_eventgroups() {
 
     let flag = Arc::clone(&exec_flag);
     sim.client("server", async move {
-            let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-                .start_turmoil()
-                .await
-                .unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
 
-            let offering = runtime
-                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
-                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
-                .udp()
-                .start()
-                .await
-                .unwrap();
+        let offering = runtime
+            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
 
-            tokio::time::sleep(Duration::from_millis(1000)).await;
+        tokio::time::sleep(Duration::from_millis(1000)).await;
 
-            // Send to different eventgroups with different event IDs
-            let eg1 = EventgroupId::new(0x0001).unwrap();
-            let eg2 = EventgroupId::new(0x0002).unwrap();
-            let event_id1 = EventId::new(0x8001).unwrap();
-            let event_id2 = EventId::new(0x8002).unwrap();
-            let event_handle1 = offering
-                .event(event_id1)
-                .eventgroup(eg1)
-                .create()
-                .await
-                .unwrap();
-            let event_handle2 = offering
-                .event(event_id2)
-                .eventgroup(eg2)
-                .create()
-                .await
-                .unwrap();
+        // Send to different eventgroups with different event IDs
+        let eg1 = EventgroupId::new(0x0001).unwrap();
+        let eg2 = EventgroupId::new(0x0002).unwrap();
+        let event_id1 = EventId::new(0x8001).unwrap();
+        let event_id2 = EventId::new(0x8002).unwrap();
+        let event_handle1 = offering
+            .event(event_id1)
+            .eventgroup(eg1)
+            .create()
+            .await
+            .unwrap();
+        let event_handle2 = offering
+            .event(event_id2)
+            .eventgroup(eg2)
+            .create()
+            .await
+            .unwrap();
 
-            event_handle1.notify(b"group1_event").await.unwrap();
-            event_handle2.notify(b"group2_event").await.unwrap();
+        event_handle1.notify(b"group1_event").await.unwrap();
+        event_handle2.notify(b"group2_event").await.unwrap();
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            *flag.lock().unwrap() = true;
-            Ok(())
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        *flag.lock().unwrap() = true;
+        Ok(())
     });
 
     sim.client("client", async {
@@ -443,46 +443,46 @@ fn subscribe_multiple_eventgroups_tcp() {
 
     let flag = Arc::clone(&exec_flag);
     sim.client("server", async move {
-            let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
-                .start_turmoil()
-                .await
-                .unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
 
-            let offering = runtime
-                .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
-                .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
-                .tcp()
-                .start()
-                .await
-                .unwrap();
+        let offering = runtime
+            .offer(EVENT_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(EVENT_SERVICE_VERSION.0, EVENT_SERVICE_VERSION.1)
+            .tcp()
+            .start()
+            .await
+            .unwrap();
 
-            tokio::time::sleep(Duration::from_millis(1000)).await;
+        tokio::time::sleep(Duration::from_millis(1000)).await;
 
-            // Send to different eventgroups with different event IDs
-            let eg1 = EventgroupId::new(0x0001).unwrap();
-            let eg2 = EventgroupId::new(0x0002).unwrap();
-            let event_id1 = EventId::new(0x8001).unwrap();
-            let event_id2 = EventId::new(0x8002).unwrap();
-            let event_handle1 = offering
-                .event(event_id1)
-                .eventgroup(eg1)
-                .create()
-                .await
-                .unwrap();
-            let event_handle2 = offering
-                .event(event_id2)
-                .eventgroup(eg2)
-                .create()
-                .await
-                .unwrap();
+        // Send to different eventgroups with different event IDs
+        let eg1 = EventgroupId::new(0x0001).unwrap();
+        let eg2 = EventgroupId::new(0x0002).unwrap();
+        let event_id1 = EventId::new(0x8001).unwrap();
+        let event_id2 = EventId::new(0x8002).unwrap();
+        let event_handle1 = offering
+            .event(event_id1)
+            .eventgroup(eg1)
+            .create()
+            .await
+            .unwrap();
+        let event_handle2 = offering
+            .event(event_id2)
+            .eventgroup(eg2)
+            .create()
+            .await
+            .unwrap();
 
-            event_handle1.notify(b"group1_event").await.unwrap();
-            event_handle2.notify(b"group2_event").await.unwrap();
+        event_handle1.notify(b"group1_event").await.unwrap();
+        event_handle2.notify(b"group2_event").await.unwrap();
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            *flag.lock().unwrap() = true;
-            Ok(())
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        *flag.lock().unwrap() = true;
+        Ok(())
     });
 
     sim.client("client", async {
@@ -1665,12 +1665,12 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
 /// Server sends events for both services - both subscriptions receive their respective events.
 #[test_log::test]
 fn tcp_connection_shared_across_services_concurrent_subscribe() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::collections::HashSet;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     let tcp_connections = Arc::new(AtomicUsize::new(0));
     let tcp_connections_server = Arc::clone(&tcp_connections);
-    
+
     let events1 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
     let events2 = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
     let events1_clone = Arc::clone(&events1);
@@ -1701,7 +1701,7 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
             // Track TCP connections: port -> (stream, subscribed_services)
             // When we receive a subscription, we extract the client's port from the endpoint option
             // When a TCP connection arrives, we match it by port and associate it with services
-            let tcp_streams: Arc<Mutex<std::collections::HashMap<u16, (turmoil::net::TcpStream, HashSet<u16>)>>> = 
+            let tcp_streams: Arc<Mutex<std::collections::HashMap<u16, (turmoil::net::TcpStream, HashSet<u16>)>>> =
                 Arc::new(Mutex::new(std::collections::HashMap::new()));
             let tcp_conn_for_accept = Arc::clone(&tcp_conn_count);
             let streams_for_accept = Arc::clone(&tcp_streams);
@@ -1712,7 +1712,7 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                             let count = tcp_conn_for_accept.fetch_add(1, Ordering::SeqCst) + 1;
                             let port = addr.port();
                             tracing::info!("TCP connection #{} from {} (port {})", count, addr, port);
-                            
+
                             // Store stream indexed by client port
                             streams_for_accept.lock().unwrap().insert(port, (stream, HashSet::new()));
                         }
@@ -1735,7 +1735,7 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                     tracing::warn!("SD loop timeout reached");
                     break;
                 }
-                
+
                 let (len, from) = match tokio::time::timeout(
                     Duration::from_secs(2),
                     sd_socket.recv_from(&mut buf),
@@ -1749,31 +1749,31 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                         tracing::info!("Recv timeout: events_sent={}, subscriptions.len()={}", events_sent, subscriptions.len());
                         if !events_sent && subscriptions.len() == 2 {
                             tokio::time::sleep(Duration::from_millis(200)).await;
-                            
+
                             tracing::info!("Both subscriptions complete, {} TCP connections", tcp_conn_count.load(Ordering::SeqCst));
-                            
+
                             let event1 = SomeIpPacketBuilder::notification(0x5555, 0x8001)
                                 .payload(b"event_from_service1")
                                 .build();
                             let event2 = SomeIpPacketBuilder::notification(0x6666, 0x8002)
                                 .payload(b"event_from_service2")
                                 .build();
-                            
+
                             let mut streams = tcp_streams.lock().unwrap();
                             for (port, (stream, services)) in streams.iter_mut() {
                                 use tokio::io::AsyncWriteExt;
-                                
+
                                 if services.contains(&0x5555) {
                                     let _ = AsyncWriteExt::write_all(stream, &event1).await;
                                     tracing::info!("Sent event1 (service 0x5555) to TCP port {}", port);
                                 }
-                                
+
                                 if services.contains(&0x6666) {
                                     let _ = AsyncWriteExt::write_all(stream, &event2).await;
                                     tracing::info!("Sent event2 (service 0x6666) to TCP port {}", port);
                                 }
                             }
-                            
+
                             tokio::time::sleep(Duration::from_millis(2000)).await;
                             break;
                         }
@@ -1828,14 +1828,14 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                     0x06 => {
                         // SubscribeEventgroup - parse ALL entries in the message
                         // A single SD message can contain multiple subscription entries
-                        
+
                         if data.len() < 24 {
                             continue;
                         }
-                        
+
                         let entries_len = u32::from_be_bytes([data[20], data[21], data[22], data[23]]) as usize;
                         let options_start = 24 + entries_len;
-                        
+
                         // Parse options array first (same for all entries in this message)
                         let mut client_port = None;
                         if data.len() > options_start + 4 {
@@ -1845,13 +1845,13 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                                 data[options_start + 2],
                                 data[options_start + 3],
                             ]) as usize;
-                            
+
                             if options_len > 0 {
                                 let opt_start = options_start + 4;
                                 if data.len() >= opt_start + 2 {
                                     let opt_len = u16::from_be_bytes([data[opt_start], data[opt_start + 1]]);
                                     let opt_type = data[opt_start + 2];
-                                    
+
                                     if opt_type == 0x04 && data.len() >= opt_start + 2 + 1 + 1 + 4 + 1 + 1 + 2 {
                                         let ip_offset = opt_start + 2 + 1 + 1;
                                         let port_offset = ip_offset + 4 + 1 + 1;
@@ -1863,7 +1863,7 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                                 }
                             }
                         }
-                        
+
                         // Parse all entries (each entry is 16 bytes)
                         let num_entries = entries_len / 16;
                         for i in 0..num_entries {
@@ -1871,20 +1871,20 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                             if entry_offset + 16 > data.len() {
                                 break;
                             }
-                            
+
                             let entry_type = data[entry_offset];
                             if entry_type != 0x06 {
                                 // Not a Subscribe entry, skip
                                 continue;
                             }
-                            
+
                             let service_id = u16::from_be_bytes([data[entry_offset + 4], data[entry_offset + 5]]);
                             let instance_id = u16::from_be_bytes([data[entry_offset + 6], data[entry_offset + 7]]);
                             let major_version = data[entry_offset + 8];
                             let ttl_bytes = [0, data[entry_offset + 9], data[entry_offset + 10], data[entry_offset + 11]];
                             let ttl = u32::from_be_bytes(ttl_bytes);
                             let eventgroup_id = u16::from_be_bytes([data[entry_offset + 14], data[entry_offset + 15]]);
-                            
+
                             tracing::info!(
                                 "Subscribe entry {}/{}: service {:04x}:{:04x} EG {:04x}",
                                 i + 1,
@@ -1893,9 +1893,9 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                                 instance_id,
                                 eventgroup_id
                             );
-                            
+
                             subscriptions.insert((service_id, instance_id, eventgroup_id));
-                            
+
                             // Associate this service with the client's TCP connection
                             if let Some(port) = client_port {
                                 let mut streams_guard = tcp_streams.lock().unwrap();
@@ -1914,7 +1914,7 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                                     );
                                 }
                             }
-                            
+
                             // Send SubscribeEventgroupAck for THIS entry
                             let ack = SdSubscribeAckBuilder::new(service_id, instance_id, eventgroup_id)
                                 .major_version(major_version)
@@ -1923,56 +1923,56 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                                 .build();
                             unicast_session_id += 1;
                             let _ = sd_socket.send_to(&ack, from).await;
-                            
+
                             tracing::info!(
                                 "Subscription ACK sent for service {:04x}:{:04x} EG {:04x}",
                                 service_id,
                                 instance_id,
                                 eventgroup_id
                             );
-                            
+
                             // Wait 50ms between SD messages to prevent out-of-order delivery
                             tokio::time::sleep(Duration::from_millis(50)).await;
                         }
-                        
+
                         tokio::time::sleep(Duration::from_millis(50)).await;
-                        
+
                         // Check if we now have both subscriptions and should send events
                         if !events_sent && subscriptions.len() == 2 {
                             tokio::time::sleep(Duration::from_millis(200)).await;
-                            
+
                             tracing::info!("Both subscriptions complete, {} TCP connections", tcp_conn_count.load(Ordering::SeqCst));
-                            
+
                             let event1 = SomeIpPacketBuilder::notification(0x5555, 0x8001)
                                 .payload(b"event_from_service1")
                                 .build();
                             let event2 = SomeIpPacketBuilder::notification(0x6666, 0x8002)
                                 .payload(b"event_from_service2")
                                 .build();
-                            
+
                             let mut streams = tcp_streams.lock().unwrap();
                             for (port, (stream, services)) in streams.iter_mut() {
                                 use tokio::io::AsyncWriteExt;
-                                
+
                                 if services.contains(&0x5555) {
                                     let _ = AsyncWriteExt::write_all(stream, &event1).await;
                                     tracing::info!("Sent event1 (service 0x5555) to TCP port {}", port);
                                 }
-                                
+
                                 if services.contains(&0x6666) {
                                     let _ = AsyncWriteExt::write_all(stream, &event2).await;
                                     tracing::info!("Sent event2 (service 0x6666) to TCP port {}", port);
                                 }
                             }
                             events_sent = true;
-                            
+
                             tokio::time::sleep(Duration::from_millis(500)).await;
                         }
                     }
                     _ => {}
                 }
             }
-            
+
             tracing::info!("Server SD loop exiting");
             Ok(())
         }
@@ -1982,7 +1982,7 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
     sim.client("client", async move {
         let events1 = Arc::clone(&events1_clone);
         let events2 = Arc::clone(&events2_clone);
-        
+
         tokio::time::sleep(Duration::from_millis(100)).await;
 
             let runtime = recentip::configure()
@@ -2048,7 +2048,7 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                     }
                     _ = tokio::time::sleep(Duration::from_millis(50)) => {}
                 }
-                
+
                 // Break early if we got both events
                 if !events1.lock().unwrap().is_empty() && !events2.lock().unwrap().is_empty() {
                     break;
@@ -2062,23 +2062,41 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
 
     // Verify TCP connection sharing
     let connection_count = tcp_connections.load(Ordering::SeqCst);
-    
+
     assert_eq!(
         connection_count, 1,
         "Expected exactly 1 TCP connection (shared across services), but got {}",
         connection_count
     );
-    
+
     // Verify events were received correctly
     let events1_vec = events1.lock().unwrap();
     let events2_vec = events2.lock().unwrap();
-    
-    tracing::info!("Service 0x5555 events: {:?}", events1_vec.iter().map(|e| String::from_utf8_lossy(e)).collect::<Vec<_>>());
-    tracing::info!("Service 0x6666 events: {:?}", events2_vec.iter().map(|e| String::from_utf8_lossy(e)).collect::<Vec<_>>());
-    
-    assert!(!events1_vec.is_empty(), "Should receive at least one event from service 0x5555");
-    assert!(!events2_vec.is_empty(), "Should receive at least one event from service 0x6666");
-    
+
+    tracing::info!(
+        "Service 0x5555 events: {:?}",
+        events1_vec
+            .iter()
+            .map(|e| String::from_utf8_lossy(e))
+            .collect::<Vec<_>>()
+    );
+    tracing::info!(
+        "Service 0x6666 events: {:?}",
+        events2_vec
+            .iter()
+            .map(|e| String::from_utf8_lossy(e))
+            .collect::<Vec<_>>()
+    );
+
+    assert!(
+        !events1_vec.is_empty(),
+        "Should receive at least one event from service 0x5555"
+    );
+    assert!(
+        !events2_vec.is_empty(),
+        "Should receive at least one event from service 0x6666"
+    );
+
     assert!(
         events1_vec.iter().all(|e| e == b"event_from_service1"),
         "Service 0x5555 should receive 'event_from_service1'"

@@ -292,7 +292,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     // - UDP subscriptions: handle synchronously since they need state access for socket creation and don't block
                     Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response }) => {
                         let service_key = ServiceKey::new(service_id, instance_id, major_version);
-                        
+
                         // Determine transport preference
                         let prefer_tcp = config.preferred_transport == Transport::Tcp;
                         let uses_tcp = state.discovered.get(&service_key)
