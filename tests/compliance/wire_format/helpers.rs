@@ -2,12 +2,15 @@
 //!
 //! This module contains common imports, test service definitions,
 //! parser functions, and packet builders used across wire format tests.
+//!
+//! **Important**: Parser types in this module are intentionally independent
+//! from `recentip::wire` to allow proper verification of wire format compliance.
+//! The parsing logic here may mirror what the library does, but it's a separate
+//! implementation to catch any bugs in the library's wire format handling.
 
-use bytes::Bytes;
 pub use recentip::handle::ServiceEvent;
 pub use recentip::prelude::*;
-pub use recentip::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
-pub use std::net::SocketAddr;
+pub use std::net::{Ipv4Addr, SocketAddr};
 pub use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -23,30 +26,463 @@ pub const TEST_SERVICE_ID: u16 = 0x1234;
 pub const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
 // ============================================================================
-// PARSER FUNCTIONS
+// INDEPENDENT WIRE FORMAT CONSTANTS (not from library)
 // ============================================================================
 
-/// Helper to parse a SOME/IP header from raw bytes
-pub fn parse_header(data: &[u8]) -> Option<Header> {
-    if data.len() < Header::SIZE {
-        return None;
-    }
-    Header::parse(&mut Bytes::copy_from_slice(data))
+/// SD Service ID (0xFFFF)
+pub const SD_SERVICE_ID: u16 = 0xFFFF;
+/// SD Method ID (0x8100)
+pub const SD_METHOD_ID: u16 = 0x8100;
+/// SOME/IP header size
+pub const SOMEIP_HEADER_SIZE: usize = 16;
+
+/// L4 Protocol: UDP
+pub const L4_UDP: u8 = 0x11;
+/// L4 Protocol: TCP
+pub const L4_TCP: u8 = 0x06;
+
+// ============================================================================
+// INDEPENDENT PARSER TYPES (not using library code)
+// ============================================================================
+
+/// Parsed SOME/IP header - independent from library for test verification
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedHeader {
+    pub service_id: u16,
+    pub method_id: u16,
+    pub length: u32,
+    pub client_id: u16,
+    pub session_id: u16,
+    pub protocol_version: u8,
+    pub interface_version: u8,
+    pub message_type: u8,
+    pub return_code: u8,
 }
 
-/// Helper to parse an SD message (header + payload) from raw bytes
-pub fn parse_sd_message(data: &[u8]) -> Option<(Header, SdMessage)> {
-    if data.len() < Header::SIZE {
-        return None;
+impl ParsedHeader {
+    /// Parse a SOME/IP header from raw bytes
+    pub fn parse(data: &[u8]) -> Option<Self> {
+        if data.len() < SOMEIP_HEADER_SIZE {
+            return None;
+        }
+        Some(Self {
+            service_id: u16::from_be_bytes([data[0], data[1]]),
+            method_id: u16::from_be_bytes([data[2], data[3]]),
+            length: u32::from_be_bytes([data[4], data[5], data[6], data[7]]),
+            client_id: u16::from_be_bytes([data[8], data[9]]),
+            session_id: u16::from_be_bytes([data[10], data[11]]),
+            protocol_version: data[12],
+            interface_version: data[13],
+            message_type: data[14],
+            return_code: data[15],
+        })
     }
-    let mut bytes = Bytes::copy_from_slice(data);
-    let header = Header::parse(&mut bytes)?;
-    if header.service_id == SD_SERVICE_ID && header.method_id == SD_METHOD_ID {
-        let sd_msg = SdMessage::parse(&mut bytes)?;
-        Some((header, sd_msg))
-    } else {
-        None
+
+    /// Get payload length (length field minus 8 bytes for header tail)
+    pub fn payload_length(&self) -> usize {
+        self.length.saturating_sub(8) as usize
     }
+
+    /// Check if this is an SD message
+    pub fn is_sd(&self) -> bool {
+        self.service_id == SD_SERVICE_ID && self.method_id == SD_METHOD_ID
+    }
+
+    /// Check if this is a notification (event)
+    pub fn is_notification(&self) -> bool {
+        self.message_type == 0x02
+    }
+
+    /// Check if this is a request
+    pub fn is_request(&self) -> bool {
+        self.message_type == 0x00
+    }
+
+    /// Check if this is a response
+    pub fn is_response(&self) -> bool {
+        self.message_type == 0x80
+    }
+}
+
+/// A complete parsed SOME/IP packet (header + payload)
+#[derive(Debug, Clone)]
+pub struct ParsedPacket {
+    pub header: ParsedHeader,
+    pub payload: Vec<u8>,
+}
+
+impl ParsedPacket {
+    /// Parse a complete SOME/IP packet from raw bytes
+    pub fn parse(data: &[u8]) -> Option<Self> {
+        let header = ParsedHeader::parse(data)?;
+        let payload_len = header.payload_length();
+        let total_len = SOMEIP_HEADER_SIZE + payload_len;
+
+        if data.len() < total_len {
+            return None;
+        }
+
+        Some(Self {
+            header,
+            payload: data[SOMEIP_HEADER_SIZE..total_len].to_vec(),
+        })
+    }
+
+    /// Parse as SD message if this is an SD packet
+    pub fn as_sd(&self) -> Option<ParsedSdMessage> {
+        if !self.header.is_sd() {
+            return None;
+        }
+        ParsedSdMessage::parse(&self.payload)
+    }
+}
+
+/// SD Entry type values
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SdEntryType {
+    FindService = 0x00,
+    OfferService = 0x01,
+    SubscribeEventgroup = 0x06,
+    SubscribeEventgroupAck = 0x07,
+}
+
+impl SdEntryType {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0x00 => Some(Self::FindService),
+            0x01 => Some(Self::OfferService),
+            0x06 => Some(Self::SubscribeEventgroup),
+            0x07 => Some(Self::SubscribeEventgroupAck),
+            _ => None,
+        }
+    }
+}
+
+/// Parsed SD entry - independent from library
+#[derive(Debug, Clone)]
+pub struct ParsedSdEntry {
+    pub entry_type: SdEntryType,
+    pub index_1st_option: u8,
+    pub index_2nd_option: u8,
+    pub num_options_1: u8,
+    pub num_options_2: u8,
+    pub service_id: u16,
+    pub instance_id: u16,
+    pub major_version: u8,
+    pub ttl: u32,
+    /// For service entries (Find/Offer)
+    pub minor_version: u32,
+    /// For eventgroup entries (Subscribe/SubscribeAck)
+    pub eventgroup_id: u16,
+    /// Counter for eventgroup entries
+    pub counter: u8,
+}
+
+impl ParsedSdEntry {
+    pub const SIZE: usize = 16;
+
+    /// Parse an SD entry from raw bytes
+    pub fn parse(data: &[u8]) -> Option<Self> {
+        if data.len() < Self::SIZE {
+            return None;
+        }
+
+        let entry_type = SdEntryType::from_u8(data[0])?;
+        let index_1st_option = data[1];
+        let index_2nd_option = data[2];
+        let num_options = data[3];
+        let num_options_1 = (num_options >> 4) & 0x0F;
+        let num_options_2 = num_options & 0x0F;
+        let service_id = u16::from_be_bytes([data[4], data[5]]);
+        let instance_id = u16::from_be_bytes([data[6], data[7]]);
+        let major_version = data[8];
+        let ttl = u32::from_be_bytes([0, data[9], data[10], data[11]]);
+
+        let (minor_version, eventgroup_id, counter) = match entry_type {
+            SdEntryType::FindService | SdEntryType::OfferService => {
+                let minor = u32::from_be_bytes([data[12], data[13], data[14], data[15]]);
+                (minor, 0, 0)
+            }
+            SdEntryType::SubscribeEventgroup | SdEntryType::SubscribeEventgroupAck => {
+                let counter = data[13];
+                let eventgroup = u16::from_be_bytes([data[14], data[15]]);
+                (0, eventgroup, counter)
+            }
+        };
+
+        Some(Self {
+            entry_type,
+            index_1st_option,
+            index_2nd_option,
+            num_options_1,
+            num_options_2,
+            service_id,
+            instance_id,
+            major_version,
+            ttl,
+            minor_version,
+            eventgroup_id,
+            counter,
+        })
+    }
+
+    /// Check if this is a stop entry (TTL = 0)
+    pub fn is_stop(&self) -> bool {
+        self.ttl == 0
+    }
+
+    /// Check if this is a Subscribe entry
+    pub fn is_subscribe(&self) -> bool {
+        matches!(self.entry_type, SdEntryType::SubscribeEventgroup)
+    }
+
+    /// Check if this is a SubscribeAck entry
+    pub fn is_subscribe_ack(&self) -> bool {
+        matches!(self.entry_type, SdEntryType::SubscribeEventgroupAck)
+    }
+
+    /// Check if this is an Offer entry
+    pub fn is_offer(&self) -> bool {
+        matches!(self.entry_type, SdEntryType::OfferService)
+    }
+
+    /// Check if this is a Find entry
+    pub fn is_find(&self) -> bool {
+        matches!(self.entry_type, SdEntryType::FindService)
+    }
+}
+
+/// Parsed SD option - independent from library
+#[derive(Debug, Clone)]
+pub enum ParsedSdOption {
+    Ipv4Endpoint {
+        addr: Ipv4Addr,
+        port: u16,
+        protocol: u8,
+    },
+    Ipv4Multicast {
+        addr: Ipv4Addr,
+        port: u16,
+    },
+    Unknown {
+        option_type: u8,
+        data: Vec<u8>,
+    },
+}
+
+impl ParsedSdOption {
+    /// Parse an SD option from raw bytes, returns (option, bytes consumed)
+    pub fn parse(data: &[u8]) -> Option<(Self, usize)> {
+        if data.len() < 3 {
+            return None;
+        }
+
+        let length = u16::from_be_bytes([data[0], data[1]]) as usize;
+        let option_type = data[2];
+        let total_size = 3 + length;
+
+        if data.len() < total_size {
+            return None;
+        }
+
+        let option = match option_type {
+            0x04 => {
+                // IPv4 Endpoint
+                if length < 9 {
+                    return None;
+                }
+                let addr = Ipv4Addr::new(data[4], data[5], data[6], data[7]);
+                let protocol = data[9];
+                let port = u16::from_be_bytes([data[10], data[11]]);
+                Self::Ipv4Endpoint {
+                    addr,
+                    port,
+                    protocol,
+                }
+            }
+            0x14 => {
+                // IPv4 Multicast
+                if length < 9 {
+                    return None;
+                }
+                let addr = Ipv4Addr::new(data[4], data[5], data[6], data[7]);
+                let port = u16::from_be_bytes([data[10], data[11]]);
+                Self::Ipv4Multicast { addr, port }
+            }
+            _ => Self::Unknown {
+                option_type,
+                data: data[3..total_size].to_vec(),
+            },
+        };
+
+        Some((option, total_size))
+    }
+
+    /// Get the port if this is an endpoint option
+    pub fn port(&self) -> Option<u16> {
+        match self {
+            Self::Ipv4Endpoint { port, .. } | Self::Ipv4Multicast { port, .. } => Some(*port),
+            Self::Unknown { .. } => None,
+        }
+    }
+
+    /// Get the address if this is an IPv4 option
+    pub fn addr(&self) -> Option<Ipv4Addr> {
+        match self {
+            Self::Ipv4Endpoint { addr, .. } | Self::Ipv4Multicast { addr, .. } => Some(*addr),
+            Self::Unknown { .. } => None,
+        }
+    }
+
+    /// Check if this is a TCP endpoint
+    pub fn is_tcp(&self) -> bool {
+        matches!(self, Self::Ipv4Endpoint { protocol, .. } if *protocol == L4_TCP)
+    }
+
+    /// Check if this is a UDP endpoint
+    pub fn is_udp(&self) -> bool {
+        matches!(self, Self::Ipv4Endpoint { protocol, .. } if *protocol == L4_UDP)
+    }
+}
+
+/// Parsed SD message - independent from library
+#[derive(Debug, Clone)]
+pub struct ParsedSdMessage {
+    pub flags: u8,
+    pub entries: Vec<ParsedSdEntry>,
+    pub options: Vec<ParsedSdOption>,
+}
+
+impl ParsedSdMessage {
+    /// Reboot flag
+    pub const FLAG_REBOOT: u8 = 0x80;
+    /// Unicast flag
+    pub const FLAG_UNICAST: u8 = 0x40;
+
+    /// Parse SD message from payload bytes (after SOME/IP header)
+    pub fn parse(data: &[u8]) -> Option<Self> {
+        if data.len() < 12 {
+            return None;
+        }
+
+        let flags = data[0];
+        // data[1..4] are reserved
+
+        let entries_len = u32::from_be_bytes([data[4], data[5], data[6], data[7]]) as usize;
+        let entries_start = 8;
+        let entries_end = entries_start + entries_len;
+
+        if data.len() < entries_end + 4 {
+            return None;
+        }
+
+        // Parse entries
+        let mut entries = Vec::new();
+        let mut offset = entries_start;
+        while offset + ParsedSdEntry::SIZE <= entries_end {
+            if let Some(entry) = ParsedSdEntry::parse(&data[offset..]) {
+                entries.push(entry);
+                offset += ParsedSdEntry::SIZE;
+            } else {
+                break;
+            }
+        }
+
+        // Parse options
+        let options_len =
+            u32::from_be_bytes([data[entries_end], data[entries_end + 1], data[entries_end + 2], data[entries_end + 3]])
+                as usize;
+        let options_start = entries_end + 4;
+        let options_end = options_start + options_len;
+
+        if data.len() < options_end {
+            return None;
+        }
+
+        let mut options = Vec::new();
+        let mut offset = options_start;
+        while offset < options_end {
+            if let Some((option, consumed)) = ParsedSdOption::parse(&data[offset..]) {
+                options.push(option);
+                offset += consumed;
+            } else {
+                break;
+            }
+        }
+
+        Some(Self {
+            flags,
+            entries,
+            options,
+        })
+    }
+
+    /// Check if reboot flag is set
+    pub fn has_reboot_flag(&self) -> bool {
+        self.flags & Self::FLAG_REBOOT != 0
+    }
+
+    /// Check if unicast flag is set
+    pub fn has_unicast_flag(&self) -> bool {
+        self.flags & Self::FLAG_UNICAST != 0
+    }
+
+    /// Get the option at index (used with entry's index_1st_option/index_2nd_option)
+    pub fn option_at(&self, index: u8) -> Option<&ParsedSdOption> {
+        self.options.get(index as usize)
+    }
+
+    /// Get the endpoint port from an entry's first option
+    pub fn endpoint_port_for_entry(&self, entry: &ParsedSdEntry) -> Option<u16> {
+        if entry.num_options_1 > 0 {
+            self.option_at(entry.index_1st_option)?.port()
+        } else {
+            None
+        }
+    }
+
+    /// Get all subscribe entries
+    pub fn subscribe_entries(&self) -> impl Iterator<Item = &ParsedSdEntry> {
+        self.entries.iter().filter(|e| e.is_subscribe())
+    }
+
+    /// Get all offer entries
+    pub fn offer_entries(&self) -> impl Iterator<Item = &ParsedSdEntry> {
+        self.entries.iter().filter(|e| e.is_offer())
+    }
+
+    /// Get all subscribe ack entries
+    pub fn subscribe_ack_entries(&self) -> impl Iterator<Item = &ParsedSdEntry> {
+        self.entries.iter().filter(|e| e.is_subscribe_ack())
+    }
+}
+
+// ============================================================================
+// CONVENIENCE PARSER FUNCTIONS
+// ============================================================================
+
+/// Parse a SOME/IP header from raw bytes
+pub fn parse_header(data: &[u8]) -> Option<ParsedHeader> {
+    ParsedHeader::parse(data)
+}
+
+/// Parse a complete SOME/IP packet from raw bytes
+pub fn parse_packet(data: &[u8]) -> Option<ParsedPacket> {
+    ParsedPacket::parse(data)
+}
+
+/// Parse a raw SD packet (SOME/IP header + SD payload)
+pub fn parse_sd_packet(data: &[u8]) -> Option<(ParsedHeader, ParsedSdMessage)> {
+    let packet = ParsedPacket::parse(data)?;
+    let sd = packet.as_sd()?;
+    Some((packet.header, sd))
+}
+
+/// Parse an SD message (header + payload) from raw bytes
+/// Returns the header and the parsed SD message
+pub fn parse_sd_message(data: &[u8]) -> Option<(ParsedHeader, ParsedSdMessage)> {
+    parse_sd_packet(data)
 }
 
 // ============================================================================
@@ -194,7 +630,7 @@ pub fn build_fire_and_forget_request(
 }
 
 /// Build a raw SOME/IP response packet based on a request header
-pub fn build_response(request: &Header, payload: &[u8]) -> Vec<u8> {
+pub fn build_response(request: &ParsedHeader, payload: &[u8]) -> Vec<u8> {
     SomeIpPacketBuilder::response(request.service_id, request.method_id)
         .client_id(request.client_id)
         .session_id(request.session_id)

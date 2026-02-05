@@ -10,7 +10,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::helpers::configure_tracing;
-use crate::wire_format::helpers::{SdOfferBuilder, SdSubscribeAckBuilder, SomeIpPacketBuilder};
+use crate::wire_format::helpers::{
+    parse_sd_packet, ParsedSdOption, SdEntryType, SdOfferBuilder, SdSubscribeAckBuilder,
+    SomeIpPacketBuilder, SD_METHOD_ID, SD_SERVICE_ID,
+};
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -1782,24 +1785,24 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                 };
 
                 let data = &buf[..len];
-                if data.len() < 16 {
+
+                // Parse SD packet using helper
+                let Some((header, sd_msg)) = parse_sd_packet(data) else {
+                    continue;
+                };
+
+                // Verify it's an SD message
+                if header.service_id != SD_SERVICE_ID || header.method_id != SD_METHOD_ID {
                     continue;
                 }
 
-                let service_id = u16::from_be_bytes([data[0], data[1]]);
-                let method_id = u16::from_be_bytes([data[2], data[3]]);
-
-                if service_id != 0xFFFF || method_id != 0x8100 {
+                // Check first entry type to determine message kind
+                let Some(first_entry) = sd_msg.entries.first() else {
                     continue;
-                }
+                };
 
-                if data.len() < 36 {
-                    continue;
-                }
-                let entry_type = data[24];
-
-                match entry_type {
-                    0x00 => {
+                match first_entry.entry_type {
+                    SdEntryType::FindService => {
                         // FindService - respond with offers for both services
                         let server_ip: std::net::Ipv4Addr = match turmoil::lookup("server") {
                             std::net::IpAddr::V4(addr) => addr,
@@ -1825,110 +1828,72 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
                         let _ = sd_socket.send_to(&offer2, from).await;
                         tokio::time::sleep(Duration::from_millis(50)).await;
                     }
-                    0x06 => {
-                        // SubscribeEventgroup - parse ALL entries in the message
+                    SdEntryType::SubscribeEventgroup => {
+                        // SubscribeEventgroup - process ALL entries in the message
                         // A single SD message can contain multiple subscription entries
 
-                        if data.len() < 24 {
-                            continue;
-                        }
-
-                        let entries_len = u32::from_be_bytes([data[20], data[21], data[22], data[23]]) as usize;
-                        let options_start = 24 + entries_len;
-
-                        // Parse options array first (same for all entries in this message)
-                        let mut client_port = None;
-                        if data.len() > options_start + 4 {
-                            let options_len = u32::from_be_bytes([
-                                data[options_start],
-                                data[options_start + 1],
-                                data[options_start + 2],
-                                data[options_start + 3],
-                            ]) as usize;
-
-                            if options_len > 0 {
-                                let opt_start = options_start + 4;
-                                if data.len() >= opt_start + 2 {
-                                    let opt_len = u16::from_be_bytes([data[opt_start], data[opt_start + 1]]);
-                                    let opt_type = data[opt_start + 2];
-
-                                    if opt_type == 0x04 && data.len() >= opt_start + 2 + 1 + 1 + 4 + 1 + 1 + 2 {
-                                        let ip_offset = opt_start + 2 + 1 + 1;
-                                        let port_offset = ip_offset + 4 + 1 + 1;
-                                        client_port = Some(u16::from_be_bytes([
-                                            data[port_offset],
-                                            data[port_offset + 1],
-                                        ]));
-                                    }
-                                }
+                        // Extract client port from endpoint option (same for all entries)
+                        let client_port = sd_msg.options.first().and_then(|opt| {
+                            if let ParsedSdOption::Ipv4Endpoint { port, .. } = opt {
+                                Some(*port)
+                            } else {
+                                None
                             }
-                        }
+                        });
 
-                        // Parse all entries (each entry is 16 bytes)
-                        let num_entries = entries_len / 16;
-                        for i in 0..num_entries {
-                            let entry_offset = 24 + (i * 16);
-                            if entry_offset + 16 > data.len() {
-                                break;
-                            }
+                        // Process all subscribe entries
+                        let subscribe_entries: Vec<_> = sd_msg.subscribe_entries().collect();
+                        let num_entries = subscribe_entries.len();
 
-                            let entry_type = data[entry_offset];
-                            if entry_type != 0x06 {
-                                // Not a Subscribe entry, skip
-                                continue;
-                            }
-
-                            let service_id = u16::from_be_bytes([data[entry_offset + 4], data[entry_offset + 5]]);
-                            let instance_id = u16::from_be_bytes([data[entry_offset + 6], data[entry_offset + 7]]);
-                            let major_version = data[entry_offset + 8];
-                            let ttl_bytes = [0, data[entry_offset + 9], data[entry_offset + 10], data[entry_offset + 11]];
-                            let ttl = u32::from_be_bytes(ttl_bytes);
-                            let eventgroup_id = u16::from_be_bytes([data[entry_offset + 14], data[entry_offset + 15]]);
-
+                        for (i, entry) in subscribe_entries.into_iter().enumerate() {
                             tracing::info!(
                                 "Subscribe entry {}/{}: service {:04x}:{:04x} EG {:04x}",
                                 i + 1,
                                 num_entries,
-                                service_id,
-                                instance_id,
-                                eventgroup_id
+                                entry.service_id,
+                                entry.instance_id,
+                                entry.eventgroup_id
                             );
 
-                            subscriptions.insert((service_id, instance_id, eventgroup_id));
+                            subscriptions.insert((entry.service_id, entry.instance_id, entry.eventgroup_id));
 
                             // Associate this service with the client's TCP connection
                             if let Some(port) = client_port {
                                 let mut streams_guard = tcp_streams.lock().unwrap();
                                 if let Some((_, services)) = streams_guard.get_mut(&port) {
-                                    services.insert(service_id);
+                                    services.insert(entry.service_id);
                                     tracing::info!(
                                         "Associated service {:04x} with TCP connection on port {}",
-                                        service_id,
+                                        entry.service_id,
                                         port
                                     );
                                 } else {
                                     tracing::warn!(
                                         "Client port {} not found in TCP connections (service {:04x})",
                                         port,
-                                        service_id
+                                        entry.service_id
                                     );
                                 }
                             }
 
                             // Send SubscribeEventgroupAck for THIS entry
-                            let ack = SdSubscribeAckBuilder::new(service_id, instance_id, eventgroup_id)
-                                .major_version(major_version)
-                                .ttl(ttl)
-                                .session_id(unicast_session_id)
-                                .build();
+                            let ack = SdSubscribeAckBuilder::new(
+                                entry.service_id,
+                                entry.instance_id,
+                                entry.eventgroup_id,
+                            )
+                            .major_version(entry.major_version)
+                            .ttl(entry.ttl)
+                            .session_id(unicast_session_id)
+                            .build();
                             unicast_session_id += 1;
                             let _ = sd_socket.send_to(&ack, from).await;
 
                             tracing::info!(
                                 "Subscription ACK sent for service {:04x}:{:04x} EG {:04x}",
-                                service_id,
-                                instance_id,
-                                eventgroup_id
+                                entry.service_id,
+                                entry.instance_id,
+                                entry.eventgroup_id
                             );
 
                             // Wait 50ms between SD messages to prevent out-of-order delivery
