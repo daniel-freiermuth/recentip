@@ -390,9 +390,12 @@ impl ParsedSdMessage {
         }
 
         // Parse options
-        let options_len =
-            u32::from_be_bytes([data[entries_end], data[entries_end + 1], data[entries_end + 2], data[entries_end + 3]])
-                as usize;
+        let options_len = u32::from_be_bytes([
+            data[entries_end],
+            data[entries_end + 1],
+            data[entries_end + 2],
+            data[entries_end + 3],
+        ]) as usize;
         let options_start = entries_end + 4;
         let options_end = options_start + options_len;
 
