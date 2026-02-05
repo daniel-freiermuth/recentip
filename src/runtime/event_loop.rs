@@ -24,7 +24,7 @@ use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::runtime::{
     client,
-    client_concurrent::handle_subscribe_command_concurrent,
+    client_concurrent::handle_subscribe_tcp,
     sd::{
         build_find_message, build_offer_message, handle_find_request, handle_offer,
         handle_stop_offer as handle_sd_stop_offer, handle_subscribe_ack, handle_subscribe_nack,
@@ -289,38 +289,40 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                         ).await;                    }
                     // Special handling for Subscribe
                     // - TCP subscriptions: spawn as concurrent task to avoid blocking on connection establishment (feat_req_someipsd_767)
-                    // - UDP subscriptions: handle synchronously since they need state access for socket creation and don't block
+                    // - UDP subscriptions: handle inline since binding is instant and doesn't block
                     Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response }) => {
                         let service_key = ServiceKey::new(service_id, instance_id, major_version);
 
-                        // Determine transport preference
+                        // Determine transport and extract endpoints (if discovered)
                         let prefer_tcp = config.preferred_transport == Transport::Tcp;
-                        let uses_tcp = state.discovered.get(&service_key)
-                            .and_then(|d| d.method_endpoint(prefer_tcp))
-                            .is_some_and(|(_, transport)| transport == Transport::Tcp);
+                        let (uses_tcp, sd_endpoint_opt, tcp_endpoint_opt) = {
+                            if let Some(discovered) = state.discovered.get(&service_key) {
+                                let uses_tcp = discovered.method_endpoint(prefer_tcp)
+                                    .is_some_and(|(_, t)| t == Transport::Tcp);
+                                (uses_tcp, Some(discovered.sd_endpoint), discovered.tcp_endpoint)
+                            } else {
+                                (false, None, None)
+                            }
+                        };
 
                         if uses_tcp {
-                            // TCP path: Use concurrent handling to avoid blocking on connection establishment
+                            // TCP path: Validate service is discovered with TCP endpoint, then spawn
+                            let Some(sd_endpoint) = sd_endpoint_opt else {
+                                let _ = response.send(Err(Error::ServiceUnavailable));
+                                continue;
+                            };
+                            let Some(tcp_endpoint) = tcp_endpoint_opt else {
+                                let _ = response.send(Err(Error::Config(crate::error::ConfigError::new(
+                                    "TCP transport selected but no TCP endpoint"
+                                ))));
+                                continue;
+                            };
+
                             let tcp_pool_clone = Arc::clone(&tcp_pool);
                             let update_tx = subscribe_update_tx.clone();
-                            let config_clone = config.clone();
-
-                            let discovered_opt = state.discovered.get(&service_key)
-                                .map(|d| (d.sd_endpoint, d.tcp_endpoint, d.method_endpoint(prefer_tcp)));
                             let subscription_id = state.next_subscription_id();
-                            let client_rpc_endpoint = state.client_rpc_endpoint;
-                            let advertised_ip = state.config.advertised_ip;
                             let sd_flags = state.sd_flags(true);
                             let subscribe_ttl = state.config.subscribe_ttl;
-
-                            let service_already_has_subscription = state.subscriptions.get(&service_key)
-                                .is_some_and(|subs| !subs.is_empty());
-
-                            let reusable_endpoint_port = if service_already_has_subscription {
-                                state.find_reusable_subscription_endpoint(service_id.value(), instance_id.value())
-                            } else {
-                                None
-                            };
 
                             let used_conn_keys: std::collections::HashSet<u64> = state.subscriptions.get(&service_key)
                                 .map_or_else(std::collections::HashSet::default, |subs| {
@@ -328,7 +330,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                 });
 
                             tokio::spawn(async move {
-                                handle_subscribe_command_concurrent::<T>(
+                                handle_subscribe_tcp::<T>(
                                     service_id,
                                     instance_id,
                                     major_version,
@@ -337,23 +339,19 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                     response,
                                     tcp_pool_clone,
                                     update_tx,
-                                    discovered_opt,
+                                    sd_endpoint,
+                                    tcp_endpoint,
                                     subscription_id,
-                                    client_rpc_endpoint,
-                                    advertised_ip,
                                     sd_flags,
                                     subscribe_ttl,
-                                    config_clone.preferred_transport,
-                                    service_already_has_subscription,
-                                    reusable_endpoint_port,
                                     used_conn_keys,
                                 ).await;
                             });
                         } else {
-                            // UDP path: Handle synchronously - no connection delay, needs state for socket creation
-                            client::handle_subscribe_command::<U, T>(
+                            // UDP path: Handle inline - binding is instant, no race condition
+                            client::handle_subscribe_udp::<U>(
                                 service_id, instance_id, major_version, eventgroup_ids,
-                                events, response, &mut state, &tcp_pool
+                                events, response, &mut state
                             ).await;
                         }
                     }
