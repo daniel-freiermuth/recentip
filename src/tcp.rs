@@ -239,16 +239,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             target
         );
 
-        // Add timeout to prevent blocking indefinitely on connection attempts
-        let connect_timeout = std::time::Duration::from_secs(2);
-        let stream = tokio::time::timeout(connect_timeout, T::connect(target))
-            .await
-            .map_err(|_| {
-                io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    format!("TCP connection to {target} timed out after {connect_timeout:?}"),
-                )
-            })??;
+        let stream = T::connect(target).await?;
 
         let local_addr = stream.local_addr()?;
 
