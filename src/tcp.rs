@@ -172,9 +172,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new()))
             .clone();
 
-        let state = cell
-            .get_or_try_init(|| self.do_connect(target, 0))
-            .await?;
+        let state = cell.get_or_try_init(|| self.do_connect(target, 0)).await?;
 
         // Send the data
         state
