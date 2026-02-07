@@ -295,22 +295,26 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                         // Determine transport and extract endpoints (if discovered)
                         let prefer_tcp = config.preferred_transport == Transport::Tcp;
-                        let (uses_tcp, sd_endpoint_opt, tcp_endpoint_opt) = {
+                        let (uses_tcp, sd_endpoint, tcp_endpoint_opt) = {
                             if let Some(discovered) = state.discovered.get(&service_key) {
                                 let uses_tcp = discovered.method_endpoint(prefer_tcp)
                                     .is_some_and(|(_, t)| t == Transport::Tcp);
-                                (uses_tcp, Some(discovered.sd_endpoint), discovered.tcp_endpoint)
+                                (uses_tcp, discovered.sd_endpoint, discovered.tcp_endpoint)
                             } else {
-                                (false, None, None)
+                                tracing::error!(
+                                    "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: service not discovered",
+                                    service_id.value(),
+                                    instance_id.value(),
+                                    major_version,
+                                    eventgroup_ids
+                                );
+                                let _ = response.send(Err(Error::ServiceUnavailable));
+                                continue;
                             }
                         };
 
                         if uses_tcp {
-                            // TCP path: Validate service is discovered with TCP endpoint, then spawn
-                            let Some(sd_endpoint) = sd_endpoint_opt else {
-                                let _ = response.send(Err(Error::ServiceUnavailable));
-                                continue;
-                            };
+                            // TCP path: Validate TCP endpoint is available, then spawn
                             let Some(tcp_endpoint) = tcp_endpoint_opt else {
                                 let _ = response.send(Err(Error::Config(crate::error::ConfigError::new(
                                     "TCP transport selected but no TCP endpoint"
@@ -348,10 +352,10 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                 ).await;
                             });
                         } else {
-                            // UDP path: Handle inline - binding is instant, no race condition
+                            // UDP path: Handle inline (binding is instant)
                             client::handle_subscribe_udp::<U>(
                                 service_id, instance_id, major_version, eventgroup_ids,
-                                events, response, &mut state
+                                events, response, sd_endpoint, &mut state
                             ).await;
                         }
                     }

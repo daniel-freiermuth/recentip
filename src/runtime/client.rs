@@ -373,30 +373,13 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     eventgroup_ids: vec1::Vec1<u16>,
     events: tokio::sync::mpsc::Sender<Event>,
     response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
+    sd_endpoint: SocketAddr,
     state: &mut RuntimeState,
 ) {
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Generate a single subscription ID for all eventgroups
     let subscription_id = state.next_subscription_id();
-
-    let Some(discovered) = state.discovered.get(&key) else {
-        tracing::debug!(
-            "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: service not discovered",
-            service_id.value(),
-            instance_id.value(),
-            major_version,
-            eventgroup_ids
-        );
-        let _ = response.send(Err(crate::error::Error::ServiceUnavailable));
-        return;
-    };
-
-    // Extract sd_endpoint early - we'll need it later after mutable borrows of state
-    let sd_endpoint = discovered.sd_endpoint;
-
-    // Drop the DashMap guard to allow mutable borrows of state below
-    drop(discovered);
 
     // UDP subscription endpoint selection
     let Some(endpoint_ip) = get_endpoint_ip(state) else {
