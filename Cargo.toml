@@ -39,6 +39,7 @@ futures = "0.3"
 tracing = "0.1"
 socket2 = { version = "0.6", features = ["all"] }
 turmoil = { version = "0.7.1", optional = true }
+vec1 = "1.12"
 
 [dev-dependencies]
 proptest = "1.9.0"

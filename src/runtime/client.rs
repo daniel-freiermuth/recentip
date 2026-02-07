@@ -370,18 +370,11 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     major_version: u8,
-    eventgroup_ids: Vec<u16>,
+    eventgroup_ids: vec1::Vec1<u16>,
     events: tokio::sync::mpsc::Sender<Event>,
     response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     state: &mut RuntimeState,
 ) {
-    if eventgroup_ids.is_empty() {
-        let _ = response.send(Err(crate::error::Error::Config(
-            crate::error::ConfigError::new("At least one eventgroup must be specified"),
-        )));
-        return;
-    }
-
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Generate a single subscription ID for all eventgroups
@@ -521,7 +514,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             events.clone(),
             service_id,
             instance_id,
-            eventgroup_ids.first().copied().unwrap_or(0),
+            *eventgroup_ids.first(),
         )
         .await
         {
@@ -651,7 +644,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         state.multi_eventgroup_subscriptions.insert(
             multi_key,
             MultiEventgroupSubscription {
-                eventgroup_ids: eventgroup_ids.clone(),
+                eventgroup_ids: eventgroup_ids.to_vec(),
                 acked_eventgroups: std::collections::HashSet::new(),
                 response: response_opt.take(),
             },

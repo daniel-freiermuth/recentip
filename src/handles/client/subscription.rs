@@ -46,7 +46,7 @@ pub struct SubscriptionBuilder {
     service_id: ServiceId,
     instance_id: InstanceId,
     major_version: u8,
-    eventgroups: Vec<EventgroupId>,
+    eventgroups: vec1::Vec1<EventgroupId>,
 }
 
 impl SubscriptionBuilder {
@@ -63,7 +63,7 @@ impl SubscriptionBuilder {
             service_id,
             instance_id,
             major_version,
-            eventgroups: vec![first_eventgroup],
+            eventgroups: vec1::vec1![first_eventgroup],
         }
     }
 
@@ -96,6 +96,9 @@ impl SubscriptionBuilder {
         let (events_tx, events_rx) = mpsc::channel(64);
         let (response_tx, response_rx) = oneshot::channel();
 
+        // Clone eventgroups before consuming it with mapped()
+        let eventgroups_for_subscription = self.eventgroups.clone();
+
         // Send subscribe command for all eventgroups
         self.inner
             .cmd_tx
@@ -103,11 +106,7 @@ impl SubscriptionBuilder {
                 service_id: self.service_id,
                 instance_id: self.instance_id,
                 major_version: self.major_version,
-                eventgroup_ids: self
-                    .eventgroups
-                    .iter()
-                    .map(crate::EventgroupId::value)
-                    .collect(),
+                eventgroup_ids: self.eventgroups.mapped(|id| id.value()),
                 events: events_tx,
                 response: response_tx,
             })
@@ -123,7 +122,7 @@ impl SubscriptionBuilder {
             self.service_id,
             self.instance_id,
             self.major_version,
-            self.eventgroups,
+            eventgroups_for_subscription.into_vec(),
             subscription_id,
             events_rx,
         ))

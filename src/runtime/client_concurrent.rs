@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::config::Transport;
-use crate::error::{ConfigError, Error};
+use crate::error::Error;
 use crate::net::TcpStream;
 use crate::runtime::event_loop::SubscribeStateUpdate;
 use crate::runtime::sd::build_subscribe_message_multi;
@@ -35,7 +35,7 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
     service_id: ServiceId,
     instance_id: InstanceId,
     major_version: u8,
-    eventgroup_ids: Vec<u16>,
+    eventgroup_ids: vec1::Vec1<u16>,
     events: mpsc::Sender<Event>,
     response: oneshot::Sender<crate::error::Result<u64>>,
     tcp_pool: Arc<TcpConnectionPool<T>>,
@@ -47,19 +47,6 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
     subscribe_ttl: u32,
     used_conn_keys: HashSet<u64>,
 ) {
-    // Early validation
-    if eventgroup_ids.is_empty() {
-        let _ = update_tx
-            .send(SubscribeStateUpdate::Failed {
-                response,
-                error: Error::Config(ConfigError::new(
-                    "At least one eventgroup must be specified",
-                )),
-            })
-            .await;
-        return;
-    }
-
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Find the smallest unused conn_key (slot) for this service
@@ -152,7 +139,7 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 state.multi_eventgroup_subscriptions.insert(
                     multi_key,
                     MultiEventgroupSubscription {
-                        eventgroup_ids: eventgroup_ids.clone(),
+                        eventgroup_ids: eventgroup_ids.to_vec(),
                         acked_eventgroups: HashSet::new(),
                         response: response_opt.take(),
                     },

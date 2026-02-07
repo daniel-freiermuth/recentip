@@ -121,7 +121,7 @@ pub enum Command {
         service_id: ServiceId,
         instance_id: InstanceId,
         major_version: u8,
-        eventgroup_ids: Vec<u16>,
+        eventgroup_ids: vec1::Vec1<u16>,
         events: mpsc::Sender<crate::Event>,
         /// Returns `subscription_id` on success for tracking unsubscribe
         response: oneshot::Sender<Result<u64>>,
