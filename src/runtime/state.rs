@@ -53,9 +53,8 @@ use super::command::ServiceRequest;
 use super::sd::Action;
 use crate::config::{MethodConfig, RuntimeConfig};
 use crate::error::Result;
-use crate::net::TcpStream;
 use crate::runtime::event_loop::cluster_sd_actions;
-use crate::tcp::{TcpConnectionPool, TcpSendMessage};
+use crate::tcp::TcpSendMessage;
 use crate::wire::SdMessage;
 use crate::{InstanceId, ServiceId};
 

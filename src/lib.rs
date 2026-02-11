@@ -270,9 +270,10 @@ impl EventgroupId {
 }
 
 /// Major version of a service interface - can be exact or wildcard (Any)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MajorVersion {
     /// Match any major version (0xFF wildcard in SD `FindService`)
+    #[default]
     Any,
     /// Specific major version (0x00-0xFE)
     Exact(u8),
@@ -299,12 +300,6 @@ impl MajorVersion {
     /// Check if this is a wildcard
     pub const fn is_any(&self) -> bool {
         matches!(self, Self::Any)
-    }
-}
-
-impl Default for MajorVersion {
-    fn default() -> Self {
-        Self::Any
     }
 }
 

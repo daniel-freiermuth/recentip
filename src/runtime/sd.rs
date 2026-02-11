@@ -446,11 +446,11 @@ pub fn handle_subscribe_request(
         // Server offers UDP and/or TCP. Client requests UDP and/or TCP endpoint.
         let Some((client_endpoint, transport)) = offered
             .udp_endpoint
-            .and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
+            .and_then(|_| client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
             .or_else(|| {
                 offered
                     .tcp_endpoint
-                    .and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))
+                    .and_then(|_| client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))
             })
         else {
             // Transport mismatch - send NACK
@@ -639,11 +639,11 @@ pub fn handle_unsubscribe_request(
 
         let Some((client_endpoint, transport)) = offered
             .udp_endpoint
-            .and(client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
+            .and_then(|_| client_udp_endpoint.map(|ep| (ep, crate::config::Transport::Udp)))
             .or_else(|| {
                 offered
                     .tcp_endpoint
-                    .and(client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))
+                    .and_then(|_| client_tcp_endpoint.map(|ep| (ep, crate::config::Transport::Tcp)))
             })
         else {
             // Transport mismatch - send NACK

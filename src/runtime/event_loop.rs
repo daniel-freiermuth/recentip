@@ -996,7 +996,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
             offer_interval.as_millis()
         );
 
-        if elapsed >= offer_interval - Duration::from_millis(state.config.cyclic_offer_delay / 2) {
+        if elapsed >= offer_interval / 2 {
             offered.last_offer = now;
             tracing::debug!(
                 "[OFFER] [{:?}] Sending cyclic offer for {}:{:04X} v{}",

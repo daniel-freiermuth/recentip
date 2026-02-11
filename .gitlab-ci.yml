@@ -48,8 +48,7 @@ clippy:
   extends: .rust-base
   stage: check
   script:
-    - cargo clippy --lib --all-targets --all-features
-  allow_failure: true
+    - cargo clippy --all-features
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
