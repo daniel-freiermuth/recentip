@@ -295,12 +295,8 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                         // Determine transport and extract endpoints (if discovered)
                         let prefer_tcp = config.preferred_transport == Transport::Tcp;
-                        let (uses_tcp, sd_endpoint, tcp_endpoint_opt) = {
-                            if let Some(discovered) = state.discovered.get(&service_key) {
-                                let uses_tcp = discovered.method_endpoint(prefer_tcp)
-                                    .is_some_and(|(_, t)| t == Transport::Tcp);
-                                (uses_tcp, discovered.sd_endpoint, discovered.tcp_endpoint)
-                            } else {
+                        let (sd_endpoint, endpoint, transport) = {
+                            let Some(discovered) = state.discovered.get(&service_key) else {
                                 tracing::error!(
                                     "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: service not discovered",
                                     service_id.value(),
@@ -310,18 +306,22 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                 );
                                 let _ = response.send(Err(Error::ServiceUnavailable));
                                 continue;
-                            }
-                        };
-
-                        if uses_tcp {
-                            // TCP path: Validate TCP endpoint is available, then spawn
-                            let Some(tcp_endpoint) = tcp_endpoint_opt else {
-                                let _ = response.send(Err(Error::Config(crate::error::ConfigError::new(
-                                    "TCP transport selected but no TCP endpoint"
-                                ))));
+                            };
+                            let Some((endpoint, transport)) = discovered.method_endpoint(prefer_tcp) else {
+                                tracing::error!(
+                                    "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: no valid endpoint",
+                                    service_id.value(),
+                                    instance_id.value(),
+                                    major_version,
+                                    eventgroup_ids,
+                                );
+                                let _ = response.send(Err(Error::ServiceUnavailable));
                                 continue;
                             };
+                            (discovered.sd_endpoint, endpoint, transport)
+                        };
 
+                        if transport == Transport::Tcp {
                             let tcp_pool_clone = Arc::clone(&tcp_pool);
                             let update_tx = subscribe_update_tx.clone();
                             let subscription_id = state.next_subscription_id();
@@ -344,7 +344,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                     tcp_pool_clone,
                                     update_tx,
                                     sd_endpoint,
-                                    tcp_endpoint,
+                                    endpoint,
                                     subscription_id,
                                     sd_flags,
                                     subscribe_ttl,
