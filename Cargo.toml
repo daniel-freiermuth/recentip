@@ -33,21 +33,22 @@ slow-tests = []
 
 [dependencies]
 tokio = { version = "1", features = ["net", "sync", "time", "rt", "macros", "io-util"] }
-bytes = "1"
+bytes = "1.11.1"
 dashmap = "6"
 futures = "0.3"
 tracing = "0.1"
 socket2 = { version = "0.6", features = ["all"] }
 turmoil = { version = "0.7.1", optional = true }
+vec1 = "1.12"
 
 [dev-dependencies]
-proptest = "1.9.0"
+proptest = "1.10.0"
 turmoil = "0.7"
 tokio = { version = "1", features = ["net", "sync", "time", "rt", "rt-multi-thread", "macros", "signal"] }
 tracing-subscriber = "0.3"
 test-log = {version = "0.2.19", default-features = false, features = ["trace"]}
 chrono = "0.4"
-clap = { version = "4.5.56", features = ["derive"] }
+clap = { version = "4.5.58", features = ["derive"] }
 
 [build-dependencies]
 serde = { version = "1", features = ["derive"] }

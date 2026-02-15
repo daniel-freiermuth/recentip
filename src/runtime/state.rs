@@ -180,7 +180,9 @@ impl PeerChannelSession {
                 true
             }
 
-            // Case 2: Reboot flag stays 1, but session ID regressed
+            // Case 2: Reboot flag stays 1, but session ID regressed or stayed same
+            // Per spec: old.session_id >= new.session_id (i.e., new <= old) is a reboot indicator
+            // This catches both regression (10 → 5) and stale session (5 → 5) with reboot flag
             (Some(last_session), true) if reboot_flag && session_id <= last_session => {
                 tracing::warn!(
                     "  => REBOOT DETECTED: Case 2 - session regression {} → {} with reboot flag still set",
@@ -223,6 +225,36 @@ pub struct PeerSessionState {
     pub(crate) multicast: PeerChannelSession,
     /// Session tracking for unicast SD messages
     pub(crate) unicast: PeerChannelSession,
+}
+
+impl PeerSessionState {
+    /// Check for reboot on the specified channel and reset both channels if detected.
+    ///
+    /// Per `feat_req_someipsd_871`/`feat_req_someipsd_872`: A reboot affects the entire peer,
+    /// not just one channel. If we detect reboot on multicast, the unicast channel is also
+    /// rebooted, and vice versa.
+    ///
+    /// Returns true if reboot was detected.
+    pub(crate) fn check_reboot_and_reset(
+        &mut self,
+        channel: SdChannel,
+        session_id: u16,
+        reboot_flag: bool,
+    ) -> bool {
+        let reboot_detected = match channel {
+            SdChannel::Multicast => self.multicast.check_and_update(session_id, reboot_flag),
+            SdChannel::Unicast => self.unicast.check_and_update(session_id, reboot_flag),
+        };
+
+        if reboot_detected {
+            // Reset session tracking on BOTH channels
+            // A peer reboot affects all communication channels
+            self.multicast = PeerChannelSession::default();
+            self.unicast = PeerChannelSession::default();
+        }
+
+        reboot_detected
+    }
 }
 
 /// Identifies whether an SD message is on the multicast or unicast channel
@@ -295,6 +327,8 @@ pub struct OfferedService {
     pub(crate) tcp_endpoint: Option<SocketAddr>,
     /// TCP transport sender (if offering via TCP)
     pub(crate) tcp_transport: Option<RpcTransportSender>,
+    /// Channel to close TCP connections from a specific peer (feat_req_someipsd_872)
+    pub(crate) tcp_close_peer_tx: Option<mpsc::Sender<(std::net::IpAddr, Vec<u16>)>>,
     /// Configuration for which methods use EXCEPTION message type
     pub(crate) method_config: MethodConfig,
     /// Whether currently announcing via SD (false = bound but not announced)

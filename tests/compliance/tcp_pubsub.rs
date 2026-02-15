@@ -24,9 +24,12 @@
 
 use recentip::prelude::*;
 use recentip::Transport;
+use std::future::IntoFuture;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
+use crate::helpers::configure_tracing;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -864,6 +867,197 @@ fn tcp_only_server_udp_preferring_client() {
     assert!(
         count >= 2,
         "Should have received events despite transport preference mismatch, got {}",
+        count
+    );
+}
+
+// ============================================================================
+// TCP CONNECTION HANDLING
+// ============================================================================
+
+/// Test that subscribing to one TCP service that's slow/unresponsive
+/// doesn't block subscribing to another TCP service.
+///
+/// Scenario:
+/// - Service A and B both offered via TCP only
+/// - Service B's TCP listener never accepts connections (simulates hanging server)
+/// - Client subscribes to B first (blocks on TCP connect), then A
+/// - Events from A should still arrive despite B connection hanging
+///
+/// This verifies that:
+/// - TCP connection attempts don't block the entire runtime
+/// - Multiple concurrent TCP operations work correctly
+/// - Events from healthy services arrive even when others are problematic
+#[test]
+fn tcp_slow_service_doesnt_block_other_services() {
+    let events_from_a = Arc::new(AtomicUsize::new(0));
+    let events_a_clone = Arc::clone(&events_from_a);
+
+    configure_tracing();
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Service A - healthy, accepts connections and sends events
+    sim.host("service_a", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("service_a").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let offering = runtime
+            .offer(0x1111u16, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .tcp()
+            .start()
+            .await
+            .unwrap();
+
+        tracing::info!("[service_a] Service offered via TCP");
+
+        // Wait for subscription
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Send events
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let event_id = EventId::new(0x8001).unwrap();
+        let event_handle = offering
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+
+        for i in 0..10 {
+            let payload = format!("event_from_a_{}", i);
+            event_handle.notify(payload.as_bytes()).await.unwrap();
+            tracing::info!("[service_a] Sent: {}", payload);
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        Ok(())
+    });
+
+    // Service B - will be partitioned after discovery to simulate hanging TCP connection
+    sim.host("service_b", || async {
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("service_b").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let _offering = runtime
+            .offer(0x2222u16, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .tcp()
+            .start()
+            .await
+            .unwrap();
+
+        tracing::info!("[service_b] Service offered via TCP (will have packets held)");
+
+        // Keep the offering alive
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        tracing::info!("[client] Runtime started");
+
+        // Discovery phase - sequential is fine, this is fast
+        tracing::info!("[client] Discovering services sequentially...");
+
+        // Find B first
+        let proxy_b = tokio::time::timeout(Duration::from_secs(5), runtime.find(0x2222u16))
+            .await
+            .expect("B should be discoverable via SD")
+            .expect("Service B should be available");
+        tracing::info!("[client] Service B discovered");
+
+        // Find A second
+        let proxy_a = tokio::time::timeout(Duration::from_secs(5), runtime.find(0x1111u16))
+            .await
+            .expect("A should be discoverable via SD")
+            .expect("Service A should be available");
+        tracing::info!("[client] Service A discovered");
+
+        // Hold all traffic between service_b and client to simulate hanging connection
+        // This prevents TCP handshake from completing
+        turmoil::hold("service_b", "client");
+        tracing::info!("[client] Traffic held - service_b connections will hang");
+
+        // Now the interesting part: parallel subscriptions
+        // B is requested first, but will hang on TCP connection
+        // A is requested shortly after and should succeed
+        tracing::info!("[client] Starting parallel subscriptions (B first, then A)...");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+
+        // Start subscribe to B (will hang trying to open TCP connection)
+        let subscribe_b_fut = async {
+            tracing::info!("[client] Attempting to subscribe to B...");
+            match tokio::time::timeout(
+                Duration::from_secs(8),
+                proxy_b.subscribe(eventgroup)
+            ).await {
+                Ok(Ok(_sub)) => tracing::warn!("[client] Subscribe to B succeeded (unexpected - traffic should be held!)"),
+                Ok(Err(e)) => tracing::info!("[client] Subscribe to B failed with error: {:?}", e),
+                Err(_) => tracing::info!("[client] Subscribe to B timed out (expected - traffic held causes connection to hang)"),
+            }
+        };
+
+        // Start subscribe to A after a small delay
+        let subscribe_a_fut = async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            tracing::info!("[client] Attempting to subscribe to A...");
+
+            let mut subscription_a = tokio::time::timeout(
+                Duration::from_secs(5),
+                proxy_a.subscribe(eventgroup)
+            )
+            .await
+            .expect("Subscribe to A should not timeout")
+            .expect("Subscribe to A should succeed");
+
+            tracing::info!("[client] Subscribed to A successfully! Receiving events...");
+
+            // Receive events from A while B subscription might still be pending
+            while let Some(event) = tokio::time::timeout(Duration::from_secs(3), subscription_a.next())
+                .await
+                .ok()
+                .flatten()
+            {
+                let payload = String::from_utf8_lossy(&event.payload);
+                tracing::info!("[client] Received from A: {}", payload);
+                events_a_clone.fetch_add(1, Ordering::SeqCst);
+            }
+        };
+
+        // Run both subscriptions concurrently
+        // B will hang, but A should complete successfully
+        tokio::join!(subscribe_b_fut, subscribe_a_fut);
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let count = events_from_a.load(Ordering::SeqCst);
+    assert!(
+        count >= 3,
+        "Should have received events from service A despite B being unresponsive, got {}",
         count
     );
 }

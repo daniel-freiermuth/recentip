@@ -202,16 +202,14 @@ fn rpc_response_wire_format() {
                             // Found our service offer
                             // Use the source address with the offered port
                             if let Some(opt) = sd_msg.options.first() {
-                                if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr, port, ..
-                                } = opt
-                                {
-                                    let ip = if addr.is_unspecified() {
+                                if let Some(port) = opt.port() {
+                                    let addr = opt.addr();
+                                    let ip = if addr.map_or(true, |a| a.is_unspecified()) {
                                         from.ip()
                                     } else {
-                                        std::net::IpAddr::V4(*addr)
+                                        std::net::IpAddr::V4(addr.unwrap())
                                     };
-                                    server_endpoint = Some(SocketAddr::new(ip, *port));
+                                    server_endpoint = Some(SocketAddr::new(ip, port));
                                 }
                             }
                         }
@@ -463,16 +461,14 @@ fn fire_and_forget_received_wire_format() {
                         if entry.entry_type as u8 == 0x01 && entry.service_id == 0x1234 {
                             // Found our service offer
                             if let Some(opt) = sd_msg.options.first() {
-                                if let recentip::wire::SdOption::Ipv4Endpoint {
-                                    addr, port, ..
-                                } = opt
-                                {
-                                    let ip = if addr.is_unspecified() {
+                                if let Some(port) = opt.port() {
+                                    let addr = opt.addr();
+                                    let ip = if addr.map_or(true, |a| a.is_unspecified()) {
                                         from.ip()
                                     } else {
-                                        std::net::IpAddr::V4(*addr)
+                                        std::net::IpAddr::V4(addr.unwrap())
                                     };
-                                    server_endpoint = Some(SocketAddr::new(ip, *port));
+                                    server_endpoint = Some(SocketAddr::new(ip, port));
                                 }
                             }
                         }

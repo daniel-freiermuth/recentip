@@ -96,8 +96,8 @@ fn sd_offer_wire_format() {
             );
             assert_eq!(
                 header.message_type,
-                MessageType::Notification,
-                "SD uses NOTIFICATION message type (feat_req_someip_103)"
+                0x02, // NOTIFICATION
+                "SD uses NOTIFICATION message type (0x02) (feat_req_someip_103)"
             );
             assert_eq!(
                 header.protocol_version, 0x01,

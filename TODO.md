@@ -12,13 +12,13 @@ This file tracks active work items organized by granularity. Completed tasks sho
 
 ## Epics
 
-### 1. SOME/IP-TP Implementation
+### 2. SOME/IP-TP Implementation
 Transport Protocol for segmentation/reassembly of large messages. Currently **NOT implemented** - the 9 TP tests are empty stubs with only `covers!()` macros. The TP header parsing utilities exist, but actual segmentation/reassembly in runtime is missing.
 
-### 2. Full Spec Compliance Testing
+### 3. Full Spec Compliance Testing
 Comprehensive test coverage with traceability matrix documenting which requirements are tested and why untested ones are excluded. Currently 354/354 tests pass, 19 ignored.
 
-### 3. Multi-Homed Host Support
+### 4. Multi-Homed Host Support
 True network isolation testing infrastructure needed:
 - Two separate networks with different SD multicast groups
 - Host with two network interfaces (one per network)
@@ -26,7 +26,7 @@ True network isolation testing infrastructure needed:
 - Verify Runtime instances only discover services on their network
 - Requires `SO_BINDTODEVICE` (Linux) or `IP_PKTINFO` (others)
 
-### 4. Data Plane Bypass (Performance)
+### 5. Data Plane Bypass (Performance)
 Currently all RPC traffic flows through the central event loop. For high-throughput scenarios, separate control plane from data plane:
 - **Control plane (event loop)**: SD messages, commands, state mutations, periodic tasks
 - **Data plane (direct)**: RPC requests/responses bypass event loop, dispatch directly to handlers
@@ -45,7 +45,7 @@ Implementation approach:
 
 ## Tasks
 
-### Implement SOME/IP-TP (Epic 1)
+### Implement SOME/IP-TP (Epic 2)
 - [ ] Implement TP segmentation for outgoing messages exceeding MTU
 - [ ] Implement TP reassembly for incoming segmented messages
 - [ ] Integrate TP with runtime event loop

@@ -7,12 +7,14 @@
 //!
 //! - [`command`]: Command enum for handle→runtime communication
 //! - [`state`]: `RuntimeState` and internal data structures
-//! - [`client`]: Client-side handlers (find, call, subscribe)
+//! - [`client`]: Client-side handlers (find, call, subscribe UDP)
+//! - [`client_concurrent`]: Concurrent TCP Subscribe command handling
 //! - [`server`]: Server-side handlers (offer, notify, respond)
 //! - [`sd`]: Service Discovery message handlers and builders
 //! - [`event_loop`]: The main runtime task and event loop
 
 pub mod client;
+pub mod client_concurrent;
 pub mod command;
 pub mod event_loop;
 pub mod sd;

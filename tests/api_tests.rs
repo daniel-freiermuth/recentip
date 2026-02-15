@@ -639,13 +639,14 @@ fn subscribe_returns_error_on_nack() {
 
         let sd_multicast: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-        // Build offer message
-        let offer = build_sd_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
+        // Use WireServer for proper session ID and reboot flag handling
+        let mut wire_server = helpers::WireServer::new();
 
         let mut buf = [0u8; 1500];
 
         loop {
-            // Send periodic offers
+            // Send periodic offers (with incrementing session ID, reboot only on first)
+            let offer = wire_server.build_offer(0x1234, 0x0001, 1, 0, my_ip, 30509, 3600);
             sd_socket.send_to(&offer, sd_multicast).await?;
 
             let result =
@@ -657,8 +658,8 @@ fn subscribe_returns_error_on_nack() {
                     for entry in &sd_msg.entries {
                         // SubscribeEventgroup is type 0x06
                         if entry.entry_type as u8 == 0x06 && entry.service_id == 0x1234 {
-                            // Send NACK (TTL=0)
-                            let nack = build_sd_subscribe_nack(
+                            // Send NACK (TTL=0) with proper session handling
+                            let nack = wire_server.build_subscribe_nack(
                                 entry.service_id,
                                 entry.instance_id,
                                 entry.major_version,

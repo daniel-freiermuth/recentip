@@ -137,6 +137,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     }
 
     // Create TCP transport if configured
+    let mut tcp_close_peer_tx: Option<mpsc::Sender<(std::net::IpAddr, Vec<u16>)>> = None;
     if let Some(port) = offer_config.tcp_port {
         let rpc_port = if port == 0 { base_port + 1 } else { port };
         let rpc_addr = SocketAddr::new(state.local_endpoint.ip(), rpc_port);
@@ -153,6 +154,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
                     Ok(tcp_server) => {
                         tcp_endpoint = Some(tcp_server.local_addr);
                         tcp_transport = Some(RpcTransportSender::Tcp(tcp_server.send_tx));
+                        tcp_close_peer_tx = Some(tcp_server.close_peer_tx);
                     }
                     Err(e) => {
                         tracing::error!("Failed to create TCP server on {}: {}", rpc_addr, e);
@@ -190,6 +192,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
             udp_transport,
             tcp_endpoint,
             tcp_transport,
+            tcp_close_peer_tx,
             method_config: offer_config.method_config,
             is_announcing: true, // Offer immediately announces
         },

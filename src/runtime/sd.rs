@@ -104,13 +104,20 @@ pub enum Action {
         context: PendingServerResponse,
         receiver: tokio::sync::oneshot::Receiver<crate::error::Result<Bytes>>,
     },
-    /// Emit an SD event to all monitors
+    ///Emit an SD event to all monitors
     EmitSdEvent { event: crate::SdEvent },
     /// Reset TCP connections to a peer (due to reboot detection)
-    ResetPeerTcpConnections { peer: std::net::IpAddr },
-    /// Expire all subscriptions from/to a peer (due to reboot detection)
-    /// Per `feat_req_someipsd_871`: On peer reboot, cancel subscriptions
-    ExpirePeerSubscriptions { peer: std::net::IpAddr },
+    /// Per `feat_req_someipsd_872`: Reset TCP state when peer reboots
+    ResetPeerTcpConnections {
+        peer: std::net::IpAddr,
+        /// Server-side TCP ports to close (connections FROM peer to our services)
+        server_ports: Vec<u16>,
+        /// Client-side TCP ports to close (connections TO peer's services at these ports)
+        client_ports: Vec<u16>,
+        /// Whether to close ALL client-side TCP connections to this peer
+        /// Set to false when we have kept subscriptions with pending ACKs
+        close_client_pool: bool,
+    },
 }
 
 // ============================================================================
@@ -197,6 +204,18 @@ pub fn handle_offer(
         },
     );
 
+    tracing::debug!(
+        "[OFFER] {} service {:04X}:{:04X} v{} from {} (UDP:{:?}, TCP:{:?}, TTL:{}s)",
+        if is_new { "Added" } else { "Updated" },
+        key.service_id,
+        key.instance_id,
+        key.major_version,
+        from.ip(),
+        udp_endpoint,
+        tcp_endpoint,
+        entry.ttl
+    );
+
     if is_new {
         actions.push(Action::NotifyFound {
             key,
@@ -270,6 +289,24 @@ pub fn handle_offer(
                 continue;
             }
 
+            // Skip if this subscription has a pending ACK - don't send duplicate Subscribe
+            // This can happen when we receive a periodic Offer while waiting for ACK/NACK
+            let pending_key = PendingSubscriptionKey {
+                service_id: entry.service_id,
+                instance_id: entry.instance_id,
+                major_version: entry.major_version,
+                eventgroup_id: sub.eventgroup_id,
+            };
+            if state.pending_subscriptions.contains_key(&pending_key) {
+                tracing::trace!(
+                    "Skipping renewal for {:04x}:{:04x} eventgroup {:04x} (pending ACK)",
+                    entry.service_id,
+                    entry.instance_id,
+                    sub.eventgroup_id
+                );
+                continue;
+            }
+
             // Use this subscription's local endpoint for renewal
             let endpoint_for_subscribe =
                 std::net::SocketAddr::new(endpoint_ip, sub.local_endpoint.port());
@@ -313,7 +350,7 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
         major_version: entry.major_version,
     };
 
-    if state.discovered.remove(&key).is_some() {
+    if let Some((_key, service)) = state.discovered.remove(&key) {
         tracing::debug!(
             "Service {:04x}:{:04x} v{} stopped offering",
             entry.service_id,
@@ -325,6 +362,38 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
         // When the service goes away, subscription channels should close
         // so that subscription.next() returns None
         state.subscriptions.remove(&key);
+
+        // Queue TCP cleanup if this service had a TCP endpoint
+        // Per feat_req_someipsd_872: TCP connections should be reset when service stops
+        if let Some(tcp_endpoint) = service.tcp_endpoint {
+            let peer_ip = tcp_endpoint.ip();
+            let client_port = tcp_endpoint.port();
+
+            // Check if we have any other active services from this peer
+            let has_other_services = state.discovered.iter().any(|entry| {
+                entry
+                    .value()
+                    .tcp_endpoint
+                    .as_ref()
+                    .is_some_and(|ep| ep.ip() == peer_ip)
+            });
+
+            tracing::debug!(
+                "Queuing TCP cleanup for stopped service {:04x}:{:04x} at {}:{} (close_pool={})",
+                entry.service_id,
+                entry.instance_id,
+                peer_ip,
+                client_port,
+                !has_other_services
+            );
+
+            actions.push(Action::ResetPeerTcpConnections {
+                peer: peer_ip,
+                server_ports: Vec::new(), // We're the client, not the server
+                client_ports: vec![client_port],
+                close_client_pool: !has_other_services, // Close entire pool if no other services from this peer
+            });
+        }
 
         // Emit SD event to monitors
         actions.push(Action::EmitSdEvent {
