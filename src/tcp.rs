@@ -338,6 +338,53 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             }
         }
     }
+
+    /// Close connections to specific ports on a peer IP (for selective reboot handling)
+    ///
+    /// This closes only connections to the given peer IP on the specified ports.
+    /// Used when some services are removed during reboot detection but others are kept.
+    pub fn close_to_peer_ports(&self, peer_ip: std::net::IpAddr, ports: &[u16]) {
+        if ports.is_empty() {
+            return;
+        }
+
+        // Collect keys to close (only established connections to specified ports)
+        let keys_to_close: Vec<_> = self
+            .connections
+            .iter()
+            .filter(|entry| {
+                entry.key().0.ip() == peer_ip
+                    && ports.contains(&entry.key().0.port())
+                    && entry.value().get().is_some()
+            })
+            .map(|entry| *entry.key())
+            .collect();
+
+        if keys_to_close.is_empty() {
+            tracing::debug!(
+                "No TCP connections to close for peer {} on ports {:?}",
+                peer_ip,
+                ports
+            );
+            return;
+        }
+
+        tracing::debug!(
+            "Closing {} TCP connection(s) to peer {} on ports {:?}",
+            keys_to_close.len(),
+            peer_ip,
+            ports
+        );
+
+        // Close each connection
+        for key in keys_to_close {
+            if let Some((_, cell)) = self.connections.remove(&key) {
+                if let Some(state) = cell.get() {
+                    state.task_handle.abort();
+                }
+            }
+        }
+    }
 }
 
 /// Handle a client-side TCP connection - both reading and writing
@@ -425,7 +472,12 @@ async fn handle_client_tcp_connection<T: TcpStream>(
             }
 
             // Write to the stream
-            Some(data) = send_rx.recv() => {
+            data = send_rx.recv() => {
+                let Some(data) = data else {
+                    // Channel closed - runtime is shutting down
+                    tracing::debug!("Send channel closed, closing TCP connection to {}", peer_addr);
+                    break;
+                };
                 // Prepend Magic Cookie if enabled (feat_req_someip_591)
                 if magic_cookies {
                     let cookie = magic_cookie_client();
@@ -525,11 +577,14 @@ pub struct TcpSendMessage {
 /// - Accepting incoming TCP connections
 /// - Reading framed SOME/IP messages from clients
 /// - Sending responses back to the correct client
+/// - Closing connections from specific peers (feat_req_someipsd_872)
 pub struct TcpServer<T: TcpStream> {
     /// Local address the server is listening on
     pub local_addr: SocketAddr,
     /// Channel to send responses to clients
     pub send_tx: mpsc::Sender<TcpSendMessage>,
+    /// Channel to close specific connections from a peer IP (by port)
+    pub close_peer_tx: mpsc::Sender<(std::net::IpAddr, Vec<u16>)>,
     /// Phantom for the stream type
     _phantom: std::marker::PhantomData<T>,
 }
@@ -550,15 +605,26 @@ impl<T: TcpStream> TcpServer<T> {
         msg_tx: mpsc::Sender<TcpMessage>,
         magic_cookies: bool,
     ) -> io::Result<Self> {
+        use tokio::task::JoinHandle;
+
         let local_addr = listener.local_addr()?;
 
         // Channel for sending responses to clients
         let (send_tx, mut send_rx) = mpsc::channel::<TcpSendMessage>(100);
 
+        // Channel for closing specific connections from a peer (feat_req_someipsd_872)
+        // Tuple: (peer_ip, close_ports) - only connections matching these ports are closed
+        let (close_peer_tx, mut close_peer_rx) = mpsc::channel::<(std::net::IpAddr, Vec<u16>)>(16);
+
         // Track active client connections - maps peer addr to a response sender
         let client_senders: Arc<DashMap<SocketAddr, mpsc::Sender<Bytes>>> =
             Arc::new(DashMap::new());
         let client_senders_for_responses = Arc::clone(&client_senders);
+        let client_senders_for_close = Arc::clone(&client_senders);
+
+        // Track connection task handles for abort
+        let client_tasks: Arc<DashMap<SocketAddr, JoinHandle<()>>> = Arc::new(DashMap::new());
+        let client_tasks_for_close = Arc::clone(&client_tasks);
 
         // Spawn the main server task
         tokio::spawn(async move {
@@ -582,22 +648,77 @@ impl<T: TcpStream> TcpServer<T> {
                                 // Spawn task to handle this client connection
                                 let msg_tx = msg_tx.clone();
                                 let senders = Arc::clone(&client_senders);
-                                tokio::spawn(handle_tcp_connection(
-                                    stream,
-                                    peer_addr,
-                                    service_id,
-                                    instance_id,
-                                    msg_tx,
-                                    conn_send_rx,
-                                    senders,
-                                    magic_cookies,
-                                ));
+                                let tasks = Arc::clone(&client_tasks);
+                                let handle = tokio::spawn(async move {
+                                    handle_tcp_connection(
+                                        stream,
+                                        peer_addr,
+                                        service_id,
+                                        instance_id,
+                                        msg_tx,
+                                        conn_send_rx,
+                                        senders,
+                                        magic_cookies,
+                                    ).await;
+                                    // Clean up task handle when done
+                                    tasks.remove(&peer_addr);
+                                });
+                                client_tasks.insert(peer_addr, handle);
                             }
                             Err(e) => {
                                 tracing::error!(
                                     "TCP accept error for service {:04x}:{:04x}: {}",
                                     service_id, instance_id, e
                                 );
+                            }
+                        }
+                    }
+
+                    // Close specific connections from a peer (reboot detection)
+                    // close_ports contains ports from old subscriptions that should be closed
+                    Some((peer_ip, close_ports)) = close_peer_rx.recv() => {
+                        tracing::debug!(
+                            "TCP server {:04x}:{:04x}: received close_peer request for peer {} ports {:?}",
+                            service_id, instance_id, peer_ip, close_ports
+                        );
+
+                        // Log all current connections for debugging
+                        let current_connections: Vec<SocketAddr> = client_senders_for_close.iter()
+                            .map(|entry| *entry.key())
+                            .collect();
+                        tracing::debug!(
+                            "TCP server {:04x}:{:04x}: current connections: {:?}",
+                            service_id, instance_id, current_connections
+                        );
+
+                        let mut addrs_to_remove: Vec<SocketAddr> = Vec::new();
+                        for entry in client_senders_for_close.iter() {
+                            // Only close connections matching BOTH the peer IP AND a port in close_ports
+                            if entry.key().ip() == peer_ip && close_ports.contains(&entry.key().port()) {
+                                tracing::debug!(
+                                    "TCP server {:04x}:{:04x}: MATCH - will close connection from {:?}",
+                                    service_id, instance_id, entry.key()
+                                );
+                                addrs_to_remove.push(*entry.key());
+                            }
+                        }
+                        if addrs_to_remove.is_empty() {
+                            tracing::warn!(
+                                "TCP server {:04x}:{:04x}: No matching connections found for peer {} ports {:?}",
+                                service_id, instance_id, peer_ip, close_ports
+                            );
+                        } else {
+                            tracing::debug!(
+                                "TCP server {:04x}:{:04x}: closing {} connection(s) from peer {} (reboot detected, ports: {:?})",
+                                service_id, instance_id, addrs_to_remove.len(), peer_ip, close_ports
+                            );
+                            for addr in addrs_to_remove {
+                                // Remove sender (causes connection task to exit)
+                                client_senders_for_close.remove(&addr);
+                                // Abort the task to ensure it stops immediately
+                                if let Some((_, handle)) = client_tasks_for_close.remove(&addr) {
+                                    handle.abort();
+                                }
                             }
                         }
                     }
@@ -628,6 +749,7 @@ impl<T: TcpStream> TcpServer<T> {
         Ok(Self {
             local_addr,
             send_tx,
+            close_peer_tx,
             _phantom: std::marker::PhantomData,
         })
     }
@@ -719,7 +841,12 @@ async fn handle_tcp_connection<T: TcpStream>(
             }
 
             // Write responses to client
-            Some(data) = response_rx.recv() => {
+            data = response_rx.recv() => {
+                let Some(data) = data else {
+                    // Channel closed - runtime is shutting down
+                    tracing::debug!("Response channel closed, closing TCP connection to {}", peer_addr);
+                    break;
+                };
                 // Prepend Magic Cookie if enabled (feat_req_someip_591)
                 if magic_cookies {
                     let cookie = magic_cookie_server();

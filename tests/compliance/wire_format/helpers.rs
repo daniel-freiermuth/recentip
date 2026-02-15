@@ -949,6 +949,146 @@ pub fn build_sd_subscribe_ack(
         .build()
 }
 
+/// Builder for constructing raw SOME/IP-SD SubscribeEventgroup messages.
+///
+/// Provides a fluent API for creating test packets with customizable fields.
+/// Defaults to TTL=0xFFFFFF, session_id=1, reboot_flag=true, unicast_flag=false.
+///
+/// # Example
+/// ```ignore
+/// let subscribe = SdSubscribeBuilder::new(0x1234, 0x0001, 0x0001, my_ip, 30490)
+///     .major_version(1)
+///     .protocol(0x06) // TCP
+///     .session_id(5)
+///     .build();
+/// ```
+pub struct SdSubscribeBuilder {
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+    eventgroup_id: u16,
+    ttl: u32,
+    session_id: u16,
+    reboot_flag: bool,
+    unicast_flag: bool,
+    endpoint_ip: Ipv4Addr,
+    endpoint_port: u16,
+    protocol: u8, // 0x06 = TCP, 0x11 = UDP
+}
+
+impl SdSubscribeBuilder {
+    /// Create a new SubscribeEventgroup builder with required parameters
+    pub fn new(
+        service_id: u16,
+        instance_id: u16,
+        eventgroup_id: u16,
+        endpoint_ip: Ipv4Addr,
+        endpoint_port: u16,
+    ) -> Self {
+        Self {
+            service_id,
+            instance_id,
+            major_version: 1,
+            eventgroup_id,
+            ttl: 0xFFFFFF,
+            session_id: 1,
+            reboot_flag: true,
+            unicast_flag: true,
+            endpoint_ip,
+            endpoint_port,
+            protocol: L4_TCP, // Default to TCP
+        }
+    }
+
+    pub fn major_version(mut self, version: u8) -> Self {
+        self.major_version = version;
+        self
+    }
+
+    pub fn ttl(mut self, ttl: u32) -> Self {
+        self.ttl = ttl;
+        self
+    }
+
+    pub fn session_id(mut self, session_id: u16) -> Self {
+        self.session_id = session_id;
+        self
+    }
+
+    pub fn reboot_flag(mut self, flag: bool) -> Self {
+        self.reboot_flag = flag;
+        self
+    }
+
+    /// Set protocol to TCP (0x06)
+    pub fn tcp(mut self) -> Self {
+        self.protocol = L4_TCP;
+        self
+    }
+
+    /// Set protocol to UDP (0x11)
+    pub fn udp(mut self) -> Self {
+        self.protocol = L4_UDP;
+        self
+    }
+
+    /// Set protocol directly
+    pub fn protocol(mut self, protocol: u8) -> Self {
+        self.protocol = protocol;
+        self
+    }
+
+    pub fn build(self) -> Vec<u8> {
+        let mut payload = Vec::with_capacity(64);
+
+        // SD Payload - Flags
+        let mut flags = 0u8;
+        if self.reboot_flag {
+            flags |= 0x80;
+        }
+        if self.unicast_flag {
+            flags |= 0x40;
+        }
+        payload.push(flags);
+        payload.extend_from_slice(&[0x00, 0x00, 0x00]); // Reserved
+
+        // Entries array
+        payload.extend_from_slice(&16u32.to_be_bytes());
+
+        // SubscribeEventgroup Entry
+        payload.push(0x06); // Type = SubscribeEventgroup
+        payload.push(0x00); // Index 1st options = 0
+        payload.push(0x00); // Index 2nd options
+        payload.push(0x10); // # of opts: 1 in run1, 0 in run2
+        payload.extend_from_slice(&self.service_id.to_be_bytes());
+        payload.extend_from_slice(&self.instance_id.to_be_bytes());
+        payload.push(self.major_version);
+        let ttl_bytes = self.ttl.to_be_bytes();
+        payload.extend_from_slice(&ttl_bytes[1..4]);
+        payload.push(0x00); // Reserved
+        payload.push(0x00); // Counter
+        payload.extend_from_slice(&self.eventgroup_id.to_be_bytes());
+
+        // Options array
+        payload.extend_from_slice(&12u32.to_be_bytes());
+
+        // IPv4 Endpoint Option
+        payload.extend_from_slice(&9u16.to_be_bytes()); // Length = 9
+        payload.push(0x04); // Type = IPv4 Endpoint
+        payload.push(0x00); // Reserved
+        payload.extend_from_slice(&self.endpoint_ip.octets());
+        payload.push(0x00); // Reserved
+        payload.push(self.protocol);
+        payload.extend_from_slice(&self.endpoint_port.to_be_bytes());
+
+        SomeIpPacketBuilder::notification(SD_SERVICE_ID, SD_METHOD_ID)
+            .client_id(0x0001)
+            .session_id(self.session_id)
+            .payload(payload.as_slice())
+            .build()
+    }
+}
+
 /// Build a raw SOME/IP-SD SubscribeEventgroup with a UDP endpoint option
 pub fn build_sd_subscribe_with_udp_endpoint(
     service_id: u16,
@@ -959,45 +1099,17 @@ pub fn build_sd_subscribe_with_udp_endpoint(
     client_ip: std::net::Ipv4Addr,
     client_port: u16,
 ) -> Vec<u8> {
-    let mut payload = Vec::with_capacity(64);
-
-    // SD Payload
-    payload.push(0xC0);
-    payload.extend_from_slice(&[0x00, 0x00, 0x00]);
-
-    // Entries array length
-    payload.extend_from_slice(&16u32.to_be_bytes());
-
-    // SubscribeEventgroup Entry
-    payload.push(0x06); // Type = SubscribeEventgroup
-    payload.push(0x00); // Index 1st options = 0
-    payload.push(0x00); // Index 2nd options
-    payload.push(0x10); // # of opts: 1 in run1, 0 in run2
-    payload.extend_from_slice(&service_id.to_be_bytes());
-    payload.extend_from_slice(&instance_id.to_be_bytes());
-    payload.push(major_version);
-    let ttl_bytes = ttl.to_be_bytes();
-    payload.extend_from_slice(&ttl_bytes[1..4]);
-    payload.push(0x00);
-    payload.push(0x00);
-    payload.extend_from_slice(&eventgroup_id.to_be_bytes());
-
-    // Options array
-    payload.extend_from_slice(&12u32.to_be_bytes());
-
-    // IPv4 Endpoint Option with UDP
-    payload.extend_from_slice(&9u16.to_be_bytes()); // Length = 9
-    payload.push(0x04); // Type = IPv4 Endpoint
-    payload.push(0x00); // Reserved
-    payload.extend_from_slice(&client_ip.octets());
-    payload.push(0x00); // Reserved
-    payload.push(0x11); // L4 Protocol = UDP (0x11)
-    payload.extend_from_slice(&client_port.to_be_bytes());
-
-    // Build SOME/IP-SD packet using builder
-    SomeIpPacketBuilder::notification(SD_SERVICE_ID, SD_METHOD_ID)
-        .client_id(0x0001)
-        .session_id(0x0001)
-        .payload(payload.as_slice())
-        .build()
+    SdSubscribeBuilder::new(
+        service_id,
+        instance_id,
+        eventgroup_id,
+        client_ip,
+        client_port,
+    )
+    .major_version(major_version)
+    .ttl(ttl)
+    .udp() // Use UDP protocol (0x11)
+    .session_id(1)
+    .reboot_flag(true) // 0x80
+    .build()
 }

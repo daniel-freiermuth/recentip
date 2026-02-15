@@ -32,7 +32,8 @@ use crate::runtime::{
     },
     server::{self, build_response},
     state::{
-        PendingServerResponse, RpcMessage, RpcSendMessage, RuntimeState, SdChannel, ServiceKey,
+        PendingServerResponse, PendingSubscriptionKey, RpcMessage, RpcSendMessage, RuntimeState,
+        SdChannel, ServiceKey,
     },
     Command,
 };
@@ -298,11 +299,12 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                         let (sd_endpoint, endpoint, transport) = {
                             let Some(discovered) = state.discovered.get(&service_key) else {
                                 tracing::error!(
-                                    "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: service not discovered",
+                                    "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: service not discovered (discovered services: {:?})",
                                     service_id.value(),
                                     instance_id.value(),
                                     major_version,
-                                    eventgroup_ids
+                                    eventgroup_ids,
+                                    state.discovered.iter().map(|e| (*e.key(), e.value().udp_endpoint, e.value().tcp_endpoint)).collect::<Vec<_>>()
                                 );
                                 let _ = response.send(Err(Error::ServiceUnavailable));
                                 continue;
@@ -573,105 +575,39 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             });
             pending_responses.push(fut);
         }
-        Action::ResetPeerTcpConnections { peer } => {
-            // Close all TCP connections to the peer that rebooted
-            // This handles both client-side (via pool) and triggers reconnection on next request
+        Action::ResetPeerTcpConnections {
+            peer,
+            server_ports,
+            client_ports,
+            close_client_pool,
+        } => {
+            // Close TCP connections related to the rebooted peer
             tracing::info!(
-                "Detected reboot of peer {}, resetting TCP connections",
-                peer
+                "Detected reboot of peer {}, closing TCP connections: server_ports={:?}, client_ports={:?}, close_client_pool={}",
+                peer, server_ports, client_ports, close_client_pool
             );
 
-            // Close ALL TCP connections to this peer (both RPC and subscription connections)
+            // Close client-side TCP connections to this peer (outgoing connections)
             // Per feat_req_someipsd_872: reset TCP state on peer reboot
-            tcp_pool.close_all_to_peer(peer);
-        }
-        Action::ExpirePeerSubscriptions { peer } => {
-            // Per feat_req_someipsd_871: On peer reboot, expire all subscriptions
-            // This includes:
-            // 1. Server-side: Remove subscriptions FROM the rebooted client
-            // 2. Client-side: Mark our subscriptions TO the rebooted server as expired
-
-            tracing::info!("Expiring subscriptions for rebooted peer {}", peer);
-
-            // Server-side: Remove subscribers from this peer
-            // Collect keys to avoid borrow issues
-            let subscriber_keys: Vec<_> = state.server_subscribers.keys().copied().collect();
-            for key in subscriber_keys {
-                if let Some(subs) = state.server_subscribers.get_mut(&key) {
-                    let before_count = subs.len();
-                    subs.retain(|sub| sub.endpoint.ip() != peer);
-                    let removed = before_count - subs.len();
-                    if removed > 0 {
-                        tracing::debug!(
-                            "Removed {} subscription(s) from peer {} for service {:04X}:{:04X}",
-                            removed,
-                            peer,
-                            key.service_id,
-                            key.instance_id
-                        );
-                    }
-                }
-            }
-            // Clean up empty entries
-            state.server_subscribers.retain(|_, subs| !subs.is_empty());
-
-            // Client-side: Expire subscriptions to services from the rebooted peer
-            // This causes subscription handles to be dropped, which closes TCP connections
-            let subscriptions_to_remove: Vec<_> = state
-                .subscriptions
-                .iter()
-                .filter_map(|(key, _subs)| {
-                    // Check if this subscription is to the rebooted peer
-                    if let Some(svc) = state.discovered.get(key) {
-                        let is_from_peer = svc.udp_endpoint.is_some_and(|addr| addr.ip() == peer)
-                            || svc.tcp_endpoint.is_some_and(|addr| addr.ip() == peer);
-                        if is_from_peer {
-                            return Some(*key);
-                        }
-                    }
-                    None
-                })
-                .collect();
-
-            for key in subscriptions_to_remove {
-                // Expire the subscription - this drops handles which closes TCP
-                if let Some(subs) = state.subscriptions.remove(&key) {
-                    let count = subs.len();
-                    tracing::debug!(
-                        "Expired {} subscription(s) to {:04X}:{:04X} (peer {} rebooted)",
-                        count,
-                        key.service_id,
-                        key.instance_id,
-                        peer
-                    );
-                }
+            if close_client_pool {
+                // Close ALL client connections to this peer
+                tcp_pool.close_all_to_peer(peer);
+            } else if !client_ports.is_empty() {
+                // Close only specific client connections (to removed services at these ports)
+                // This preserves connections for kept subscriptions
+                tcp_pool.close_to_peer_ports(peer, &client_ports);
             }
 
-            // Remove discovered services from this peer after expiring subscriptions
-            let services_to_remove: Vec<_> = state
-                .discovered
-                .iter()
-                .filter(|entry| {
-                    entry
-                        .value()
-                        .udp_endpoint
-                        .is_some_and(|addr| addr.ip() == peer)
-                        || entry
-                            .value()
-                            .tcp_endpoint
-                            .is_some_and(|addr| addr.ip() == peer)
-                })
-                .map(|entry| *entry.key())
-                .collect();
-
-            for key in services_to_remove {
-                if state.discovered.remove(&key).is_some() {
-                    tracing::debug!(
-                        "Removed discovered service {:04X}:{:04X} from rebooted peer {}",
-                        key.service_id,
-                        key.instance_id,
-                        peer
-                    );
+            // Close server-side TCP connections from this peer (only specific ports)
+            // These are connections FROM the peer TO our services
+            // For each offered service with a TCP server, tell it to close specific connections
+            if !server_ports.is_empty() {
+                for offered in state.offered.values() {
+                    if let Some(ref close_tx) = offered.tcp_close_peer_tx {
+                        // Non-blocking send - channel might be full or closed
+                        // Send (peer_ip, server_ports) tuple
+                        let _ = close_tx.try_send((peer, server_ports.clone()));
+                    }
                 }
             }
         }
@@ -703,11 +639,40 @@ fn handle_sd_message(
 
     let mut actions = Vec::new();
 
+    // Extract session info and check for peer reboot
+    let peer_ip = from.ip();
+    if let Some(reboot_actions) = detect_and_handle_peer_reboot(header, &sd_message, peer_ip, state)
+    {
+        actions.extend(reboot_actions);
+    }
+
+    // Process SD entries - new Offers will re-add services after reboot clear
+    process_sd_entries(&sd_message, from, state, &mut actions);
+
+    // Cluster multiple SendSd actions with SD messages going to the same target
+    // This prevents duplicate session IDs and reboot detection issues
+    actions = cluster_sd_actions(actions);
+
+    if actions.is_empty() {
+        None
+    } else {
+        Some(actions)
+    }
+}
+
+/// Detect peer reboot and handle all consequences
+///
+/// Returns actions to execute (TCP connection resets, etc.)
+fn detect_and_handle_peer_reboot(
+    header: &Header,
+    sd_message: &SdMessage,
+    peer_ip: std::net::IpAddr,
+    state: &mut RuntimeState,
+) -> Option<Vec<Action>> {
     // Extract session info for reboot detection (feat_req_someipsd_764, feat_req_someipsd_765)
     let peer_reboot_flag = (sd_message.flags & SdMessage::FLAG_REBOOT) != 0;
     let peer_unicast_flag = (sd_message.flags & SdMessage::FLAG_UNICAST) != 0;
-    let session_id = header.session_id; // Session ID comes from the SOME/IP header
-    let peer_ip = from.ip();
+    let session_id = header.session_id;
 
     // Determine the channel type based on the UNICAST flag in the SD message
     // Per feat_req_someipsd_765, each peer has separate session counters for:
@@ -735,29 +700,298 @@ fn handle_sd_message(
     );
 
     // Check for peer reboot using proper session tracking
+    tracing::debug!(
+        "Checking reboot for peer_ip={} on {:?} channel",
+        peer_ip,
+        channel
+    );
     let peer_state = state.peer_sessions.entry(peer_ip).or_default();
-    let reboot_detected = match channel {
-        SdChannel::Multicast => peer_state
-            .multicast
-            .check_and_update(session_id, peer_reboot_flag),
-        SdChannel::Unicast => peer_state
-            .unicast
-            .check_and_update(session_id, peer_reboot_flag),
-    };
+    let reboot_detected = peer_state.check_reboot_and_reset(channel, session_id, peer_reboot_flag);
 
     if reboot_detected {
         tracing::info!("Detected reboot of peer {}", peer_ip);
-        actions.push(Action::ResetPeerTcpConnections { peer: peer_ip });
-        actions.push(Action::ExpirePeerSubscriptions { peer: peer_ip });
+        Some(handle_peer_reboot(peer_ip, state))
+    } else {
+        None
+    }
+}
+
+/// Handle all consequences of a peer reboot
+///
+/// Per feat_req_someipsd_871: Services shall be expired if not updated after reboot.
+/// Per feat_req_someipsd_872: TCP connections to rebooted peer shall be reset.
+///
+/// Returns actions to execute (TCP connection resets)
+fn handle_peer_reboot(peer_ip: std::net::IpAddr, state: &mut RuntimeState) -> Vec<Action> {
+    // Expire services and collect TCP ports to close
+    let (has_kept_subscriptions, removed_service_tcp_ports) =
+        expire_services_from_rebooted_peer(peer_ip, state);
+
+    // Expire server-side subscriptions and collect TCP ports to close
+    let expired_tcp_ports = expire_server_subscriptions_from_rebooted_peer(peer_ip, state);
+
+    // Expire client-side subscriptions
+    expire_client_subscriptions_to_rebooted_peer(peer_ip, state);
+
+    // Queue TCP connection reset action
+    let mut actions = Vec::new();
+    queue_tcp_reset_for_rebooted_peer(
+        peer_ip,
+        has_kept_subscriptions,
+        expired_tcp_ports,
+        removed_service_tcp_ports,
+        &mut actions,
+    );
+
+    actions
+}
+
+/// Expire services from a rebooted peer
+///
+/// Returns (has_kept_subscriptions, removed_service_tcp_ports)
+fn expire_services_from_rebooted_peer(
+    peer_ip: std::net::IpAddr,
+    state: &mut RuntimeState,
+) -> (bool, Vec<u16>) {
+    tracing::debug!("Expiring services from rebooted peer {}", peer_ip);
+
+    // Find all services from this peer
+    let mut services_to_remove = Vec::new();
+    for entry in state.discovered.iter() {
+        let is_from_peer = entry
+            .value()
+            .udp_endpoint
+            .is_some_and(|addr| addr.ip() == peer_ip)
+            || entry
+                .value()
+                .tcp_endpoint
+                .is_some_and(|addr| addr.ip() == peer_ip);
+        if is_from_peer {
+            services_to_remove.push(*entry.key());
+        }
     }
 
+    let mut has_kept_subscriptions = false;
+    let mut removed_service_tcp_ports: Vec<u16> = Vec::new();
+
+    for key in services_to_remove {
+        // Check if we should keep this service (has subscriptions with pending ACKs)
+        let should_keep_service = state.subscriptions.get(&key).is_some_and(|subs| {
+            subs.iter().any(|sub| {
+                let pending_key = PendingSubscriptionKey {
+                    service_id: key.service_id,
+                    instance_id: key.instance_id,
+                    major_version: key.major_version,
+                    eventgroup_id: sub.eventgroup_id,
+                };
+                state.pending_subscriptions.contains_key(&pending_key)
+            })
+        });
+
+        if should_keep_service {
+            // Keep the service AND subscription (server knows about both)
+            has_kept_subscriptions = true;
+            tracing::debug!(
+                "Keeping service {:04X}:{:04X} and subscription (has pending ACK, server knows about it)",
+                key.service_id,
+                key.instance_id
+            );
+        } else {
+            // Remove service and subscription
+            if let Some((_, svc)) = state.discovered.remove(&key) {
+                tracing::debug!(
+                    "Removed service {:04X}:{:04X} from peer {} (not yet re-offered after reboot)",
+                    key.service_id,
+                    key.instance_id,
+                    peer_ip
+                );
+
+                // Collect TCP port of this service for connection cleanup
+                if let Some(tcp_ep) = svc.tcp_endpoint {
+                    if tcp_ep.ip() == peer_ip {
+                        removed_service_tcp_ports.push(tcp_ep.port());
+                        tracing::debug!(
+                            "Marking TCP port {} for closure (service {:04X}:{:04X} removed)",
+                            tcp_ep.port(),
+                            key.service_id,
+                            key.instance_id
+                        );
+                    }
+                }
+
+                state.find_requests.remove(&key);
+                state.subscriptions.remove(&key);
+            }
+        }
+    }
+
+    (has_kept_subscriptions, removed_service_tcp_ports)
+}
+
+/// Expire server-side subscriptions from a rebooted client
+///
+/// Returns TCP ports of expired subscriptions
+fn expire_server_subscriptions_from_rebooted_peer(
+    peer_ip: std::net::IpAddr,
+    state: &mut RuntimeState,
+) -> Vec<u16> {
+    tracing::debug!("Expiring subscriptions from rebooted peer {}", peer_ip);
+
+    let mut expired_tcp_ports: Vec<u16> = Vec::new();
+    let subscriber_keys: Vec<_> = state.server_subscribers.keys().copied().collect();
+
+    for key in subscriber_keys {
+        if let Some(subs) = state.server_subscribers.get_mut(&key) {
+            let before_count = subs.len();
+            // Collect ports of TCP subscriptions from this peer before removing
+            for sub in subs.iter() {
+                if sub.endpoint.ip() == peer_ip && sub.transport == Transport::Tcp {
+                    expired_tcp_ports.push(sub.endpoint.port());
+                }
+            }
+            subs.retain(|sub| sub.endpoint.ip() != peer_ip);
+            let removed = before_count - subs.len();
+            if removed > 0 {
+                tracing::debug!(
+                    "Removed {} subscription(s) from peer {} for service {:04X}:{:04X}",
+                    removed,
+                    peer_ip,
+                    key.service_id,
+                    key.instance_id
+                );
+            }
+        }
+    }
+    state.server_subscribers.retain(|_, subs| !subs.is_empty());
+
+    expired_tcp_ports
+}
+
+/// Expire client-side subscriptions to a rebooted server
+///
+/// Subscriptions with pending ACKs are NOT expired - the server knows about them.
+fn expire_client_subscriptions_to_rebooted_peer(
+    peer_ip: std::net::IpAddr,
+    state: &mut RuntimeState,
+) {
+    tracing::debug!(
+        "Expiring client-side subscriptions for rebooted peer {}",
+        peer_ip
+    );
+
+    let subscriptions_to_remove: Vec<_> = state
+        .subscriptions
+        .iter()
+        .filter_map(|(key, subs)| {
+            // Check if this subscription is to the rebooted peer
+            if let Some(svc) = state.discovered.get(key) {
+                let is_from_peer = svc.udp_endpoint.is_some_and(|addr| addr.ip() == peer_ip)
+                    || svc.tcp_endpoint.is_some_and(|addr| addr.ip() == peer_ip);
+                if is_from_peer {
+                    // Check if ANY eventgroup in this subscription is pending ACK
+                    // If so, don't expire - the server knows about this subscription
+                    let has_pending = subs.iter().any(|sub| {
+                        let pending_key = PendingSubscriptionKey {
+                            service_id: key.service_id,
+                            instance_id: key.instance_id,
+                            major_version: key.major_version,
+                            eventgroup_id: sub.eventgroup_id,
+                        };
+                        state.pending_subscriptions.contains_key(&pending_key)
+                    });
+
+                    if has_pending {
+                        tracing::debug!(
+                            "Not expiring subscription {:04X}:{:04X} - has pending ACK (server knows about it)",
+                            key.service_id,
+                            key.instance_id
+                        );
+                    } else {
+                        return Some(*key);
+                    }
+                }
+            }
+            None
+        })
+        .collect();
+
+    for key in subscriptions_to_remove {
+        if let Some(subs) = state.subscriptions.remove(&key) {
+            let count = subs.len();
+            tracing::debug!(
+                "Expired {} subscription(s) to {:04X}:{:04X} (peer {} rebooted)",
+                count,
+                key.service_id,
+                key.instance_id,
+                peer_ip
+            );
+        }
+    }
+}
+
+/// Queue TCP connection reset action for a rebooted peer
+fn queue_tcp_reset_for_rebooted_peer(
+    peer_ip: std::net::IpAddr,
+    has_kept_subscriptions: bool,
+    expired_tcp_ports: Vec<u16>,
+    removed_service_tcp_ports: Vec<u16>,
+    actions: &mut Vec<Action>,
+) {
+    if has_kept_subscriptions {
+        tracing::debug!(
+            "Keeping TCP pool open for peer {} - have subscriptions with pending ACKs, but closing: server_ports={:?}, client_ports={:?}",
+            peer_ip,
+            expired_tcp_ports,
+            removed_service_tcp_ports
+        );
+        // Close specific connections:
+        // - Server-side: expired_tcp_ports (connections FROM peer on these local ports)
+        // - Client-side: removed_service_tcp_ports (connections TO peer on these remote ports)
+        // Do NOT close entire client pool - new connections exist for kept subscriptions
+        if !expired_tcp_ports.is_empty() || !removed_service_tcp_ports.is_empty() {
+            tracing::debug!(
+                "Closing expired TCP connections from peer {}: server_ports={:?}, client_ports={:?}",
+                peer_ip,
+                expired_tcp_ports,
+                removed_service_tcp_ports
+            );
+            actions.push(Action::ResetPeerTcpConnections {
+                peer: peer_ip,
+                server_ports: expired_tcp_ports,
+                client_ports: removed_service_tcp_ports,
+                close_client_pool: false, // Keep other client connections alive
+            });
+        }
+        tracing::debug!("Keeping TCP pool open - have subscriptions with pending ACKs");
+    } else {
+        tracing::debug!(
+            "Closing ALL TCP connections from peer {} (no subscriptions with pending ACKs, safe to reset entire pool)",
+            peer_ip
+        );
+        // No subscriptions kept - safe to reset entire TCP pool
+        actions.push(Action::ResetPeerTcpConnections {
+            peer: peer_ip,
+            server_ports: expired_tcp_ports,
+            client_ports: removed_service_tcp_ports,
+            close_client_pool: true, // Close all client connections
+        });
+    }
+}
+
+/// Process SD entries in a message
+fn process_sd_entries(
+    sd_message: &SdMessage,
+    from: SocketAddr,
+    state: &mut RuntimeState,
+    actions: &mut Vec<Action>,
+) {
     for entry in &sd_message.entries {
         match entry.entry_type {
             SdEntryType::OfferService => {
                 if entry.is_stop() {
-                    handle_sd_stop_offer(entry, state, &mut actions);
+                    handle_sd_stop_offer(entry, state, actions);
                 } else {
-                    handle_offer(entry, &sd_message, from, state, &mut actions);
+                    handle_offer(entry, sd_message, from, state, actions);
                 }
             }
             SdEntryType::FindService => {
@@ -765,9 +999,9 @@ fn handle_sd_message(
             }
             SdEntryType::SubscribeEventgroup => {
                 if entry.is_stop() {
-                    handle_unsubscribe_request(entry, &sd_message, from, state);
+                    handle_unsubscribe_request(entry, sd_message, from, state);
                 } else {
-                    handle_subscribe_request(entry, &sd_message, from, state);
+                    handle_subscribe_request(entry, sd_message, from, state);
                 }
             }
             SdEntryType::SubscribeEventgroupAck => {
@@ -778,16 +1012,6 @@ fn handle_sd_message(
                 }
             }
         }
-    }
-
-    // Cluster multiple SendSd actions with SD messages going to the same target
-    // This prevents duplicate session IDs and reboot detection issues
-    actions = cluster_sd_actions(actions);
-
-    if actions.is_empty() {
-        None
-    } else {
-        Some(actions)
     }
 }
 
@@ -1174,6 +1398,9 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
 
     for key in expired_discovered {
         if state.discovered.remove(&key).is_some() {
+            // Also clear any cached subscriptions to this service since it's no longer available
+            state.subscriptions.remove(&key);
+
             // Emit SD event to monitors
             actions.push(Action::EmitSdEvent {
                 event: crate::SdEvent::ServiceExpired {
