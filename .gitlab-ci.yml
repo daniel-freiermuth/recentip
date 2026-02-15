@@ -1,12 +1,10 @@
 # GitLab CI/CD configuration for someip-runtime
 #
 # Stages:
-# - check: Fast linting and formatting checks
 # - test: Run test suite
 # - build: Build release artifacts and cross-compile
 
 stages:
-  - check
   - test
   - build
 
@@ -39,7 +37,7 @@ variables:
 
 format:
   extends: .rust-base
-  stage: check
+  stage: test
   script:
     - cargo fmt --check
   rules:
@@ -48,7 +46,7 @@ format:
 
 clippy:
   extends: .rust-base
-  stage: check
+  stage: test
   script:
     - cargo clippy --all-features
   rules:
