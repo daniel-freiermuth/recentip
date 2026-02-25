@@ -143,6 +143,11 @@ mod multi_protocol;
 #[path = "compliance/tcp_pubsub.rs"]
 mod tcp_pubsub;
 
+// Split server tests (SD and RPC on different hosts)
+#[cfg(feature = "turmoil")]
+#[path = "compliance/split_server.rs"]
+mod split_server;
+
 // Real network tests using tokio sockets (no turmoil simulation)
 #[path = "compliance/real_network.rs"]
 mod real_network;
