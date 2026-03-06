@@ -579,23 +579,19 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             peer,
             server_ports,
             client_endpoints,
-            close_client_pool,
         } => {
             // Close TCP connections related to the rebooted peer
             tracing::info!(
-                "Detected reboot of peer {}, closing TCP connections: server_ports={:?}, client_endpoints={:?}, close_client_pool={}",
-                peer, server_ports, client_endpoints, close_client_pool
+                "Detected reboot of peer {}, closing TCP connections: server_ports={:?}, client_endpoints={:?}",
+                peer, server_ports, client_endpoints
             );
 
-            // Close client-side TCP connections to this peer (outgoing connections)
-            // Per feat_req_someipsd_872: reset TCP state on peer reboot
-            if close_client_pool {
-                // Close ALL client connections to this SD peer IP
-                tcp_pool.close_all_to_peer(peer);
-            }
-            // Also close connections to the actual TCP service endpoints.
-            // In split-server topologies the TCP host IP differs from the SD peer IP,
-            // so `close_all_to_peer` above may not have closed these connections.
+            // Close exactly the client-side TCP connections that belonged to removed
+            // services (identified by their TCP SocketAddr).  We do NOT use
+            // close_all_to_peer(peer_ip) because in a split-server topology the TCP
+            // host may be shared by services from different SD peers; closing by IP
+            // would incorrectly terminate connections to unrelated services.
+            // Per feat_req_someipsd_872: reset TCP state on peer reboot.
             tcp_pool.close_endpoints(&client_endpoints);
 
             // Close server-side TCP connections from this peer (only specific ports)
@@ -761,15 +757,11 @@ fn expire_services_from_rebooted_peer(
     // (split-server case: SD host and TCP/UDP host are at different IPs).
     let mut services_to_remove = Vec::new();
     for entry in state.discovered.iter() {
-        let is_from_peer = entry
-            .value()
-            .udp_endpoint
-            .is_some_and(|addr| addr.ip() == peer_ip)
-            || entry
-                .value()
-                .tcp_endpoint
-                .is_some_and(|addr| addr.ip() == peer_ip)
-            || entry.value().sd_endpoint.ip() == peer_ip;
+        // The SD source IP is the canonical owner of a service. In a split-server
+        // topology the TCP/UDP transport endpoints may be on a different host; using
+        // those IPs would incorrectly expire services that merely share a TCP host
+        // with the rebooted peer.
+        let is_from_peer = entry.value().sd_endpoint.ip() == peer_ip;
         if is_from_peer {
             services_to_remove.push(*entry.key());
         }
@@ -889,9 +881,8 @@ fn expire_client_subscriptions_to_rebooted_peer(
         .filter_map(|(key, subs)| {
             // Check if this subscription is to the rebooted peer
             if let Some(svc) = state.discovered.get(key) {
-                let is_from_peer = svc.udp_endpoint.is_some_and(|addr| addr.ip() == peer_ip)
-                    || svc.tcp_endpoint.is_some_and(|addr| addr.ip() == peer_ip)
-                    || svc.sd_endpoint.ip() == peer_ip;
+                // Same rule as expire_services_from_rebooted_peer: SD source IP only.
+                let is_from_peer = svc.sd_endpoint.ip() == peer_ip;
                 if is_from_peer {
                     // Check if ANY eventgroup in this subscription is pending ACK
                     // If so, don't expire - the server knows about this subscription
@@ -964,7 +955,6 @@ fn queue_tcp_reset_for_rebooted_peer(
                 peer: peer_ip,
                 server_ports: expired_tcp_ports,
                 client_endpoints: removed_service_tcp_endpoints,
-                close_client_pool: false, // Keep other client connections alive
             });
         }
         tracing::debug!("Keeping TCP pool open - have subscriptions with pending ACKs");
@@ -973,12 +963,11 @@ fn queue_tcp_reset_for_rebooted_peer(
             "Closing ALL TCP connections from peer {} (no subscriptions with pending ACKs, safe to reset entire pool)",
             peer_ip
         );
-        // No subscriptions kept - safe to reset entire TCP pool
+        // No subscriptions kept — close connections to the removed services
         actions.push(Action::ResetPeerTcpConnections {
             peer: peer_ip,
             server_ports: expired_tcp_ports,
             client_endpoints: removed_service_tcp_endpoints,
-            close_client_pool: true, // Close all client connections
         });
     }
 }

@@ -116,9 +116,6 @@ pub enum Action {
         /// Stored as full `SocketAddr` so split-server topologies (where the SD peer
         /// and the TCP host are at different IPs) are handled correctly.
         client_endpoints: Vec<std::net::SocketAddr>,
-        /// Whether to close ALL client-side TCP connections to this peer
-        /// Set to false when we have kept subscriptions with pending ACKs
-        close_client_pool: bool,
     },
 }
 
@@ -393,7 +390,6 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
                 peer: peer_ip,
                 server_ports: Vec::new(), // We're the client, not the server
                 client_endpoints: vec![tcp_endpoint],
-                close_client_pool: !has_other_services, // Close entire pool if no other services from this peer
             });
         }
 

@@ -306,39 +306,6 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         }
     }
 
-    /// Close ALL connections to a peer IP address (for reboot handling)
-    ///
-    /// This closes all connections to the given peer IP, regardless of port or
-    /// `subscription_id`. Used when a peer reboot is detected per `feat_req_someipsd_872`.
-    pub fn close_all_to_peer(&self, peer_ip: std::net::IpAddr) {
-        // Collect keys to close (only established connections)
-        let keys_to_close: Vec<_> = self
-            .connections
-            .iter()
-            .filter(|entry| entry.key().0.ip() == peer_ip && entry.value().get().is_some())
-            .map(|entry| *entry.key())
-            .collect();
-
-        if keys_to_close.is_empty() {
-            return;
-        }
-
-        tracing::debug!(
-            "Closing {} TCP connection(s) to peer {}",
-            keys_to_close.len(),
-            peer_ip
-        );
-
-        // Close each connection
-        for key in keys_to_close {
-            if let Some((_, cell)) = self.connections.remove(&key) {
-                if let Some(state) = cell.get() {
-                    state.task_handle.abort();
-                }
-            }
-        }
-    }
-
     /// Close connections to specific remote endpoints (for split-server reboot handling)
     ///
     /// This closes all connections whose remote `SocketAddr` appears in `endpoints`,
