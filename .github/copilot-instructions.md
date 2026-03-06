@@ -5,6 +5,8 @@
 - Keep functions focused and extract reusable components
 - Follow clean code principles and separation of concerns.
 - Values: correctness, maintainablity, boringness and defensiveness
+- => fail-fast with graceful recovery
+- => defensive resilience
 - Performance optimizations are important should be justified with profiling data. Ask the user to help with profiling
 - Think long-term
 - Zero-panic
@@ -17,6 +19,7 @@
 - Network abstraction layer enables fault injection and deterministic testing
 - PoC-first approach: prove pipeline works end-to-end, then build incrementally
 - Simulated network for testing without real sockets
+- always build/compile before running tests
 
 # Session Start
 At the start of each session, read these files in order:
