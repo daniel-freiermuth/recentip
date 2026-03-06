@@ -112,8 +112,10 @@ pub enum Action {
         peer: std::net::IpAddr,
         /// Server-side TCP ports to close (connections FROM peer to our services)
         server_ports: Vec<u16>,
-        /// Client-side TCP ports to close (connections TO peer's services at these ports)
-        client_ports: Vec<u16>,
+        /// Client-side TCP endpoints to close (connections TO these service endpoints).
+        /// Stored as full `SocketAddr` so split-server topologies (where the SD peer
+        /// and the TCP host are at different IPs) are handled correctly.
+        client_endpoints: Vec<std::net::SocketAddr>,
         /// Whether to close ALL client-side TCP connections to this peer
         /// Set to false when we have kept subscriptions with pending ACKs
         close_client_pool: bool,
@@ -390,7 +392,7 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
             actions.push(Action::ResetPeerTcpConnections {
                 peer: peer_ip,
                 server_ports: Vec::new(), // We're the client, not the server
-                client_ports: vec![client_port],
+                client_endpoints: vec![tcp_endpoint],
                 close_client_pool: !has_other_services, // Close entire pool if no other services from this peer
             });
         }

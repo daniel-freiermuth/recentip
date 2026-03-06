@@ -16,7 +16,7 @@ use recentip::prelude::*;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 
 use crate::helpers::{configure_tracing, is_magic_cookie, magic_cookie_server, read_tcp_message};
@@ -38,6 +38,13 @@ macro_rules! covers {
 const TEST_SERVICE_ID: u16 = 0x1234;
 const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 const TEST_METHOD_ID: u16 = 0x0001;
+
+// Constants for the server-reboot test (distinct IDs to avoid cross-test interference)
+const REBOOT_TEST_SERVICE_A_ID: u16 = 0x1238;
+const REBOOT_TEST_SERVICE_B_ID: u16 = 0x1239;
+const REBOOT_TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
+const REBOOT_TEST_RPC_PORT: u16 = 40002;
+const REBOOT_TEST_EVENTGROUP_ID: u16 = 0x0001;
 
 // ============================================================================
 // SPLIT SERVER UDP RPC TEST
@@ -799,6 +806,435 @@ fn split_server_tcp_pubsub() {
             "Client: Subscription B received event for eventgroup {:04X}",
             eg_b
         );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+// ============================================================================
+// SPLIT SERVER TCP PUB/SUB WITH SERVER REBOOT TEST
+// ============================================================================
+
+/// [split_server_tcp_pubsub_server_reboot] TCP pub/sub on split host with server reboot
+/// and service change across the reboot boundary.
+///
+/// Scenario:
+/// - Phase 1: SD Host offers service A (TCP endpoint on RPC Host) with an initial
+///   startup offer (session_id=1, reboot_flag=true) followed by a settled offer
+///   (session_id=2, reboot_flag=false).  Client discovers service A, subscribes
+///   via TCP, and receives events.
+///
+/// - Reboot: SD Host resets its session counter to 1 and sets reboot_flag=true
+///   again, signalling a node reboot.  It now offers service B instead of service A.
+///
+/// - Phase 2: The client detects the reboot (reboot_flag transitions false→true,
+///   session ID regresses).  The client must actively close its TCP connection to
+///   service A as part of reboot handling.  The RPC Host verifies this by reading
+///   EOF from the accepted socket — we do **not** drop from the server side.
+///   The client then discovers service B from the post-reboot offer, subscribes
+///   via TCP, and receives events.
+///
+/// This tests:
+/// - Reboot signalling via session-ID regression + reboot-flag transition
+/// - Service change across a reboot boundary (A → B)
+/// - Client subscription termination when the server-side TCP connection is dropped
+/// - Client ability to re-subscribe to a new service after detecting a peer reboot
+#[test]
+fn split_server_tcp_pubsub_server_reboot() {
+    covers!(
+        feat_req_someip_352,   // Events describe Publish/Subscribe concept
+        feat_req_someip_324,   // TCP binding
+        feat_req_someipsd_011, // IPv4 endpoint option
+    );
+    configure_tracing();
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // sd_host signals rpc_host once each subscription has been acknowledged,
+    // so rpc_host knows it is safe to start sending events.
+    let (sub_a_tx, sub_a_rx) = tokio::sync::mpsc::channel::<()>(1);
+    let (sub_b_tx, sub_b_rx) = tokio::sync::mpsc::channel::<()>(1);
+    let sub_a_rx = Arc::new(Mutex::new(sub_a_rx));
+    let sub_b_rx = Arc::new(Mutex::new(sub_b_rx));
+
+    // -----------------------------------------------------------------------
+    // SD Host
+    // -----------------------------------------------------------------------
+    sim.host("sd_host", move || {
+        let sub_a_tx = sub_a_tx.clone();
+        let sub_b_tx = sub_b_tx.clone();
+        async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+            let rpc_host_ip: Ipv4Addr = turmoil::lookup("rpc_host").to_string().parse().unwrap();
+            let multicast_addr: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+            // ----------------------------------------------------------------
+            // PHASE 1 – offer service A
+            // ----------------------------------------------------------------
+
+            // Initial startup offer: session_id=1, reboot_flag=true
+            let offer_a_initial = SdOfferBuilder::new(
+                REBOOT_TEST_SERVICE_A_ID,
+                0x0001,
+                rpc_host_ip,
+                REBOOT_TEST_RPC_PORT,
+            )
+            .version(REBOOT_TEST_SERVICE_VERSION.0, REBOOT_TEST_SERVICE_VERSION.1)
+            .tcp()
+            .session_id(1)
+            .reboot_flag(true)
+            .build();
+
+            sd_socket.send_to(&offer_a_initial, multicast_addr).await?;
+            tracing::info!("SD Host: Sent initial offer for service A (session=1, reboot=true)");
+
+            // Settled offer: session_id=2, reboot_flag=false
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            let offer_a_settled = SdOfferBuilder::new(
+                REBOOT_TEST_SERVICE_A_ID,
+                0x0001,
+                rpc_host_ip,
+                REBOOT_TEST_RPC_PORT,
+            )
+            .version(REBOOT_TEST_SERVICE_VERSION.0, REBOOT_TEST_SERVICE_VERSION.1)
+            .tcp()
+            .session_id(2)
+            .reboot_flag(false)
+            .build();
+
+            sd_socket.send_to(&offer_a_settled, multicast_addr).await?;
+            tracing::info!("SD Host: Sent settled offer for service A (session=2, reboot=false)");
+
+            // Wait for SubscribeEventgroup for service A
+            let mut buf = [0u8; 1500];
+            let subscribe_a_addr = tokio::time::timeout(Duration::from_secs(8), async {
+                loop {
+                    if let Ok((len, addr)) = sd_socket.recv_from(&mut buf).await {
+                        if let Some(header) = parse_header(&buf[..len]) {
+                            if header.service_id == SD_SERVICE_ID
+                                && header.method_id == SD_METHOD_ID
+                            {
+                                if let Some(sd_msg) =
+                                    ParsedSdMessage::parse(&buf[SOMEIP_HEADER_SIZE..len])
+                                {
+                                    for sub_entry in sd_msg.subscribe_entries() {
+                                        if sub_entry.service_id == REBOOT_TEST_SERVICE_A_ID {
+                                            tracing::info!(
+                                                "SD Host: Received Subscribe for service A from {}",
+                                                addr
+                                            );
+                                            return Ok::<_, std::io::Error>(addr);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .await
+            .expect("Should receive Subscribe for service A")
+            .expect("recv should succeed");
+
+            // Acknowledge the subscription
+            let ack_a = build_sd_subscribe_ack(
+                REBOOT_TEST_SERVICE_A_ID,
+                0x0001,
+                REBOOT_TEST_SERVICE_VERSION.0,
+                REBOOT_TEST_EVENTGROUP_ID,
+                0xFF_FFFF,
+            );
+            sd_socket.send_to(&ack_a, subscribe_a_addr).await?;
+            tracing::info!("SD Host: Sent SubscribeAck for service A");
+
+            // Signal rpc_host: subscription A is active, start sending events
+            let _ = sub_a_tx.send(()).await;
+
+            // ----------------------------------------------------------------
+            // PHASE 2 – reboot and offer service B
+            // ----------------------------------------------------------------
+
+            // Wait long enough for the A events to be delivered before rebooting
+            tokio::time::sleep(Duration::from_millis(700)).await;
+
+            // Reboot offer for service B:
+            //   session_id resets to 1  (regresses from 2)
+            //   reboot_flag goes false → true  (case-1 reboot detection)
+            //   service B is offered; service A is no longer advertised
+            let offer_b_reboot = SdOfferBuilder::new(
+                REBOOT_TEST_SERVICE_B_ID,
+                0x0001,
+                rpc_host_ip,
+                REBOOT_TEST_RPC_PORT,
+            )
+            .version(REBOOT_TEST_SERVICE_VERSION.0, REBOOT_TEST_SERVICE_VERSION.1)
+            .tcp()
+            .session_id(1) // reset: reboot indicator
+            .reboot_flag(true) // flag goes false → true: peer detects reboot
+            .build();
+
+            sd_socket.send_to(&offer_b_reboot, multicast_addr).await?;
+            tracing::info!("SD Host: Sent REBOOT offer for service B (session=1, reboot=true)");
+
+            // Wait for SubscribeEventgroup for service B
+            let subscribe_b_addr = tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    if let Ok((len, addr)) = sd_socket.recv_from(&mut buf).await {
+                        if let Some(header) = parse_header(&buf[..len]) {
+                            if header.service_id == SD_SERVICE_ID
+                                && header.method_id == SD_METHOD_ID
+                            {
+                                if let Some(sd_msg) =
+                                    ParsedSdMessage::parse(&buf[SOMEIP_HEADER_SIZE..len])
+                                {
+                                    for sub_entry in sd_msg.subscribe_entries() {
+                                        if sub_entry.service_id == REBOOT_TEST_SERVICE_B_ID {
+                                            tracing::info!(
+                                                "SD Host: Received Subscribe for service B from {}",
+                                                addr
+                                            );
+                                            return Ok::<_, std::io::Error>(addr);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .await
+            .expect("Should receive Subscribe for service B")
+            .expect("recv should succeed");
+
+            let ack_b = build_sd_subscribe_ack(
+                REBOOT_TEST_SERVICE_B_ID,
+                0x0001,
+                REBOOT_TEST_SERVICE_VERSION.0,
+                REBOOT_TEST_EVENTGROUP_ID,
+                0xFF_FFFF,
+            );
+            sd_socket.send_to(&ack_b, subscribe_b_addr).await?;
+            tracing::info!("SD Host: Sent SubscribeAck for service B");
+
+            // Signal rpc_host: subscription B is active, start sending events
+            let _ = sub_b_tx.send(()).await;
+
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            Ok(())
+        }
+    });
+
+    // -----------------------------------------------------------------------
+    // RPC Host
+    // -----------------------------------------------------------------------
+    sim.host("rpc_host", move || {
+        let sub_a_rx = Arc::clone(&sub_a_rx);
+        let sub_b_rx = Arc::clone(&sub_b_rx);
+        async move {
+            let listener = turmoil::net::TcpListener::bind("0.0.0.0:40002").await?;
+            tracing::info!(
+                "RPC Host: TCP listener ready on port {}",
+                REBOOT_TEST_RPC_PORT
+            );
+
+            // ----------------------------------------------------------------
+            // PHASE 1 – service A connection
+            // ----------------------------------------------------------------
+            // Per spec the client opens the TCP connection before sending
+            // SubscribeEventgroup, so the connection arrives before the signal.
+            let (mut stream_a, client_addr_a) =
+                tokio::time::timeout(Duration::from_secs(8), listener.accept())
+                    .await
+                    .expect("Timeout waiting for service A TCP connection")
+                    .expect("Accept failed for service A");
+            tracing::info!(
+                "RPC Host: Accepted TCP connection from {} for service A",
+                client_addr_a
+            );
+
+            // Wait until sd_host has sent the SubscribeAck (subscription fully established)
+            tokio::time::timeout(Duration::from_secs(5), sub_a_rx.lock().await.recv())
+                .await
+                .expect("Timeout waiting for service A subscription signal")
+                .expect("sub_a channel closed unexpectedly");
+
+            // Deliver one event for service A
+            let event_a = build_notification(
+                REBOOT_TEST_SERVICE_A_ID,
+                0x8001, // event ID
+                0x0000,
+                1, // session_id
+                REBOOT_TEST_SERVICE_VERSION.0,
+                b"service_a_event",
+            );
+            stream_a.write_all(&magic_cookie_server()).await?;
+            stream_a.write_all(&event_a).await?;
+            tracing::info!("RPC Host: Sent event for service A");
+
+            // Do NOT drop the connection from our side.  It is the client's
+            // responsibility to close TCP connections to a rebooted peer when
+            // it detects the reboot via the SD messages sent by sd_host.
+            // We verify that by waiting for EOF here; a timeout is a test failure.
+            let mut drain = [0u8; 1];
+            let close_result =
+                tokio::time::timeout(Duration::from_secs(5), stream_a.read(&mut drain)).await;
+            match close_result {
+                Ok(Ok(0)) => {
+                    tracing::info!(
+                        "RPC Host: Client closed service A connection (reboot detected correctly)"
+                    );
+                }
+                Ok(Ok(n)) => {
+                    panic!(
+                        "RPC Host: Expected EOF from client, received {} unexpected bytes",
+                        n
+                    );
+                }
+                Ok(Err(e)) => {
+                    // Some TCP stacks surface a graceful close as an error.
+                    tracing::info!("RPC Host: Connection closed with error (acceptable): {}", e);
+                }
+                Err(_) => {
+                    panic!(
+                        "RPC Host: Timeout — client did not close service A TCP connection \
+                         within 5 s; reboot detection must close TCP connections to rebooted peers"
+                    );
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // PHASE 2 – service B connection
+            // ----------------------------------------------------------------
+            let (mut stream_b, client_addr_b) =
+                tokio::time::timeout(Duration::from_secs(10), listener.accept())
+                    .await
+                    .expect("Timeout waiting for service B TCP connection")
+                    .expect("Accept failed for service B");
+            tracing::info!(
+                "RPC Host: Accepted TCP connection from {} for service B",
+                client_addr_b
+            );
+
+            tokio::time::timeout(Duration::from_secs(5), sub_b_rx.lock().await.recv())
+                .await
+                .expect("Timeout waiting for service B subscription signal")
+                .expect("sub_b channel closed unexpectedly");
+
+            let event_b = build_notification(
+                REBOOT_TEST_SERVICE_B_ID,
+                0x8001, // event ID
+                0x0000,
+                1, // session_id
+                REBOOT_TEST_SERVICE_VERSION.0,
+                b"service_b_event",
+            );
+            stream_b.write_all(&magic_cookie_server()).await?;
+            stream_b.write_all(&event_b).await?;
+            tracing::info!("RPC Host: Sent event for service B");
+
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            Ok(())
+        }
+    });
+
+    // -----------------------------------------------------------------------
+    // Client
+    // -----------------------------------------------------------------------
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .magic_cookies(true)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // ----------------------------------------------------------------
+        // PHASE 1 – discover service A, subscribe, receive event
+        // ----------------------------------------------------------------
+        tracing::info!("Client: Finding service A");
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime.find(REBOOT_TEST_SERVICE_A_ID),
+        )
+        .await
+        .expect("Discovery timeout for service A")
+        .expect("Service A should be found");
+
+        tracing::info!("Client: Subscribing to service A eventgroup");
+        let mut subscription_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_a.subscribe(EventgroupId::new(REBOOT_TEST_EVENTGROUP_ID).unwrap()),
+        )
+        .await
+        .expect("Subscribe A timeout")
+        .expect("Subscribe A should succeed");
+
+        let event_a = tokio::time::timeout(Duration::from_secs(5), subscription_a.next())
+            .await
+            .expect("Event A should arrive in time")
+            .expect("Should receive event A");
+
+        assert_eq!(event_a.event_id, EventId::new(0x8001).unwrap());
+        assert_eq!(event_a.payload.as_ref(), b"service_a_event");
+        tracing::info!("Client: Received event from service A");
+
+        // ----------------------------------------------------------------
+        // PHASE 2 – reboot detected; subscription A terminates; subscribe to B
+        // ----------------------------------------------------------------
+
+        // The RPC Host drops the TCP connection as part of the simulated reboot.
+        // This causes the client's subscription stream to reach EOF: next() must
+        // return None, not time out, to prove the runtime actually closed the
+        // subscription rather than just silently stalling.
+        tracing::info!("Client: Waiting for service A subscription to terminate (reboot)");
+        let terminated = tokio::time::timeout(Duration::from_secs(5), subscription_a.next())
+            .await
+            .expect("Subscription A should terminate within timeout — TCP EOF must propagate");
+        assert!(
+            terminated.is_none(),
+            "Service A subscription should return None after server TCP disconnect"
+        );
+        tracing::info!("Client: Service A subscription terminated cleanly");
+
+        // Service B is now offered via the reboot SD message.
+        // find() will wait until the multicast offer is received.
+        tracing::info!("Client: Finding service B after reboot");
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(8),
+            runtime.find(REBOOT_TEST_SERVICE_B_ID),
+        )
+        .await
+        .expect("Discovery timeout for service B after reboot")
+        .expect("Service B should be found after reboot");
+
+        tracing::info!("Client: Subscribing to service B eventgroup");
+        let mut subscription_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_b.subscribe(EventgroupId::new(REBOOT_TEST_EVENTGROUP_ID).unwrap()),
+        )
+        .await
+        .expect("Subscribe B timeout")
+        .expect("Subscribe B should succeed");
+
+        let event_b = tokio::time::timeout(Duration::from_secs(5), subscription_b.next())
+            .await
+            .expect("Event B should arrive in time")
+            .expect("Should receive event B");
+
+        assert_eq!(event_b.event_id, EventId::new(0x8001).unwrap());
+        assert_eq!(event_b.payload.as_ref(), b"service_b_event");
+        tracing::info!("Client: Received event from service B after reboot");
 
         Ok(())
     });

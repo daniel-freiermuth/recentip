@@ -339,44 +339,34 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         }
     }
 
-    /// Close connections to specific ports on a peer IP (for selective reboot handling)
+    /// Close connections to specific remote endpoints (for split-server reboot handling)
     ///
-    /// This closes only connections to the given peer IP on the specified ports.
-    /// Used when some services are removed during reboot detection but others are kept.
-    pub fn close_to_peer_ports(&self, peer_ip: std::net::IpAddr, ports: &[u16]) {
-        if ports.is_empty() {
+    /// This closes all connections whose remote `SocketAddr` appears in `endpoints`,
+    /// regardless of the source IP of the SD peer that announced the service.
+    /// Used for split-server topologies where the SD host and TCP host are different IPs.
+    pub fn close_endpoints(&self, endpoints: &[std::net::SocketAddr]) {
+        if endpoints.is_empty() {
             return;
         }
 
-        // Collect keys to close (only established connections to specified ports)
         let keys_to_close: Vec<_> = self
             .connections
             .iter()
-            .filter(|entry| {
-                entry.key().0.ip() == peer_ip
-                    && ports.contains(&entry.key().0.port())
-                    && entry.value().get().is_some()
-            })
+            .filter(|entry| endpoints.contains(&entry.key().0) && entry.value().get().is_some())
             .map(|entry| *entry.key())
             .collect();
 
         if keys_to_close.is_empty() {
-            tracing::debug!(
-                "No TCP connections to close for peer {} on ports {:?}",
-                peer_ip,
-                ports
-            );
+            tracing::debug!("No TCP connections to close for endpoints {:?}", endpoints);
             return;
         }
 
         tracing::debug!(
-            "Closing {} TCP connection(s) to peer {} on ports {:?}",
+            "Closing {} TCP connection(s) to endpoints {:?}",
             keys_to_close.len(),
-            peer_ip,
-            ports
+            endpoints
         );
 
-        // Close each connection
         for key in keys_to_close {
             if let Some((_, cell)) = self.connections.remove(&key) {
                 if let Some(state) = cell.get() {
