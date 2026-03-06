@@ -131,7 +131,7 @@ pub const MAGIC_COOKIE_SERVER_METHOD_ID: u16 = 0x8000;
 /// - Interface Version: 0x01
 /// - Message Type: 0x01 (Request)
 /// - Return Code: 0x00
-pub const fn magic_cookie_client() -> [u8; 16] {
+pub(crate) const fn magic_cookie_client() -> [u8; 16] {
     [
         0xFF, 0xFF, // Service ID: 0xFFFF
         0x00, 0x00, // Method ID: 0x0000 (client)
@@ -146,7 +146,7 @@ pub const fn magic_cookie_client() -> [u8; 16] {
 }
 
 /// Generate a server-side Magic Cookie message (16 bytes).
-pub const fn magic_cookie_server() -> [u8; 16] {
+pub(crate) const fn magic_cookie_server() -> [u8; 16] {
     [
         0xFF, 0xFF, // Service ID: 0xFFFF
         0x80, 0x00, // Method ID: 0x8000 (server)
@@ -164,7 +164,7 @@ pub const fn magic_cookie_server() -> [u8; 16] {
 ///
 /// Returns true if the first 4 bytes match Magic Cookie pattern
 /// (Service ID 0xFFFF, Method ID 0x0000 or 0x8000).
-pub fn is_magic_cookie(data: &[u8]) -> bool {
+pub(crate) fn is_magic_cookie(data: &[u8]) -> bool {
     // Use pattern matching for safe access without indexing
     matches!(data.get(..4), Some([0xFF, 0xFF, 0x00 | 0x80, 0x00]))
 }

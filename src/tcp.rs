@@ -501,67 +501,6 @@ async fn handle_client_tcp_connection<T: TcpStream>(
         .await;
 }
 
-/// Read SOME/IP messages from a TCP stream with framing.
-///
-/// SOME/IP uses the length field in the header for framing:
-/// - Header is 16 bytes, includes length field at offset 4-8
-/// - Length field = 8 + payload length (includes `client_id` through end)
-/// - Total message size = 8 (first part of header) + length field value
-///
-/// # Errors
-///
-/// Returns an I/O error if reading fails or connection closes with partial data.
-pub async fn read_framed_message<T: TcpStream>(
-    stream: &mut T,
-    buffer: &mut BytesMut,
-) -> io::Result<Option<Bytes>> {
-    loop {
-        // Check if we have enough data for a complete message
-        if buffer.len() >= Header::SIZE {
-            // Parse length from header (offset 4-8, big-endian u32)
-            let Some(length) = parse_someip_length(buffer) else {
-                // Should not happen since we checked len >= Header::SIZE
-                tracing::error!(
-                    "BUG: parse_someip_length failed despite buffer.len()={} >= Header::SIZE={}",
-                    buffer.len(),
-                    Header::SIZE
-                );
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Buffer too short for header",
-                ));
-            };
-
-            // Total message size = 8 (service_id, method_id, length) + length
-            let total_size = 8 + length as usize;
-
-            if buffer.len() >= total_size {
-                // We have a complete message
-                let message = buffer.split_to(total_size).freeze();
-                return Ok(Some(message));
-            }
-        }
-
-        // Need more data - read from stream
-        let mut read_buf = [0u8; 8192];
-        let n = stream.read(&mut read_buf).await?;
-        if n == 0 {
-            // Connection closed
-            return if buffer.is_empty() {
-                Ok(None)
-            } else {
-                Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "Connection closed with partial message",
-                ))
-            };
-        }
-        if let Some(received) = read_buf.get(..n) {
-            buffer.extend_from_slice(received);
-        }
-    }
-}
-
 /// Message to send to a specific TCP connection
 #[derive(Debug)]
 pub struct TcpSendMessage {

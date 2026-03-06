@@ -1,4 +1,6 @@
+use bytes::{Bytes, BytesMut};
 use recentip::ServiceOffering;
+use tokio::io::AsyncReadExt;
 
 // Import builders from compliance test's wire_format helpers
 #[path = "compliance/wire_format/helpers.rs"]
@@ -99,6 +101,98 @@ impl WireServer {
             .unicast_flag(true) // WireServer uses unicast session channel
             .build()
     }
+}
+
+/// Read a framed SOME/IP message from a TCP stream (test helper).
+///
+/// This helper is used in tests that simulate the server side "on the wire"
+/// and need to manually handle TCP framing. Normal users should use the library's
+/// internal TCP handling which manages framing automatically.
+///
+/// SOME/IP TCP framing uses the length field in the header:
+/// - Header is 16 bytes, length field at offset 4-8
+/// - Length field = 8 + payload length (includes `client_id` through end)
+/// - Total message size = 8 (service_id, method_id, length) + length value
+pub(crate) async fn read_tcp_message<S: AsyncReadExt + Unpin>(
+    stream: &mut S,
+    buffer: &mut BytesMut,
+) -> std::io::Result<Option<Bytes>> {
+    loop {
+        // Check if we have enough data for a complete message
+        if buffer.len() >= 16 {
+            // Parse length from header (offset 4-8, big-endian u32)
+            let length = u32::from_be_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
+
+            // Total message size = 8 (service_id, method_id, length) + length
+            let total_size = 8 + length as usize;
+
+            if buffer.len() >= total_size {
+                // We have a complete message
+                let message = buffer.split_to(total_size).freeze();
+                return Ok(Some(message));
+            }
+        }
+
+        // Need more data - read from stream
+        let mut read_buf = [0u8; 8192];
+        let n = stream.read(&mut read_buf).await?;
+        if n == 0 {
+            // Connection closed
+            return if buffer.is_empty() {
+                Ok(None)
+            } else {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Connection closed with partial message",
+                ))
+            };
+        }
+        buffer.extend_from_slice(&read_buf[..n]);
+    }
+}
+
+/// Check if bytes represent a Magic Cookie message (test helper).
+///
+/// Returns true if the first 4 bytes match Magic Cookie pattern
+/// (Service ID 0xFFFF, Method ID 0x0000 or 0x8000).
+///
+/// This is used in tests that simulate TCP "on the wire" behavior.
+pub(crate) fn is_magic_cookie(data: &[u8]) -> bool {
+    matches!(data.get(..4), Some([0xFF, 0xFF, 0x00 | 0x80, 0x00]))
+}
+
+/// Generate a client-side Magic Cookie message (test helper).
+///
+/// This is used in tests that simulate TCP "on the wire" behavior.
+pub(crate) const fn magic_cookie_client() -> [u8; 16] {
+    [
+        0xFF, 0xFF, // Service ID: 0xFFFF
+        0x00, 0x00, // Method ID: 0x0000 (client)
+        0x00, 0x00, 0x00, 0x08, // Length: 8
+        0xDE, 0xAD, // Client ID: 0xDEAD
+        0xBE, 0xEF, // Session ID: 0xBEEF
+        0x01, // Protocol Version
+        0x01, // Interface Version
+        0x01, // Message Type: Request
+        0x00, // Return Code
+    ]
+}
+
+/// Generate a server-side Magic Cookie message (test helper).
+///
+/// This is used in tests that simulate TCP "on the wire" behavior.
+pub(crate) const fn magic_cookie_server() -> [u8; 16] {
+    [
+        0xFF, 0xFF, // Service ID: 0xFFFF
+        0x80, 0x00, // Method ID: 0x8000 (server)
+        0x00, 0x00, 0x00, 0x08, // Length: 8
+        0xDE, 0xAD, // Client ID: 0xDEAD
+        0xBE, 0xEF, // Session ID: 0xBEEF
+        0x01, // Protocol Version
+        0x01, // Interface Version
+        0x01, // Message Type: Request
+        0x00, // Return Code
+    ]
 }
 
 pub(crate) fn configure_tracing() {

@@ -642,6 +642,23 @@ pub fn build_response(request: &ParsedHeader, payload: &[u8]) -> Vec<u8> {
         .build()
 }
 
+/// Build a raw SOME/IP notification (event) packet
+pub fn build_notification(
+    service_id: u16,
+    method_id: u16,
+    client_id: u16,
+    session_id: u16,
+    interface_version: u8,
+    payload: &[u8],
+) -> Vec<u8> {
+    SomeIpPacketBuilder::notification(service_id, method_id)
+        .client_id(client_id)
+        .session_id(session_id)
+        .interface_version(interface_version)
+        .payload(payload)
+        .build()
+}
+
 /// L4 Protocol constants for SD endpoint options
 pub const L4_PROTOCOL_UDP: u8 = 0x11;
 pub const L4_PROTOCOL_TCP: u8 = 0x06;

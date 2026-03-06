@@ -43,6 +43,7 @@ vec1 = "1.12"
 
 [dev-dependencies]
 proptest = "1.10.0"
+rand = "0.8"
 turmoil = "0.7"
 tokio = { version = "1", features = ["net", "sync", "time", "rt", "rt-multi-thread", "macros", "signal"] }
 tracing-subscriber = "0.3"
