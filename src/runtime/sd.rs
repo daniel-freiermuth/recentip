@@ -138,21 +138,37 @@ pub fn handle_offer(
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
-    // Get UDP endpoint from SD option, falling back to source address
-    // If the endpoint has unspecified IP (0.0.0.0), use the source IP with the option's port
+    // Get UDP endpoint from SD option.
+    // Per feat_req_someipsd_1135: reject entries whose endpoint options reference
+    // topologically incorrect IP Addresses. 0.0.0.0 (unspecified) is never a valid
+    // routable address and is therefore always topologically invalid — the entire
+    // entry must be ignored (not just the option).
     let udp_endpoint = match sd_message.get_udp_endpoint(entry) {
-        Some(ep) if !ep.ip().is_unspecified() => Some(ep),
-        // TODO Taking the source here is wrong
-        Some(ep) => Some(SocketAddr::new(from.ip(), ep.port())),
-        None => None,
+        Some(ep) if ep.ip().is_unspecified() => {
+            tracing::warn!(
+                "Ignoring OfferService {:04x}:{:04x}: UDP endpoint IP is unspecified (0.0.0.0) \
+                 — topologically invalid [feat_req_someipsd_1135]",
+                entry.service_id,
+                entry.instance_id
+            );
+            return;
+        }
+        other => other,
     };
 
-    // Get TCP endpoint from SD option if present
+    // Get TCP endpoint from SD option.
+    // Same topological-correctness check as above.
     let tcp_endpoint = match sd_message.get_tcp_endpoint(entry) {
-        Some(ep) if !ep.ip().is_unspecified() => Some(ep),
-        // TODO Taking the source here is wrong
-        Some(ep) => Some(SocketAddr::new(from.ip(), ep.port())),
-        None => None,
+        Some(ep) if ep.ip().is_unspecified() => {
+            tracing::warn!(
+                "Ignoring OfferService {:04x}:{:04x}: TCP endpoint IP is unspecified (0.0.0.0) \
+                 — topologically invalid [feat_req_someipsd_1135]",
+                entry.service_id,
+                entry.instance_id
+            );
+            return;
+        }
+        other => other,
     };
 
     let offered_endpoints = match (udp_endpoint, tcp_endpoint) {

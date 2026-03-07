@@ -8,11 +8,13 @@
 //! - Raw sockets: Simulate servers sending offers and ACKs
 //!
 //! # Modules
+//! - `offer_filter` - Filtering of malformed/invalid OfferService entries
 //! - `subscribe_format` - Subscribe message format verification
 //! - `subscribe_nack` - Subscribe NACK handling
 //! - `rpc_port` - SD vs RPC port separation, TCP connection timing
 
 pub mod helpers;
+pub mod offer_filter;
 pub mod rpc_port;
 pub mod subscribe_format;
 pub mod subscribe_nack;

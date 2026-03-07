@@ -53,7 +53,11 @@ fn multiple_clients_call_same_server() {
     // Server handles requests from multiple clients
     let flag = Arc::clone(&exec_flag);
     sim.client("server", async move {
-        let runtime = recentip::configure().start_turmoil().await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -360,7 +364,11 @@ fn sd_reaches_all_participants() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let runtime = recentip::configure().start_turmoil().await.unwrap();
+            let runtime = recentip::configure()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .start_turmoil()
+                .await
+                .unwrap();
 
             let _offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -486,7 +494,11 @@ fn nodes_with_mixed_client_server_roles() {
     sim.host("nodeA", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let runtime = recentip::configure().start_turmoil().await.unwrap();
+            let runtime = recentip::configure()
+                .advertised_ip(turmoil::lookup("nodeA").to_string().parse().unwrap())
+                .start_turmoil()
+                .await
+                .unwrap();
 
             // Offer ServiceA
             let mut offering = runtime
@@ -612,7 +624,11 @@ fn multiple_servers_different_instances() {
     // Server 1 - Instance 0x0001
     let flag = Arc::clone(&exec_flag);
     sim.client("server1", async move {
-        let runtime = recentip::configure().start_turmoil().await.unwrap();
+        let runtime = recentip::configure()
+            .advertised_ip(turmoil::lookup("server1").to_string().parse().unwrap())
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))

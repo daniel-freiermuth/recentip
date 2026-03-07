@@ -24,7 +24,11 @@ fn test_subscribe_drop_unsubscribes_in_time() {
     sim.host("server", move || {
         let received_unsub = unsub_receive_time_clone.clone();
         async move {
-            let runtime = recentip::configure().start_turmoil().await.unwrap();
+            let runtime = recentip::configure()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .start_turmoil()
+                .await
+                .unwrap();
 
             // Offer instance 1
             let mut offering = runtime
@@ -122,7 +126,11 @@ fn test_two_subscribers_one_drops() {
 
     sim.host("server", move || {
         async move {
-            let runtime = recentip::configure().start_turmoil().await.unwrap();
+            let runtime = recentip::configure()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .start_turmoil()
+                .await
+                .unwrap();
 
             // Offer instance 1
             let mut offering = runtime
@@ -223,7 +231,11 @@ fn test_dangling_subscription_cannot_unsubscribe() {
 
     sim.host("server", move || {
         async move {
-            let runtime = recentip::configure().start_turmoil().await.unwrap();
+            let runtime = recentip::configure()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .start_turmoil()
+                .await
+                .unwrap();
 
             // Offer instance 1
             let mut offering = runtime
@@ -361,7 +373,11 @@ fn test_two_subscribers_get_events() {
 
     sim.host("server", move || {
         async move {
-            let runtime = recentip::configure().start_turmoil().await.unwrap();
+            let runtime = recentip::configure()
+                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .start_turmoil()
+                .await
+                .unwrap();
 
             // Offer instance 1
             let mut offering = runtime

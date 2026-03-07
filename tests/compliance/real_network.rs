@@ -42,6 +42,7 @@ async fn udp_request_response_real_network() {
             Ipv4Addr::new(239, 255, 255, 250),
             30490,
         )))
+        .advertised_ip(Ipv4Addr::LOCALHOST.into())
         .start()
         .await
         .expect("Server runtime");
@@ -124,6 +125,7 @@ async fn udp_service_discovery_real_network() {
                 Ipv4Addr::new(239, 255, 255, 250),
                 30490,
             )))
+            .advertised_ip(Ipv4Addr::LOCALHOST.into())
             .start()
             .await
             .expect("Server runtime");
@@ -189,6 +191,7 @@ async fn tcp_request_response_real_network() {
                 30490,
             )))
             .preferred_transport(Transport::Tcp)
+            .advertised_ip(Ipv4Addr::LOCALHOST.into())
             .start()
             .await
             .expect("Server runtime");
@@ -274,6 +277,7 @@ async fn tcp_magic_cookies_real_network() {
             )))
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
+            .advertised_ip(Ipv4Addr::LOCALHOST.into())
             .start()
             .await
             .expect("Server runtime");
@@ -355,6 +359,7 @@ async fn tcp_multiple_requests_real_network() {
                 30490,
             )))
             .preferred_transport(Transport::Tcp)
+            .advertised_ip(Ipv4Addr::LOCALHOST.into())
             .start()
             .await
             .expect("Server runtime");
@@ -575,6 +580,7 @@ async fn udp_two_runtimes_same_sd_port() {
             Ipv4Addr::new(239, 255, 255, 250),
             sd_port,
         )))
+        .advertised_ip(Ipv4Addr::LOCALHOST.into())
         .start()
         .await
         .expect("Server runtime");
