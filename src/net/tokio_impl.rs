@@ -2,30 +2,20 @@
 
 use super::{TcpListener, TcpStream, UdpSocket};
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 impl UdpSocket for tokio::net::UdpSocket {
-    async fn bind(addr: SocketAddr) -> io::Result<Self> {
+    async fn bind(addr: SocketAddrV4) -> io::Result<Self> {
         // Use socket2 to set SO_REUSEPORT before binding.
         // This allows multiple processes/runtimes to share the same port,
         // which is required for SOME/IP SD multicast to work properly.
         use socket2::{Domain, Protocol, Socket, Type};
 
-        let domain = match addr {
-            SocketAddr::V4(_) => Domain::IPV4,
-            SocketAddr::V6(_) => Domain::IPV6,
-        };
-
-        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+        let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
 
         // Set SO_REUSEADDR (allows reuse of local addresses)
         socket.set_reuse_address(true)?;
-
-        // Set SO_REUSEPORT (allows multiple sockets to bind to same port)
-        // This is available on Linux and recent macOS
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "freebsd"))]
-        socket.set_reuse_port(true)?;
 
         // Set non-blocking before converting to tokio socket
         socket.set_nonblocking(true)?;
@@ -38,12 +28,19 @@ impl UdpSocket for tokio::net::UdpSocket {
         Self::from_std(std_socket)
     }
 
-    async fn send_to(&self, buf: &[u8], target: SocketAddr) -> io::Result<usize> {
+    async fn send_to(&self, buf: &[u8], target: SocketAddrV4) -> io::Result<usize> {
         Self::send_to(self, buf, target).await
     }
 
-    async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        Self::recv_from(self, buf).await
+    async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddrV4)> {
+        Self::recv_from(self, buf)
+            .await
+            .map(|(size, addr)| match addr {
+                SocketAddr::V4(v4) => (size, v4),
+                SocketAddr::V6(_) => {
+                    unreachable!("tokio::net::UdpSocket should only produce IPv4 addresses")
+                }
+            })
     }
 
     fn join_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()> {
@@ -58,15 +55,29 @@ impl UdpSocket for tokio::net::UdpSocket {
         Self::leave_multicast_v4(self, multiaddr, interface)
     }
 
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        Self::local_addr(self)
+    fn local_addr(&self) -> io::Result<SocketAddrV4> {
+        Self::local_addr(self).map(|addr| match addr {
+            SocketAddr::V4(v4) => v4,
+            SocketAddr::V6(_) => {
+                unreachable!("tokio::net::UdpSocket should only produce IPv4 addresses")
+            }
+        })
+    }
+
+    fn set_multicast_if_v4(&self, addr: Ipv4Addr) -> io::Result<()> {
+        // Use socket2::SockRef to borrow the underlying socket (safe, no ownership taken)
+        // and set IP_MULTICAST_IF.  This controls the source IP on outgoing multicast
+        // datagrams, which is essential when the socket is bound to 0.0.0.0 but we want
+        // the multicast Offer to appear to come from a specific IP.
+        use socket2::SockRef;
+        SockRef::from(self).set_multicast_if_v4(&addr)
     }
 }
 
 impl TcpStream for tokio::net::TcpStream {
     type Listener = tokio::net::TcpListener;
 
-    async fn connect(addr: SocketAddr) -> io::Result<Self> {
+    async fn connect(addr: SocketAddrV4) -> io::Result<Self> {
         Self::connect(addr).await
     }
 
@@ -82,27 +93,47 @@ impl TcpStream for tokio::net::TcpStream {
         AsyncWriteExt::write_all(self, buf).await
     }
 
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        Self::local_addr(self)
+    fn local_addr(&self) -> io::Result<SocketAddrV4> {
+        Self::local_addr(self).map(|addr| match addr {
+            SocketAddr::V4(v4) => v4,
+            SocketAddr::V6(_) => {
+                unreachable!("tokio::net::TcpStream should only produce IPv4 addresses")
+            }
+        })
     }
 
-    fn peer_addr(&self) -> io::Result<SocketAddr> {
-        Self::peer_addr(self)
+    fn peer_addr(&self) -> io::Result<SocketAddrV4> {
+        Self::peer_addr(self).map(|addr| match addr {
+            SocketAddr::V4(v4) => v4,
+            SocketAddr::V6(_) => {
+                unreachable!("tokio::net::TcpStream should only produce IPv4 addresses")
+            }
+        })
     }
 }
 
 impl TcpListener for tokio::net::TcpListener {
     type Stream = tokio::net::TcpStream;
 
-    async fn bind(addr: SocketAddr) -> io::Result<Self> {
+    async fn bind(addr: SocketAddrV4) -> io::Result<Self> {
         Self::bind(addr).await
     }
 
-    async fn accept(&self) -> io::Result<(Self::Stream, SocketAddr)> {
-        Self::accept(self).await
+    async fn accept(&self) -> io::Result<(Self::Stream, SocketAddrV4)> {
+        Self::accept(self).await.map(|(stream, addr)| match addr {
+            SocketAddr::V4(v4) => (stream, v4),
+            SocketAddr::V6(_) => {
+                unreachable!("tokio::net::TcpListener should only produce IPv4 addresses")
+            }
+        })
     }
 
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        Self::local_addr(self)
+    fn local_addr(&self) -> io::Result<SocketAddrV4> {
+        Self::local_addr(self).map(|addr| match addr {
+            SocketAddr::V4(v4) => v4,
+            SocketAddr::V6(_) => {
+                unreachable!("tokio::net::TcpListener should only produce IPv4 addresses")
+            }
+        })
     }
 }

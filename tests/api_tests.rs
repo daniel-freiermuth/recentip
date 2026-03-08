@@ -1,6 +1,8 @@
 //! Basic API tests using turmoil for network simulation.
 
 use crate::helpers::configure_tracing;
+use crate::helpers::DEFAULT_SD_MULTICAST;
+use recentip::config::DEFAULT_SD_PORT;
 use recentip::handle::ServiceEvent;
 use recentip::{EventId, EventgroupId, InstanceId, MethodId, OfferedEndpoints, ServiceId};
 use std::sync::atomic::AtomicBool;
@@ -28,7 +30,8 @@ fn test_runtime_creation() {
 
     sim.host("server", || async {
         let _runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -46,7 +49,8 @@ fn test_find_service() {
 
     sim.host("client", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -69,7 +73,8 @@ fn test_offer_service() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -134,7 +139,8 @@ fn test_service_discovery_offer_find() {
     // Server offers a service
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -159,7 +165,8 @@ fn test_service_discovery_offer_find() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -192,7 +199,8 @@ fn test_multiple_services() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -221,7 +229,8 @@ fn test_multiple_services() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -250,7 +259,8 @@ fn test_specific_instance_id() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -272,7 +282,8 @@ fn test_specific_instance_id() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -302,7 +313,8 @@ fn test_offering_handle_drop() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -336,7 +348,8 @@ fn test_method_call_rpc() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -376,7 +389,8 @@ fn test_method_call_rpc() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -425,7 +439,8 @@ fn library_auto_renews_subscription() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -465,7 +480,8 @@ fn library_auto_renews_subscription() {
 
         let runtime = recentip::configure()
             .subscribe_ttl(2)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -527,7 +543,8 @@ fn test_event_subscription() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -569,7 +586,8 @@ fn test_event_subscription() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -677,7 +695,8 @@ fn subscribe_returns_error_on_nack() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -719,7 +738,8 @@ fn test_many_version_subscribe_to_one() {
         let flag_clone = sub_arrived_clone.clone();
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("host")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -831,7 +851,8 @@ fn test_many_version_subscribe_to_one() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -868,7 +889,8 @@ fn test_multiple_versions_subscribe_both_data() {
 
     sim.host("host", move || async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("host")))
             .start_turmoil()
             .await
             .unwrap();
@@ -954,7 +976,8 @@ fn test_multiple_versions_subscribe_both_data() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1055,7 +1078,8 @@ fn test_multiple_versions_subscribed_one_dropped() {
         let flag = sub_arrived_clone.clone();
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("host")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -1155,7 +1179,8 @@ fn test_multiple_versions_subscribed_one_dropped() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1296,7 +1321,8 @@ fn test_finds_late() {
 
     sim.host("host", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("host")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1328,7 +1354,8 @@ fn test_finds_late() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1370,7 +1397,8 @@ proptest::proptest! {
 
         sim.host("host", move || async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("host")))
                 .start_turmoil().await.unwrap();
 
             let mut offering1 = runtime
@@ -1411,7 +1439,8 @@ proptest::proptest! {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
                 .start_turmoil().await.unwrap();
 
             // Find by major version only (instance wildcard)
@@ -1456,7 +1485,8 @@ proptest::proptest! {
 
         sim.host("host", move || async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("host")))
                 .start_turmoil().await.unwrap();
 
             let mut offering1 = runtime
@@ -1497,7 +1527,8 @@ proptest::proptest! {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
                 .start_turmoil().await.unwrap();
 
             // Find by instance ID only (version wildcard via default)
@@ -1526,7 +1557,8 @@ fn test_find_two_versions_late() {
 
     sim.host("host", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("host")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1575,7 +1607,8 @@ fn test_find_two_versions_late() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1607,7 +1640,8 @@ fn test_two_concurrent_versions() {
 
     sim.host("host", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("host").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("host")))
             .start_turmoil().await.unwrap();
 
         let mut offering1 = runtime
@@ -1659,7 +1693,8 @@ fn test_two_concurrent_versions() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1951,7 +1986,8 @@ fn test_duplicate_event_id_rejected() {
 
     sim.client("server", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2019,7 +2055,8 @@ fn test_unique_event_ids_accepted() {
 
     sim.client("server", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2067,7 +2104,8 @@ fn test_same_event_id_different_services() {
 
     sim.client("server", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2152,7 +2190,8 @@ fn test_static_proxy_creation() {
     // Server offers a service at a known endpoint
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2180,7 +2219,8 @@ fn test_static_proxy_creation() {
     // Client connects directly without service discovery
     sim.client("client", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2220,7 +2260,8 @@ fn test_is_offer_alive_after_discovery() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2241,7 +2282,8 @@ fn test_is_offer_alive_after_discovery() {
 
     sim.client("client", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2279,7 +2321,8 @@ fn test_is_offer_alive_before_discovery() {
 
     sim.client("client", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2321,7 +2364,8 @@ fn test_is_offer_alive_ttl_expiration() {
         let server_stopped = Arc::clone(&server_stopped_clone);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .offer_ttl(3) // Short TTL for testing (3 seconds)
                 .start_turmoil()
                 .await
@@ -2351,7 +2395,8 @@ fn test_is_offer_alive_ttl_expiration() {
 
     sim.client("client", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2401,7 +2446,8 @@ fn test_is_offer_alive_ttl_cleanup() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .offer_ttl(5) // TTL: 5 seconds
             .cyclic_offer_delay(10_000) // Cyclic delay: 10 seconds (exceeds TTL!)
             .start_turmoil()
@@ -2424,7 +2470,8 @@ fn test_is_offer_alive_ttl_cleanup() {
 
     sim.client("client", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2491,7 +2538,8 @@ fn test_is_offer_alive_static_proxy_with_sd() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2511,7 +2559,8 @@ fn test_is_offer_alive_static_proxy_with_sd() {
 
     sim.client("client", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2557,7 +2606,8 @@ fn test_discovered_services() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2576,7 +2626,8 @@ fn test_discovered_services() {
 
     sim.client("client", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2610,7 +2661,7 @@ fn test_discovered_services() {
         );
         assert_eq!(service.instance_id(), InstanceId::Id(0x0001));
         assert_eq!(service.major_version(), 1);
-        assert_eq!(service.endpoint().ip(), turmoil::lookup("server"));
+        assert_eq!(*service.endpoint().ip(), turmoil::lookup("server"));
 
         use recentip::config::Transport;
         assert_eq!(service.transport(), Transport::Udp);

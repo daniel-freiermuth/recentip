@@ -15,7 +15,9 @@ use crate::client_behavior::helpers::build_sd_offer_with_session;
 use super::helpers::{
     build_sd_offer_tcp_only, build_sd_subscribe_ack_with_session, covers, parse_sd_message,
 };
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
+
 use recentip::wire::{L4Protocol, SdOption};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -257,7 +259,8 @@ fn subscribe_nack_then_ack() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -539,7 +542,8 @@ fn subscribe_ack_then_nack() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -825,7 +829,8 @@ fn subscribe_ack_and_nack_different_services() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1106,7 +1111,8 @@ fn events_received_after_subscribe_ack() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1307,7 +1313,8 @@ fn multi_eventgroup_subscription_fails_if_one_nacked() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1510,7 +1517,8 @@ fn multi_eventgroup_subscription_fails_if_one_nacked_tcp() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();

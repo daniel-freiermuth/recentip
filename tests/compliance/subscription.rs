@@ -4,8 +4,10 @@
 //!
 //! Reference: someip-sd.rst (Eventgroup entries and subscription handling)
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -50,7 +52,8 @@ fn subscribe_and_receive_events() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -91,7 +94,8 @@ fn subscribe_and_receive_events() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -154,7 +158,8 @@ fn subscribe_receives_ack() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -177,7 +182,8 @@ fn subscribe_receives_ack() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -227,7 +233,8 @@ fn unsubscribe_on_drop() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -273,7 +280,8 @@ fn unsubscribe_on_drop() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -337,7 +345,8 @@ fn subscribe_multiple_eventgroups() {
     let flag = Arc::clone(&exec_flag);
     sim.client("server", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -382,7 +391,8 @@ fn subscribe_multiple_eventgroups() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -447,7 +457,8 @@ fn subscribe_multiple_eventgroups_tcp() {
     let flag = Arc::clone(&exec_flag);
     sim.client("server", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -492,7 +503,8 @@ fn subscribe_multiple_eventgroups_tcp() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -562,7 +574,8 @@ fn event_id_has_high_bit() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -599,7 +612,8 @@ fn event_id_has_high_bit() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -659,7 +673,8 @@ fn mixed_rpc_and_events() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -719,7 +734,8 @@ fn mixed_rpc_and_events() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -823,7 +839,8 @@ fn multi_eventgroup_subscription_lifecycle() {
             let runtime = tokio::time::timeout(
                 Duration::from_secs(5),
                 recentip::configure()
-                    .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                    .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                    .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                     .start_turmoil(),
             )
             .await
@@ -966,7 +983,8 @@ fn multi_eventgroup_subscription_lifecycle() {
         let runtime = tokio::time::timeout(
             Duration::from_secs(5),
             recentip::configure()
-                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
                 .start_turmoil(),
         )
         .await
@@ -1204,7 +1222,8 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
             let runtime = tokio::time::timeout(
                 Duration::from_secs(5),
                 recentip::configure()
-                    .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                    .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                    .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                     .start_turmoil(),
             )
             .await
@@ -1398,7 +1417,8 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
         let runtime = tokio::time::timeout(
             Duration::from_secs(5),
             recentip::configure()
-                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
                 .preferred_transport(recentip::Transport::Tcp)
                 .start_turmoil(),
         )
@@ -1951,7 +1971,8 @@ fn tcp_connection_shared_across_services_concurrent_subscribe() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
                 .start_turmoil()
                 .await
                 .unwrap();

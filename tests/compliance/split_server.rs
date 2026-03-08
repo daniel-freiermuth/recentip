@@ -11,8 +11,10 @@
 //! - Server side: "on the wire" using raw packet builders
 //! - Client side: library under test
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use bytes::BytesMut;
 use recentip::prelude::*;
+
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
@@ -147,7 +149,8 @@ fn split_server_udp_rpc() {
     // Client: Uses library to discover and call the service
     sim.client("client", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -351,7 +354,8 @@ fn split_server_udp_pubsub() {
     // Client: Subscribes and receives events
     sim.client("client", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -516,7 +520,8 @@ fn split_server_tcp_rpc() {
     // Client
     sim.client("client", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .magic_cookies(true)
             .start_turmoil()
             .await
@@ -724,7 +729,8 @@ fn split_server_tcp_pubsub() {
     // Client: Subscribes and receives events via TCP
     sim.client("client", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .magic_cookies(true)
             .start_turmoil()
             .await
@@ -1153,7 +1159,8 @@ fn split_server_tcp_pubsub_server_reboot() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .magic_cookies(true)
             .start_turmoil()
             .await
@@ -1681,7 +1688,8 @@ fn split_server_tcp_pubsub_isolated_peer_reboot() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .magic_cookies(true)
             .start_turmoil()
             .await

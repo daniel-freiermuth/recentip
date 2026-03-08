@@ -10,8 +10,10 @@
 //! - feat_req_someip_798: Messages with length < 8 shall be ignored (wire format test)
 //! - feat_req_someip_703: Use known protocol version (wire format test)
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
+
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers
@@ -45,7 +47,8 @@ fn no_error_response_for_events() {
     // Server offers service with events
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -83,7 +86,8 @@ fn no_error_response_for_events() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -130,7 +134,8 @@ fn no_error_response_for_fire_and_forget() {
     // Server handles fire&forget
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -164,7 +169,8 @@ fn no_error_response_for_fire_and_forget() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -243,7 +249,8 @@ fn server_returns_various_error_codes() {
     // Server returns different error codes
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -302,7 +309,8 @@ fn server_returns_various_error_codes() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -445,7 +453,8 @@ fn error_response_copies_request_header() {
     // Library side - server responds with errors
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -621,7 +630,8 @@ fn exception_message_type_when_configured() {
     // Server configured to use EXCEPTION for method 0x0001
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -770,7 +780,8 @@ fn mixed_exception_config_per_method() {
     // Server with mixed config: method 0x0001 uses EXCEPTION, method 0x0002 uses RESPONSE
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -943,7 +954,8 @@ fn internal_unknown_service_error_uses_response() {
     // Server offers service 0x1234
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1068,7 +1080,8 @@ fn messages_with_short_length_ignored() {
     // Server should ignore malformed messages
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1180,7 +1193,8 @@ fn uses_known_protocol_version() {
     // Library side - server that can respond to requests
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1338,7 +1352,8 @@ fn wrong_protocol_version_returns_error() {
     // Server receives request with wrong protocol version
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1479,7 +1494,8 @@ fn service_id_mismatch_on_service_socket_rejected() {
     // Server offers service 0x1234
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1621,7 +1637,8 @@ fn fire_and_forget_service_id_mismatch_ignored() {
     // Server offers service 0x1234
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();

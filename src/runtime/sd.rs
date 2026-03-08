@@ -54,7 +54,7 @@
 //! 3. Add [`Action`] variant if new side effect needed
 //! 4. Wire up in `runtime.rs` event loop
 
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -77,7 +77,7 @@ pub enum Action {
     /// Send an SD message to a specific target
     SendSd {
         message: SdMessage,
-        target: SocketAddr,
+        target: SocketAddrV4,
     },
     /// Notify find requests about a discovered service
     NotifyFound {
@@ -88,7 +88,7 @@ pub enum Action {
     /// Send a SOME/IP RPC message as a client (uses client RPC socket or TCP pool)
     SendClientMessage {
         data: Bytes,
-        target: SocketAddr,
+        target: SocketAddrV4,
         /// Transport to use (TCP or UDP), determined by discovered service endpoint
         transport: crate::config::Transport,
     },
@@ -96,7 +96,7 @@ pub enum Action {
     SendServerMessage {
         service_key: ServiceKey,
         data: Bytes,
-        target: SocketAddr,
+        target: SocketAddrV4,
         /// Transport to use (TCP or UDP) - should match what subscriber used
         transport: crate::config::Transport,
     },
@@ -110,13 +110,13 @@ pub enum Action {
     /// Reset TCP connections to a peer (due to reboot detection)
     /// Per `feat_req_someipsd_872`: Reset TCP state when peer reboots
     ResetPeerTcpConnections {
-        peer: std::net::IpAddr,
+        peer: Ipv4Addr,
         /// Server-side TCP ports to close (connections FROM peer to our services)
         server_ports: Vec<u16>,
         /// Client-side TCP endpoints to close (connections TO these service endpoints).
-        /// Stored as full `SocketAddr` so split-server topologies (where the SD peer
+        /// Stored as full `SocketAddrV4` so split-server topologies (where the SD peer
         /// and the TCP host are at different IPs) are handled correctly.
-        client_endpoints: Vec<std::net::SocketAddr>,
+        client_endpoints: Vec<SocketAddrV4>,
     },
 }
 
@@ -134,7 +134,7 @@ pub enum Action {
 pub fn handle_offer(
     entry: &SdEntry,
     sd_message: &SdMessage,
-    from: SocketAddr,
+    from: SocketAddrV4,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
@@ -261,25 +261,10 @@ pub fn handle_offer(
         return;
     }
 
-    // Determine the actual local IP address to put in the endpoint option
-    // Per feat_req_someipsd_814, we must provide a valid routable IP, not 0.0.0.0
-    let endpoint_ip = if let Some(advertised) = state.config.advertised_ip {
-        advertised
-    } else if !state.local_endpoint.ip().is_unspecified() {
-        state.local_endpoint.ip()
-    } else if !state.client_rpc_endpoint.ip().is_unspecified() {
-        // TODO We shouldn't take this one
-        state.client_rpc_endpoint.ip()
-    } else {
-        // No valid IP available - cannot renew subscriptions
-        tracing::error!(
-            "Cannot renew subscription for {:04x}:{:04x}: \
-             no valid IP address configured. Set RuntimeConfig::advertised_ip",
-            entry.service_id,
-            entry.instance_id
-        );
-        return;
-    };
+    // Determine the actual local IP address to put in the endpoint option.
+    // Per feat_req_someipsd_814, we must provide a valid routable IP.
+    // config.advertised_ip() always returns a valid address (UnicastAddress invariant).
+    let endpoint_ip = state.config.unicast_ip();
 
     let sd_flags = state.sd_flags(true); // We should have a better signature
 
@@ -316,17 +301,16 @@ pub fn handle_offer(
         }
 
         // Use this subscription's local endpoint for renewal
-        let endpoint_for_subscribe =
-            std::net::SocketAddr::new(endpoint_ip, sub.local_endpoint.port());
+        let endpoint_for_subscribe = SocketAddrV4::new(endpoint_ip, sub.local_endpoint.port());
         tracing::debug!(
-            "Queueing offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroups {:?} via {:?} (port {}) for time-based clustering",
-            entry.service_id,
-            entry.instance_id,
-            entry.major_version,
-            sub.eventgroup_id,
-            sub.transport,
-            endpoint_for_subscribe.port()
-        );
+                "Queueing offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroups {:?} via {:?} (port {}) for time-based clustering",
+                entry.service_id,
+                entry.instance_id,
+                entry.major_version,
+                sub.eventgroup_id,
+                sub.transport,
+                endpoint_for_subscribe.port()
+            );
 
         // Build SubscribeEventgroup message with all eventgroups
         let msg = build_subscribe_message(
@@ -391,7 +375,7 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
             );
 
             actions.push(Action::ResetPeerTcpConnections {
-                peer: peer_ip,
+                peer: *peer_ip,
                 server_ports: Vec::new(), // We're the client, not the server
                 client_endpoints: vec![tcp_endpoint],
             });
@@ -411,7 +395,7 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
 ///
 /// Responses are queued for time-based clustering to prevent session ID collisions
 /// when multiple `FindService` requests arrive close together.
-pub fn handle_find_request(entry: &SdEntry, from: SocketAddr, state: &mut RuntimeState) {
+pub fn handle_find_request(entry: &SdEntry, from: SocketAddrV4, state: &mut RuntimeState) {
     // Collect responses first to avoid borrowing issues
     let responses: Vec<SdMessage> = state
         .offered
@@ -427,7 +411,7 @@ pub fn handle_find_request(entry: &SdEntry, from: SocketAddr, state: &mut Runtim
                 offered,
                 state.sd_flags(true),
                 state.config.offer_ttl,
-                state.config.advertised_ip,
+                state.config.unicast_ip(),
             )
         })
         .collect();
@@ -447,7 +431,7 @@ pub fn handle_find_request(entry: &SdEntry, from: SocketAddr, state: &mut Runtim
 pub fn handle_subscribe_request(
     entry: &SdEntry,
     sd_message: &SdMessage,
-    from: SocketAddr,
+    from: SocketAddrV4,
     state: &mut RuntimeState,
 ) {
     let key = ServiceKey {
@@ -657,7 +641,7 @@ pub fn handle_subscribe_request(
 pub fn handle_unsubscribe_request(
     entry: &SdEntry,
     sd_message: &SdMessage,
-    from: SocketAddr,
+    from: SocketAddrV4,
     state: &mut RuntimeState,
 ) {
     tracing::debug!(
@@ -900,33 +884,22 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
 /// Build an `OfferService` SD message for the given offered service.
 ///
 /// This advertises all configured endpoints (TCP and/or UDP) in the SD message.
-/// If `advertised_ip` is provided, it overrides the IP from the stored endpoints.
+/// `unicast_ip` overrides the IP from the stored endpoints so peers know
+/// the routable address to use.
 pub fn build_offer_message(
     key: ServiceKey,
     offered: &OfferedService,
     sd_flags: u8,
     ttl: u32,
-    advertised_ip: Option<std::net::IpAddr>,
+    unicast_ip: Ipv4Addr,
 ) -> SdMessage {
     let mut msg = SdMessage::new(sd_flags);
     let mut option_indices = Vec::new();
 
-    // Helper to get the IP address - use advertised_ip if set, otherwise use endpoint IP
-    let get_ip = |ep: SocketAddr| -> Ipv4Addr {
-        if let Some(std::net::IpAddr::V4(ip)) = advertised_ip {
-            ip
-        } else {
-            match ep {
-                SocketAddr::V4(v4) => *v4.ip(),
-                _ => Ipv4Addr::LOCALHOST,
-            }
-        }
-    };
-
     // Add UDP endpoint option if present
     if let Some(ep) = offered.udp_endpoint {
         let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-            addr: get_ip(ep),
+            addr: unicast_ip,
             port: ep.port(),
             protocol: L4Protocol::Udp,
         });
@@ -936,7 +909,7 @@ pub fn build_offer_message(
     // Add TCP endpoint option if present
     if let Some(ep) = offered.tcp_endpoint {
         let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-            addr: get_ip(ep),
+            addr: unicast_ip,
             port: ep.port(),
             protocol: L4Protocol::Tcp,
         });
@@ -999,7 +972,7 @@ pub fn build_subscribe_message(
     instance_id: u16,
     major_version: u8,
     eventgroup_id: u16,
-    local_endpoint: SocketAddr,
+    local_endpoint: SocketAddrV4,
     client_rpc_port: u16,
     sd_flags: u8,
     ttl: u32,
@@ -1027,7 +1000,7 @@ pub fn build_subscribe_message_multi(
     instance_id: u16,
     major_version: u8,
     eventgroup_ids: &[u16],
-    local_endpoint: SocketAddr,
+    local_endpoint: SocketAddrV4,
     client_rpc_port: u16,
     sd_flags: u8,
     ttl: u32,
@@ -1040,10 +1013,7 @@ pub fn build_subscribe_message_multi(
 
     let mut msg = SdMessage::new(sd_flags);
     let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-        addr: match local_endpoint {
-            SocketAddr::V4(v4) => *v4.ip(),
-            _ => Ipv4Addr::LOCALHOST,
-        },
+        addr: *local_endpoint.ip(),
         port: client_rpc_port,
         protocol,
     });
@@ -1071,7 +1041,7 @@ pub fn build_unsubscribe_message(
     instance_id: u16,
     major_version: u8,
     eventgroup_id: u16,
-    local_endpoint: SocketAddr,
+    local_endpoint: SocketAddrV4,
     client_rpc_port: u16,
     sd_flags: u8,
     transport: Transport,
@@ -1097,7 +1067,7 @@ pub fn build_unsubscribe_message_multi(
     instance_id: u16,
     major_version: u8,
     eventgroup_ids: &[u16],
-    local_endpoint: SocketAddr,
+    local_endpoint: SocketAddrV4,
     client_rpc_port: u16,
     sd_flags: u8,
     transport: Transport,
@@ -1110,10 +1080,7 @@ pub fn build_unsubscribe_message_multi(
     let mut msg = SdMessage::new(sd_flags);
     // Include the same endpoint option as in Subscribe so server knows which subscriber to remove
     let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-        addr: match local_endpoint {
-            SocketAddr::V4(v4) => *v4.ip(),
-            _ => Ipv4Addr::LOCALHOST,
-        },
+        addr: *local_endpoint.ip(),
         port: client_rpc_port,
         protocol,
     });

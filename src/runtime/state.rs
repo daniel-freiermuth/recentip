@@ -41,7 +41,7 @@
 //! 4. Add accessor methods if handlers in other modules need them
 
 use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -117,7 +117,7 @@ pub struct SubscriberKey {
 #[derive(Debug, Clone)]
 pub struct ServerSubscription {
     /// Client's event endpoint (where to send events)
-    pub(crate) endpoint: SocketAddr,
+    pub(crate) endpoint: SocketAddrV4,
     /// Transport protocol for sending events to this subscriber
     pub(crate) transport: crate::config::Transport,
     /// When this subscription expires (based on client's TTL).
@@ -273,14 +273,14 @@ pub enum SdChannel {
 pub struct RpcMessage {
     pub(crate) service_key: Option<ServiceKey>,
     pub(crate) data: Vec<u8>,
-    pub(crate) from: SocketAddr,
+    pub(crate) from: SocketAddrV4,
 }
 
 /// Message to send via an RPC socket task  
 #[derive(Debug)]
 pub struct RpcSendMessage {
     pub(crate) data: Bytes,
-    pub(crate) to: SocketAddr,
+    pub(crate) to: SocketAddrV4,
 }
 
 /// Transport sender for offered services - either UDP or TCP
@@ -294,7 +294,7 @@ pub enum RpcTransportSender {
 
 impl RpcTransportSender {
     /// Send a message to the specified target
-    pub(crate) async fn send(&self, data: Bytes, to: SocketAddr) -> Result<()> {
+    pub(crate) async fn send(&self, data: Bytes, to: SocketAddrV4) -> Result<()> {
         use crate::error::Error;
         match self {
             Self::Udp(tx) => tx
@@ -320,15 +320,15 @@ pub struct OfferedService {
     pub(crate) requests_tx: mpsc::Sender<ServiceRequest>,
     pub(crate) last_offer: Instant,
     /// UDP endpoint for this service instance (if offering via UDP)
-    pub(crate) udp_endpoint: Option<SocketAddr>,
+    pub(crate) udp_endpoint: Option<SocketAddrV4>,
     /// UDP transport sender (if offering via UDP)
     pub(crate) udp_transport: Option<RpcTransportSender>,
     /// TCP endpoint for this service instance (if offering via TCP)
-    pub(crate) tcp_endpoint: Option<SocketAddr>,
+    pub(crate) tcp_endpoint: Option<SocketAddrV4>,
     /// TCP transport sender (if offering via TCP)
     pub(crate) tcp_transport: Option<RpcTransportSender>,
     /// Channel to close TCP connections from a specific peer (feat_req_someipsd_872)
-    pub(crate) tcp_close_peer_tx: Option<mpsc::Sender<(std::net::IpAddr, Vec<u16>)>>,
+    pub(crate) tcp_close_peer_tx: Option<mpsc::Sender<(Ipv4Addr, Vec<u16>)>>,
     /// Configuration for which methods use EXCEPTION message type
     pub(crate) method_config: MethodConfig,
     /// Whether currently announcing via SD (false = bound but not announced)
@@ -348,7 +348,7 @@ pub struct DiscoveredService {
     /// TCP endpoint for sending SOME/IP RPC messages (if using TCP transport)
     pub(crate) offered_endpoints: OfferedEndpoints,
     /// SD endpoint for sending SD messages (`SubscribeEventgroup`, etc.)
-    pub(crate) sd_endpoint: SocketAddr,
+    pub(crate) sd_endpoint: SocketAddrV4,
     #[allow(dead_code)] // Fields used for version matching in future
     pub(crate) minor_version: u32,
     pub(crate) ttl_expires: Instant,
@@ -378,7 +378,7 @@ pub struct ClientSubscription {
     pub(crate) eventgroup_id: u16,
     pub(crate) events_tx: mpsc::Sender<crate::Event>,
     /// Local endpoint for this subscription (events are received on this port)
-    pub(crate) local_endpoint: SocketAddr,
+    pub(crate) local_endpoint: SocketAddrV4,
     pub(crate) transport: crate::config::Transport,
     /// True if this subscription has a dedicated socket task (UDP subscriptions only)
     /// TCP subscriptions receive events via the shared TCP connection handler
@@ -441,7 +441,7 @@ pub struct PendingServerResponse {
     pub(crate) client_id: u16,
     pub(crate) session_id: u16,
     pub(crate) interface_version: u8,
-    pub(crate) client_addr: SocketAddr,
+    pub(crate) client_addr: SocketAddrV4,
     /// Whether this method uses EXCEPTION (0x81) for errors instead of RESPONSE (0x80)
     pub(crate) uses_exception: bool,
     /// Transport to use for sending the response - captured when request received
@@ -456,10 +456,10 @@ pub struct PendingServerResponse {
 /// `SomeIp` state managed by the runtime task
 pub struct RuntimeState {
     /// SD endpoint (port 30490) - only for Service Discovery
-    pub(crate) local_endpoint: SocketAddr,
+    pub(crate) local_endpoint: SocketAddrV4,
     /// Client RPC endpoint (ephemeral port) - for sending client RPC requests
     /// Per `feat_req_someip_676`: Port 30490 is only for SD, not for RPC
-    pub(crate) client_rpc_endpoint: SocketAddr,
+    pub(crate) client_rpc_endpoint: SocketAddrV4,
     /// Sender for client RPC messages (sends to `client_rpc_socket` task)
     pub(crate) client_rpc_tx: mpsc::Sender<RpcSendMessage>,
     /// Services we're offering
@@ -510,7 +510,7 @@ pub struct RuntimeState {
     pub(crate) config: RuntimeConfig,
     /// Session tracking per peer for reboot detection (`feat_req_someipsd_764`, `feat_req_someipsd_765`)
     /// Tracks both multicast and unicast session counters independently per peer
-    pub(crate) peer_sessions: HashMap<std::net::IpAddr, PeerSessionState>,
+    pub(crate) peer_sessions: HashMap<Ipv4Addr, PeerSessionState>,
     /// SD event monitors - channels to send all SD events to
     pub(crate) sd_monitors: Vec<mpsc::Sender<crate::SdEvent>>,
     /// Next subscription ID for client-side subscriptions (unique per handle)
@@ -525,8 +525,8 @@ pub struct RuntimeState {
 
 impl RuntimeState {
     pub(crate) fn new(
-        local_endpoint: SocketAddr,
-        client_rpc_endpoint: SocketAddr,
+        local_endpoint: SocketAddrV4,
+        client_rpc_endpoint: SocketAddrV4,
         client_rpc_tx: mpsc::Sender<RpcSendMessage>,
         config: RuntimeConfig,
     ) -> Self {
@@ -569,7 +569,7 @@ impl RuntimeState {
     ///
     /// This batches outward unicast SD traffic (subscribes, ACKs, NACKs, find-triggered offers)
     /// to prevent session ID collisions when multiple messages need to be sent close together.
-    pub(crate) fn queue_unicast_sd(&mut self, message: SdMessage, target: SocketAddr) {
+    pub(crate) fn queue_unicast_sd(&mut self, message: SdMessage, target: SocketAddrV4) {
         self.pending_unicast_sd
             .push(Action::SendSd { message, target });
 
@@ -744,6 +744,25 @@ mod tests {
     use super::*;
     use tokio::sync::mpsc;
 
+    fn test_config() -> RuntimeConfig {
+        RuntimeConfig {
+            sd_multicast: crate::config::MulticastAddress::try_from(std::net::Ipv4Addr::new(
+                239, 255, 0, 1,
+            ))
+            .expect("valid multicast"),
+            sd_unicast: crate::config::UnicastAddress::try_from(std::net::Ipv4Addr::LOCALHOST)
+                .expect("valid unicast"),
+            sd_port: crate::config::DEFAULT_SD_PORT,
+            single_socket: false,
+            offer_ttl: crate::config::DEFAULT_OFFER_TTL,
+            find_ttl: crate::config::DEFAULT_FIND_TTL,
+            subscribe_ttl: crate::config::DEFAULT_SUBSCRIBE_TTL,
+            cyclic_offer_delay: crate::config::DEFAULT_CYCLIC_OFFER_DELAY,
+            preferred_transport: crate::config::Transport::Udp,
+            magic_cookies: false,
+        }
+    }
+
     /// feat_req_someip_677: Session ID wraps from 0xFFFF to 0x0001
     /// feat_req_someip_649: Session ID starts at 0x0001
     ///
@@ -753,12 +772,7 @@ mod tests {
         let addr = "127.0.0.1:30490".parse().unwrap();
         let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
         let (client_rpc_tx, _) = mpsc::channel(1);
-        let mut state = RuntimeState::new(
-            addr,
-            client_rpc_addr,
-            client_rpc_tx,
-            RuntimeConfig::default(),
-        );
+        let mut state = RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, test_config());
 
         // First session should be 1
         assert_eq!(
@@ -789,12 +803,7 @@ mod tests {
         let addr = "127.0.0.1:30490".parse().unwrap();
         let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
         let (client_rpc_tx, _) = mpsc::channel(1);
-        let mut state = RuntimeState::new(
-            addr,
-            client_rpc_addr,
-            client_rpc_tx,
-            RuntimeConfig::default(),
-        );
+        let mut state = RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, test_config());
 
         // Initially reboot flag should be set
         assert!(
@@ -829,12 +838,7 @@ mod tests {
         let addr = "127.0.0.1:30490".parse().unwrap();
         let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
         let (client_rpc_tx, _) = mpsc::channel(1);
-        let mut state = RuntimeState::new(
-            addr,
-            client_rpc_addr,
-            client_rpc_tx,
-            RuntimeConfig::default(),
-        );
+        let mut state = RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, test_config());
 
         // Iterate through 2 full cycles + some extra
         for _ in 0..(0xFFFF * 2 + 1000) {

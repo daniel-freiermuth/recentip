@@ -3,6 +3,8 @@ use std::{
     time::Duration,
 };
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
+use recentip::config::DEFAULT_SD_PORT;
 use recentip::{EventId, EventgroupId, InstanceId, OfferedService};
 use tracing::Instrument;
 
@@ -25,7 +27,8 @@ fn test_subscribe_drop_unsubscribes_in_time() {
         let received_unsub = unsub_receive_time_clone.clone();
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -72,7 +75,8 @@ fn test_subscribe_drop_unsubscribes_in_time() {
     let unsub_send_time_clone = unsub_send_time.clone();
     sim.client("client", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -127,7 +131,8 @@ fn test_two_subscribers_one_drops() {
     sim.host("server", move || {
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -168,7 +173,8 @@ fn test_two_subscribers_one_drops() {
 
     sim.client("client", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -232,7 +238,8 @@ fn test_dangling_subscription_cannot_unsubscribe() {
     sim.host("server", move || {
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -309,7 +316,8 @@ fn test_dangling_subscription_cannot_unsubscribe() {
 
     sim.client("client", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil().await.unwrap();
 
         let service = runtime
@@ -374,7 +382,8 @@ fn test_two_subscribers_get_events() {
     sim.host("server", move || {
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -436,7 +445,8 @@ fn test_two_subscribers_get_events() {
         }
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();

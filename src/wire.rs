@@ -90,7 +90,7 @@
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::fmt::Display;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddrV4};
 
 /// SOME/IP protocol version
 pub const PROTOCOL_VERSION: u8 = 0x01;
@@ -1089,14 +1089,14 @@ impl SdMessage {
     /// Get the UDP endpoint from options for an entry.
     ///
     /// Searches both option runs (first and second) as per SOME/IP-SD specification.
-    pub fn get_udp_endpoint(&self, entry: &SdEntry) -> Option<SocketAddr> {
+    pub fn get_udp_endpoint(&self, entry: &SdEntry) -> Option<SocketAddrV4> {
         self.get_endpoint_with_protocol(entry, L4Protocol::Udp)
     }
 
     /// Get the TCP endpoint from options for an entry.
     ///
     /// Searches both option runs (first and second) as per SOME/IP-SD specification.
-    pub fn get_tcp_endpoint(&self, entry: &SdEntry) -> Option<SocketAddr> {
+    pub fn get_tcp_endpoint(&self, entry: &SdEntry) -> Option<SocketAddrV4> {
         self.get_endpoint_with_protocol(entry, L4Protocol::Tcp)
     }
 
@@ -1105,7 +1105,7 @@ impl SdMessage {
         &self,
         entry: &SdEntry,
         target_protocol: L4Protocol,
-    ) -> Option<SocketAddr> {
+    ) -> Option<SocketAddrV4> {
         // First option run
         let start1 = entry.index_1st_option as usize;
         let count1 = entry.num_options_1 as usize;
@@ -1117,7 +1117,7 @@ impl SdMessage {
             }) = self.options.get(i)
             {
                 if *protocol == target_protocol {
-                    return Some(SocketAddr::V4(SocketAddrV4::new(*addr, *port)));
+                    return Some(SocketAddrV4::new(*addr, *port));
                 }
             }
         }
@@ -1133,7 +1133,7 @@ impl SdMessage {
             }) = self.options.get(i)
             {
                 if *protocol == target_protocol {
-                    return Some(SocketAddr::V4(SocketAddrV4::new(*addr, *port)));
+                    return Some(SocketAddrV4::new(*addr, *port));
                 }
             }
         }
@@ -1240,10 +1240,7 @@ mod tests {
         let endpoint = msg.get_udp_endpoint(&entry);
         assert_eq!(
             endpoint,
-            Some(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(192, 168, 1, 100),
-                30501
-            )))
+            Some(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 100), 30501))
         );
     }
 
@@ -1275,10 +1272,7 @@ mod tests {
         let endpoint = msg.get_udp_endpoint(&entry);
         assert_eq!(
             endpoint,
-            Some(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(192, 168, 1, 200),
-                30502
-            )))
+            Some(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 200), 30502))
         );
     }
 
@@ -1308,20 +1302,14 @@ mod tests {
         let tcp_endpoint = msg.get_tcp_endpoint(&entry);
         assert_eq!(
             tcp_endpoint,
-            Some(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(192, 168, 1, 100),
-                30502
-            )))
+            Some(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 100), 30502))
         );
 
         // UDP should come from first run
         let udp_endpoint = msg.get_udp_endpoint(&entry);
         assert_eq!(
             udp_endpoint,
-            Some(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(192, 168, 1, 100),
-                30501
-            )))
+            Some(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 100), 30501))
         );
     }
 

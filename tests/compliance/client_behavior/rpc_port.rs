@@ -19,7 +19,9 @@ use super::helpers::{
     build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers, parse_sd_message,
     TEST_SERVICE_ID,
 };
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
+
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -139,7 +141,8 @@ fn client_rpc_must_not_use_sd_port() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -346,7 +349,8 @@ fn tcp_connection_established_before_subscribe_767() {
 
         let runtime = recentip::configure()
             .preferred_transport(recentip::Transport::Tcp)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();

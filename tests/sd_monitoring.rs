@@ -5,10 +5,14 @@
 //!
 //! Run with: cargo test --test sd_monitoring
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
+
 use recentip::SdEvent;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+mod helpers;
 
 /// Type alias for turmoil-based runtime
 
@@ -36,7 +40,8 @@ fn monitor_sd_receives_service_available() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -58,7 +63,8 @@ fn monitor_sd_receives_service_available() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
             .start_turmoil()
             .await
             .unwrap();
@@ -108,7 +114,8 @@ fn monitor_sd_receives_service_unavailable() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -134,7 +141,8 @@ fn monitor_sd_receives_service_unavailable() {
 
     sim.client("monitor", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
             .start_turmoil()
             .await
             .unwrap();
@@ -191,7 +199,8 @@ fn monitor_sd_event_metadata_accuracy() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -213,7 +222,8 @@ fn monitor_sd_event_metadata_accuracy() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
             .start_turmoil()
             .await
             .unwrap();
@@ -289,7 +299,8 @@ fn monitor_sd_multiple_monitors_receive_events() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -309,7 +320,8 @@ fn monitor_sd_multiple_monitors_receive_events() {
     sim.client("monitor1", async move {
         // Start monitors first so they don't miss events
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("monitor1").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor1")))
             .start_turmoil()
             .await
             .unwrap();
@@ -329,7 +341,8 @@ fn monitor_sd_multiple_monitors_receive_events() {
 
     sim.client("monitor2", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("monitor2").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor2")))
             .start_turmoil()
             .await
             .unwrap();
@@ -390,7 +403,8 @@ fn monitor_sd_multiple_monitors_same_runtime() {
     sim.client("server", async {
         let runtime = recentip::configure()
             .cyclic_offer_delay(1000)
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -411,7 +425,8 @@ fn monitor_sd_multiple_monitors_same_runtime() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("monitor_host").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor_host")))
             .start_turmoil()
             .await
             .unwrap();
@@ -496,7 +511,8 @@ fn monitor_sd_multiple_services() {
 
     sim.host("server1", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server1").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server1")))
             .start_turmoil()
             .await
             .unwrap();
@@ -515,7 +531,8 @@ fn monitor_sd_multiple_services() {
 
     sim.host("server2", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server2").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server2")))
             .start_turmoil()
             .await
             .unwrap();
@@ -536,7 +553,8 @@ fn monitor_sd_multiple_services() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
             .start_turmoil()
             .await
             .unwrap();
@@ -614,7 +632,8 @@ fn monitor_sd_receives_service_expired() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -641,7 +660,8 @@ fn monitor_sd_receives_service_expired() {
     sim.client("monitor", async move {
         // Monitor starts first
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
             .start_turmoil()
             .await
             .unwrap();
@@ -717,7 +737,8 @@ fn monitor_sd_dropped_receiver_cleanup() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -738,7 +759,8 @@ fn monitor_sd_dropped_receiver_cleanup() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
             .start_turmoil()
             .await
             .unwrap();
@@ -791,7 +813,8 @@ fn monitor_sd_before_services_exist() {
     sim.client("monitor", async move {
         // Start monitoring FIRST, before any server exists
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("monitor").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
             .start_turmoil()
             .await
             .unwrap();
@@ -812,7 +835,8 @@ fn monitor_sd_before_services_exist() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();

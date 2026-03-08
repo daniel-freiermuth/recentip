@@ -7,6 +7,8 @@
 //! These are wire-level tests where we implement a mock SOME/IP server
 //! and observe what endpoints the client library uses for subscriptions.
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
+use recentip::config::UnicastAddress;
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -18,6 +20,11 @@ fn lookup_ipv4(host: &str) -> Ipv4Addr {
         std::net::IpAddr::V4(addr) => addr,
         _ => panic!("Expected IPv4 address"),
     }
+}
+
+/// Helper to get a validated UnicastAddress from turmoil host lookup
+fn lookup_unicast(host: &str) -> UnicastAddress {
+    UnicastAddress::try_from(lookup_ipv4(host)).expect("expected a valid unicast IPv4 address")
 }
 
 // ============================================================================
@@ -368,7 +375,8 @@ fn udp_different_services_reuse_endpoint() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client"))
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
             .start_turmoil()
             .await
             .unwrap();
@@ -564,7 +572,8 @@ fn udp_different_instances_reuse_endpoint() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client"))
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
             .start_turmoil()
             .await
             .unwrap();
@@ -759,7 +768,8 @@ fn udp_different_major_versions_reuse_endpoint() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client"))
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
             .start_turmoil()
             .await
             .unwrap();
@@ -976,7 +986,8 @@ fn tcp_different_services_reuse_connection() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client"))
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
             .preferred_transport(recentip::config::Transport::Tcp)
             .start_turmoil()
             .await
@@ -1184,7 +1195,8 @@ fn tcp_different_instances_reuse_connection() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client"))
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
             .preferred_transport(recentip::config::Transport::Tcp)
             .start_turmoil()
             .await
@@ -1394,7 +1406,8 @@ fn tcp_different_major_versions_reuse_connection() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client"))
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
             .preferred_transport(recentip::config::Transport::Tcp)
             .start_turmoil()
             .await
@@ -1624,7 +1637,8 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client"))
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
             .start_turmoil()
             .await
             .unwrap();
@@ -1903,7 +1917,8 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client"))
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
             .preferred_transport(recentip::config::Transport::Tcp)
             .start_turmoil()
             .await

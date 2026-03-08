@@ -48,7 +48,7 @@ pub struct SubscriptionBuilder {
     major_version: u8,
     eventgroups: vec1::Vec1<EventgroupId>,
     transport: crate::config::Transport,
-    remote_endpoint: std::net::SocketAddr,
+    remote_endpoint: std::net::SocketAddrV4,
     // sd_endpoint: std::net::SocketAddr,
 }
 
@@ -61,7 +61,7 @@ impl SubscriptionBuilder {
         major_version: u8,
         first_eventgroup: EventgroupId,
         transport: crate::config::Transport,
-        remote_endpoint: std::net::SocketAddr,
+        remote_endpoint: std::net::SocketAddrV4,
         // sd_endpoint: std::net::SocketAddr,
     ) -> Self {
         Self {

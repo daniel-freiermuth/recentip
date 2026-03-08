@@ -15,9 +15,11 @@
 
 mod wire_format;
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use bytes::Bytes;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
+
 use recentip::wire::{
     Header, SdMessage, INTERFACE_VERSION_OFFSET, PROTOCOL_VERSION, PROTOCOL_VERSION_OFFSET,
     SD_METHOD_ID, SD_SERVICE_ID,
@@ -184,7 +186,8 @@ fn rpc_request_has_protocol_version_0x01() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -224,7 +227,8 @@ fn server_ignores_wrong_protocol_version() {
     // Library server
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -382,7 +386,8 @@ fn rpc_request_has_interface_version_at_offset_13() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -418,7 +423,8 @@ fn sd_offer_contains_major_version() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -485,7 +491,8 @@ fn response_preserves_interface_version() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -601,7 +608,8 @@ fn server_returns_wrong_interface_version_error() {
     // Library server with major version 1
     sim.client("server", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -729,7 +737,8 @@ fn fire_forget_with_wrong_interface_version_is_ignored() {
     // Library server with major version 1
     sim.client("server", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();

@@ -2,91 +2,74 @@
 //!
 //! ## Quick Start
 //!
-//! For most applications, the defaults work out of the box:
-//!
-//! ```no_run
-//! # async fn example() -> recentip::Result<()> {
-//! let runtime = recentip::configure().start().await?;
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ## Builder Pattern
-//!
-//! For custom configurations, use the builder:
+//! Two SD parameters are mandatory; the builder enforces this at compile time:
 //!
 //! ```no_run
 //! use recentip::prelude::*;
-//! use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
 //!
 //! # async fn example() -> recentip::Result<()> {
-//! let someip = recentip::configure()
-//!     .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-//!         Ipv4Addr::UNSPECIFIED,
-//!         30490
-//!     )))
-//!     .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
-//!     .preferred_transport(Transport::Tcp)  // Prefer TCP when service offers both
-//!     .offer_ttl(1800)  // 30 minutes
-//!     .cyclic_offer_delay(2000)  // 2 seconds
-//!     .magic_cookies(true)  // Enable for debugging
+//! // Dual-socket mode (default): mc_socket on multicast group, uc_socket on sd_unicast IP
+//! let runtime = recentip::configure()
+//!     .sd_multicast_group("239.255.255.250".parse().unwrap())
+//!     .sd_unicast("192.168.1.10".parse().unwrap())
+//!     .start().await?;
+//!
+//! // Override the default SD port (30490):
+//! let runtime = recentip::configure()
+//!     .sd_multicast_group("239.255.255.250".parse().unwrap())
+//!     .sd_unicast("192.168.1.10".parse().unwrap())
+//!     .sd_port(30491)
 //!     .start().await?;
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! ## IP Address Configuration
+//! ## Mandatory vs Optional Parameters
 //!
-//! Understanding the different address settings is important for correct operation:
+//! | Parameter | Method | Mandatory? |
+//! |-----------|--------|------------|
+//! | SD multicast group | [`sd_multicast_group`](SomeIpBuilder::sd_multicast_group) | **Yes** |
+//! | SD unicast IP | [`sd_unicast`](SomeIpBuilder::sd_unicast) | **Yes** |
+//! | SD port | [`sd_port`](SomeIpBuilder::sd_port) | No — default 30490 |
+//! | Offer TTL | [`offer_ttl`](SomeIpBuilder::offer_ttl) | No — default 3600 s |
+//! | Find TTL | [`find_ttl`](SomeIpBuilder::find_ttl) | No — default 3600 s |
+//! | Subscribe TTL | [`subscribe_ttl`](SomeIpBuilder::subscribe_ttl) | No — default 3600 s |
+//! | Cyclic offer delay | [`cyclic_offer_delay`](SomeIpBuilder::cyclic_offer_delay) | No — default 1000 ms |
+//! | Preferred transport | [`preferred_transport`](SomeIpBuilder::preferred_transport) | No — default UDP |
+//! | Magic cookies | [`magic_cookies`](SomeIpBuilder::magic_cookies) | No — default false |
+//! | Single-socket mode | [`single_socket`](SomeIpBuilder::single_socket) | No — default dual-socket |
 //!
-//! ### `bind_addr` - Local Socket Binding
+//! ## Socket Modes
 //!
-//! The address to bind local sockets to. Default: `0.0.0.0:30490`.
+//! **Dual-socket** (default): the runtime binds `mc_socket` to `<sd_multicast_group>:<sd_port>`
+//! and `uc_socket` to `<sd_unicast>:<sd_port>`.  The `sd_unicast` IP is embedded in SD
+//! endpoint options.  This mode is isolated from other applications on the same port.
 //!
-//! - **IP part**: Usually `0.0.0.0` (listen on all interfaces) or a specific interface IP
-//! - **Port part**: The SD port (30490 by default)
-//!
-//! This controls where sockets listen for incoming packets. Using `0.0.0.0` allows
-//! receiving on any interface.
-//!
-//! Note: Multicast loopback only seems to work when binding to `0.0.0.0`.
-//!
-//! ### `advertised_ip` - Endpoint Option Address
-//!
-//! The routable IP address for endpoint options in SD messages. Default: `None`.
-//!
-//! **Required for both offering and subscribing.** This IP is embedded in endpoint
-//! options of `OfferService` and `SubscribeEventgroup` messages, telling remote
-//! peers where to send traffic.
-//!
-//! - Must be a valid, routable IP address (not `0.0.0.0`)
-//! - Should be reachable by remote peers
-//!
-//! ### Why Both?
-//!
-//! - `bind_addr: 0.0.0.0` lets you listen on all interfaces
-//! - `advertised_ip` tells remote peers your specific routable address
-//!
-//! You cannot use `0.0.0.0` in endpoint options because remote peers wouldn't know
-//! where to send traffic. The SOME/IP-SD specification requires valid addresses.
-//!
-//! ### Fallback Behavior
-//!
-//! If `advertised_ip` is not set, the runtime attempts to use:
-//! 1. The IP from `bind_addr` (if not `0.0.0.0`)
-//! 2. The IP of the client method socket (if not `0.0.0.0`)
-//!
-//! If no valid IP is available, subscribe operations will fail with a configuration error
+//! **Single-socket** (opt-in via [`single_socket()`](SomeIpBuilder::single_socket)):
+//! one socket bound to `0.0.0.0:<sd_port>`.  Use on platforms that do not support
+//! multicast-address binds.  `sd_unicast` is still
+//! required for SD endpoint option advertisement.
 
-use crate::config::{clamp_ttl_to_24bit, RuntimeConfig, Transport};
+use crate::config::{
+    clamp_ttl_to_24bit, MulticastAddress, RuntimeConfig, Transport, UnicastAddress,
+    DEFAULT_CYCLIC_OFFER_DELAY, DEFAULT_FIND_TTL, DEFAULT_OFFER_TTL, DEFAULT_SD_PORT,
+    DEFAULT_SUBSCRIBE_TTL,
+};
 use crate::error::Result;
 use crate::handles::SomeIp;
 use crate::net::{TcpListener, TcpStream, UdpSocket};
-use std::net::{IpAddr, SocketAddr};
+
+// ============================================================================
+// Builder struct
+// ============================================================================
 
 /// Builder for configuring and starting a SOME/IP runtime.
 ///
 /// Created via [`configure()`](crate::configure).
+///
+/// The two type parameters track which mandatory fields have been set.
+/// [`start`](SomeIpBuilder::start) / [`start_turmoil`](SomeIpBuilder::start_turmoil)
+/// are only available once both are configured, enforced at compile time.
 ///
 /// # Example
 ///
@@ -97,97 +80,174 @@ use std::net::{IpAddr, SocketAddr};
 /// #[tokio::main]
 /// async fn main() -> recentip::Result<()> {
 ///     let someip = recentip::configure()
-///         .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
+///         .sd_multicast_group("239.255.255.250".parse().unwrap())
+///         .sd_unicast("192.168.1.100".parse().unwrap())
 ///         .preferred_transport(Transport::Tcp)
 ///         .start().await?;
 ///     Ok(())
 /// }
 /// ```
-#[derive(Debug, Clone, Default)]
-pub struct SomeIpBuilder {
-    config: RuntimeConfig,
+pub struct SomeIpBuilder<Addr = (), MC = ()> {
+    sd_unicast: Addr,
+    sd_multicast: MC,
+    sd_port: u16,
+    single_socket: bool,
+    offer_ttl: u32,
+    find_ttl: u32,
+    subscribe_ttl: u32,
+    cyclic_offer_delay: u64,
+    preferred_transport: Transport,
+    magic_cookies: bool,
 }
 
-impl SomeIpBuilder {
-    /// Create a new builder with default configuration
-    pub fn new() -> Self {
-        Self::default()
+impl SomeIpBuilder<(), ()> {
+    /// Create a new builder with no mandatory fields set.
+    pub const fn new() -> Self {
+        Self {
+            sd_unicast: (),
+            sd_multicast: (),
+            sd_port: DEFAULT_SD_PORT,
+            single_socket: false,
+            offer_ttl: DEFAULT_OFFER_TTL,
+            find_ttl: DEFAULT_FIND_TTL,
+            subscribe_ttl: DEFAULT_SUBSCRIBE_TTL,
+            cyclic_offer_delay: DEFAULT_CYCLIC_OFFER_DELAY,
+            preferred_transport: Transport::Udp,
+            magic_cookies: false,
+        }
     }
+}
 
-    /// The Service Discovery (SD) bind address and port
+impl Default for SomeIpBuilder<(), ()> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================================
+// Mandatory field transitions
+// ============================================================================
+
+impl<MC> SomeIpBuilder<(), MC> {
+    /// Set the routable unicast IP advertised in SD endpoint options.
     ///
-    /// This will be used for SD multicast traffic. Thus the port needs to
-    /// match the multicast port to work correctly.
+    /// The address is validated as a non-unspecified, non-multicast, non-broadcast
+    /// IPv4 address.  For address construction, you can use:
     ///
-    /// If no other address for unicast is specified with `sd_unicast`(not yet
-    /// implemented), this address will also be used for unicast SD traffic.
+    /// - `"192.168.1.100".parse::<UnicastAddress>().unwrap()`
+    /// - `UnicastAddress::try_from(some_ipv4_addr)?`
     ///
-    /// We recommend binding to `0.0.0.0` (`Ipv4Addr::UNSPECIFIED`) as this is
-    /// the portable stable solution to receive multicast (in particular
-    /// loopback multicast) on POSIX system. If you have a modern Linux system
-    /// it might as well work to bind to the specific interface address.
+    /// `ip` must be reachable by remote peers.
+    ///
+    /// **Choose this when** you have a specific routable IP address (real network
+    /// or separate loopback aliases like `127.0.0.2`).  This mode provides
+    /// host-level non-interference: the multicast socket does not share the
+    /// `SO_REUSEPORT` pool with wildcard-bound applications.
     ///
     /// # Example
     ///
     /// ```no_run
     /// use recentip::prelude::*;
-    /// use std::net::{SocketAddr, Ipv4Addr, SocketAddrV4};
     ///
-    /// # async fn example() -> Result<()> {
+    /// # async fn example() -> recentip::Result<()> {
     /// let someip = recentip::configure()
-    ///     .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-    ///         Ipv4Addr::UNSPECIFIED,
-    ///         30490
-    ///     )))
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
     ///     .start().await?;
     /// # Ok(())
     /// # }
     /// ```
-    ///
-    /// Default: `0.0.0.0:30490`
-    pub const fn bind_addr(mut self, addr: SocketAddr) -> Self {
-        self.config.bind_addr = addr;
-        self
+    pub fn sd_unicast(self, addr: UnicastAddress) -> SomeIpBuilder<UnicastAddress, MC> {
+        SomeIpBuilder {
+            sd_unicast: addr,
+            sd_multicast: self.sd_multicast,
+            sd_port: self.sd_port,
+            single_socket: self.single_socket,
+            offer_ttl: self.offer_ttl,
+            find_ttl: self.find_ttl,
+            subscribe_ttl: self.subscribe_ttl,
+            cyclic_offer_delay: self.cyclic_offer_delay,
+            preferred_transport: self.preferred_transport,
+            magic_cookies: self.magic_cookies,
+        }
     }
+}
 
-    /// Set the advertised IP address for endpoint options
+impl<A> SomeIpBuilder<A, ()> {
+    /// Set the SD multicast group address.
     ///
-    /// When binding the SD socket to `0.0.0.0`, recentIP doesn't know how
-    /// other servers can reach it. Thus we need to explicitly set the
-    /// advertised IP address. Must be a valid, non-unspecified address.
+    /// SOME/IP-SD traffic is sent to and received from this multicast address.
+    /// The address must be in the IPv4 multicast range `224.0.0.0/4`.  For
+    /// address construction, you can use:
     ///
-    /// Must be set if binding to `0.0.0.0` and no `sd_unicast` option
-    /// supplied.
+    /// - `"239.255.255.250".parse::<MulticastAddress>().unwrap()`
+    /// - `MulticastAddress::try_from(some_ipv4_addr)?`
+    ///
+    /// There is no spec-mandated default.  Common values:
+    /// - `239.255.255.250` — automotive/vehicle deployments (common convention)
+    /// - `239.255.0.1` — single-host / test environments
     ///
     /// # Example
     ///
     /// ```no_run
     /// use recentip::prelude::*;
-    /// use std::net::Ipv4Addr;
     ///
-    /// # async fn example() -> Result<()> {
+    /// # async fn example() -> recentip::Result<()> {
     /// let someip = recentip::configure()
-    ///     .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
     ///     .start().await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub const fn advertised_ip(mut self, ip: IpAddr) -> Self {
-        self.config.advertised_ip = Some(ip);
+    pub fn sd_multicast_group(self, addr: MulticastAddress) -> SomeIpBuilder<A, MulticastAddress> {
+        SomeIpBuilder {
+            sd_unicast: self.sd_unicast,
+            sd_multicast: addr,
+            sd_port: self.sd_port,
+            single_socket: self.single_socket,
+            offer_ttl: self.offer_ttl,
+            find_ttl: self.find_ttl,
+            subscribe_ttl: self.subscribe_ttl,
+            cyclic_offer_delay: self.cyclic_offer_delay,
+            preferred_transport: self.preferred_transport,
+            magic_cookies: self.magic_cookies,
+        }
+    }
+}
+
+// ============================================================================
+// Optional configuration (available in any state)
+// ============================================================================
+
+impl<A, MC> SomeIpBuilder<A, MC> {
+    /// Set the Service Discovery UDP port.
+    ///
+    /// Per the SOME/IP specification, `30490` (`DEFAULT_SD_PORT`) is the
+    /// conventional SD port.  Override only when your system configuration
+    /// mandates a different value.
+    ///
+    /// Default: `30490`
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    ///
+    /// # async fn example() -> recentip::Result<()> {
+    /// let someip = recentip::configure()
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
+    ///     .sd_port(30490)
+    ///     .start().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub const fn sd_port(mut self, port: u16) -> Self {
+        self.sd_port = port;
         self
     }
-
-    /// The multicast address and port to subscribe to for Service Discovery
-    ///
-    /// The port should match the port part of `bind_addr` to work correctly.
-    ///
-    /// Default: `239.255.0.1:30490`
-    pub const fn sd_multicast(mut self, addr: SocketAddr) -> Self {
-        self.config.sd_multicast = addr;
-        self
-    }
-
-    /// Set the TTL for `OfferService` entries (in seconds)
+    /// Set the TTL for `OfferService` entries (in seconds).
     ///
     /// Values exceeding the 24-bit maximum (0xFFFFFF = 16,777,215) will be
     /// clamped to `SD_TTL_INFINITE` to prevent silent truncation during
@@ -195,7 +255,7 @@ impl SomeIpBuilder {
     ///
     /// Default: 3600 seconds
     pub fn offer_ttl(mut self, ttl: u32) -> Self {
-        self.config.offer_ttl = clamp_ttl_to_24bit(ttl, "offer_ttl");
+        self.offer_ttl = clamp_ttl_to_24bit(ttl, "offer_ttl");
         self
     }
 
@@ -210,7 +270,7 @@ impl SomeIpBuilder {
     ///
     /// Default: 3600 seconds
     pub fn find_ttl(mut self, ttl: u32) -> Self {
-        self.config.find_ttl = clamp_ttl_to_24bit(ttl, "find_ttl");
+        self.find_ttl = clamp_ttl_to_24bit(ttl, "find_ttl");
         self
     }
 
@@ -250,16 +310,17 @@ impl SomeIpBuilder {
     ///
     /// Default: 3600 seconds
     pub fn subscribe_ttl(mut self, ttl: u32) -> Self {
-        self.config.subscribe_ttl = clamp_ttl_to_24bit(ttl, "subscribe_ttl");
+        self.subscribe_ttl = clamp_ttl_to_24bit(ttl, "subscribe_ttl");
         self
     }
 
-    /// Set interval between cyclic offers (in milliseconds). This must be
-    /// strictly less than `offer_ttl`.
+    /// Set interval between cyclic offers (in milliseconds).
+    ///
+    /// This must be strictly less than `offer_ttl`.
     ///
     /// Default: 1000 ms
     pub const fn cyclic_offer_delay(mut self, delay_ms: u64) -> Self {
-        self.config.cyclic_offer_delay = delay_ms;
+        self.cyclic_offer_delay = delay_ms;
         self
     }
 
@@ -270,7 +331,7 @@ impl SomeIpBuilder {
     ///
     /// Default: `Transport::Udp`
     pub const fn preferred_transport(mut self, transport: Transport) -> Self {
-        self.config.preferred_transport = transport;
+        self.preferred_transport = transport;
         self
     }
 
@@ -278,27 +339,47 @@ impl SomeIpBuilder {
     ///
     /// Magic Cookies allow resynchronization in testing/debugging scenarios.
     pub const fn magic_cookies(mut self, enabled: bool) -> Self {
-        self.config.magic_cookies = enabled;
+        self.magic_cookies = enabled;
         self
     }
 
-    /// Start the SOME/IP runtime with tokio sockets (production use).
+    /// Enable single-socket mode: bind one socket to `0.0.0.0:<sd_port>` instead
+    /// of the dual-socket layout.
     ///
-    /// This is the default method for production applications using real networking.
+    /// In single-socket mode `sd_unicast` is not used for socket binding, but it
+    /// is still required and still advertised in SD endpoint options so remote
+    /// peers know how to reach this runtime.
+    ///
+    /// Use this on platforms that do not support binding a UDP socket to a
+    /// multicast group address (e.g. some QNX configurations).
     ///
     /// # Example
     ///
     /// ```no_run
     /// use recentip::prelude::*;
-    /// use std::net::Ipv4Addr;
     ///
     /// # async fn example() -> recentip::Result<()> {
     /// let someip = recentip::configure()
-    ///     .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
+    ///     .sd_port(30490)
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
+    ///     .single_socket()
     ///     .start().await?;
     /// # Ok(())
     /// # }
     /// ```
+    pub const fn single_socket(mut self) -> Self {
+        self.single_socket = true;
+        self
+    }
+}
+
+// ============================================================================
+// start() — only available when all mandatory fields are set
+// ============================================================================
+
+impl SomeIpBuilder<UnicastAddress, MulticastAddress> {
+    /// Start the SOME/IP runtime with tokio sockets (production use).
     ///
     /// # Errors
     ///
@@ -322,7 +403,8 @@ impl SomeIpBuilder {
     ///
     /// # async fn example() -> Result<()> {
     /// let someip = recentip::configure()
-    ///     .advertised_ip("192.168.1.100".parse().unwrap())
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
     ///     .start_generic::<tokio::net::UdpSocket, tokio::net::TcpStream, tokio::net::TcpListener>()
     ///     .await?;
     /// # Ok(())
@@ -338,38 +420,40 @@ impl SomeIpBuilder {
         T: TcpStream,
         L: TcpListener<Stream = T>,
     {
-        SomeIp::new(self.config).await
+        let config = RuntimeConfig {
+            sd_multicast: self.sd_multicast,
+            sd_unicast: self.sd_unicast,
+            sd_port: self.sd_port,
+            single_socket: self.single_socket,
+            offer_ttl: self.offer_ttl,
+            find_ttl: self.find_ttl,
+            subscribe_ttl: self.subscribe_ttl,
+            cyclic_offer_delay: self.cyclic_offer_delay,
+            preferred_transport: self.preferred_transport,
+            magic_cookies: self.magic_cookies,
+        };
+        SomeIp::new(config).await
     }
 }
 
 // Feature-gated turmoil helper
 #[cfg(feature = "turmoil")]
-impl SomeIpBuilder {
+impl SomeIpBuilder<UnicastAddress, MulticastAddress> {
     /// Start with turmoil sockets (for network simulation testing).
     ///
-    /// This is a convenience method for testing with the turmoil network simulator.
     /// Requires the `turmoil` feature flag.
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use recentip::prelude::*;
-    ///
-    /// # async fn example() -> Result<()> {
-    /// let someip = recentip::configure()
-    ///     .advertised_ip(turmoil::lookup("server"))
-    ///     .start_turmoil().await?;
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// Single-socket mode is forced automatically: turmoil does not support
+    /// binding to multicast addresses, so the dual-socket path is not available.
     ///
     /// # Errors
     ///
     /// Returns an error if socket binding fails or configuration is invalid.
     pub async fn start_turmoil(
-        self,
+        mut self,
     ) -> Result<SomeIp<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>>
     {
+        self.single_socket = true;
         self.start_generic().await
     }
 }

@@ -12,7 +12,10 @@ use recentip::SdEvent;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
 
     // Get the SD event stream
     let mut sd_events = someip.monitor_sd().await?;
@@ -72,7 +75,10 @@ use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
 
     // With timeout - find() waits for SD announcement
     let result = tokio::time::timeout(
@@ -99,7 +105,10 @@ use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
 
     // Start discovery for multiple services concurrently
     let (brake, engine, transmission) = tokio::try_join!(
@@ -124,7 +133,10 @@ use recentip::SdEvent;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
     let mut sd_events = someip.monitor_sd().await?;
 
     let target_service = 0x1234;

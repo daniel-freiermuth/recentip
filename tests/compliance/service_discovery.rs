@@ -5,8 +5,10 @@
 //!
 //! Reference: someip-sd.rst
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -58,7 +60,8 @@ fn sd_offer_discovery_works() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -82,7 +85,8 @@ fn sd_offer_discovery_works() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -124,7 +128,8 @@ fn sd_offer_with_specific_instance() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -148,7 +153,8 @@ fn sd_offer_with_specific_instance() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -194,7 +200,8 @@ fn sd_offer_with_version_info() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -218,7 +225,8 @@ fn sd_offer_with_version_info() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -270,7 +278,8 @@ fn sd_stop_offer_on_drop() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -299,7 +308,8 @@ fn sd_stop_offer_on_drop() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -346,7 +356,8 @@ fn sd_multiple_service_offers() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -376,7 +387,8 @@ fn sd_multiple_service_offers() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -422,7 +434,8 @@ fn sd_multiple_instances_same_service() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -455,7 +468,8 @@ fn sd_multiple_instances_same_service() {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -509,7 +523,8 @@ fn sd_find_service_discovery() {
     // Start client first (before server)
     sim.host("client", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -534,7 +549,8 @@ fn sd_find_service_discovery() {
             tokio::time::sleep(Duration::from_millis(200)).await;
 
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -585,7 +601,8 @@ fn sd_session_id_increments() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -619,7 +636,8 @@ fn sd_session_id_increments() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -666,7 +684,8 @@ fn sd_unicast_flag_handling() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -689,7 +708,8 @@ fn sd_unicast_flag_handling() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -733,7 +753,8 @@ fn sd_discovery_then_rpc() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -769,7 +790,8 @@ fn sd_discovery_then_rpc() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();

@@ -15,7 +15,9 @@ use super::helpers::{
     build_sd_offer_dual_stack_with_session, build_sd_offer_tcp_only, build_sd_offer_with_session,
     build_sd_subscribe_ack_with_session, covers, parse_sd_message, TEST_SERVICE_ID,
 };
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
+
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -149,7 +151,8 @@ fn subscribe_format_udp_only_cyclic_offers() {
 
         let runtime = recentip::configure()
             .subscribe_ttl(5) // Short TTL so we can see renewals
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -313,7 +316,8 @@ fn subscribe_format_tcp_only_cyclic_offers() {
         let runtime = recentip::configure()
             .preferred_transport(recentip::Transport::Tcp)
             .subscribe_ttl(5)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -456,7 +460,8 @@ fn subscribe_format_dual_stack_client_prefers_udp() {
         let runtime = recentip::configure()
             .preferred_transport(recentip::Transport::Udp)
             .subscribe_ttl(5)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -611,7 +616,8 @@ fn subscribe_format_dual_stack_client_prefers_tcp() {
         let runtime = recentip::configure()
             .preferred_transport(recentip::Transport::Tcp)
             .subscribe_ttl(5)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -757,7 +763,8 @@ fn subscribe_format_client_adapts_to_available_transport() {
         let runtime = recentip::configure()
             .preferred_transport(recentip::Transport::Tcp) // Prefers TCP!
             .subscribe_ttl(5)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1073,7 +1080,8 @@ fn subscribe_reuses_endpoint_port_after_resubscribe() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1421,7 +1429,8 @@ fn subscribe_tcp_reuses_endpoint_port_after_resubscribe() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(recentip::Transport::Tcp)
             .start_turmoil()
             .await

@@ -8,8 +8,10 @@
 //! - feat_req_someip_804: Event delivery to multiple subscribers
 //! - feat_req_someipsd_109: SD multicast reaches all participants
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -54,7 +56,8 @@ fn multiple_clients_call_same_server() {
     let flag = Arc::clone(&exec_flag);
     sim.client("server", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -97,7 +100,8 @@ fn multiple_clients_call_same_server() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client1")))
             .start_turmoil()
             .await
             .unwrap();
@@ -125,7 +129,8 @@ fn multiple_clients_call_same_server() {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client2")))
             .start_turmoil()
             .await
             .unwrap();
@@ -153,7 +158,8 @@ fn multiple_clients_call_same_server() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client3").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client3")))
             .start_turmoil()
             .await
             .unwrap();
@@ -203,7 +209,12 @@ fn multiple_clients_subscribe_to_events() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let runtime = recentip::configure().start_turmoil().await.unwrap();
+            let runtime = recentip::configure()
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
 
             let offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -240,7 +251,8 @@ fn multiple_clients_subscribe_to_events() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("subscriber1").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("subscriber1")))
             .start_turmoil()
             .await
             .unwrap();
@@ -273,7 +285,8 @@ fn multiple_clients_subscribe_to_events() {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("subscriber2").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("subscriber2")))
             .start_turmoil()
             .await
             .unwrap();
@@ -305,7 +318,8 @@ fn multiple_clients_subscribe_to_events() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("subscriber3").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("subscriber3")))
             .start_turmoil()
             .await
             .unwrap();
@@ -365,7 +379,8 @@ fn sd_reaches_all_participants() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -389,7 +404,8 @@ fn sd_reaches_all_participants() {
     sim.host("client1", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client1")))
             .start_turmoil()
             .await
             .unwrap();
@@ -404,7 +420,8 @@ fn sd_reaches_all_participants() {
     sim.host("client2", || async {
         tokio::time::sleep(Duration::from_millis(150)).await;
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client2")))
             .start_turmoil()
             .await
             .unwrap();
@@ -419,7 +436,8 @@ fn sd_reaches_all_participants() {
     sim.host("client3", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client3").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client3")))
             .start_turmoil()
             .await
             .unwrap();
@@ -434,7 +452,8 @@ fn sd_reaches_all_participants() {
     sim.host("client4", || async {
         tokio::time::sleep(Duration::from_millis(250)).await;
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client4").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client4")))
             .start_turmoil()
             .await
             .unwrap();
@@ -449,7 +468,8 @@ fn sd_reaches_all_participants() {
     sim.host("client5", || async {
         tokio::time::sleep(Duration::from_millis(300)).await;
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client5").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client5")))
             .start_turmoil()
             .await
             .unwrap();
@@ -495,7 +515,8 @@ fn nodes_with_mixed_client_server_roles() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("nodeA").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("nodeA")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -547,7 +568,8 @@ fn nodes_with_mixed_client_server_roles() {
     // Node B: offers ServiceB, requires ServiceA
     sim.host("nodeB", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("nodeB").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("nodeB")))
             .start_turmoil()
             .await
             .unwrap();
@@ -625,7 +647,8 @@ fn multiple_servers_different_instances() {
     let flag = Arc::clone(&exec_flag);
     sim.client("server1", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server1").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server1")))
             .start_turmoil()
             .await
             .unwrap();
@@ -657,7 +680,8 @@ fn multiple_servers_different_instances() {
     // Server 2 - Instance 0x0002
     sim.client("server2", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server2").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server2")))
             .start_turmoil()
             .await
             .unwrap();
@@ -690,7 +714,8 @@ fn multiple_servers_different_instances() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();

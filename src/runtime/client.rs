@@ -51,7 +51,7 @@
 //! - No I/O is performed directly; actions are returned to the runtime
 //! - Session IDs are allocated from `state.next_client_session_id()`
 
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddrV4};
 
 use bytes::Bytes;
 use tokio::time::Instant;
@@ -83,20 +83,20 @@ use tokio::sync::mpsc;
 ///
 /// Returns the local endpoint (IP + ephemeral port) to use in the SD Subscribe message.
 async fn spawn_udp_subscription_socket<U: UdpSocket>(
-    advertised_ip: std::net::IpAddr,
+    unicast_ip: Ipv4Addr,
     events_tx: mpsc::Sender<crate::Event>,
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     eventgroup_id: u16,
-) -> std::io::Result<SocketAddr> {
+) -> std::io::Result<SocketAddrV4> {
     // Bind to 0.0.0.0:0 (ephemeral port on all interfaces)
     // This works in both production (tokio) and testing (turmoil)
-    let bind_addr = SocketAddr::from((std::net::Ipv4Addr::UNSPECIFIED, 0));
+    let bind_addr = SocketAddrV4::new(unicast_ip, 0);
     let socket = U::bind(bind_addr).await?;
-    let mut local_endpoint = socket.local_addr()?;
+    let local_port = socket.local_addr()?;
 
-    // Replace 0.0.0.0 with the advertised IP for the SD Subscribe message
-    local_endpoint.set_ip(advertised_ip);
+    // Use advertised IP for the SD Subscribe message
+    let local_endpoint = SocketAddrV4::new(unicast_ip, local_port.port());
 
     tracing::debug!(
         "Created dedicated UDP socket {} for subscription to {:04x}:{:04x} eventgroup {:04x}",
@@ -198,16 +198,10 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
 /// Determine the routable IP address to use in endpoint options
 ///
 /// Per `feat_req_someipsd_814`, endpoint options must contain valid routable IP addresses.
-/// Returns the configured advertised IP, or falls back to `local_endpoint/client_rpc_endpoint`
-/// if they have non-unspecified IPs, or None if no valid IP is available.
-fn get_endpoint_ip(state: &RuntimeState) -> Option<std::net::IpAddr> {
-    state.config.advertised_ip.or_else(|| {
-        if state.local_endpoint.ip().is_unspecified() {
-            None
-        } else {
-            Some(state.local_endpoint.ip())
-        }
-    })
+/// Returns the configured advertised IP; `sd_unicast` is a [`UnicastAddress`] so this
+/// is always valid.
+const fn get_endpoint_ip(state: &RuntimeState) -> Ipv4Addr {
+    state.config.unicast_ip()
 }
 
 /// Handle `Command::Find`
@@ -254,7 +248,7 @@ pub fn handle_find(
 
         actions.push(Action::SendSd {
             message: msg,
-            target: state.config.sd_multicast,
+            target: state.config.sd_multicast_addr(),
         });
     }
 }
@@ -278,7 +272,7 @@ pub fn handle_call(
     method_id: u16,
     payload: &Bytes,
     response: tokio::sync::oneshot::Sender<crate::error::Result<Response>>,
-    target_endpoint: SocketAddr,
+    target_endpoint: SocketAddrV4,
     target_transport: Transport,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
@@ -317,7 +311,7 @@ pub fn handle_fire_and_forget(
     service_id: crate::ServiceId,
     method_id: u16,
     payload: &Bytes,
-    target_endpoint: SocketAddr,
+    target_endpoint: SocketAddrV4,
     target_transport: Transport,
     state: &RuntimeState,
     actions: &mut Vec<Action>,
@@ -365,7 +359,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     eventgroup_ids: vec1::Vec1<u16>,
     incoming_events_channel: tokio::sync::mpsc::Sender<Event>,
     result_response_channel: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
-    sd_endpoint: SocketAddr,
+    sd_endpoint: SocketAddrV4,
     state: &mut RuntimeState,
 ) {
     let key = ServiceKey::new(service_id, instance_id, major_version);
@@ -374,19 +368,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     let subscription_id = state.next_subscription_id();
 
     // UDP subscription endpoint selection
-    let Some(endpoint_ip) = get_endpoint_ip(state) else {
-        tracing::error!(
-            "Cannot subscribe to {:04x}:{:04x} eventgroups {:?}: \
-                no valid IP address configured. Set RuntimeConfig::advertised_ip",
-            service_id.value(),
-            instance_id.value(),
-            eventgroup_ids
-        );
-        let _ = result_response_channel.send(Err(crate::error::Error::Config(
-            crate::error::ConfigError::new("No advertised IP configured for subscriptions"),
-        )));
-        return;
-    };
+    let endpoint_ip = get_endpoint_ip(state);
 
     // Check if this service already has a subscription - if so, need a different endpoint
     // to ensure events are routed to the correct subscription
@@ -403,7 +385,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             state.find_reusable_subscription_endpoint(service_id.value(), instance_id.value())
         {
             // Found an endpoint used by other services but not this one - reuse it!
-            let reused_endpoint = SocketAddr::new(endpoint_ip, reusable_port);
+            let reused_endpoint = SocketAddrV4::new(endpoint_ip, reusable_port);
             tracing::debug!(
                 "Reusing existing endpoint {} for subscription to {:04x}:{:04x} eventgroups {:?}",
                 reused_endpoint,
@@ -591,7 +573,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             service_id.value(),
             instance_id.value(),
         );
-        SocketAddr::new(endpoint_ip, state.client_rpc_endpoint.port())
+        SocketAddrV4::new(endpoint_ip, state.client_rpc_endpoint.port())
     };
 
     // Track all eventgroups with a shared events channel (cloned sender)
@@ -813,22 +795,14 @@ pub fn handle_unsubscribe(
     );
 
     // Determine the actual local IP address to put in the endpoint option
-    // Per feat_req_someipsd_814, we must provide a valid routable IP, not 0.0.0.0
-    let Some(endpoint_ip) = get_endpoint_ip(state) else {
-        tracing::error!(
-            "Cannot unsubscribe from {:04x}:{:04x} eventgroup {:04x}: \
-                 no valid IP address configured. Set RuntimeConfig::advertised_ip",
-            service_id.value(),
-            instance_id.value(),
-            eventgroup_id
-        );
-        return;
-    };
+    // Per feat_req_someipsd_814, we must provide a valid routable IP.
+    // config.advertised_ip() always returns a valid address (UnicastAddress invariant).
+    let endpoint_ip = get_endpoint_ip(state);
 
     // Use the same endpoint that was used for the subscription
     // Per feat_req_someipsd_1177: StopSubscribeEventgroup shall reference the same
     // options the SubscribeEventgroup Entry referenced
-    let endpoint_for_unsubscribe = SocketAddr::new(endpoint_ip, subscription_endpoint.port());
+    let endpoint_for_unsubscribe = SocketAddrV4::new(endpoint_ip, subscription_endpoint.port());
 
     let Some(transport) = transport else {
         tracing::error!(
@@ -902,7 +876,7 @@ pub fn handle_incoming_response(header: &Header, payload: Bytes, state: &mut Run
 pub fn handle_incoming_notification(
     header: &Header,
     payload: Bytes,
-    from: SocketAddr,
+    from: SocketAddrV4,
     state: &RuntimeState,
     subscription_id: u64,
 ) {

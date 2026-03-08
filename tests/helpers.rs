@@ -1,6 +1,34 @@
 use bytes::{Bytes, BytesMut};
+use recentip::config::{MulticastAddress, UnicastAddress};
 use recentip::ServiceOffering;
+use std::net::{IpAddr, Ipv4Addr};
+
+/// Multicast group used in turmoil-based tests and single-host loopback setups.
+///
+/// Automotive deployments must configure their own group explicitly.
+pub(crate) const DEFAULT_SD_MULTICAST: MulticastAddress =
+    MulticastAddress::static_try_from(Ipv4Addr::new(239, 255, 0, 1))
+        .expect("valid multicast address");
 use tokio::io::AsyncReadExt;
+
+/// Extract the IPv4 address from an `IpAddr`.
+///
+/// # Panics
+/// Panics if the address is IPv6.
+pub(crate) fn ipv4(addr: IpAddr) -> Ipv4Addr {
+    match addr {
+        IpAddr::V4(ip) => ip,
+        IpAddr::V6(_) => panic!("expected IPv4 address, got IPv6"),
+    }
+}
+
+/// Wrap an `IpAddr` as a validated [`UnicastAddress`].
+///
+/// # Panics
+/// Panics if the address is not a valid unicast IPv4 address.
+pub(crate) fn unicast(addr: IpAddr) -> UnicastAddress {
+    UnicastAddress::try_from(ipv4(addr)).expect("expected a valid unicast IPv4 address")
+}
 
 // Import builders from compliance test's wire_format helpers
 #[path = "compliance/wire_format/helpers.rs"]

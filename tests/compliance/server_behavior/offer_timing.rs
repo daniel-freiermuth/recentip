@@ -25,9 +25,11 @@
 use super::helpers::{covers, parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION};
 #[cfg(feature = "slow-tests")]
 use crate::helpers::configure_tracing;
+use crate::helpers::DEFAULT_SD_MULTICAST;
 #[cfg(feature = "slow-tests")]
 use proptest::prelude::*;
 use recentip::prelude::*;
+
 use std::time::Duration;
 
 // ============================================================================
@@ -111,7 +113,8 @@ proptest! {
                 let runtime = recentip::configure()
                     .cyclic_offer_delay(delay)
                     .offer_ttl(ttl)
-                    .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                    .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                    .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                     .start_turmoil()
                     .await
                     .unwrap();
@@ -265,7 +268,8 @@ fn cyclic_offers_basic_timing() {
         let runtime = recentip::configure()
             .cyclic_offer_delay(CYCLIC_DELAY_MS)
             .offer_ttl(OFFER_TTL)
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();

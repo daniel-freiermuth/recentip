@@ -11,7 +11,9 @@
 //! - feat_req_someipsd_1135: Ignore entries with topologically incorrect endpoint IPs
 
 use super::helpers::{build_sd_offer_with_session, covers, parse_sd_message, TEST_SERVICE_ID};
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
+
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -117,7 +119,8 @@ fn client_ignores_offer_with_unspecified_endpoint_ip() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();

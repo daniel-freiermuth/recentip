@@ -13,7 +13,10 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
-//!     let runtime = recentip::configure().start().await?;
+//!     let runtime = recentip::configure()
+//!         .sd_unicast("192.168.1.100".parse().unwrap())
+//!         .sd_multicast_group("239.255.255.250".parse().unwrap())
+//!         .start().await?;
 //!
 //!     // Client: find and call a remote service
 //!     let proxy = runtime.find(0x1234u16).await?;
@@ -37,6 +40,8 @@
 //!
 //! # async fn example() -> Result<()> {
 //! let someip = recentip::configure()
+//!     .sd_unicast("192.168.1.100".parse().unwrap())
+//!     .sd_multicast_group("239.255.255.250".parse().unwrap())
 //!     .preferred_transport(Transport::Tcp)  // Prefer TCP when service offers both
 //!     .magic_cookies(true)                  // Enable Magic Cookies for debugging
 //!     .offer_ttl(3)                         // Service offer TTL in seconds
@@ -63,7 +68,7 @@
 //! - **[`compliance`]** — Spec traceability report
 //! - **[`internals`]** — Contributor documentation (architecture, internals)
 
-use std::net::SocketAddr;
+use std::net::SocketAddrV4;
 
 pub mod builder;
 pub mod compliance;
@@ -124,29 +129,25 @@ pub mod handle {
 /// Configure and start a SOME/IP runtime.
 ///
 /// This is the main entry point for creating a SOME/IP runtime instance.
-/// Returns a builder that allows fluent configuration of the runtime parameters.
+/// Returns a builder that requires all three SD parameters before starting.
 ///
 /// # Example
 ///
 /// ```no_run
 /// use recentip::prelude::*;
-/// use std::net::Ipv4Addr;
 ///
 /// #[tokio::main]
 /// async fn main() -> recentip::Result<()> {
-///     // Start with defaults
-///     let someip = recentip::configure().start().await?;
-///     
-///     // Or configure before starting
 ///     let someip = recentip::configure()
-///         .advertised_ip(Ipv4Addr::new(192, 168, 1, 100).into())
+///         .sd_port(30490)
+///         .sd_multicast_group("239.255.255.250".parse().unwrap())
+///         .sd_unicast("192.168.1.100".parse().unwrap())
 ///         .preferred_transport(Transport::Tcp)
 ///         .start().await?;
-///     
 ///     Ok(())
 /// }
 /// ```
-pub fn configure() -> SomeIpBuilder {
+pub const fn configure() -> SomeIpBuilder {
     SomeIpBuilder::new()
 }
 
@@ -518,16 +519,19 @@ impl Response {
 #[derive(Debug, Clone)]
 pub struct ClientInfo {
     /// Client's address
-    pub address: SocketAddr,
+    pub address: SocketAddrV4,
     /// Transport used by the client
     pub transport: crate::config::Transport,
 }
 
 #[derive(Debug, Clone)]
 pub enum OfferedEndpoints {
-    UdpOnly(SocketAddr),
-    TcpOnly(SocketAddr),
-    Both { udp: SocketAddr, tcp: SocketAddr },
+    UdpOnly(SocketAddrV4),
+    TcpOnly(SocketAddrV4),
+    Both {
+        udp: SocketAddrV4,
+        tcp: SocketAddrV4,
+    },
 }
 
 // ============================================================================
@@ -535,6 +539,9 @@ pub enum OfferedEndpoints {
 // ============================================================================
 
 pub mod prelude {
+    pub use crate::config::{
+        InvalidAddressError, MulticastAddress, UnicastAddress, DEFAULT_SD_PORT,
+    };
     pub use crate::{
         configure, ApplicationError, Error, Event, EventBuilder, EventHandle, EventId,
         EventgroupId, InstanceId, MajorVersion, MethodConfig, MethodId, MinorVersion,

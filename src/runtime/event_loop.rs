@@ -10,7 +10,7 @@
 //! - TCP and UDP message routing
 //! - Periodic tasks (cyclic offers, TTL expiry)
 
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -76,7 +76,8 @@ pub enum SubscribeStateUpdate {
 
 /// The main runtime task
 pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>>(
-    sd_socket: U,
+    sd_multicast_socket: U,
+    sd_unicast_socket: Option<U>,
     config: RuntimeConfig,
     mut cmd_rx: mpsc::Receiver<Command>,
     mut method_rx: mpsc::Receiver<RpcMessage>,
@@ -94,7 +95,8 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
     // Channel for Subscribe state updates from spawned tasks
     let (subscribe_update_tx, mut subscribe_update_rx) = mpsc::channel::<SubscribeStateUpdate>(32);
 
-    let mut buf = [0u8; 65535];
+    let mut mc_buf = [0u8; 65535];
+    let mut uc_buf = [0u8; 65535];
     let cycle_interval = Duration::from_millis(config.cyclic_offer_delay);
     let mut next_periodic_cycle_at = tokio::time::Instant::now() + cycle_interval;
     state.last_periodic_cycle = Some(next_periodic_cycle_at);
@@ -108,33 +110,74 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
     loop {
         tokio::select! {
-            // Handle incoming SD packets from SD socket
-            result = sd_socket.recv_from(&mut buf) => {
+            // Handle incoming SD packets from the multicast SD socket
+            result = sd_multicast_socket.recv_from(&mut mc_buf) => {
                 match result {
                     Ok((len, from)) => {
-                        let Some(received) = buf.get(..len) else {
+                        let Some(received) = mc_buf.get(..len) else {
                             continue;
                         };
                         let mut data: &[u8] = received;
 
                         let Some(header) = Header::parse(&mut data) else {
-                            tracing::warn!("Received invalid SOME/IP header on SD socket from {}", from);
+                            tracing::warn!("Received invalid SOME/IP header on SD multicast socket from {}", from);
                             continue;
                         };
 
                         if header.service_id != SD_SERVICE_ID || header.method_id != SD_METHOD_ID {
-                            tracing::warn!("Received non-SD message on SD socket from {}", from);
+                            tracing::warn!("Received non-SD message on SD multicast socket from {}", from);
                             continue;
                         }
 
-                        if let Some(actions) = handle_sd_message(&header, &mut data, from, &mut state) {
+
+                        let expect_unicast = sd_unicast_socket.is_some().then_some(false);
+                        if let Some(actions) = handle_sd_message(&header, &mut data, from, &mut state, expect_unicast) {
                             for action in actions {
-                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                                execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                             }
                         }
                     }
                     Err(e) => {
-                        tracing::error!("Error receiving SD packet: {}", e);
+                        tracing::error!("Error receiving SD packet on multicast socket: {}", e);
+                    }
+                }
+            }
+
+            // Handle incoming SD packets from the unicast SD socket (when configured).
+            // Receives unicast SD responses (e.g. SubscribeEventgroupAck) directed
+            // at this runtime's specific IP, avoiding SO_REUSEPORT misdirection.
+            result = async {
+                if let Some(ref s) = sd_unicast_socket {
+                    s.recv_from(&mut uc_buf).await
+                } else {
+                    std::future::pending().await
+                }
+            } => {
+                match result {
+                    Ok((len, from)) => {
+                        let Some(received) = uc_buf.get(..len) else {
+                            continue;
+                        };
+                        let mut data: &[u8] = received;
+
+                        let Some(header) = Header::parse(&mut data) else {
+                            tracing::warn!("Received invalid SOME/IP header on SD unicast socket from {}", from);
+                            continue;
+                        };
+
+                        if header.service_id != SD_SERVICE_ID || header.method_id != SD_METHOD_ID {
+                            tracing::warn!("Received non-SD message on SD unicast socket from {}", from);
+                            continue;
+                        }
+
+                        if let Some(actions) = handle_sd_message(&header, &mut data, from, &mut state, Some(true)) {
+                            for action in actions {
+                                execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Error receiving SD packet on unicast socket: {}", e);
                     }
                 }
             }
@@ -156,7 +199,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &data, method_msg.from, &mut state, method_msg.service_key, Transport::Udp, 0) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -187,7 +230,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, service_key, Transport::Tcp, tcp_msg.subscription_id) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -210,7 +253,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, None, Transport::Tcp, tcp_msg.subscription_id) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -230,7 +273,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             } => {
                 if let Some(actions) = flush_pending_initial_offers(&config, &mut state) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -238,7 +281,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             // Flush pending unicast SD actions when deadline is reached
             () = state.await_pending_unicast_sd_flush_deadline() => {
                 for action in state.flush_pending_unicast_sd() {
-                    execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                    execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                 }
             }
 
@@ -248,7 +291,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     Some(Command::Shutdown) | None => {
                         tracing::info!("SomeIp shutting down, draining {} pending responses", pending_responses.len());
                         // Send StopOffer for all offered services
-                        send_stop_offers(&sd_socket, &config, &mut state).await;
+                        send_stop_offers(&sd_multicast_socket, &config, &mut state).await;
 
                         // Drain all pending responses before exiting
                         // This ensures responses in flight are sent even after offerings are dropped
@@ -353,7 +396,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     Some(cmd) => {
                         if let Some(actions) = handle_command(cmd, &mut state) {
                             for action in actions {
-                                execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                                execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                             }
                         }
                     }
@@ -386,13 +429,13 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                 // Also flush any pending initial offers at this time
                 if let Some(actions) = flush_pending_initial_offers(&config, &mut state) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
 
                 if let Some(actions) = handle_periodic(&mut state) {
                     for action in actions {
-                        execute_action(&sd_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -440,7 +483,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
 /// Execute an action
 async fn execute_action<U: UdpSocket, T: TcpStream>(
-    sd_socket: &U,
+    sd_mc_socket: &U,
     _config: &RuntimeConfig,
     state: &mut RuntimeState,
     action: Action,
@@ -481,7 +524,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                 entry_types
             );
             let data = message.serialize(session_id);
-            if let Err(e) = sd_socket.send_to(&data, target).await {
+            if let Err(e) = sd_mc_socket.send_to(&data, target).await {
                 tracing::error!("Failed to send SD message: {}", e);
             }
         }
@@ -618,11 +661,26 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
 fn handle_sd_message(
     header: &Header,
     cursor: &mut &[u8],
-    from: SocketAddr,
+    from: SocketAddrV4,
     state: &mut RuntimeState,
+    expect_unicast_flag: Option<bool>,
 ) -> Option<Vec<Action>> {
     // Parse SD payload
     let sd_message = SdMessage::parse(cursor)?;
+
+    // In dual-socket mode, verify the unicast flag matches the receiving socket
+    if let Some(expected_unicast) = expect_unicast_flag {
+        let is_unicast = (sd_message.flags & SdMessage::FLAG_UNICAST) != 0;
+        if is_unicast != expected_unicast {
+            tracing::warn!(
+                "SD message from {} has unexpected unicast flag (expected={}, actual={}); processing anyway",
+                from,
+                expected_unicast,
+                is_unicast,
+            );
+            return None;
+        }
+    }
 
     tracing::trace!(
         "Received SD message from {} with {} entries",
@@ -633,7 +691,7 @@ fn handle_sd_message(
     let mut actions = Vec::new();
 
     // Extract session info and check for peer reboot
-    let peer_ip = from.ip();
+    let peer_ip = *from.ip();
     if let Some(reboot_actions) = detect_and_handle_peer_reboot(header, &sd_message, peer_ip, state)
     {
         actions.extend(reboot_actions);
@@ -659,7 +717,7 @@ fn handle_sd_message(
 fn detect_and_handle_peer_reboot(
     header: &Header,
     sd_message: &SdMessage,
-    peer_ip: std::net::IpAddr,
+    peer_ip: Ipv4Addr,
     state: &mut RuntimeState,
 ) -> Option<Vec<Action>> {
     // Extract session info for reboot detection (feat_req_someipsd_764, feat_req_someipsd_765)
@@ -715,7 +773,7 @@ fn detect_and_handle_peer_reboot(
 /// Per feat_req_someipsd_872: TCP connections to rebooted peer shall be reset.
 ///
 /// Returns actions to execute (TCP connection resets)
-fn handle_peer_reboot(peer_ip: std::net::IpAddr, state: &mut RuntimeState) -> Vec<Action> {
+fn handle_peer_reboot(peer_ip: Ipv4Addr, state: &mut RuntimeState) -> Vec<Action> {
     // Expire services and collect TCP ports to close
     let (has_kept_subscriptions, removed_service_tcp_endpoints) =
         expire_services_from_rebooted_peer(peer_ip, state);
@@ -743,9 +801,9 @@ fn handle_peer_reboot(peer_ip: std::net::IpAddr, state: &mut RuntimeState) -> Ve
 ///
 /// Returns (has_kept_subscriptions, removed_service_tcp_endpoints)
 fn expire_services_from_rebooted_peer(
-    peer_ip: std::net::IpAddr,
+    peer_ip: Ipv4Addr,
     state: &mut RuntimeState,
-) -> (bool, Vec<std::net::SocketAddr>) {
+) -> (bool, Vec<SocketAddrV4>) {
     tracing::debug!("Expiring services from rebooted peer {}", peer_ip);
 
     // Find all services from this peer.
@@ -758,14 +816,14 @@ fn expire_services_from_rebooted_peer(
         // topology the TCP/UDP transport endpoints may be on a different host; using
         // those IPs would incorrectly expire services that merely share a TCP host
         // with the rebooted peer.
-        let is_from_peer = entry.value().sd_endpoint.ip() == peer_ip;
+        let is_from_peer = *entry.value().sd_endpoint.ip() == peer_ip;
         if is_from_peer {
             services_to_remove.push(*entry.key());
         }
     }
 
     let mut has_kept_subscriptions = false;
-    let mut removed_service_tcp_endpoints: Vec<std::net::SocketAddr> = Vec::new();
+    let mut removed_service_tcp_endpoints: Vec<SocketAddrV4> = Vec::new();
 
     for key in services_to_remove {
         // Check if we should keep this service (has subscriptions with pending ACKs)
@@ -837,7 +895,7 @@ fn expire_services_from_rebooted_peer(
 ///
 /// Returns TCP ports of expired subscriptions
 fn expire_server_subscriptions_from_rebooted_peer(
-    peer_ip: std::net::IpAddr,
+    peer_ip: Ipv4Addr,
     state: &mut RuntimeState,
 ) -> Vec<u16> {
     tracing::debug!("Expiring subscriptions from rebooted peer {}", peer_ip);
@@ -850,11 +908,11 @@ fn expire_server_subscriptions_from_rebooted_peer(
             let before_count = subs.len();
             // Collect ports of TCP subscriptions from this peer before removing
             for sub in subs.iter() {
-                if sub.endpoint.ip() == peer_ip && sub.transport == Transport::Tcp {
+                if *sub.endpoint.ip() == peer_ip && sub.transport == Transport::Tcp {
                     expired_tcp_ports.push(sub.endpoint.port());
                 }
             }
-            subs.retain(|sub| sub.endpoint.ip() != peer_ip);
+            subs.retain(|sub| *sub.endpoint.ip() != peer_ip);
             let removed = before_count - subs.len();
             if removed > 0 {
                 tracing::debug!(
@@ -875,10 +933,7 @@ fn expire_server_subscriptions_from_rebooted_peer(
 /// Expire client-side subscriptions to a rebooted server
 ///
 /// Subscriptions with pending ACKs are NOT expired - the server knows about them.
-fn expire_client_subscriptions_to_rebooted_peer(
-    peer_ip: std::net::IpAddr,
-    state: &mut RuntimeState,
-) {
+fn expire_client_subscriptions_to_rebooted_peer(peer_ip: Ipv4Addr, state: &mut RuntimeState) {
     tracing::debug!(
         "Expiring client-side subscriptions for rebooted peer {}",
         peer_ip
@@ -891,7 +946,7 @@ fn expire_client_subscriptions_to_rebooted_peer(
             // Check if this subscription is to the rebooted peer
             if let Some(svc) = state.discovered.get(key) {
                 // Same rule as expire_services_from_rebooted_peer: SD source IP only.
-                let is_from_peer = svc.sd_endpoint.ip() == peer_ip;
+                let is_from_peer = *svc.sd_endpoint.ip() == peer_ip;
                 if is_from_peer {
                     // Check if ANY eventgroup in this subscription is pending ACK
                     // If so, don't expire - the server knows about this subscription
@@ -936,10 +991,10 @@ fn expire_client_subscriptions_to_rebooted_peer(
 
 /// Queue TCP connection reset action for a rebooted peer
 fn queue_tcp_reset_for_rebooted_peer(
-    peer_ip: std::net::IpAddr,
+    peer_ip: Ipv4Addr,
     has_kept_subscriptions: bool,
     expired_tcp_ports: Vec<u16>,
-    removed_service_tcp_endpoints: Vec<std::net::SocketAddr>,
+    removed_service_tcp_endpoints: Vec<SocketAddrV4>,
     actions: &mut Vec<Action>,
 ) {
     if has_kept_subscriptions {
@@ -984,7 +1039,7 @@ fn queue_tcp_reset_for_rebooted_peer(
 /// Process SD entries in a message
 fn process_sd_entries(
     sd_message: &SdMessage,
-    from: SocketAddr,
+    from: SocketAddrV4,
     state: &mut RuntimeState,
     actions: &mut Vec<Action>,
 ) {
@@ -1029,7 +1084,7 @@ fn process_sd_entries(
 pub fn cluster_sd_actions(actions: Vec<Action>) -> Vec<Action> {
     use std::collections::HashMap;
 
-    let mut sd_by_target: HashMap<SocketAddr, SdMessage> = HashMap::new();
+    let mut sd_by_target: HashMap<SocketAddrV4, SdMessage> = HashMap::new();
     let mut other_actions = Vec::new();
 
     for action in actions {
@@ -1086,7 +1141,7 @@ pub fn cluster_sd_actions(actions: Vec<Action>) -> Vec<Action> {
 fn handle_method_message(
     header: &Header,
     data: &Bytes,
-    from: SocketAddr,
+    from: SocketAddrV4,
     state: &mut RuntimeState,
     service_key: Option<ServiceKey>,
     transport: Transport,
@@ -1315,7 +1370,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
     let sd_flags = state.sd_flags(false); // Multicast periodic messages, so FLAG_UNICAST=0
     let offer_ttl = state.config.offer_ttl;
     let find_ttl = state.config.find_ttl;
-    let sd_multicast = state.config.sd_multicast;
+    let sd_multicast = state.config.sd_multicast_addr();
 
     // Cyclic offers (only for services that are announcing)
     for (key, offered) in &mut state.offered {
@@ -1350,7 +1405,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
                 offered,
                 sd_flags,
                 offer_ttl,
-                state.config.advertised_ip,
+                state.config.unicast_ip(),
             );
 
             actions.push(Action::SendSd {
@@ -1464,18 +1519,6 @@ fn flush_pending_initial_offers(
 
     let mut msg = SdMessage::new(state.sd_flags(false)); // Multicast
 
-    // Helper to get the IP address - use advertised_ip if set, otherwise use endpoint IP
-    let get_ip = |ep: SocketAddr| -> std::net::Ipv4Addr {
-        if let Some(std::net::IpAddr::V4(ip)) = config.advertised_ip {
-            ip
-        } else {
-            match ep {
-                SocketAddr::V4(v4) => *v4.ip(),
-                _ => std::net::Ipv4Addr::LOCALHOST,
-            }
-        }
-    };
-
     // Build clustered offer message for all pending offers
     for key in &state.pending_initial_offers {
         if let Some(offered) = state.offered.get_mut(key) {
@@ -1485,7 +1528,7 @@ fn flush_pending_initial_offers(
             // Add UDP endpoint option if present
             if let Some(ep) = offered.udp_endpoint {
                 let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-                    addr: get_ip(ep),
+                    addr: config.unicast_ip(),
                     port: ep.port(),
                     protocol: L4Protocol::Udp,
                 });
@@ -1495,7 +1538,7 @@ fn flush_pending_initial_offers(
             // Add TCP endpoint option if present
             if let Some(ep) = offered.tcp_endpoint {
                 let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-                    addr: get_ip(ep),
+                    addr: config.unicast_ip(),
                     port: ep.port(),
                     protocol: L4Protocol::Tcp,
                 });
@@ -1528,7 +1571,7 @@ fn flush_pending_initial_offers(
 
     Some(vec![Action::SendSd {
         message: msg,
-        target: config.sd_multicast,
+        target: config.sd_multicast_addr(),
     }])
 }
 
@@ -1554,5 +1597,5 @@ async fn send_stop_offers<U: UdpSocket>(
 
     let session_id = state.next_multicast_session_id();
     let data = msg.serialize(session_id);
-    let _ = sd_socket.send_to(&data, config.sd_multicast).await;
+    let _ = sd_socket.send_to(&data, config.sd_multicast_addr()).await;
 }

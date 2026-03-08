@@ -14,7 +14,9 @@ use super::helpers::{
     build_sd_subscribe_with_tcp_endpoint, build_sd_subscribe_with_udp_endpoint, covers,
     parse_header, parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION,
 };
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
+
 use recentip::wire::MessageType;
 use recentip::ServiceEvent;
 use std::net::SocketAddr;
@@ -46,7 +48,8 @@ fn server_deduplicates_events_for_overlapping_eventgroups_tcp() {
     // Server offers service and sends events
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -281,7 +284,8 @@ fn server_deduplicates_events_for_overlapping_eventgroups_udp() {
     // Server offers service and sends events
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -486,7 +490,8 @@ fn server_sends_events_to_each_unique_endpoint() {
     // Server offers service and sends events
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();

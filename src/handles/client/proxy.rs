@@ -30,7 +30,10 @@ use super::SubscriptionBuilder;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<()> {
-/// let runtime = recentip::configure().start().await?;
+/// let runtime = recentip::configure()
+///     .sd_unicast("192.168.1.100".parse().unwrap())
+///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+///     .start().await?;
 ///
 /// // Discover a service
 /// let proxy = runtime.find(0x1234).await?;
@@ -101,13 +104,16 @@ impl OfferedService {
     /// ```no_run
     /// use recentip::prelude::*;
     /// use recentip::OfferedEndpoints;
-    /// use std::net::{SocketAddr, Ipv4Addr};
+    /// use std::net::{SocketAddrV4, Ipv4Addr};
     ///
     /// # async fn example() -> Result<()> {
-    /// let runtime = recentip::configure().start().await?;
+    /// let runtime = recentip::configure()
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .start().await?;
     ///
     /// // Connect to a service at a known endpoint
-    /// let endpoint = SocketAddr::from((Ipv4Addr::new(192, 168, 1, 10), 30501));
+    /// let endpoint = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 10), 30501);
     /// let proxy = OfferedService::new(
     ///     &runtime,
     ///     ServiceId::new(0x1234).unwrap(),        // service_id
@@ -244,7 +250,7 @@ impl OfferedService {
         Ok(())
     }
 
-    fn effective_transport_endpoint(&self) -> (std::net::SocketAddr, Transport) {
+    fn effective_transport_endpoint(&self) -> (std::net::SocketAddrV4, Transport) {
         match &self.remote_endpoints {
             OfferedEndpoints::UdpOnly(addr) => (*addr, Transport::Udp),
             OfferedEndpoints::TcpOnly(addr) => (*addr, Transport::Tcp),
@@ -306,7 +312,7 @@ impl OfferedService {
     }
 
     /// Get the endpoint address
-    pub fn endpoint(&self) -> std::net::SocketAddr {
+    pub fn endpoint(&self) -> std::net::SocketAddrV4 {
         self.effective_transport_endpoint().0
     }
 

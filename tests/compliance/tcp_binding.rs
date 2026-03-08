@@ -20,11 +20,13 @@
 //! - feat_req_someipsd_872: Reboot detection triggers TCP reset
 
 use crate::helpers::configure_tracing;
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use crate::wire_format::helpers::{
     parse_sd_packet, ParsedSdMessage, SdEntryType, SdOfferBuilder, SdSubscribeAckBuilder,
 };
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
+
 use recentip::Transport;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
@@ -60,7 +62,8 @@ fn client_opens_tcp_connection() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -92,7 +95,8 @@ fn client_opens_tcp_connection() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -140,7 +144,8 @@ fn single_tcp_connection_reused() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -176,7 +181,8 @@ fn single_tcp_connection_reused() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -227,7 +233,8 @@ fn client_reestablishes_connection() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -260,7 +267,8 @@ fn client_reestablishes_connection() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -320,7 +328,8 @@ fn each_message_has_own_header() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -357,7 +366,8 @@ fn each_message_has_own_header() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -405,7 +415,8 @@ fn multiple_messages_per_segment_parsed() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -440,7 +451,8 @@ fn multiple_messages_per_segment_parsed() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -490,7 +502,8 @@ fn connection_lost_fails_pending_requests() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -517,7 +530,8 @@ fn connection_lost_fails_pending_requests() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -577,7 +591,8 @@ fn magic_cookie_recognized() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
             .start_turmoil()
@@ -605,7 +620,8 @@ fn magic_cookie_recognized() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
             .start_turmoil()
@@ -655,7 +671,8 @@ fn tcp_segment_starts_with_magic_cookie() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
             .start_turmoil()
@@ -684,7 +701,8 @@ fn tcp_segment_starts_with_magic_cookie() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
             .start_turmoil()
@@ -738,7 +756,8 @@ fn only_one_magic_cookie_per_segment() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
             .start_turmoil()
@@ -769,7 +788,8 @@ fn only_one_magic_cookie_per_segment() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
             .start_turmoil()
@@ -826,7 +846,8 @@ fn tcp_header_format_matches_udp() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -852,7 +873,8 @@ fn tcp_header_format_matches_udp() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -907,7 +929,8 @@ fn tcp_loss_does_not_reset_session_id() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -940,7 +963,8 @@ fn tcp_loss_does_not_reset_session_id() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -1004,7 +1028,8 @@ fn reboot_detection_resets_tcp_connections() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -1047,7 +1072,8 @@ fn reboot_detection_resets_tcp_connections() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -1276,7 +1302,8 @@ fn tcp_cleanup_on_server_stop_offer() {
 
         let runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1367,7 +1394,8 @@ fn tcp_cleanup_after_server_crash_allows_reconnection() {
     // Server offering TCP service (will be crashed and restarted)
     sim.host("server", move || async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .preferred_transport(Transport::Tcp)
             .offer_ttl(offer_ttl_s)
             .cyclic_offer_delay(offer_ttl_s as u64 * 1000 / 3)
@@ -1411,7 +1439,8 @@ fn tcp_cleanup_after_server_crash_allows_reconnection() {
         let runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
             .subscribe_ttl(60) // 60 second TTL
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1683,7 +1712,8 @@ fn tcp_connection_closed_on_client_shutdown() {
 
         let runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1825,7 +1855,8 @@ fn reboot_clears_old_services_offers_new() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("lib_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("lib_client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1958,7 +1989,8 @@ fn server_detects_client_reboot_clears_subscriptions() {
 
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("lib_server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("lib_server")))
                 .preferred_transport(Transport::Tcp)
                 .start_turmoil()
                 .await
@@ -2646,7 +2678,8 @@ fn client_detects_server_reboot_from_subscribe_ack_session_regression() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("lib_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("lib_client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -3179,7 +3212,8 @@ fn client_detects_server_reboot_closes_server_tcp_connections() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("lib_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("lib_client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -3392,7 +3426,8 @@ fn server_detects_client_reboot_clears_subscriptions_port_reuse() {
 
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("lib_server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("lib_server")))
                 .preferred_transport(Transport::Tcp)
                 .start_turmoil()
                 .await
@@ -4011,7 +4046,8 @@ fn client_closes_tcp_on_server_reboot_detection() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("lib_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("lib_client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -4417,7 +4453,8 @@ fn client_detects_server_reboot_tcp_connections() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("lib_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("lib_client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await

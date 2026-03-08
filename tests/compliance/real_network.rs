@@ -13,10 +13,13 @@
 //! The turmoil-based tests provide comprehensive
 //! network testing with simulated separate hosts.
 
-use recentip::{EventId, EventgroupId, InstanceId, MethodId, ServiceEvent, Transport};
+use recentip::{config, EventId, EventgroupId, InstanceId, MethodId, ServiceEvent, Transport};
+use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
 use tokio::sync::mpsc;
+
+use crate::helpers::configure_tracing;
 
 // ============================================================================
 // Test Service Definition
@@ -24,6 +27,115 @@ use tokio::sync::mpsc;
 
 const ECHO_SERVICE_ID: u16 = 0x1234;
 const ECHO_SERVICE_VERSION: (u8, u32) = (1, 0);
+
+// ============================================================================
+// UDP Double-Bind Pre-Study
+// ============================================================================
+
+/// Pre-study: What does the real Linux kernel do when two sockets bind the same
+/// UDP port **without** any reuse socket options?
+///
+/// Expected: second `bind()` fails with `EADDRINUSE`.
+#[tokio::test]
+async fn udp_double_bind_without_reuse_options() {
+    let addr: SocketAddr = "127.0.0.1:19876".parse().unwrap();
+
+    let s1 = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).unwrap();
+    s1.set_nonblocking(true).unwrap();
+    s1.bind(&addr.into()).unwrap();
+    let _s1 = tokio::net::UdpSocket::from_std(s1.into()).unwrap();
+
+    let s2 = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).unwrap();
+    s2.set_nonblocking(true).unwrap();
+    let err = s2
+        .bind(&addr.into())
+        .expect_err("Expected EADDRINUSE for double bind without SO_REUSEPORT");
+    assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse);
+    tracing::info!("Second bind (no reuse options) failed as expected: {err}");
+}
+
+/// Pre-study: With `SO_REUSEPORT`, two sockets can share a port.  How are
+/// incoming unicast datagrams distributed between them?
+///
+/// Strategy: 20 independent sender sockets (each with a distinct ephemeral
+/// source port) each send one datagram.  Because the Linux kernel hashes the
+/// full 4-tuple (src-IP, src-port, dst-IP, dst-port) for `SO_REUSEPORT`
+/// load-balancing, distinct source ports produce varied hash inputs and are
+/// expected to spread datagrams across both receivers.
+///
+/// Possible outcomes logged to tracing output:
+///
+/// - **Distribution**: kernel splits packets across both sockets (typical on Linux).
+/// - **First-wins**: all packets go to socket1.
+/// - **Last-wins**: all packets go to socket2.
+///
+/// The hard assertion is only that no packets are lost or duplicated.
+#[tokio::test]
+async fn udp_double_bind_with_reuseport_distribution() {
+    const SENDERS: usize = 20;
+    const PORT: u16 = 19877;
+
+    let addr: SocketAddr = format!("127.0.0.1:{PORT}").parse().unwrap();
+
+    let make_recv = |addr: SocketAddr| -> tokio::net::UdpSocket {
+        let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).unwrap();
+        s.set_reuse_port(true).unwrap();
+        s.set_reuse_address(true).unwrap();
+        s.set_nonblocking(true).unwrap();
+        s.bind(&addr.into()).unwrap();
+        tokio::net::UdpSocket::from_std(s.into()).unwrap()
+    };
+
+    let recv1 = make_recv(addr);
+    let recv2 = make_recv(addr);
+
+    // Each sender binds to an ephemeral port, giving the kernel's hash varied
+    // src-port inputs and thus a chance to steer to different sockets.
+    for i in 0..SENDERS {
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        sender
+            .send_to(format!("msg {i}").as_bytes(), addr)
+            .await
+            .unwrap();
+    }
+
+    // Brief yield so the kernel can deliver all queued datagrams.
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    // Drain each socket's independent kernel receive queue.
+    let drain = |socket: &tokio::net::UdpSocket| -> usize {
+        let mut buf = [0u8; 64];
+        let mut count = 0usize;
+        loop {
+            match socket.try_recv_from(&mut buf) {
+                Ok((n, from)) => {
+                    tracing::info!("received {n}B from {from}");
+                    count += 1;
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => panic!("recv error: {e}"),
+            }
+        }
+        count
+    };
+
+    let count1 = drain(&recv1);
+    let count2 = drain(&recv2);
+    let total = count1 + count2;
+
+    tracing::info!("=== SO_REUSEPORT unicast distribution ===");
+    tracing::info!("Socket1: {count1}  Socket2: {count2}  Total: {total}");
+
+    if count1 > 0 && count2 > 0 {
+        tracing::info!("OUTCOME: packets distributed across both sockets");
+    } else if count1 == SENDERS {
+        tracing::info!("OUTCOME: all packets went to socket1 (first-wins)");
+    } else if count2 == SENDERS {
+        tracing::info!("OUTCOME: all packets went to socket2 (last-wins)");
+    }
+
+    assert_eq!(total, SENDERS, "no packets should be lost or duplicated");
+}
 
 // ============================================================================
 // UDP Tests
@@ -34,15 +146,8 @@ const ECHO_SERVICE_VERSION: (u8, u32) = (1, 0);
 async fn udp_request_response_real_network() {
     // Create server runtime and offer service
     let server_runtime = recentip::configure()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            30490,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            30490,
-        )))
-        .advertised_ip(Ipv4Addr::LOCALHOST.into())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
         .start()
         .await
         .expect("Server runtime");
@@ -57,14 +162,8 @@ async fn udp_request_response_real_network() {
 
     // Create client runtime
     let client_runtime = recentip::configure()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            30490,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            30490,
-        )))
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
         .start()
         .await
         .expect("Client runtime");
@@ -117,15 +216,8 @@ async fn udp_service_discovery_real_network() {
 
     let server_handle = tokio::spawn(async move {
         let runtime = recentip::configure()
-            .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::UNSPECIFIED,
-                30490,
-            )))
-            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(239, 255, 255, 250),
-                30490,
-            )))
-            .advertised_ip(Ipv4Addr::LOCALHOST.into())
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.1".parse().unwrap())
             .start()
             .await
             .expect("Server runtime");
@@ -146,14 +238,8 @@ async fn udp_service_discovery_real_network() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let runtime = recentip::configure()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            30490,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            30490,
-        )))
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
         .start()
         .await
         .expect("Client runtime");
@@ -182,16 +268,9 @@ async fn tcp_request_response_real_network() {
 
     let server_handle = tokio::spawn(async move {
         let runtime = recentip::configure()
-            .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::UNSPECIFIED,
-                30490,
-            )))
-            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(239, 255, 255, 250),
-                30490,
-            )))
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(Ipv4Addr::LOCALHOST.into())
+            .sd_unicast("127.0.0.1".parse().unwrap())
             .start()
             .await
             .expect("Server runtime");
@@ -222,14 +301,8 @@ async fn tcp_request_response_real_network() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let runtime = recentip::configure()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            30490,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            30490,
-        )))
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
         .preferred_transport(Transport::Tcp)
         .start()
         .await
@@ -267,17 +340,10 @@ async fn tcp_magic_cookies_real_network() {
 
     let server_handle = tokio::spawn(async move {
         let runtime = recentip::configure()
-            .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::UNSPECIFIED,
-                30490,
-            )))
-            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(239, 255, 255, 250),
-                30490,
-            )))
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
             .preferred_transport(Transport::Tcp)
             .magic_cookies(true)
-            .advertised_ip(Ipv4Addr::LOCALHOST.into())
+            .sd_unicast("127.0.0.1".parse().unwrap())
             .start()
             .await
             .expect("Server runtime");
@@ -308,14 +374,8 @@ async fn tcp_magic_cookies_real_network() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let runtime = recentip::configure()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            30490,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            30490,
-        )))
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
         .preferred_transport(Transport::Tcp)
         .magic_cookies(true)
         .start()
@@ -350,16 +410,9 @@ async fn tcp_multiple_requests_real_network() {
 
     let server_handle = tokio::spawn(async move {
         let runtime = recentip::configure()
-            .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::UNSPECIFIED,
-                30490,
-            )))
-            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(239, 255, 255, 250),
-                30490,
-            )))
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(Ipv4Addr::LOCALHOST.into())
+            .sd_unicast("127.0.0.1".parse().unwrap())
             .start()
             .await
             .expect("Server runtime");
@@ -392,14 +445,8 @@ async fn tcp_multiple_requests_real_network() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let runtime = recentip::configure()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            30490,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            30490,
-        )))
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
         .preferred_transport(Transport::Tcp)
         .start()
         .await
@@ -437,33 +484,31 @@ async fn tcp_multiple_requests_real_network() {
 // Event/Subscription Tests
 // ============================================================================
 
-/// Test event subscription on real UDP network
+/// Test event subscription on real UDP network with dual-socket SD.
 ///
-/// This test verifies unicast event delivery on a real network.
-/// Multicast event delivery is not yet implemented, but this test uses unicast only.
+/// This test verifies unicast event delivery on a real network with two runtimes
+/// sharing the loopback interface.  Each runtime uses a distinct loopback IP as
+/// its `advertised_ip`:
 ///
-/// NOTE: This test is currently unreliable on same-machine setups due to SO_REUSEPORT.
-/// When both server and client bind to the same SD port (30490) via SO_REUSEPORT,
-/// unicast SubscribeEventgroupAck messages may be delivered to the wrong socket.
-/// Run with `cargo test -- --ignored` to include it.
-/// This should finally be tested using network namespaces, docker or vagrant
+/// - Server: `127.0.0.2` (unicast SD socket bound to `127.0.0.2:0`)
+/// - Client: `127.0.0.1` (unicast SD socket bound to `127.0.0.1:0`)
+///
+/// Both multicast sockets bind to `0.0.0.0:30490` (SO_REUSEPORT) and receive
+/// multicast SD (Offer, FindService).  Unicast SD responses such as
+/// `SubscribeEventgroupAck` are sent from and received on the per-runtime
+/// unicast socket at a unique ephemeral port, so SO_REUSEPORT load-balancing
+/// on port 30490 can never misdirect them.
 #[tokio::test]
-#[ignore = "Requires .bind_sd_unicast() implementation + network namespaces/docker"]
 async fn udp_events_real_network() {
+    configure_tracing();
     let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
     let (subscribed_tx, mut subscribed_rx) = mpsc::channel::<()>(1);
     let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
 
     let server_handle = tokio::spawn(async move {
         let runtime = recentip::configure()
-            .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::UNSPECIFIED,
-                30490,
-            )))
-            .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::new(239, 255, 255, 250),
-                30490,
-            )))
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
             .start()
             .await
             .expect("Server runtime");
@@ -503,23 +548,20 @@ async fn udp_events_real_network() {
                 None => break,
             }
         }
-        runtime.shutdown().await;
 
+        // Wait for client to finish collecting events BEFORE shutting down.
+        // If we shut down first, the StopOffer multicast arrives at the client
+        // and removes the subscription state before events are delivered.
         done_rx.recv().await;
+        runtime.shutdown().await;
     });
 
     ready_rx.recv().await;
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let runtime = recentip::configure()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            30490,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            30490,
-        )))
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
         .start()
         .await
         .expect("Client runtime");
@@ -572,15 +614,8 @@ async fn udp_two_runtimes_same_sd_port() {
     // Both runtimes bind to INADDR_ANY on the SD multicast port
     // This tests SO_REUSEPORT functionality
     let server_runtime = recentip::configure()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            sd_port,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            sd_port,
-        )))
-        .advertised_ip(Ipv4Addr::LOCALHOST.into())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
         .start()
         .await
         .expect("Server runtime");
@@ -594,14 +629,8 @@ async fn udp_two_runtimes_same_sd_port() {
         .expect("Offer service");
 
     let client_runtime = recentip::configure()
-        .bind_addr(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            sd_port,
-        )))
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(239, 255, 255, 250),
-            sd_port,
-        )))
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
         .start()
         .await
         .expect("Client runtime");
@@ -636,4 +665,115 @@ async fn udp_two_runtimes_same_sd_port() {
 
     assert_eq!(response.payload.as_ref(), b"REUSEPORT:reuseport");
     server_task.await.expect("Server task");
+}
+
+// ============================================================================
+// Non-Interference Tests
+// ============================================================================
+
+/// Non-interference test: an observer socket bound to `0.0.0.0:SD_PORT` receives
+/// **all** unicast traffic destined for `127.0.0.3:SD_PORT` even when two SOME/IP
+/// runtimes are running on the same host.
+///
+/// ## Setup
+///
+/// - **Runtime A** (server): `advertised_ip = 127.0.0.2`, offers an eventgroup.
+/// - **Runtime B** (client): `advertised_ip = 127.0.0.1`, subscribes to events.
+/// - **Observer socket**: bound to `0.0.0.0:30490` with `SO_REUSEPORT`.
+///
+/// ## Why this test passes
+///
+/// Each runtime's mc_socket is bound to the SD **multicast group address**
+/// (`239.255.255.250:30490`) rather than `0.0.0.0:30490`.  A socket bound to a
+/// multicast group address only receives datagrams whose destination IP matches
+/// that group — unicast packets to `127.0.0.3:30490` never reach it.  Crucially,
+/// multicast-address sockets are also **not** part of the `SO_REUSEPORT`
+/// load-balancing pool for wildcard sockets, so the runtime mc_sockets do not
+/// compete with the observer for packets.
+///
+/// The runtime uc_sockets (`127.0.0.1:30490` / `127.0.0.2:30490`) are
+/// specific-IP binds and only match packets destined for their exact IP, so they
+/// also do not intercept traffic for `127.0.0.3`.
+///
+/// Result: the observer is the sole recipient of all unicast to `127.0.0.3:30490`.
+#[tokio::test]
+async fn sd_port_non_interference_wildcard_observer() {
+    const SD_PORT: u16 = 30490;
+    const OBSERVER_IP: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 3);
+    const SENDERS: usize = 30;
+
+    // ── Start two runtimes on loopback IPs so their sockets are open ──────
+    let server_runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.2".parse().unwrap())
+        .start()
+        .await
+        .expect("Server runtime");
+
+    let client_runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await
+        .expect("Client runtime");
+
+    // ── Observer: bind 0.0.0.0:SD_PORT with SO_REUSEPORT (same as runtimes) ─
+    let observer = {
+        let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).unwrap();
+        s.set_reuse_port(true).unwrap();
+        s.set_reuse_address(true).unwrap();
+        s.set_nonblocking(true).unwrap();
+        let bind_addr: SocketAddr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), SD_PORT);
+        s.bind(&bind_addr.into()).unwrap();
+        tokio::net::UdpSocket::from_std(s.into()).unwrap()
+    };
+
+    // ── Send SENDERS datagrams from distinct ephemeral ports to OBSERVER_IP ─
+    // Using distinct source ports forces varied 4-tuple hashes, which distributes
+    // packets across all SO_REUSEPORT sockets (instead of all going to one).
+    let dst: SocketAddr = SocketAddr::new(OBSERVER_IP.into(), SD_PORT);
+    for i in 0..SENDERS {
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        sender
+            .send_to(format!("pkt{i}").as_bytes(), dst)
+            .await
+            .unwrap();
+    }
+
+    // Brief pause for the kernel to deliver all queued datagrams.
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    // ── Drain the observer socket ──────────────────────────────────────────
+    let mut buf = [0u8; 64];
+    let mut observer_count = 0usize;
+    loop {
+        match observer.try_recv_from(&mut buf) {
+            Ok((_, from)) => {
+                tracing::info!("observer received packet from {from}");
+                observer_count += 1;
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+            Err(e) => panic!("observer recv error: {e}"),
+        }
+    }
+
+    tracing::info!(
+        "Observer received {observer_count}/{SENDERS} packets \
+         (expected ~{} with 3-way SO_REUSEPORT split)",
+        SENDERS / 3
+    );
+
+    server_runtime.shutdown().await;
+    client_runtime.shutdown().await;
+
+    assert_eq!(
+        observer_count,
+        SENDERS,
+        "Non-interference broken: observer only received {observer_count}/{SENDERS} packets. \
+         The SOME/IP runtimes consumed {consumed} packets that were destined for \
+         127.0.0.3:{SD_PORT}. This means the runtime mc_socket is back in the \
+         wildcard SO_REUSEPORT pool — check that it binds to the multicast group \
+         address when advertised_ip is set.",
+        consumed = SENDERS - observer_count,
+    );
 }

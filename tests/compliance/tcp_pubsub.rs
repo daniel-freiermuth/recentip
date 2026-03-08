@@ -22,7 +22,9 @@
 //! 3. TCP connection handling (reconnection, cleanup)
 //! 4. Large payload handling (TCP advantage over UDP)
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
+
 use recentip::Transport;
 use std::future::IntoFuture;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -64,7 +66,8 @@ fn tcp_basic_subscribe_and_receive_events() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -108,7 +111,8 @@ fn tcp_basic_subscribe_and_receive_events() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -173,7 +177,8 @@ fn tcp_multiple_subscribers_receive_events() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -216,7 +221,8 @@ fn tcp_multiple_subscribers_receive_events() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client1")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -249,7 +255,8 @@ fn tcp_multiple_subscribers_receive_events() {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client2")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -317,7 +324,8 @@ fn tcp_large_payload_events() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -359,7 +367,8 @@ fn tcp_large_payload_events() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -430,7 +439,8 @@ fn tcp_different_eventgroups() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -492,7 +502,8 @@ fn tcp_different_eventgroups() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client1").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client1")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -526,7 +537,8 @@ fn tcp_different_eventgroups() {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client2").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client2")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -593,7 +605,8 @@ fn dual_stack_service_client_prefers_tcp() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -636,7 +649,8 @@ fn dual_stack_service_client_prefers_tcp() {
 
         // Client prefers TCP
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await
@@ -687,7 +701,8 @@ fn dual_stack_service_client_prefers_udp() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -730,7 +745,8 @@ fn dual_stack_service_client_prefers_udp() {
 
         // Client prefers UDP (default)
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Udp)
             .start_turmoil()
             .await
@@ -787,7 +803,8 @@ fn tcp_only_server_udp_preferring_client() {
 
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -831,7 +848,8 @@ fn tcp_only_server_udp_preferring_client() {
 
         // Client prefers UDP, but server is TCP-only
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Udp) // Preference, not requirement
             .start_turmoil()
             .await
@@ -902,7 +920,8 @@ fn tcp_slow_service_doesnt_block_other_services() {
     // Service A - healthy, accepts connections and sends events
     sim.host("service_a", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("service_a").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("service_a")))
             .start_turmoil()
             .await
             .unwrap();
@@ -944,7 +963,8 @@ fn tcp_slow_service_doesnt_block_other_services() {
     // Service B - will be partitioned after discovery to simulate hanging TCP connection
     sim.host("service_b", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("service_b").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("service_b")))
             .start_turmoil()
             .await
             .unwrap();
@@ -968,7 +988,8 @@ fn tcp_slow_service_doesnt_block_other_services() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .preferred_transport(Transport::Tcp)
             .start_turmoil()
             .await

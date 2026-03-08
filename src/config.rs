@@ -7,17 +7,26 @@
 //!
 //! ## Configuration Options Reference
 //!
-//! | Option | Default | Description |
-//! |--------|---------|-------------|
-//! | `bind_addr` | `0.0.0.0:30490` | Local address to bind SD socket |
-//! | `advertised_ip` | None | Routable IP for endpoint options (required for subscriptions) |
-//! | `sd_multicast` | `239.255.0.1:30490` | SD multicast group address |
-//! | `offer_ttl` | 3600 | TTL for `OfferService` entries (seconds) |
-//! | `find_ttl` | 3600 | TTL for `FindService` entries (seconds) |
-//! | `subscribe_ttl` | 3600 | TTL for `SubscribeEventgroup` entries (seconds) |
-//! | `cyclic_offer_delay` | 1000 | Interval between cyclic offers (ms) |
-//! | `preferred_transport` | UDP | Preferred transport when service offers both |
-//! | `magic_cookies` | false | Enable TCP Magic Cookies for debugging |
+//! | Option | Description |
+//! |--------|-------------|
+//! | `sd_port` | Service Discovery UDP port (mandatory) |
+//! | `sd_multicast` | SD multicast group address (mandatory) |
+//! | `sd_unicast` | Routable IP advertised in SD endpoint options (mandatory) |
+//! | `offer_ttl` | TTL for `OfferService` entries (seconds) |
+//! | `find_ttl` | TTL for `FindService` entries (seconds) |
+//! | `subscribe_ttl` | TTL for `SubscribeEventgroup` entries (seconds) |
+//! | `cyclic_offer_delay` | Interval between cyclic offers (ms) |
+//! | `preferred_transport` | Preferred transport when service offers both |
+//! | `magic_cookies` | Enable TCP Magic Cookies for debugging |
+//!
+//! ## Socket Modes
+//!
+//! **Dual-socket mode** (default): `mc_socket` binds to the multicast group address;
+//! `uc_socket` binds to `<sd_unicast>:<sd_port>`.  Provides host-level non-interference.
+//!
+//! **Single-socket mode**: opt-in via [`single_socket`](crate::SomeIpBuilder::single_socket).
+//! One socket binds to `0.0.0.0:<sd_port>`.  Use on platforms without multicast bind
+//! support.  `sd_unicast` is still required for SD endpoint option advertisement.
 //!
 //! ## Transport Selection
 //!
@@ -31,11 +40,213 @@
 //! Service Discovery always uses UDP multicast.
 
 use std::collections::HashSet;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::fmt;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use tracing::warn;
 
-/// Default SD multicast address (239.255.0.1) per SOME/IP specification.
-pub const DEFAULT_SD_MULTICAST: Ipv4Addr = Ipv4Addr::new(239, 255, 0, 1);
+// ============================================================================
+// VALIDATED ADDRESS TYPES
+// ============================================================================
+
+/// A validated IPv4 multicast address (224.0.0.0/4).
+///
+/// Only constructible via [`TryFrom<Ipv4Addr>`], guaranteeing the address is
+/// in the multicast range. Eliminates repeated `is_multicast()` checks in
+/// runtime code.
+///
+/// # Example
+///
+/// ```
+/// use std::net::Ipv4Addr;
+/// use recentip::config::MulticastAddress;
+///
+/// let addr = MulticastAddress::try_from(Ipv4Addr::new(239, 255, 255, 250)).unwrap();
+/// assert_eq!(addr.get(), Ipv4Addr::new(239, 255, 255, 250));
+///
+/// assert!(MulticastAddress::try_from(Ipv4Addr::LOCALHOST).is_err());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MulticastAddress(Ipv4Addr);
+
+impl MulticastAddress {
+    /// Returns the inner IPv4 address.
+    #[inline]
+    pub const fn get(self) -> Ipv4Addr {
+        self.0
+    }
+
+    pub const fn static_try_from(ip: Ipv4Addr) -> Option<Self> {
+        if ip.is_multicast() {
+            Some(Self(ip))
+        } else {
+            None
+        }
+    }
+}
+
+impl TryFrom<Ipv4Addr> for MulticastAddress {
+    type Error = InvalidAddressError;
+    fn try_from(ip: Ipv4Addr) -> std::result::Result<Self, Self::Error> {
+        if ip.is_multicast() {
+            Ok(Self(ip))
+        } else {
+            Err(InvalidAddressError::NotMulticast(ip))
+        }
+    }
+}
+
+impl TryFrom<std::net::IpAddr> for MulticastAddress {
+    type Error = InvalidAddressError;
+    fn try_from(ip: std::net::IpAddr) -> std::result::Result<Self, Self::Error> {
+        match ip {
+            std::net::IpAddr::V4(v4) => Self::try_from(v4),
+            std::net::IpAddr::V6(_) => Err(InvalidAddressError::ParseError),
+        }
+    }
+}
+
+impl std::str::FromStr for MulticastAddress {
+    type Err = InvalidAddressError;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        s.parse::<Ipv4Addr>()
+            .map_err(|_| InvalidAddressError::ParseError)
+            .and_then(Self::try_from)
+    }
+}
+
+impl From<MulticastAddress> for Ipv4Addr {
+    fn from(addr: MulticastAddress) -> Self {
+        addr.get()
+    }
+}
+
+impl From<MulticastAddress> for std::net::IpAddr {
+    fn from(addr: MulticastAddress) -> Self {
+        Self::V4(addr.get())
+    }
+}
+
+impl fmt::Display for MulticastAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// A validated IPv4 unicast address (not multicast, not unspecified).
+///
+/// Only constructible via [`TryFrom<Ipv4Addr>`]. Guarantees the address is
+/// routable and suitable for SD endpoint advertisement. Eliminates
+/// `is_unspecified()` / `is_multicast()` guard checks in runtime code.
+///
+/// # Example
+///
+/// ```
+/// use std::net::Ipv4Addr;
+/// use recentip::config::UnicastAddress;
+///
+/// let addr = UnicastAddress::try_from(Ipv4Addr::LOCALHOST).unwrap();
+/// assert_eq!(addr.get(), Ipv4Addr::LOCALHOST);
+///
+/// assert!(UnicastAddress::try_from(Ipv4Addr::UNSPECIFIED).is_err());
+/// assert!(UnicastAddress::try_from(Ipv4Addr::new(239, 255, 0, 1)).is_err());
+/// assert!(UnicastAddress::try_from(Ipv4Addr::BROADCAST).is_err());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UnicastAddress(Ipv4Addr);
+
+impl UnicastAddress {
+    /// Returns the inner IPv4 address.
+    #[inline]
+    pub const fn get(self) -> Ipv4Addr {
+        self.0
+    }
+}
+
+impl TryFrom<Ipv4Addr> for UnicastAddress {
+    type Error = InvalidAddressError;
+    fn try_from(ip: Ipv4Addr) -> std::result::Result<Self, Self::Error> {
+        if ip.is_unspecified() {
+            Err(InvalidAddressError::Unspecified)
+        } else if ip.is_multicast() {
+            Err(InvalidAddressError::IsMulticast(ip))
+        } else if ip.is_broadcast() {
+            Err(InvalidAddressError::IsBroadcast)
+        } else {
+            Ok(Self(ip))
+        }
+    }
+}
+
+impl TryFrom<std::net::IpAddr> for UnicastAddress {
+    type Error = InvalidAddressError;
+    fn try_from(ip: std::net::IpAddr) -> std::result::Result<Self, Self::Error> {
+        match ip {
+            std::net::IpAddr::V4(v4) => Self::try_from(v4),
+            std::net::IpAddr::V6(_) => Err(InvalidAddressError::ParseError),
+        }
+    }
+}
+
+impl std::str::FromStr for UnicastAddress {
+    type Err = InvalidAddressError;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        s.parse::<Ipv4Addr>()
+            .map_err(|_| InvalidAddressError::ParseError)
+            .and_then(Self::try_from)
+    }
+}
+
+impl From<UnicastAddress> for Ipv4Addr {
+    fn from(addr: UnicastAddress) -> Self {
+        addr.get()
+    }
+}
+
+impl fmt::Display for UnicastAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Error returned when an address fails validation for a specific role.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InvalidAddressError {
+    /// The address must be in the multicast range `224.0.0.0/4`.
+    NotMulticast(Ipv4Addr),
+    /// The address must not be a multicast address.
+    IsMulticast(Ipv4Addr),
+    /// The address must not be unspecified (`0.0.0.0`).
+    Unspecified,
+    /// The address must not be the limited broadcast address (`255.255.255.255`).
+    IsBroadcast,
+    /// The string could not be parsed as a valid IPv4 address.
+    ParseError,
+}
+
+impl fmt::Display for InvalidAddressError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotMulticast(ip) => write!(
+                f,
+                "{ip} is not a multicast address (must be in 224.0.0.0/4)"
+            ),
+            Self::IsMulticast(ip) => {
+                write!(
+                    f,
+                    "{ip} is a multicast address; a unicast address is required"
+                )
+            }
+            Self::Unspecified => write!(
+                f,
+                "0.0.0.0 is not a valid unicast address; specify a routable IP"
+            ),
+            Self::IsBroadcast => write!(f, "255.255.255.255 is not a valid unicast address"),
+            Self::ParseError => write!(f, "not a valid IPv4 address"),
+        }
+    }
+}
+
+impl std::error::Error for InvalidAddressError {}
 
 /// Default SD port (30490) per SOME/IP specification.
 ///
@@ -116,24 +327,27 @@ pub enum Transport {
 }
 
 /// `SomeIp` configuration
+///
+/// Constructed via [`SomeIpBuilder`](crate::SomeIpBuilder); not intended for
+/// direct construction outside the builder.
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
-    /// Local address to bind to (default: 0.0.0.0:30490)
-    pub bind_addr: SocketAddr,
-    /// Advertised IP address for endpoint options (default: None)
+    /// Service Discovery UDP port (e.g. `30490`)
+    pub sd_port: u16,
+    /// SD multicast group address (e.g. `239.255.255.250`)
+    pub sd_multicast: MulticastAddress,
+    /// Routable unicast IP advertised in SD endpoint options.
     ///
-    /// This is the routable IP address that will be included in SD endpoint options
-    /// when subscribing to services. Must be a valid, non-unspecified address.
-    ///
-    /// - In turmoil tests: Use `turmoil::lookup(hostname)` to get the host's IP
-    /// - On real networks: Use the actual interface IP address
-    ///
-    /// If not set, will attempt to use the IP from `bind_addr`, but `bind_addr`
-    /// cannot be 0.0.0.0 (unspecified) if you need to subscribe to services.
-    /// See module documentation for full fallback behavior.
-    pub advertised_ip: Option<std::net::IpAddr>,
-    /// SD multicast group address (default: 239.255.0.1:30490)
-    pub sd_multicast: SocketAddr,
+    /// This IP is embedded in `OfferService` and `SubscribeEventgroup` endpoint
+    /// options so remote peers know where to send unicast SD messages and RPC
+    /// traffic.  In dual-socket mode (default) this address is also used as the
+    /// bind address for the dedicated unicast SD socket.
+    pub sd_unicast: UnicastAddress,
+    /// Use single-socket mode: bind one socket to `0.0.0.0:<sd_port>` instead
+    /// of the dual-socket layout.  `sd_unicast` is still used for endpoint
+    /// advertisement.  Use on platforms that do not support multicast-address
+    /// binds.
+    pub single_socket: bool,
     /// TTL for `OfferService` entries (default: 3600 seconds)
     pub offer_ttl: u32,
     /// TTL for `FindService` entries (default: 3600 seconds)
@@ -156,20 +370,18 @@ pub struct RuntimeConfig {
     pub magic_cookies: bool,
 }
 
-impl Default for RuntimeConfig {
-    fn default() -> Self {
-        Self {
-            // Use the SD port for multicast group membership to work in turmoil
-            bind_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_SD_PORT)),
-            advertised_ip: None,
-            sd_multicast: SocketAddr::V4(SocketAddrV4::new(DEFAULT_SD_MULTICAST, DEFAULT_SD_PORT)),
-            offer_ttl: DEFAULT_OFFER_TTL,
-            find_ttl: DEFAULT_FIND_TTL,
-            subscribe_ttl: DEFAULT_SUBSCRIBE_TTL,
-            cyclic_offer_delay: DEFAULT_CYCLIC_OFFER_DELAY,
-            preferred_transport: Transport::Udp,
-            magic_cookies: false,
-        }
+impl RuntimeConfig {
+    /// Full SD socket address = multicast group IP + SD port.
+    pub(crate) const fn sd_multicast_addr(&self) -> SocketAddrV4 {
+        SocketAddrV4::new(self.sd_multicast.get(), self.sd_port)
+    }
+
+    /// Unicast SD address.
+    ///
+    /// Always valid — `sd_unicast` is a [`UnicastAddress`], guaranteeing
+    /// the address is non-unspecified and routable.
+    pub(crate) const fn unicast_ip(&self) -> Ipv4Addr {
+        self.sd_unicast.get()
     }
 }
 

@@ -14,6 +14,7 @@ use crate::client_behavior::helpers::{
 };
 
 use super::helpers::*;
+use crate::helpers::DEFAULT_SD_MULTICAST;
 
 /// feat_req_someipsd_576: SubscribeEventgroup entry type is 0x06
 ///
@@ -101,7 +102,8 @@ fn subscribe_eventgroup_entry_type() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -146,7 +148,8 @@ fn subscribe_ack_entry_type() {
     // Server offers service and handles subscription
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -289,7 +292,8 @@ fn subscription_max_ttl_doesnt_expire() {
         let runtime = recentip::configure()
             .cyclic_offer_delay(CYCLIC_OFFER_DELAY as u64 * 1000)
             .offer_ttl(OFFER_TTL)
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -446,7 +450,12 @@ fn subscription_ttl_expiration_stops_events() {
 
     // Server offers service and sends events continuously
     sim.host("server", || async {
-        let runtime = recentip::configure().start_turmoil().await.unwrap();
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
 
         let offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -658,7 +667,8 @@ fn stop_subscribe_has_ttl_zero() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();

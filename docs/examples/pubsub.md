@@ -18,7 +18,10 @@ use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
 
     let mut offering = someip
         .offer(0x1234, InstanceId::Id(0x0001))
@@ -90,7 +93,10 @@ use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
     let found_service = someip.find(0x1234).await?;
 
     let sensor_eg = EventgroupId::new(0x0001).unwrap();
@@ -114,7 +120,10 @@ use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
     let found_service = someip.find(0x1234).await?;
 
     let sensor_eg = EventgroupId::new(0x0001).unwrap();
@@ -147,7 +156,10 @@ use recentip::handle::ServiceEvent;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
 
     let mut offering = someip
         .offer(0x1234, InstanceId::Id(0x0001))
@@ -183,7 +195,10 @@ use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
     let found_service = someip.find(0x1234).await?;
 
     {

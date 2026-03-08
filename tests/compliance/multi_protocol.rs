@@ -27,8 +27,10 @@
 //!
 //! Run with: cargo nextest run multi_protocol
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
+
 use recentip::Transport;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -92,7 +94,8 @@ fn client_talks_to_tcp_and_udp_services() {
         async move {
             let tcp_runtime = recentip::configure()
                 .preferred_transport(Transport::Tcp)
-                .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("tcp_server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -126,7 +129,8 @@ fn client_talks_to_tcp_and_udp_services() {
         async move {
             let udp_runtime = recentip::configure()
                 .preferred_transport(Transport::Udp)
-                .advertised_ip(turmoil::lookup("udp_server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("udp_server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -161,7 +165,8 @@ fn client_talks_to_tcp_and_udp_services() {
         // Client with UDP preference (will use TCP for TcpService based on SD)
         let runtime = recentip::configure()
             .preferred_transport(Transport::Udp)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -262,7 +267,8 @@ fn mixed_transport_event_delivery() {
     sim.host("tcp_server", || async move {
         let tcp_runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("tcp_server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -318,7 +324,8 @@ fn mixed_transport_event_delivery() {
     sim.host("udp_server", || async move {
         let udp_runtime = recentip::configure()
             .preferred_transport(Transport::Udp)
-            .advertised_ip(turmoil::lookup("udp_server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("udp_server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -375,7 +382,8 @@ fn mixed_transport_event_delivery() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -489,7 +497,8 @@ fn client_uses_advertised_transport() {
     sim.host("tcp_server", || async {
         let runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("tcp_server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -521,7 +530,8 @@ fn client_uses_advertised_transport() {
     sim.host("udp_server", || async {
         let runtime = recentip::configure()
             .preferred_transport(Transport::Udp)
-            .advertised_ip(turmoil::lookup("udp_server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("udp_server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -556,7 +566,8 @@ fn client_uses_advertised_transport() {
         // Use UDP as default transport
         let runtime = recentip::configure()
             .preferred_transport(Transport::Udp)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -645,7 +656,8 @@ fn concurrent_calls_different_transports() {
         async move {
             let tcp_runtime = recentip::configure()
                 .preferred_transport(Transport::Tcp)
-                .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("tcp_server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -677,7 +689,8 @@ fn concurrent_calls_different_transports() {
         async move {
             let udp_runtime = recentip::configure()
                 .preferred_transport(Transport::Udp)
-                .advertised_ip(turmoil::lookup("udp_server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("udp_server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -706,7 +719,8 @@ fn concurrent_calls_different_transports() {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -796,7 +810,8 @@ fn udp_client_calls_tcp_server() {
     sim.host("tcp_server", || async {
         let tcp_runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("tcp_server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -834,7 +849,8 @@ fn udp_client_calls_tcp_server() {
 
         // Client uses default UDP config
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("udp_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("udp_client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -892,7 +908,8 @@ fn tcp_client_calls_tcp_server() {
     sim.host("tcp_server", || async {
         let tcp_runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("tcp_server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("tcp_server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -931,7 +948,8 @@ fn tcp_client_calls_tcp_server() {
         // Client also uses TCP config
         let runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("tcp_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("tcp_client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1005,7 +1023,8 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
     // Server offers TCP-only service
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1043,7 +1062,8 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
         // Client prefers UDP, but server only offers TCP
         let runtime = recentip::configure()
             .preferred_transport(Transport::Udp)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1119,7 +1139,8 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
     // Server offers UDP-only service
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1157,7 +1178,8 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
         // Client prefers TCP, but server only offers UDP
         let runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1232,7 +1254,8 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
     // Server offers UDP-only service with events
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1294,7 +1317,8 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
 
         let runtime = recentip::configure()
             .preferred_transport(Transport::Udp)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1378,7 +1402,8 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
     // Server offers UDP-only service with events
     sim.client("server", async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1442,7 +1467,8 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
         // Client prefers TCP, but server only offers UDP
         let runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1528,7 +1554,8 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
     // Server offers TCP-only service with events
     sim.host("server", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1591,7 +1618,8 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
         // Client prefers UDP, but server only offers TCP
         let runtime = recentip::configure()
             .preferred_transport(Transport::Udp)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1686,7 +1714,8 @@ fn preferred_transport_respected_when_both_available() {
 
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -1733,7 +1762,8 @@ fn preferred_transport_respected_when_both_available() {
 
         let runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("tcp_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("tcp_client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1781,7 +1811,8 @@ fn preferred_transport_respected_when_both_available() {
 
         let runtime = recentip::configure()
             .preferred_transport(Transport::Udp)
-            .advertised_ip(turmoil::lookup("udp_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("udp_client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1882,7 +1913,8 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
 
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -1950,7 +1982,8 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
 
         let runtime = recentip::configure()
             .preferred_transport(Transport::Tcp)
-            .advertised_ip(turmoil::lookup("tcp_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("tcp_client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1990,7 +2023,8 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
 
         let runtime = recentip::configure()
             .preferred_transport(Transport::Udp)
-            .advertised_ip(turmoil::lookup("udp_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("udp_client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2056,7 +2090,8 @@ fn handle_call_ignores_preferred_transport_for_dual_stack() {
     // Server offers service with BOTH TCP and UDP (dual-stack)
     sim.host("server", || async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
@@ -2097,7 +2132,8 @@ fn handle_call_ignores_preferred_transport_for_dual_stack() {
 
         let runtime = recentip::configure()
             .preferred_transport(Transport::Udp) // CLIENT PREFERS UDP!
-            .advertised_ip(turmoil::lookup("udp_client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("udp_client")))
             .start_turmoil()
             .await
             .unwrap();

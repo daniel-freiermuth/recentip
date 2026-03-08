@@ -51,7 +51,7 @@
 //! - Other handlers are sync and return `Vec<Action>`
 //! - Server responses must use the same transport as the request
 
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
@@ -94,9 +94,9 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     let (requests_tx, requests_rx) = mpsc::channel(64);
 
     // Track endpoints and transports
-    let mut udp_endpoint: Option<SocketAddr> = None;
+    let mut udp_endpoint: Option<SocketAddrV4> = None;
     let mut udp_transport: Option<RpcTransportSender> = None;
-    let mut tcp_endpoint: Option<SocketAddr> = None;
+    let mut tcp_endpoint: Option<SocketAddrV4> = None;
     let mut tcp_transport: Option<RpcTransportSender> = None;
 
     // Calculate base port
@@ -106,7 +106,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     // Create UDP transport if configured
     if let Some(port) = offer_config.udp_port {
         let rpc_port = if port == 0 { base_port } else { port };
-        let rpc_addr = SocketAddr::new(state.local_endpoint.ip(), rpc_port);
+        let rpc_addr = SocketAddrV4::new(*state.local_endpoint.ip(), rpc_port);
 
         match U::bind(rpc_addr).await {
             Ok(rpc_socket) => {
@@ -137,10 +137,10 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     }
 
     // Create TCP transport if configured
-    let mut tcp_close_peer_tx: Option<mpsc::Sender<(std::net::IpAddr, Vec<u16>)>> = None;
+    let mut tcp_close_peer_tx: Option<mpsc::Sender<(Ipv4Addr, Vec<u16>)>> = None;
     if let Some(port) = offer_config.tcp_port {
         let rpc_port = if port == 0 { base_port + 1 } else { port };
-        let rpc_addr = SocketAddr::new(state.local_endpoint.ip(), rpc_port);
+        let rpc_addr = SocketAddrV4::new(*state.local_endpoint.ip(), rpc_port);
 
         match L::bind(rpc_addr).await {
             Ok(listener) => {
@@ -304,7 +304,7 @@ pub fn handle_stop_offer(
 
         actions.push(Action::SendSd {
             message: msg,
-            target: state.config.sd_multicast,
+            target: state.config.sd_multicast_addr(),
         });
     }
 
@@ -383,7 +383,7 @@ pub fn handle_notify(
 pub fn handle_incoming_request(
     header: &Header,
     payload: Bytes,
-    from: SocketAddr,
+    from: SocketAddrV4,
     state: &RuntimeState,
     actions: &mut Vec<Action>,
     service_key: Option<ServiceKey>,
@@ -574,7 +574,7 @@ pub fn handle_incoming_request(
 pub fn handle_incoming_fire_forget(
     header: &Header,
     payload: Bytes,
-    from: SocketAddr,
+    from: SocketAddrV4,
     state: &RuntimeState,
     service_key: Option<ServiceKey>,
 ) {
@@ -720,7 +720,7 @@ pub fn spawn_rpc_socket_task<U: UdpSocket>(
     instance_id: u16,
     major_version: u8,
     rpc_tx_to_runtime: mpsc::Sender<RpcMessage>,
-) -> std::io::Result<(SocketAddr, mpsc::Sender<RpcSendMessage>)> {
+) -> std::io::Result<(SocketAddrV4, mpsc::Sender<RpcSendMessage>)> {
     let local_endpoint = rpc_socket.local_addr()?;
     let (send_tx, mut send_rx) = mpsc::channel::<RpcSendMessage>(100);
 

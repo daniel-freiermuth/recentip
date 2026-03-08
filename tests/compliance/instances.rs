@@ -11,8 +11,10 @@
 //! - feat_req_someip_445: Different services can share same port
 //! - feat_req_someip_446: Instance identified by Service ID + Instance ID + IP + Port
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -54,7 +56,8 @@ fn multiple_instances_have_different_ids() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -93,7 +96,8 @@ fn multiple_instances_have_different_ids() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -154,7 +158,8 @@ fn messages_dispatched_to_correct_instance() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server1").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server1")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -187,7 +192,8 @@ fn messages_dispatched_to_correct_instance() {
     // Server 2 offers instance 2
     sim.host("server2", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server2").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server2")))
             .start_turmoil()
             .await
             .unwrap();
@@ -220,7 +226,8 @@ fn messages_dispatched_to_correct_instance() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -293,7 +300,8 @@ fn two_instances_same_host() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -359,7 +367,8 @@ fn two_instances_same_host() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -431,7 +440,8 @@ fn different_services_have_different_service_ids() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -462,7 +472,8 @@ fn different_services_have_different_service_ids() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -510,7 +521,8 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -563,7 +575,8 @@ fn instance_uniquely_identified_by_service_and_instance_id() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -635,7 +648,8 @@ fn client_can_request_any_instance() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -659,7 +673,8 @@ fn client_can_request_any_instance() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -699,7 +714,8 @@ fn client_can_request_specific_instance() {
         let flag = Arc::clone(&exec_flag);
         async move {
             let runtime = recentip::configure()
-                .advertised_ip(turmoil::lookup("server").to_string().parse().unwrap())
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
                 .start_turmoil()
                 .await
                 .unwrap();
@@ -730,7 +746,8 @@ fn client_can_request_specific_instance() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -769,7 +786,12 @@ fn nonexistent_instance_not_found() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let runtime = recentip::configure().start_turmoil().await.unwrap();
+            let runtime = recentip::configure()
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
 
             let _offering = runtime
                 .offer(SERVICE_A_ID, InstanceId::Id(0x0001))
@@ -790,7 +812,8 @@ fn nonexistent_instance_not_found() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();

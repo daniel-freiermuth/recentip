@@ -51,7 +51,7 @@
 //! It spawns reader tasks for each accepted connection.
 
 use std::io;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 
 use bytes::{Buf, Bytes, BytesMut};
@@ -69,7 +69,7 @@ pub struct TcpMessage {
     /// The raw message data including SOME/IP header
     pub data: Bytes,
     /// The peer address this message came from
-    pub from: SocketAddr,
+    pub from: SocketAddrV4,
     /// The subscription ID this message is for (0 for RPC)
     pub subscription_id: u64,
 }
@@ -82,7 +82,7 @@ pub struct TcpMessage {
 #[derive(Debug)]
 pub struct TcpCleanupRequest {
     /// The connection key (peer address, subscription_id)
-    pub key: (SocketAddr, u64),
+    pub key: (SocketAddrV4, u64),
     /// Unique ID assigned when the connection was created
     pub connection_id: u64,
 }
@@ -102,7 +102,7 @@ pub(crate) struct TcpConnectionPool<T: TcpStream> {
     /// Connections indexed by (peer address, `subscription_id`).
     /// OnceCell coordinates concurrent attempts: first caller connects, others wait.
     /// Once initialized, contains full connection state.
-    connections: Arc<DashMap<(SocketAddr, u64), Arc<tokio::sync::OnceCell<TcpConnectionState>>>>,
+    connections: Arc<DashMap<(SocketAddrV4, u64), Arc<tokio::sync::OnceCell<TcpConnectionState>>>>,
     /// Channel to forward received messages to the runtime
     msg_tx: mpsc::Sender<TcpMessage>,
     /// Channel to send cleanup requests to the event loop
@@ -118,7 +118,7 @@ pub(crate) struct TcpConnectionPool<T: TcpStream> {
 /// Full state of an established TCP connection
 struct TcpConnectionState {
     /// The local address of this connection (what the peer sees us as)
-    local_addr: SocketAddr,
+    local_addr: SocketAddrV4,
     /// Handle to abort the reader task
     task_handle: tokio::task::AbortHandle,
     /// Unique ID for this connection (for cleanup verification)
@@ -161,7 +161,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// # Errors
     ///
     /// Returns an I/O error if connection or send fails.
-    pub async fn send(&self, target: SocketAddr, data: Bytes) -> io::Result<()> {
+    pub async fn send(&self, target: SocketAddrV4, data: Bytes) -> io::Result<()> {
         // Use subscription_id 0 for RPC traffic
         let key = (target, 0);
 
@@ -203,9 +203,9 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// Returns an I/O error if connection establishment fails.
     pub async fn ensure_connected(
         &self,
-        target: SocketAddr,
+        target: SocketAddrV4,
         subscription_id: u64,
-    ) -> io::Result<SocketAddr> {
+    ) -> io::Result<SocketAddrV4> {
         let key = (target, subscription_id);
 
         // Get or create a OnceCell for this connection
@@ -229,7 +229,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// Called by `OnceCell::get_or_try_init` - exactly one task executes this.
     async fn do_connect(
         &self,
-        target: SocketAddr,
+        target: SocketAddrV4,
         subscription_id: u64,
     ) -> io::Result<TcpConnectionState> {
         tracing::debug!(
@@ -311,7 +311,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// This closes all connections whose remote `SocketAddr` appears in `endpoints`,
     /// regardless of the source IP of the SD peer that announced the service.
     /// Used for split-server topologies where the SD host and TCP host are different IPs.
-    pub fn close_endpoints(&self, endpoints: &[std::net::SocketAddr]) {
+    pub fn close_endpoints(&self, endpoints: &[SocketAddrV4]) {
         if endpoints.is_empty() {
             return;
         }
@@ -355,7 +355,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 /// preventing a race where closing an old connection removes a newer one.
 async fn handle_client_tcp_connection<T: TcpStream>(
     mut stream: T,
-    peer_addr: SocketAddr,
+    peer_addr: SocketAddrV4,
     msg_tx: mpsc::Sender<TcpMessage>,
     mut send_rx: mpsc::Receiver<Bytes>,
     cleanup_tx: mpsc::Sender<TcpCleanupRequest>,
@@ -464,7 +464,7 @@ pub struct TcpSendMessage {
     /// Data to send
     pub data: Bytes,
     /// Target peer address
-    pub to: SocketAddr,
+    pub to: SocketAddrV4,
 }
 
 /// Manages a TCP server for an offered service.
@@ -476,11 +476,11 @@ pub struct TcpSendMessage {
 /// - Closing connections from specific peers (feat_req_someipsd_872)
 pub struct TcpServer<T: TcpStream> {
     /// Local address the server is listening on
-    pub local_addr: SocketAddr,
+    pub local_addr: SocketAddrV4,
     /// Channel to send responses to clients
     pub send_tx: mpsc::Sender<TcpSendMessage>,
     /// Channel to close specific connections from a peer IP (by port)
-    pub close_peer_tx: mpsc::Sender<(std::net::IpAddr, Vec<u16>)>,
+    pub close_peer_tx: mpsc::Sender<(Ipv4Addr, Vec<u16>)>,
     /// Phantom for the stream type
     _phantom: std::marker::PhantomData<T>,
 }
@@ -501,8 +501,6 @@ impl<T: TcpStream> TcpServer<T> {
         msg_tx: mpsc::Sender<TcpMessage>,
         magic_cookies: bool,
     ) -> io::Result<Self> {
-        use tokio::task::JoinHandle;
-
         let local_addr = listener.local_addr()?;
 
         // Channel for sending responses to clients
@@ -510,16 +508,17 @@ impl<T: TcpStream> TcpServer<T> {
 
         // Channel for closing specific connections from a peer (feat_req_someipsd_872)
         // Tuple: (peer_ip, close_ports) - only connections matching these ports are closed
-        let (close_peer_tx, mut close_peer_rx) = mpsc::channel::<(std::net::IpAddr, Vec<u16>)>(16);
+        let (close_peer_tx, mut close_peer_rx) = mpsc::channel::<(Ipv4Addr, Vec<u16>)>(16);
 
         // Track active client connections - maps peer addr to a response sender
-        let client_senders: Arc<DashMap<SocketAddr, mpsc::Sender<Bytes>>> =
+        let client_senders: Arc<DashMap<SocketAddrV4, mpsc::Sender<Bytes>>> =
             Arc::new(DashMap::new());
         let client_senders_for_responses = Arc::clone(&client_senders);
         let client_senders_for_close = Arc::clone(&client_senders);
 
         // Track connection task handles for abort
-        let client_tasks: Arc<DashMap<SocketAddr, JoinHandle<()>>> = Arc::new(DashMap::new());
+        let client_tasks: Arc<DashMap<SocketAddrV4, tokio::task::JoinHandle<()>>> =
+            Arc::new(DashMap::new());
         let client_tasks_for_close = Arc::clone(&client_tasks);
 
         // Spawn the main server task
@@ -579,7 +578,7 @@ impl<T: TcpStream> TcpServer<T> {
                         );
 
                         // Log all current connections for debugging
-                        let current_connections: Vec<SocketAddr> = client_senders_for_close.iter()
+                        let current_connections: Vec<SocketAddrV4> = client_senders_for_close.iter()
                             .map(|entry| *entry.key())
                             .collect();
                         tracing::debug!(
@@ -587,10 +586,10 @@ impl<T: TcpStream> TcpServer<T> {
                             service_id, instance_id, current_connections
                         );
 
-                        let mut addrs_to_remove: Vec<SocketAddr> = Vec::new();
+                        let mut addrs_to_remove: Vec<SocketAddrV4> = Vec::new();
                         for entry in client_senders_for_close.iter() {
                             // Only close connections matching BOTH the peer IP AND a port in close_ports
-                            if entry.key().ip() == peer_ip && close_ports.contains(&entry.key().port()) {
+                            if *entry.key().ip() == peer_ip && close_ports.contains(&entry.key().port()) {
                                 tracing::debug!(
                                     "TCP server {:04x}:{:04x}: MATCH - will close connection from {:?}",
                                     service_id, instance_id, entry.key()
@@ -661,12 +660,12 @@ impl<T: TcpStream> TcpServer<T> {
 /// - Magic Cookies in received data are skipped (`feat_req_someip_586`)
 async fn handle_tcp_connection<T: TcpStream>(
     mut stream: T,
-    peer_addr: SocketAddr,
+    peer_addr: SocketAddrV4,
     service_id: u16,
     instance_id: u16,
     msg_tx: mpsc::Sender<TcpMessage>,
     mut response_rx: mpsc::Receiver<Bytes>,
-    client_senders: Arc<DashMap<SocketAddr, mpsc::Sender<Bytes>>>,
+    client_senders: Arc<DashMap<SocketAddrV4, mpsc::Sender<Bytes>>>,
     magic_cookies: bool,
 ) {
     let mut read_buffer = BytesMut::new();

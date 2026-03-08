@@ -34,7 +34,10 @@ use super::OfferedService;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<()> {
-///     let runtime = recentip::configure().start().await?;
+///     let runtime = recentip::configure()
+///         .sd_unicast("192.168.1.100".parse().unwrap())
+///         .sd_multicast_group("239.255.255.250".parse().unwrap())
+///         .start().await?;
 ///
 ///     // Find any instance of the service with any major version
 ///     let proxy = runtime.find(BRAKE_SERVICE_ID).await?;

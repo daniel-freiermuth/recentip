@@ -24,7 +24,7 @@
 //! When the [`SomeIp`] struct is dropped, it signals shutdown and waits for
 //! the background task to complete gracefully.
 
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -112,7 +112,10 @@ pub(crate) struct RuntimeInner {
 /// #[tokio::main]
 /// async fn main() -> Result<()> {
 ///     // Production (default)
-///     let runtime = recentip::configure().start().await?;
+///     let runtime = recentip::configure()
+///         .sd_unicast("192.168.1.100".parse().unwrap())
+///         .sd_multicast_group("239.255.255.250".parse().unwrap())
+///         .start().await?;
 ///
 ///     // For turmoil testing, the runtime is parameterized:
 ///     // type TestRuntime = SomeIp<turmoil::net::UdpSocket, ...>;
@@ -141,14 +144,51 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     /// This is mainly useful for testing with turmoil.
     pub(crate) async fn new(config: RuntimeConfig) -> Result<Self> {
-        // Bind the SD socket (always UDP, per SOME/IP spec)
-        let sd_socket = U::bind(config.bind_addr).await?;
-        let local_addr = sd_socket.local_addr()?;
+        // Dual-socket SD architecture:
+        //
+        // - Multicast socket: bound to <sd_multicast>:<sd_port> (e.g.
+        //   239.255.255.250:30490) in dual-socket mode, or 0.0.0.0:<sd_port>
+        //   in single-socket mode.  Receives all SD multicast messages (Offer,
+        //   Find).  The multicast-address bind keeps this socket out of the
+        //   SO_REUSEPORT pool for wildcard sockets, avoiding interference with
+        //   unrelated applications.
+        //
+        // - Unicast socket: bound to <sd_unicast>:<sd_port> in dual-socket mode.
+        //   Receives unicast SD responses (SubscribeEventgroupAck) addressed to
+        //   this runtime specifically.  On Linux a specific-IP bind takes
+        //   precedence over 0.0.0.0 for incoming unicast.
 
-        // Join multicast group
-        if let SocketAddr::V4(addr) = config.sd_multicast {
-            sd_socket.join_multicast_v4(*addr.ip(), Ipv4Addr::UNSPECIFIED)?;
+        // Dual-socket mode unless single_socket is requested.
+        let dual_socket = !config.single_socket;
+
+        // config fields are validated types — no additional try_from needed.
+        let sd_unicast = config.sd_unicast;
+        let sd_multicast = config.sd_multicast;
+
+        let mc_bind_addr = if dual_socket {
+            SocketAddrV4::new(sd_multicast.get(), config.sd_port)
+        } else {
+            SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, config.sd_port)
+        };
+        let sd_multicast_socket = U::bind(mc_bind_addr).await?;
+
+        if let Err(e) = sd_multicast_socket.set_multicast_if_v4(sd_unicast.get()) {
+            tracing::warn!(
+                "Could not set IP_MULTICAST_IF={ip} on SD multicast socket: {e}",
+                ip = sd_unicast
+            );
         }
+
+        // Join the SD multicast group on the interface that matches IP_MULTICAST_IF.
+        sd_multicast_socket.join_multicast_v4(sd_multicast.get(), sd_unicast.get())?;
+
+        // Unicast socket: only created in dual-socket mode.
+        let uc_addr = SocketAddrV4::new(sd_unicast.get(), config.sd_port);
+        let sd_unicast_socket: Option<U> = if dual_socket {
+            Some(U::bind(uc_addr).await?)
+        } else {
+            None
+        };
 
         // Create command channel
         let (cmd_tx, cmd_rx) = mpsc::channel(64);
@@ -172,11 +212,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
         // Create dedicated client RPC socket (ephemeral port)
         // Per feat_req_someip_676: Port 30490 is only for SD, not for RPC
         // Clients need their own socket for sending RPC requests, separate from SD
-        let client_method_socket = U::bind(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            0, // ephemeral port
-        )))
-        .await?;
+        let client_method_socket = U::bind(SocketAddrV4::new(config.sd_unicast.get(), 0)).await?;
         let client_method_addr = client_method_socket.local_addr()?;
 
         // Spawn task to handle client RPC socket (receives responses to our requests)
@@ -220,7 +256,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
 
         // Spawn the runtime task
         let state = RuntimeState::new(
-            local_addr,
+            uc_addr,
             client_method_addr,
             client_method_send_tx,
             config.clone(),
@@ -234,7 +270,8 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
 
         let runtime_task = tokio::spawn(async move {
             runtime_task::<U, T, L>(
-                sd_socket,
+                sd_multicast_socket,
+                sd_unicast_socket,
                 config,
                 cmd_rx,
                 method_rx,
@@ -279,7 +316,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
-    ///     let runtime = recentip::configure().start().await?;
+    ///     let runtime = recentip::configure()
+    ///         .sd_unicast("192.168.1.100".parse().unwrap())
+    ///         .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///         .start().await?;
     ///
     ///     // Simple: find any instance
     ///     let proxy = runtime.find(MY_SERVICE_ID).await?;
@@ -315,7 +355,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
-    ///     let runtime = recentip::configure().start().await?;
+    ///     let runtime = recentip::configure()
+    ///         .sd_unicast("192.168.1.100".parse().unwrap())
+    ///         .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///         .start().await?;
     ///
     ///     // Offer on both TCP and UDP with custom ports
     ///     let offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
@@ -357,7 +400,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<()> {
-    ///     let runtime = recentip::configure().start().await?;
+    ///     let runtime = recentip::configure()
+    ///         .sd_unicast("192.168.1.100".parse().unwrap())
+    ///         .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///         .start().await?;
     ///     let mut offering = runtime.offer(MY_SERVICE_ID, InstanceId::Id(1))
     ///         .version(1, 0)
     ///         .start()
@@ -400,8 +446,12 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     /// ```no_run
     /// # use recentip::{SomeIp, SdEvent};
+    /// # use recentip::config::{UnicastAddress, MulticastAddress};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let runtime = recentip::configure().start().await?;
+    /// let runtime = recentip::configure()
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .start().await?;
     /// let mut sd_events = runtime.monitor_sd().await?;
     ///
     /// while let Some(event) = sd_events.recv().await {
@@ -458,8 +508,12 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
     ///
     /// ```no_run
     /// # use recentip::SomeIp;
+    /// # use recentip::config::{UnicastAddress, MulticastAddress};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let runtime = recentip::configure().start().await?;
+    /// let runtime = recentip::configure()
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .start().await?;
     ///
     /// // Wait for some services to be discovered
     /// tokio::time::sleep(std::time::Duration::from_secs(1)).await;

@@ -3,8 +3,10 @@
 //! Tests event delivery when subscribing to multiple instances of the same service.
 //! This is a critical scenario that exposes bugs in event routing logic.
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use core::panic;
 use recentip::prelude::*;
+
 use std::time::Duration;
 
 use crate::helpers::wait_for_subscription;
@@ -43,7 +45,8 @@ fn subscribe_to_multiple_instances() {
     // Server 1 - Instance 0x0001
     sim.host("server1", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server1").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server1")))
             .start_turmoil()
             .await
             .unwrap();
@@ -86,7 +89,8 @@ fn subscribe_to_multiple_instances() {
     // Server 2 - Instance 0x0002
     sim.host("server2", || async {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("server2").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server2")))
             .start_turmoil()
             .await
             .unwrap();
@@ -131,7 +135,8 @@ fn subscribe_to_multiple_instances() {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();

@@ -4,7 +4,7 @@
 //! the event loop during TCP connection establishment.
 
 use std::collections::HashSet;
-use std::net::SocketAddr;
+use std::net::SocketAddrV4;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
@@ -40,8 +40,8 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
     response: oneshot::Sender<crate::error::Result<u64>>,
     tcp_pool: Arc<TcpConnectionPool<T>>,
     update_tx: mpsc::Sender<SubscribeStateUpdate>,
-    sd_endpoint: SocketAddr,
-    tcp_endpoint: SocketAddr,
+    sd_endpoint: SocketAddrV4,
+    tcp_endpoint: SocketAddrV4,
     subscription_id: u64,
     sd_flags: u8,
     subscribe_ttl: u32,

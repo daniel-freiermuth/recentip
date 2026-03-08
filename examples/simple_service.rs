@@ -17,6 +17,7 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
+use std::net::Ipv4Addr;
 
 /// Example service definition
 const EXAMPLE_SERVICE_ID: u16 = 0x1234;
@@ -40,8 +41,12 @@ async fn main() -> Result<()> {
         EXAMPLE_SERVICE_ID
     );
 
-    // Create SOME/IP runtime
-    let someip = recentip::configure().start().await?;
+    // Create SOME/IP runtime — configure the SD multicast group for your network
+    let someip = recentip::configure()
+        .sd_multicast_group("239.255.0.1".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await?;
 
     // Offer the service on UDP
     let mut offering = someip

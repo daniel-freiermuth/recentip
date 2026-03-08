@@ -27,8 +27,10 @@
 //!
 //! Run with: cargo nextest run sd_pubsub_offer_subscribe
 
+use crate::helpers::DEFAULT_SD_MULTICAST;
 use bytes::Bytes;
 use recentip::prelude::*;
+
 use recentip::wire::{Header, SdEntryType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -371,7 +373,8 @@ fn offer_triggers_subscribe_renewal() {
 
         let runtime = recentip::configure()
             .subscribe_ttl(5)
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -577,7 +580,8 @@ fn no_cyclic_subscribes_strict_631_compliance() {
         // Use short TTL to tempt renewal
         let runtime = recentip::configure()
             .subscribe_ttl(5) // 5 second TTL
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -767,7 +771,8 @@ fn no_subscribe_without_offer() {
     sim.client("client", async move {
         // Start immediately - try to find and subscribe
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -867,7 +872,8 @@ fn available_returns_error_when_service_not_found() {
     // Client tries to find a service that doesn't exist
     sim.client("client", async move {
         let runtime = recentip::configure()
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();
@@ -1093,7 +1099,8 @@ fn max_ttl_subscription_no_renewal_needed() {
         // Configure with MAX TTL (infinite/until reboot)
         let runtime = recentip::configure()
             .subscribe_ttl(0xFFFFFF) // Max TTL = valid until reboot
-            .advertised_ip(turmoil::lookup("client").to_string().parse().unwrap())
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
             .start_turmoil()
             .await
             .unwrap();

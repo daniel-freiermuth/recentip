@@ -52,8 +52,8 @@
 //! ```
 
 use clap::Parser;
+use recentip::prelude::*;
 use recentip::SdEvent;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 /// SOME/IP Service Discovery Monitor
 ///
@@ -70,18 +70,18 @@ struct Args {
     ///   239.255.0.1  - SOME/IP specification default (standard)
     ///   224.224.224.0 - vsomeip default
     #[arg(short, long, default_value = "239.255.0.1")]
-    multicast: Ipv4Addr,
+    multicast: MulticastAddress,
 
-    /// Local IP address to bind to
+    /// Local unicast IP address for SD traffic.
     ///
-    /// Use your network interface IP (e.g., 192.168.1.100) for multicast to work
-    /// across the network. Use 0.0.0.0 to bind to all interfaces (default).
+    /// Use your network interface IP (e.g., 192.168.1.100) for multicast to
+    /// work across the network.  Defaults to `127.0.0.1` for local testing.
     #[arg(short, long)]
-    local: Option<Ipv4Addr>,
+    local: Option<UnicastAddress>,
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Parse command line arguments
     let args = Args::parse();
 
@@ -97,15 +97,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("╚═══════════════════════════════════════════════════════╝");
     println!();
     println!("Using multicast address: {}:30490", args.multicast);
-    if args.multicast == Ipv4Addr::new(224, 224, 224, 0) {
+    if args.multicast == "224.224.224.0".parse().unwrap() {
         println!("  (vsomeip default - non-standard)");
-    } else if args.multicast == Ipv4Addr::new(239, 255, 0, 1) {
+    } else if args.multicast == "239.255.0.1".parse().unwrap() {
         println!("  (SOME/IP specification standard)");
     }
     if let Some(local) = args.local {
         println!("Binding to local address: {}:30490", local);
     } else {
-        println!("Binding to all interfaces (0.0.0.0:30490)");
+        println!("Using 127.0.0.1 (localhost only; pass -l <IP> for network-wide use)");
     }
     println!("Monitoring network for all SOME/IP service events...");
     println!("Press Ctrl+C to exit.");
@@ -114,14 +114,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{:-<80}", "");
 
     // Create SOME/IP runtime with custom multicast address
-    let mut builder = recentip::configure()
-        .sd_multicast(SocketAddr::V4(SocketAddrV4::new(args.multicast, 30490)));
-
-    if let Some(local) = args.local {
-        builder = builder.bind_addr(SocketAddr::V4(SocketAddrV4::new(local, 30490)));
-    }
-
-    let someip = builder.start().await?;
+    let someip = recentip::configure()
+        .sd_multicast_group(args.multicast)
+        .sd_unicast(
+            args.local
+                .unwrap_or_else(|| "127.0.0.1".parse().expect("localhost is valid")),
+        )
+        .start()
+        .await?;
 
     // Get SD event monitor channel
     let mut sd_events = someip.monitor_sd().await?;

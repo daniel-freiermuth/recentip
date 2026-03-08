@@ -56,7 +56,7 @@
 //! }
 //! ```
 
-use std::net::SocketAddr;
+use std::net::SocketAddrV4;
 
 use bytes::Bytes;
 use tokio::sync::{mpsc, oneshot};
@@ -103,7 +103,7 @@ pub enum Command {
         payload: Bytes,
         response: oneshot::Sender<Result<crate::Response>>,
         /// Target endpoint (resolved by proxy during discovery)
-        target_endpoint: SocketAddr,
+        target_endpoint: SocketAddrV4,
         /// Transport to use
         target_transport: crate::config::Transport,
     },
@@ -113,7 +113,7 @@ pub enum Command {
         method_id: u16,
         payload: Bytes,
         /// Target endpoint (resolved by proxy during discovery)
-        target_endpoint: SocketAddr,
+        target_endpoint: SocketAddrV4,
         /// Transport to use
         target_transport: crate::config::Transport,
     },
@@ -127,7 +127,7 @@ pub enum Command {
         /// Returns `subscription_id` on success for tracking unsubscribe
         response: oneshot::Sender<Result<u64>>,
         transport: crate::config::Transport,
-        remote_endpoint: std::net::SocketAddr,
+        remote_endpoint: std::net::SocketAddrV4,
         // sd_endpoint: SocketAddr,
     },
     /// Unsubscribe from an eventgroup
@@ -171,8 +171,8 @@ pub enum SdEvent {
         instance_id: u16,
         major_version: u8,
         minor_version: u32,
-        udp_endpoint: Option<SocketAddr>,
-        tcp_endpoint: Option<SocketAddr>,
+        udp_endpoint: Option<SocketAddrV4>,
+        tcp_endpoint: Option<SocketAddrV4>,
         ttl: u32,
     },
     /// A service has been explicitly stopped (`StopOfferService` entry)
@@ -196,24 +196,24 @@ pub enum ServiceRequest {
     MethodCall {
         method_id: u16,
         payload: Bytes,
-        client: SocketAddr,
+        client: SocketAddrV4,
         transport: crate::config::Transport,
         response: oneshot::Sender<Result<Bytes>>,
     },
     FireForget {
         method_id: u16,
         payload: Bytes,
-        client: SocketAddr,
+        client: SocketAddrV4,
         transport: crate::config::Transport,
     },
     Subscribe {
         eventgroup_id: u16,
-        client: SocketAddr,
+        client: SocketAddrV4,
         transport: crate::config::Transport,
     },
     Unsubscribe {
         eventgroup_id: u16,
-        client: SocketAddr,
+        client: SocketAddrV4,
         transport: crate::config::Transport,
     },
 }

@@ -11,7 +11,10 @@ use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
 
     // UDP only (default)
     let _udp_service = someip
@@ -53,6 +56,8 @@ use recentip::prelude::*;
 async fn main() -> Result<()> {
     // Prefer TCP when available
     let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
         .preferred_transport(Transport::Tcp)
         .start()
         .await?;
@@ -76,6 +81,8 @@ use recentip::prelude::*;
 #[tokio::main]
 async fn main() -> Result<()> {
     let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
         .magic_cookies(true)  // Enable magic cookie insertion
         .start()
         .await?;
@@ -94,7 +101,10 @@ use recentip::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let someip = recentip::configure().start().await?;
+    let someip = recentip::configure()
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .start().await?;
 
     // Multiple calls to the same service reuse the TCP connection
     let found_service = someip.find(0x1234).await?;
@@ -114,20 +124,14 @@ async fn main() -> Result<()> {
 
 ```rust,no_run
 use recentip::prelude::*;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let someip = recentip::configure()
-        // Service Discovery multicast address (default: 239.255.0.1:30490)
-        .sd_multicast(SocketAddr::from(([224, 224, 224, 0], 30490)))
-        
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
         // Offer TTL in seconds (default: 3600)
         .offer_ttl(5)
-        
-        // Local IP to advertise (auto-detected if not set)
-        .advertised_ip(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)))
-        
         .start()
         .await?;
 
@@ -141,13 +145,13 @@ To communicate with vsomeip-based services:
 
 ```rust,no_run
 use recentip::prelude::*;
-use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // vsomeip uses 224.224.224.0 as default multicast
     let someip = recentip::configure()
-        .sd_multicast(SocketAddr::from(([224, 224, 224, 0], 30490)))
+        .sd_unicast("192.168.1.100".parse().unwrap())
+        .sd_multicast_group("224.224.224.0".parse().unwrap())
         .start()
         .await?;
 
