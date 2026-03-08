@@ -226,7 +226,7 @@ pub fn handle_find(
         let _ = notify.try_send(ServiceAvailability::Available {
             key: *discovered_service.key(),
             offered_endpoints: discovered_service.value().offered_endpoints.clone(),
-            // sd_endpoint: discovered_service.value().sd_endpoint,
+            sd_endpoint: discovered_service.value().sd_endpoint,
         });
     } else {
         state.find_requests.insert(

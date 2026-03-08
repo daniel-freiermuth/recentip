@@ -83,7 +83,7 @@ pub enum Action {
     NotifyFound {
         key: ServiceKey,
         endpoints: OfferedEndpoints,
-        // sd_endpoint: SocketAddr,
+        sd_endpoint: SocketAddrV4,
     },
     /// Send a SOME/IP RPC message as a client (uses client RPC socket or TCP pool)
     SendClientMessage {
@@ -231,7 +231,7 @@ pub fn handle_offer(
         actions.push(Action::NotifyFound {
             key,
             endpoints: offered_endpoints,
-            // sd_endpoint: from,
+            sd_endpoint: from,
         });
 
         // Emit SD event to monitors

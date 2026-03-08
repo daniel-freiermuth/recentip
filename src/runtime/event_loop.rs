@@ -336,24 +336,8 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     // Special handling for Subscribe
                     // - TCP subscriptions: spawn as concurrent task to avoid blocking on connection establishment (feat_req_someipsd_767)
                     // - UDP subscriptions: handle inline since binding is instant and doesn't block
-                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response, transport, remote_endpoint }) => {
+                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response, transport, remote_endpoint, sd_endpoint, }) => {
                         let service_key = ServiceKey::new(service_id, instance_id, major_version);
-
-                        // Determine transport and extract endpoints (if discovered)
-                        let sd_endpoint = {
-                            let Some(discovered) = state.discovered.get(&service_key) else {
-                                tracing::error!(
-                                    "Cannot subscribe to {:04x}:{:04x} v{} eventgroups {:?}: service not discovered",
-                                    service_id.value(),
-                                    instance_id.value(),
-                                    major_version,
-                                    eventgroup_ids,
-                                );
-                                let _ = response.send(Err(Error::ServiceUnavailable));
-                                continue;
-                            };
-                            discovered.sd_endpoint
-                        };
 
                         if transport == Transport::Tcp {
                             let tcp_pool_clone = Arc::clone(&tcp_pool);
@@ -531,7 +515,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
         Action::NotifyFound {
             key: found_key,
             endpoints,
-            // sd_endpoint,
+            sd_endpoint,
         } => {
             // Find all matching find requests and notify them
             for (req_key, request) in &state.find_requests {
@@ -539,7 +523,7 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                     let _ = request.notify.try_send(ServiceAvailability::Available {
                         key: found_key,
                         offered_endpoints: endpoints.clone(),
-                        // sd_endpoint,
+                        sd_endpoint,
                     });
                 }
             }

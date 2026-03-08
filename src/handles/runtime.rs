@@ -552,7 +552,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
                     instance_id,
                     key.major_version,
                     service.offered_endpoints.clone(),
-                    // service.sd_endpoint,
+                    service.sd_endpoint,
                 ))
             })
             .collect()

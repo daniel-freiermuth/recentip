@@ -5,6 +5,7 @@ use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::config::DEFAULT_SD_PORT;
 use recentip::handle::ServiceEvent;
 use recentip::{EventId, EventgroupId, InstanceId, MethodId, OfferedEndpoints, ServiceId};
+use std::net::SocketAddrV4;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -2235,7 +2236,7 @@ fn test_static_proxy_creation() {
             InstanceId::Id(0x0001),
             1, // major_version
             OfferedEndpoints::UdpOnly(endpoint),
-            // SocketAddr::new(turmoil::lookup("server"), 30490),
+            SocketAddrV4::new(*endpoint.ip(), 30490),
         );
 
         // Use the proxy like any other
@@ -2335,7 +2336,7 @@ fn test_is_offer_alive_before_discovery() {
             InstanceId::Id(0x0001),
             1,
             OfferedEndpoints::UdpOnly(endpoint),
-            // SocketAddr::new(turmoil::lookup("server"), 30490),
+            SocketAddrV4::new(*endpoint.ip(), 30490),
         );
 
         // Service has never been discovered, should not be alive
@@ -2489,7 +2490,7 @@ fn test_is_offer_alive_ttl_cleanup() {
             InstanceId::Id(0x0001),
             1,
             OfferedEndpoints::UdpOnly(endpoint),
-            // SocketAddr::new(turmoil::lookup("server"), 30490),
+            SocketAddrV4::new(*endpoint.ip(), 30490),
         );
 
         // Wait for SD to discover the service (from multicast offer)
@@ -2575,7 +2576,7 @@ fn test_is_offer_alive_static_proxy_with_sd() {
             InstanceId::Id(0x0001),
             1,
             OfferedEndpoints::UdpOnly(endpoint),
-            // SocketAddr::new(turmoil::lookup("server"), 30490),
+            SocketAddrV4::new(*endpoint.ip(), 30490),
         );
 
         // Initially not alive (not yet in discovered map)

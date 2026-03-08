@@ -2,6 +2,7 @@
 //!
 //! See [`OfferedService`] for the main type.
 
+use std::net::SocketAddrV4;
 use std::sync::Arc;
 
 use tokio::sync::mpsc::error::TrySendError;
@@ -61,7 +62,7 @@ pub struct OfferedService {
     instance_id: InstanceId,
     major_version: u8,
     remote_endpoints: OfferedEndpoints,
-    // remote_sd_endpoint: SocketAddr,
+    remote_sd_endpoint: SocketAddrV4,
     /// Original find criteria - used for `StopFind` on drop
     /// If None, this proxy was created without discovery (static deployment)
     find_criteria: Option<(InstanceId, MajorVersion)>,
@@ -76,7 +77,7 @@ impl Clone for OfferedService {
             major_version: self.major_version,
             find_criteria: self.find_criteria,
             remote_endpoints: self.remote_endpoints.clone(),
-            // remote_sd_endpoint: self.remote_sd_endpoint,
+            remote_sd_endpoint: self.remote_sd_endpoint,
         }
     }
 }
@@ -137,7 +138,7 @@ impl OfferedService {
         instance_id: InstanceId,
         major_version: u8,
         offered_endpoints: OfferedEndpoints,
-        // sd_endpoint: SocketAddr,
+        sd_endpoint: SocketAddrV4,
     ) -> Self
     where
         U: crate::net::UdpSocket,
@@ -151,7 +152,7 @@ impl OfferedService {
             major_version,
             None, // No find_criteria for static deployments
             offered_endpoints,
-            // sd_endpoint,
+            sd_endpoint,
         )
     }
 
@@ -167,7 +168,7 @@ impl OfferedService {
         major_version: u8,
         find_criteria: Option<(InstanceId, MajorVersion)>,
         offered_endpoints: OfferedEndpoints,
-        // sd_endpoint: SocketAddr,
+        sd_endpoint: SocketAddrV4,
     ) -> Self {
         Self {
             inner,
@@ -176,7 +177,7 @@ impl OfferedService {
             major_version,
             find_criteria,
             remote_endpoints: offered_endpoints,
-            // remote_sd_endpoint: sd_endpoint,
+            remote_sd_endpoint: sd_endpoint,
         }
     }
 
@@ -292,7 +293,7 @@ impl OfferedService {
             eventgroup,
             transport,
             remote_endpoint,
-            // self.remote_sd_endpoint,
+            self.remote_sd_endpoint,
         )
     }
 

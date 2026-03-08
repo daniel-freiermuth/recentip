@@ -139,7 +139,7 @@ where
         let Some(ServiceAvailability::Available {
             key,
             offered_endpoints,
-            // sd_endpoint,
+            sd_endpoint,
         }) = notify_rx.recv().await
         else {
             // Channel closed - either runtime shut down or find request expired
@@ -154,7 +154,7 @@ where
             // Pass original find criteria for proper StopFind on drop
             Some((self.instance_id, self.major_version)),
             offered_endpoints,
-            // sd_endpoint,
+            sd_endpoint,
         ))
     }
 }

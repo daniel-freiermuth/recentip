@@ -128,7 +128,7 @@ pub enum Command {
         response: oneshot::Sender<Result<u64>>,
         transport: crate::config::Transport,
         remote_endpoint: std::net::SocketAddrV4,
-        // sd_endpoint: SocketAddr,
+        sd_endpoint: SocketAddrV4,
     },
     /// Unsubscribe from an eventgroup
     Unsubscribe {
@@ -187,7 +187,7 @@ pub enum ServiceAvailability {
     Available {
         key: ServiceKey,
         offered_endpoints: OfferedEndpoints,
-        // sd_endpoint: SocketAddr,
+        sd_endpoint: SocketAddrV4,
     },
 }
 
