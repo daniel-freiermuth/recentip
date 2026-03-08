@@ -132,6 +132,19 @@ pub trait TcpStream: Send + Sized + 'static {
     /// Connect to the given address.
     fn connect(addr: SocketAddrV4) -> impl Future<Output = io::Result<Self>> + Send;
 
+    /// Connect from a specific local address to the given remote address.
+    ///
+    /// Implementations that support local-port binding (e.g. tokio) will
+    /// bind to `local` before initiating the connection. Implementations that
+    /// do not support it (e.g. turmoil) silently fall back to [`connect`](Self::connect).
+    fn connect_from(
+        local: SocketAddrV4,
+        target: SocketAddrV4,
+    ) -> impl Future<Output = io::Result<Self>> + Send {
+        let _ = local;
+        Self::connect(target)
+    }
+
     /// Read data into the buffer.
     fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = io::Result<usize>> + Send;
 

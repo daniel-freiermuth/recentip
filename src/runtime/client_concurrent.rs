@@ -4,11 +4,11 @@
 //! the event loop during TCP connection establishment.
 
 use std::collections::HashSet;
-use std::net::SocketAddrV4;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::config::Transport;
+use crate::config::{PortSpec, Transport};
 use crate::error::Error;
 use crate::net::TcpStream;
 use crate::runtime::event_loop::SubscribeStateUpdate;
@@ -46,6 +46,8 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
     sd_flags: u8,
     subscribe_ttl: u32,
     used_conn_keys: HashSet<u64>,
+    local_ip: Ipv4Addr,
+    local_port: PortSpec,
 ) {
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
@@ -60,7 +62,10 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
 
     // Establish TCP connection (this is the potentially slow operation)
     // Now truly concurrent - no mutex held across multiple connections
-    let endpoint_for_subscribe = match tcp_pool.ensure_connected(tcp_endpoint, conn_key).await {
+    let endpoint_for_subscribe = match tcp_pool
+        .ensure_connected(tcp_endpoint, conn_key, local_ip, local_port)
+        .await
+    {
         Ok(local_addr) => {
             tracing::debug!(
                 "TCP connection established to {} (local addr: {}, conn_key: {}) for subscription to {:04x}:{:04x} eventgroups {:?}",

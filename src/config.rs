@@ -326,6 +326,208 @@ pub enum Transport {
     Tcp,
 }
 
+/// A single entry in a [`TransportPolicy`]: which transport to try and which
+/// local port to bind the client socket to.
+///
+/// Construct entries with the factory methods [`tcp()`](TransportPreference::tcp)
+/// and [`udp()`](TransportPreference::udp), then chain
+/// [`with_port`](TransportPreference::with_port) or
+/// \[`with_port_range`\] to add a port constraint (the latter is planned, prepared, but commented out).
+///
+/// # Example
+///
+/// ```
+/// use recentip::config::{TransportPreference, TransportPolicy};
+///
+/// let policy = TransportPolicy::new(vec![
+///     TransportPreference::udp().with_port(30500),  // UDP, bind client to 30500
+///     TransportPreference::tcp(),                    // TCP, any ephemeral port
+/// ]);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TransportPreference {
+    /// Which server transport to accept.
+    pub transport: Transport,
+    /// Which local port to bind the client socket to for this transport.
+    ///
+    /// For TCP subscriptions the OS always chooses the source port of the
+    /// outbound connection, so this field is ignored for TCP.
+    pub local_port: PortSpec,
+}
+
+impl TransportPreference {
+    /// Accept any TCP endpoint; client socket uses an ephemeral port.
+    pub const fn tcp() -> Self {
+        Self {
+            transport: Transport::Tcp,
+            local_port: PortSpec::Any,
+        }
+    }
+
+    /// Accept any UDP endpoint; client socket uses an ephemeral port.
+    pub const fn udp() -> Self {
+        Self {
+            transport: Transport::Udp,
+            local_port: PortSpec::Any,
+        }
+    }
+
+    /// Bind the client subscription socket to a fixed local port.
+    #[must_use]
+    pub const fn with_port(self, port: u16) -> Self {
+        Self {
+            local_port: PortSpec::Fixed(port),
+            ..self
+        }
+    }
+
+    /*
+    /// Try local ports `start..=end` (inclusive) until binding succeeds.
+    #[must_use]
+    pub const fn with_port_range(self, start: u16, end: u16) -> Self {
+        Self { local_port: PortSpec::Range(start, end), ..self }
+    } */
+}
+
+/// Specifies which local port(s) a client UDP subscription socket may bind to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum PortSpec {
+    /// Let the OS pick an ephemeral port (default).
+    #[default]
+    Any,
+    /// Bind to exactly this port; fails with `AddrInUse` if taken.
+    Fixed(u16),
+    /*
+    /// Try each port in `start..=end` (inclusive) until one succeeds.
+    Range(u16, u16),
+    */
+}
+
+/// Result of applying a [`TransportPolicy`] to a set of offered endpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransportSelection {
+    /// The server's endpoint to connect to.
+    pub remote_endpoint: std::net::SocketAddrV4,
+    /// Transport protocol to use.
+    pub transport: Transport,
+    /// Client-side port spec for the subscription socket (ignored for TCP).
+    pub local_port: PortSpec,
+}
+
+/// Ordered list of transport preferences for endpoint selection.
+///
+/// The first entry in the list that matches the server's offered endpoints
+/// determines the effective transport and client-side port binding.
+/// If no entry matches, the connection attempt falls back to any available
+/// endpoint with an ephemeral port.
+///
+/// # Common Policies
+///
+/// | Policy | Meaning |
+/// |--------|---------|
+/// | `[tcp(), udp()]` ← `preferred_transport(Tcp)` | prefer TCP, fall back to UDP |
+/// | `[udp(), tcp()]` ← `preferred_transport(Udp)` | prefer UDP, fall back to TCP |
+/// | `[tcp()]` | TCP only (fail-fast if server does not offer TCP at runtime) |
+/// | `[udp().with_port(30500)]` | UDP, client binds to port 30500 |
+/// | `[udp().with_port_range(30500, 30510), tcp()]` | UDP on range, fall back to TCP |
+///
+/// # Creating Policies
+///
+/// ```
+/// use recentip::config::{TransportPolicy, TransportPreference};
+///
+/// // Prefer TCP, fall back to UDP
+/// let policy = TransportPolicy::prefer_tcp();
+///
+/// // UDP, client socket on a fixed port
+/// let fixed = TransportPolicy::new(vec![
+///     TransportPreference::udp().with_port(30500),
+/// ]);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransportPolicy(Vec<TransportPreference>);
+
+impl TransportPolicy {
+    /// Create a policy from an explicit ordered list of preferences.
+    ///
+    /// An empty list means no transport will ever be selected (falls back to
+    /// any available endpoint with an ephemeral port).
+    pub const fn new(preferences: Vec<TransportPreference>) -> Self {
+        Self(preferences)
+    }
+
+    /// Prefer TCP; fall back to UDP if TCP is not available.
+    ///
+    /// Shorthand for `.preferred_transport(Transport::Tcp)`.
+    #[must_use]
+    pub fn prefer_tcp() -> Self {
+        Self(vec![TransportPreference::tcp(), TransportPreference::udp()])
+    }
+
+    /// Prefer UDP; fall back to TCP if UDP is not available.
+    ///
+    /// Shorthand for `.preferred_transport(Transport::Udp)`.
+    #[must_use]
+    pub fn prefer_udp() -> Self {
+        Self(vec![TransportPreference::udp(), TransportPreference::tcp()])
+    }
+
+    /// Select the best transport given the server's offered endpoints.
+    ///
+    /// Iterates the preference list in order and returns a [`TransportSelection`]
+    /// for the first entry whose transport matches an offered endpoint.
+    /// Returns `None` if no preference matches.
+    #[must_use]
+    pub fn select(&self, endpoints: &crate::OfferedEndpoints) -> Option<TransportSelection> {
+        use crate::OfferedEndpoints;
+        for pref in &self.0 {
+            let remote = match (pref.transport, endpoints) {
+                (
+                    Transport::Tcp,
+                    OfferedEndpoints::TcpOnly(addr) | OfferedEndpoints::Both { tcp: addr, .. },
+                ) => Some(*addr),
+                (
+                    Transport::Udp,
+                    OfferedEndpoints::UdpOnly(addr) | OfferedEndpoints::Both { udp: addr, .. },
+                ) => Some(*addr),
+                _ => None,
+            };
+            if let Some(remote_endpoint) = remote {
+                return Some(TransportSelection {
+                    remote_endpoint,
+                    transport: pref.transport,
+                    local_port: pref.local_port,
+                });
+            }
+        }
+        None
+    }
+
+    /// Returns the primary (first) transport in the policy, or `Transport::Udp` if empty.
+    ///
+    /// Used as the default transport for server-side offer configuration.
+    #[must_use]
+    pub fn primary(&self) -> Transport {
+        self.0.first().map_or(Transport::Udp, |p| p.transport)
+    }
+}
+
+impl Default for TransportPolicy {
+    /// Default policy: prefer UDP, fall back to TCP.
+    fn default() -> Self {
+        Self::prefer_udp()
+    }
+}
+
+impl From<Transport> for TransportPolicy {
+    fn from(t: Transport) -> Self {
+        match t {
+            Transport::Tcp => Self::prefer_tcp(),
+            Transport::Udp => Self::prefer_udp(),
+        }
+    }
+}
+
 /// `SomeIp` configuration
 ///
 /// Constructed via [`SomeIpBuilder`](crate::SomeIpBuilder); not intended for
@@ -356,11 +558,16 @@ pub struct RuntimeConfig {
     pub subscribe_ttl: u32,
     /// Cyclic offer delay in ms (default: 1000)
     pub cyclic_offer_delay: u64,
-    /// Preferred transport protocol when a service advertises both (default: UDP)
+    /// Transport policy for endpoint selection (default: prefer UDP, fall back to TCP).
     ///
-    /// When a remote service offers both TCP and UDP endpoints, this setting
-    /// determines which endpoint the client will use for RPC calls.
-    pub preferred_transport: Transport,
+    /// When a remote service offers endpoints, the first entry in this policy that
+    /// matches the offered endpoints determines the effective transport.
+    /// Overridable per-service via [`OfferedService::with_transport_policy`](crate::OfferedService::with_transport_policy).
+    ///
+    /// Set via [`SomeIpBuilder::preferred_transport`](crate::SomeIpBuilder::preferred_transport)
+    /// (shorthand) or [`SomeIpBuilder::transport_policy`](crate::SomeIpBuilder::transport_policy)
+    /// (full control).
+    pub transport_policy: TransportPolicy,
     /// Enable Magic Cookies for TCP resynchronization (default: false)
     ///
     /// When enabled (`feat_req_someip_586`, `feat_req_someip_591`, `feat_req_someip_592)`:

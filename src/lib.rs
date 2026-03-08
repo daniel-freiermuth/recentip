@@ -93,7 +93,10 @@ pub mod wire;
 pub use builder::SomeIpBuilder;
 pub use handles::{OfferBuilder, SomeIp};
 
-pub use config::{MethodConfig, RuntimeConfig, Transport};
+pub use config::{
+    MethodConfig, PortSpec, RuntimeConfig, Transport, TransportPolicy, TransportPreference,
+    TransportSelection,
+};
 
 pub use error::*;
 
@@ -147,7 +150,7 @@ pub mod handle {
 ///     Ok(())
 /// }
 /// ```
-pub const fn configure() -> SomeIpBuilder {
+pub fn configure() -> SomeIpBuilder {
     SomeIpBuilder::new()
 }
 
@@ -545,7 +548,8 @@ pub mod prelude {
     pub use crate::{
         configure, ApplicationError, Error, Event, EventBuilder, EventHandle, EventId,
         EventgroupId, InstanceId, MajorVersion, MethodConfig, MethodId, MinorVersion,
-        OfferedService, Response, Result, ReturnCode, RuntimeConfig, ServiceId, ServiceOffering,
-        SomeIp, SomeIpBuilder, Subscription, SubscriptionBuilder, Transport,
+        OfferedService, PortSpec, Response, Result, ReturnCode, RuntimeConfig, ServiceId,
+        ServiceOffering, SomeIp, SomeIpBuilder, Subscription, SubscriptionBuilder, Transport,
+        TransportPolicy, TransportPreference, TransportSelection,
     };
 }

@@ -336,7 +336,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     // Special handling for Subscribe
                     // - TCP subscriptions: spawn as concurrent task to avoid blocking on connection establishment (feat_req_someipsd_767)
                     // - UDP subscriptions: handle inline since binding is instant and doesn't block
-                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response, transport, remote_endpoint, sd_endpoint, }) => {
+                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response, transport, remote_endpoint, sd_endpoint, local_port }) => {
                         let service_key = ServiceKey::new(service_id, instance_id, major_version);
 
                         if transport == Transport::Tcp {
@@ -345,6 +345,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             let subscription_id = state.next_subscription_id();
                             let sd_flags = state.sd_flags(true);
                             let subscribe_ttl = state.config.subscribe_ttl;
+                            let local_ip = state.config.unicast_ip();
 
                             let used_conn_keys: std::collections::HashSet<u64> = state.subscriptions.get(&service_key)
                                 .map_or_else(std::collections::HashSet::default, |subs| {
@@ -367,13 +368,15 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                     sd_flags,
                                     subscribe_ttl,
                                     used_conn_keys,
+                                    local_ip,
+                                    local_port,
                                 ).await;
                             });
                         } else {
                             // UDP path: Handle inline (binding is instant)
                             client::handle_subscribe_udp::<U>(
                                 service_id, instance_id, major_version, eventgroup_ids,
-                                events, response, sd_endpoint, &mut state
+                                events, response, sd_endpoint, local_port, &mut state
                             ).await;
                         }
                     }

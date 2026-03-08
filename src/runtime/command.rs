@@ -129,6 +129,9 @@ pub enum Command {
         transport: crate::config::Transport,
         remote_endpoint: std::net::SocketAddrV4,
         sd_endpoint: SocketAddrV4,
+        /// Client-side port spec for the UDP subscription socket.
+        /// Ignored for TCP (OS picks the source port of the outbound connection).
+        local_port: crate::config::PortSpec,
     },
     /// Unsubscribe from an eventgroup
     Unsubscribe {

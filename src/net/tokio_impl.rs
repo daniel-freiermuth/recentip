@@ -81,6 +81,12 @@ impl TcpStream for tokio::net::TcpStream {
         Self::connect(addr).await
     }
 
+    async fn connect_from(local: SocketAddrV4, target: SocketAddrV4) -> io::Result<Self> {
+        let socket = tokio::net::TcpSocket::new_v4()?;
+        socket.bind(SocketAddr::V4(local))?;
+        socket.connect(SocketAddr::V4(target)).await
+    }
+
     async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         AsyncReadExt::read(self, buf).await
     }

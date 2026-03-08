@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::config::PortSpec;
 use crate::error::{Error, Result};
 use crate::handles::runtime::RuntimeInner;
 use crate::runtime::Command;
@@ -50,6 +51,7 @@ pub struct SubscriptionBuilder {
     transport: crate::config::Transport,
     remote_endpoint: std::net::SocketAddrV4,
     sd_endpoint: std::net::SocketAddrV4,
+    local_port: PortSpec,
 }
 
 impl SubscriptionBuilder {
@@ -63,6 +65,7 @@ impl SubscriptionBuilder {
         transport: crate::config::Transport,
         remote_endpoint: std::net::SocketAddrV4,
         sd_endpoint: std::net::SocketAddrV4,
+        local_port: PortSpec,
     ) -> Self {
         Self {
             inner,
@@ -73,6 +76,7 @@ impl SubscriptionBuilder {
             transport,
             remote_endpoint,
             sd_endpoint,
+            local_port,
         }
     }
 
@@ -121,6 +125,7 @@ impl SubscriptionBuilder {
                 transport: self.transport,
                 remote_endpoint: self.remote_endpoint,
                 sd_endpoint: self.sd_endpoint,
+                local_port: self.local_port,
             })
             .await
             .map_err(|_| Error::RuntimeShutdown)?;

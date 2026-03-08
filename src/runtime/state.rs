@@ -758,7 +758,7 @@ mod tests {
             find_ttl: crate::config::DEFAULT_FIND_TTL,
             subscribe_ttl: crate::config::DEFAULT_SUBSCRIBE_TTL,
             cyclic_offer_delay: crate::config::DEFAULT_CYCLIC_OFFER_DELAY,
-            preferred_transport: crate::config::Transport::Udp,
+            transport_policy: crate::config::TransportPolicy::default(),
             magic_cookies: false,
         }
     }

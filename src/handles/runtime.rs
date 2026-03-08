@@ -675,7 +675,7 @@ impl<'a, U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> OfferBuilder<'a
 
         // Fallback to runtime config if no transport specified
         if !self.config.has_transport() {
-            match self.runtime.inner.config.preferred_transport {
+            match self.runtime.inner.config.transport_policy.primary() {
                 Transport::Tcp => self.config = self.config.tcp(),
                 Transport::Udp => self.config = self.config.udp(),
             }

@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
                 minor_version,
                 .. 
             } => {
-                let endpoint = tcp_endpoint.or(udp_endpoint);
+                let endpoint = udp_endpoint.or(tcp_endpoint);
                 println!("✓ Service 0x{:04x}:{} AVAILABLE at {:?} (v{}.{})",
                     service_id, 
                     instance_id,

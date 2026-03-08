@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
+use crate::config::{PortSpec, TransportPolicy, TransportSelection};
 use crate::error::{Error, Result};
 use crate::handles::runtime::RuntimeInner;
 use crate::runtime::Command;
@@ -63,6 +64,8 @@ pub struct OfferedService {
     major_version: u8,
     remote_endpoints: OfferedEndpoints,
     remote_sd_endpoint: SocketAddrV4,
+    /// Transport policy for this proxy (copied from global at creation, overridable).
+    transport_policy: TransportPolicy,
     /// Original find criteria - used for `StopFind` on drop
     /// If None, this proxy was created without discovery (static deployment)
     find_criteria: Option<(InstanceId, MajorVersion)>,
@@ -78,6 +81,7 @@ impl Clone for OfferedService {
             find_criteria: self.find_criteria,
             remote_endpoints: self.remote_endpoints.clone(),
             remote_sd_endpoint: self.remote_sd_endpoint,
+            transport_policy: self.transport_policy.clone(),
         }
     }
 }
@@ -97,8 +101,8 @@ impl OfferedService {
     /// - `service_id`: Service ID (required, e.g., 0x1234)
     /// - `instance_id`: Instance ID (required)
     /// - `major_version`: Major version of the service interface
-    /// - `endpoint`: Socket address of the service (IP + port)
-    /// - `transport`: Transport protocol (TCP or UDP)
+    /// - `offered_endpoints`: Offered transport endpoints of the service
+    /// - `sd_endpoint`: SD unicast endpoint of the peer (for subscribe messages)
     ///
     /// # Example
     ///
@@ -113,14 +117,16 @@ impl OfferedService {
     ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
     ///     .start().await?;
     ///
-    /// // Connect to a service at a known endpoint
-    /// let endpoint = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 10), 30501);
+    /// // Connect to a service at a known TCP endpoint
+    /// let tcp_endpoint = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 10), 30501);
+    /// let sd_endpoint  = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 10), 30490);
     /// let proxy = OfferedService::new(
     ///     &runtime,
-    ///     ServiceId::new(0x1234).unwrap(),        // service_id
-    ///     InstanceId::Id(1),                      // instance_id
-    ///     1,                                      // major_version
-    ///     OfferedEndpoints::TcpOnly(endpoint),    // endpoint
+    ///     ServiceId::new(0x1234).unwrap(),
+    ///     InstanceId::Id(1),
+    ///     1,
+    ///     OfferedEndpoints::TcpOnly(tcp_endpoint),
+    ///     sd_endpoint,
     /// );
     ///
     /// // Use the proxy like any other
@@ -156,12 +162,38 @@ impl OfferedService {
         )
     }
 
+    /// Override the transport policy for this proxy.
+    ///
+    /// By default the policy is copied from the global
+    /// [`RuntimeConfig::transport_policy`](crate::config::RuntimeConfig::transport_policy)
+    /// at creation time. Use this method to apply a per-service policy without
+    /// changing the global setting.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    /// use recentip::config::{TransportPolicy, TransportPreference};
+    ///
+    /// # async fn example(proxy: OfferedService) -> OfferedService {
+    /// // Force TCP for this specific service
+    /// proxy.with_transport_policy(
+    ///     TransportPolicy::new(vec![TransportPreference::tcp()])
+    /// )
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_transport_policy(mut self, policy: TransportPolicy) -> Self {
+        self.transport_policy = policy;
+        self
+    }
+
     /// Internal constructor used by the find operation.
     ///
     /// # Parameters
     /// - `find_criteria`: Original (`instance_id`, `major_version`) used in the find request.
     ///   Used for `StopFind` on drop. Pass `None` for static deployments.
-    pub(crate) const fn from_inner(
+    pub(crate) fn from_inner(
         inner: Arc<RuntimeInner>,
         service_id: ServiceId,
         instance_id: InstanceId,
@@ -170,6 +202,7 @@ impl OfferedService {
         offered_endpoints: OfferedEndpoints,
         sd_endpoint: SocketAddrV4,
     ) -> Self {
+        let transport_policy = inner.config.transport_policy.clone();
         Self {
             inner,
             service_id,
@@ -178,6 +211,7 @@ impl OfferedService {
             find_criteria,
             remote_endpoints: offered_endpoints,
             remote_sd_endpoint: sd_endpoint,
+            transport_policy,
         }
     }
 
@@ -193,7 +227,7 @@ impl OfferedService {
     /// It may be removed or changed in future versions without notice.
     #[doc(hidden)]
     pub fn transport(&self) -> crate::config::Transport {
-        self.effective_transport_endpoint().1
+        self.effective_transport().transport
     }
 
     /// Call a method and wait for the response.
@@ -208,7 +242,7 @@ impl OfferedService {
         let payload_bytes = bytes::Bytes::copy_from_slice(payload.as_ref());
         let (response_tx, response_rx) = oneshot::channel();
 
-        let (endpoint, transport) = self.effective_transport_endpoint();
+        let sel = self.effective_transport();
 
         self.inner
             .cmd_tx
@@ -217,8 +251,8 @@ impl OfferedService {
                 method_id: method.value(),
                 payload: payload_bytes,
                 response: response_tx,
-                target_endpoint: endpoint,
-                target_transport: transport,
+                target_endpoint: sel.remote_endpoint,
+                target_transport: sel.transport,
             })
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
@@ -234,7 +268,7 @@ impl OfferedService {
     pub async fn fire_and_forget(&self, method: MethodId, payload: &[u8]) -> Result<()> {
         let payload_bytes = bytes::Bytes::copy_from_slice(payload);
 
-        let (endpoint, transport) = self.effective_transport_endpoint();
+        let sel = self.effective_transport();
 
         self.inner
             .cmd_tx
@@ -242,8 +276,8 @@ impl OfferedService {
                 service_id: self.service_id,
                 method_id: method.value(),
                 payload: payload_bytes,
-                target_endpoint: endpoint,
-                target_transport: transport,
+                target_endpoint: sel.remote_endpoint,
+                target_transport: sel.transport,
             })
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
@@ -251,14 +285,21 @@ impl OfferedService {
         Ok(())
     }
 
-    fn effective_transport_endpoint(&self) -> (std::net::SocketAddrV4, Transport) {
-        match &self.remote_endpoints {
-            OfferedEndpoints::UdpOnly(addr) => (*addr, Transport::Udp),
-            OfferedEndpoints::TcpOnly(addr) => (*addr, Transport::Tcp),
-            OfferedEndpoints::Both { udp, tcp } => match self.inner.config.preferred_transport {
-                Transport::Udp => (*udp, Transport::Udp),
-                Transport::Tcp => (*tcp, Transport::Tcp),
-            },
+    fn effective_transport(&self) -> TransportSelection {
+        // Try the transport policy first; fall back to any available endpoint.
+        if let Some(sel) = self.transport_policy.select(&self.remote_endpoints) {
+            return sel;
+        }
+        // Policy found no match — use whatever the server offers with an ephemeral port.
+        let (remote_endpoint, transport) = match &self.remote_endpoints {
+            crate::OfferedEndpoints::UdpOnly(addr) => (*addr, Transport::Udp),
+            crate::OfferedEndpoints::TcpOnly(addr) => (*addr, Transport::Tcp),
+            crate::OfferedEndpoints::Both { udp, .. } => (*udp, Transport::Udp),
+        };
+        TransportSelection {
+            remote_endpoint,
+            transport,
+            local_port: PortSpec::Any,
         }
     }
 
@@ -284,16 +325,17 @@ impl OfferedService {
     /// # }
     /// ```
     pub fn subscribe(&self, eventgroup: EventgroupId) -> SubscriptionBuilder {
-        let (remote_endpoint, transport) = self.effective_transport_endpoint();
+        let sel = self.effective_transport();
         SubscriptionBuilder::new(
             Arc::clone(&self.inner),
             self.service_id,
             self.instance_id,
             self.major_version,
             eventgroup,
-            transport,
-            remote_endpoint,
+            sel.transport,
+            sel.remote_endpoint,
             self.remote_sd_endpoint,
+            sel.local_port,
         )
     }
 
@@ -314,7 +356,7 @@ impl OfferedService {
 
     /// Get the endpoint address
     pub fn endpoint(&self) -> std::net::SocketAddrV4 {
-        self.effective_transport_endpoint().0
+        self.effective_transport().remote_endpoint
     }
 
     /// Check if the service offer is currently alive (TTL not expired).

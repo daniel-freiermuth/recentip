@@ -51,9 +51,9 @@
 //! required for SD endpoint option advertisement.
 
 use crate::config::{
-    clamp_ttl_to_24bit, MulticastAddress, RuntimeConfig, Transport, UnicastAddress,
-    DEFAULT_CYCLIC_OFFER_DELAY, DEFAULT_FIND_TTL, DEFAULT_OFFER_TTL, DEFAULT_SD_PORT,
-    DEFAULT_SUBSCRIBE_TTL,
+    clamp_ttl_to_24bit, MulticastAddress, RuntimeConfig, Transport, TransportPolicy,
+    UnicastAddress, DEFAULT_CYCLIC_OFFER_DELAY, DEFAULT_FIND_TTL, DEFAULT_OFFER_TTL,
+    DEFAULT_SD_PORT, DEFAULT_SUBSCRIBE_TTL,
 };
 use crate::error::Result;
 use crate::handles::SomeIp;
@@ -96,13 +96,13 @@ pub struct SomeIpBuilder<Addr = (), MC = ()> {
     find_ttl: u32,
     subscribe_ttl: u32,
     cyclic_offer_delay: u64,
-    preferred_transport: Transport,
+    transport_policy: TransportPolicy,
     magic_cookies: bool,
 }
 
 impl SomeIpBuilder<(), ()> {
     /// Create a new builder with no mandatory fields set.
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             sd_unicast: (),
             sd_multicast: (),
@@ -112,7 +112,7 @@ impl SomeIpBuilder<(), ()> {
             find_ttl: DEFAULT_FIND_TTL,
             subscribe_ttl: DEFAULT_SUBSCRIBE_TTL,
             cyclic_offer_delay: DEFAULT_CYCLIC_OFFER_DELAY,
-            preferred_transport: Transport::Udp,
+            transport_policy: TransportPolicy::default(),
             magic_cookies: false,
         }
     }
@@ -167,7 +167,7 @@ impl<MC> SomeIpBuilder<(), MC> {
             find_ttl: self.find_ttl,
             subscribe_ttl: self.subscribe_ttl,
             cyclic_offer_delay: self.cyclic_offer_delay,
-            preferred_transport: self.preferred_transport,
+            transport_policy: self.transport_policy,
             magic_cookies: self.magic_cookies,
         }
     }
@@ -210,7 +210,7 @@ impl<A> SomeIpBuilder<A, ()> {
             find_ttl: self.find_ttl,
             subscribe_ttl: self.subscribe_ttl,
             cyclic_offer_delay: self.cyclic_offer_delay,
-            preferred_transport: self.preferred_transport,
+            transport_policy: self.transport_policy,
             magic_cookies: self.magic_cookies,
         }
     }
@@ -326,12 +326,45 @@ impl<A, MC> SomeIpBuilder<A, MC> {
 
     /// Set the preferred transport when a service advertises both TCP and UDP.
     ///
-    /// This is only used for client-side endpoint selection when discovering
-    /// services that offer both transports.
+    /// This is a shorthand for [`transport_policy`](Self::transport_policy):
+    /// - `Transport::Tcp` → policy `[tcp(), udp()]` (prefer TCP, fall back to UDP)
+    /// - `Transport::Udp` → policy `[udp(), tcp()]` (prefer UDP, fall back to TCP)
+    ///
+    /// For finer control (e.g. TCP-only, no fallback), use
+    /// [`transport_policy`](Self::transport_policy) directly.
     ///
     /// Default: `Transport::Udp`
-    pub const fn preferred_transport(mut self, transport: Transport) -> Self {
-        self.preferred_transport = transport;
+    pub fn preferred_transport(mut self, transport: Transport) -> Self {
+        self.transport_policy = TransportPolicy::from(transport);
+        self
+    }
+
+    /// Set the global transport policy for endpoint selection.
+    ///
+    /// The policy is an ordered list of [`crate::config::TransportPreference`] entries.
+    /// The first entry that matches a server's offered endpoints determines
+    /// the effective transport.  [`crate::handles::OfferedService`] copies this policy at
+    /// creation time and may override it via
+    /// [`with_transport_policy`](crate::handles::OfferedService::with_transport_policy).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    /// use recentip::config::{TransportPolicy, TransportPreference};
+    ///
+    /// # async fn example() -> recentip::Result<()> {
+    /// // TCP only — fail if service does not offer TCP
+    /// let someip = recentip::configure()
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
+    ///     .transport_policy(TransportPolicy::new(vec![TransportPreference::tcp()]))
+    ///     .start().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn transport_policy(mut self, policy: TransportPolicy) -> Self {
+        self.transport_policy = policy;
         self
     }
 
@@ -429,7 +462,7 @@ impl SomeIpBuilder<UnicastAddress, MulticastAddress> {
             find_ttl: self.find_ttl,
             subscribe_ttl: self.subscribe_ttl,
             cyclic_offer_delay: self.cyclic_offer_delay,
-            preferred_transport: self.preferred_transport,
+            transport_policy: self.transport_policy,
             magic_cookies: self.magic_cookies,
         };
         SomeIp::new(config).await

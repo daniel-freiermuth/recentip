@@ -40,6 +40,8 @@
 
 use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4};
+
+use crate::config::PortSpec;
 use std::sync::Arc;
 
 use bytes::{Buf, Bytes, BytesMut};
@@ -160,7 +162,9 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new()))
             .clone();
 
-        let state = cell.get_or_try_init(|| self.do_connect(target, 0)).await?;
+        let state = cell
+            .get_or_try_init(|| self.do_connect(target, 0, Ipv4Addr::UNSPECIFIED, PortSpec::Any))
+            .await?;
 
         // Send the data
         state
@@ -193,6 +197,8 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         &self,
         target: SocketAddrV4,
         subscription_id: u64,
+        local_ip: Ipv4Addr,
+        local_port: PortSpec,
     ) -> io::Result<SocketAddrV4> {
         let key = (target, subscription_id);
 
@@ -206,7 +212,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         // OnceCell::get_or_try_init ensures exactly one task runs the init closure.
         // If it fails, the cell stays uninitialized - next call will retry.
         let state = cell
-            .get_or_try_init(|| self.do_connect(target, subscription_id))
+            .get_or_try_init(|| self.do_connect(target, subscription_id, local_ip, local_port))
             .await?;
 
         Ok(state.local_addr)
@@ -219,14 +225,15 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         &self,
         target: SocketAddrV4,
         subscription_id: u64,
+        local_ip: Ipv4Addr,
+        local_port: PortSpec,
     ) -> io::Result<TcpConnectionState> {
         tracing::debug!(
             "Establishing TCP connection to {} for subscription (feat_req_someipsd_767)",
             target
         );
 
-        let stream = T::connect(target).await?;
-
+        let stream = tcp_connect::<T>(local_ip, local_port, target).await?;
         let local_addr = stream.local_addr()?;
 
         // Allocate unique connection ID for cleanup verification
@@ -336,6 +343,39 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 ///
 /// When `magic_cookies` is enabled:
 /// - Each write is prepended with a Magic Cookie (`feat_req_someip_591`)
+///
+/// Connect a TCP stream, honouring `local_port`:
+/// - `Any` → OS picks local address/port (plain `connect`)
+/// - `Fixed(p)` → bind to `local_ip:p` then connect
+/// - `Range(s,e)` → try each port `s..=e`, return `AddrInUse` if all fail
+async fn tcp_connect<T: TcpStream>(
+    local_ip: Ipv4Addr,
+    local_port: PortSpec,
+    target: SocketAddrV4,
+) -> io::Result<T> {
+    match local_port {
+        PortSpec::Any => T::connect(target).await,
+        PortSpec::Fixed(port) => T::connect_from(SocketAddrV4::new(local_ip, port), target).await,
+        /*
+        PortSpec::Range(start, end) => {
+            let mut last_err = None;
+            for port in start..=end {
+                match T::connect_from(SocketAddrV4::new(local_ip, port), target).await {
+                    Ok(s) => return Ok(s),
+                    Err(e) => last_err = Some(e),
+                }
+            }
+            Err(last_err.unwrap_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::AddrInUse,
+                    format!("no TCP local port available in range {start}..={end}"),
+                )
+            }))
+        }
+        */
+    }
+}
+
 /// - Magic Cookies in received data are skipped (`feat_req_someip_586`)
 ///
 /// On exit, sends a cleanup request to the event loop (via `cleanup_tx`) with the
