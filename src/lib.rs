@@ -94,8 +94,8 @@ pub use builder::SomeIpBuilder;
 pub use handles::{OfferBuilder, SomeIp};
 
 pub use config::{
-    MethodConfig, PortSpec, RuntimeConfig, Transport, TransportPolicy, TransportPreference,
-    TransportSelection,
+    MethodConfig, PortSpec, RuntimeConfig, TcpKeepaliveConfig, Transport, TransportPolicy,
+    TransportPreference, TransportSelection,
 };
 
 pub use error::*;

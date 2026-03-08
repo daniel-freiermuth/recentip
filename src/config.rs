@@ -42,6 +42,7 @@
 use std::collections::HashSet;
 use std::fmt;
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::time::Duration;
 use tracing::warn;
 
 // ============================================================================
@@ -528,6 +529,46 @@ impl From<Transport> for TransportPolicy {
     }
 }
 
+// ============================================================================
+// TCP KEEPALIVE CONFIGURATION
+// ============================================================================
+
+/// TCP keepalive parameters.
+///
+/// Controls how the OS probes idle TCP connections to detect dead peers.
+/// Applied independently to outgoing (client) and incoming (server) connections
+/// via [`SomeIpBuilder::tcp_keepalive_client`](crate::SomeIpBuilder::tcp_keepalive_client)
+/// and [`SomeIpBuilder::tcp_keepalive_server`](crate::SomeIpBuilder::tcp_keepalive_server).
+///
+/// # Platform notes
+///
+/// `retries` maps to `TCP_KEEPCNT` and is ignored on platforms that do not
+/// expose that socket option (e.g. some QNX configurations).
+///
+/// # Example
+///
+/// ```
+/// use std::time::Duration;
+/// use recentip::config::TcpKeepaliveConfig;
+///
+/// let cfg = TcpKeepaliveConfig {
+///     time: Duration::from_secs(60),
+///     interval: Duration::from_secs(10),
+///     retries: 5,
+/// };
+/// ```
+#[derive(Debug, Clone)]
+pub struct TcpKeepaliveConfig {
+    /// Idle time before the first keepalive probe is sent (`TCP_KEEPIDLE`).
+    pub time: Duration,
+    /// Interval between consecutive probes when there is no response (`TCP_KEEPINTVL`)
+    /// and after the last probe.
+    pub interval: Duration,
+    /// Number of unacknowledged probes before the connection is considered dead
+    /// (`TCP_KEEPCNT`).  Not supported on all platforms.
+    pub retries: u32,
+}
+
 /// `SomeIp` configuration
 ///
 /// Constructed via [`SomeIpBuilder`](crate::SomeIpBuilder); not intended for
@@ -575,6 +616,14 @@ pub struct RuntimeConfig {
     /// - Only one Magic Cookie per segment
     /// - Allows resync in testing/debugging scenarios
     pub magic_cookies: bool,
+    /// TCP keepalive settings applied to outgoing (client-side) connections.
+    ///
+    /// `None` means OS defaults — keepalive is not explicitly enabled.
+    pub tcp_keepalive_client: Option<TcpKeepaliveConfig>,
+    /// TCP keepalive settings applied to incoming (server-side) connections.
+    ///
+    /// `None` means OS defaults — keepalive is not explicitly enabled.
+    pub tcp_keepalive_server: Option<TcpKeepaliveConfig>,
 }
 
 impl RuntimeConfig {

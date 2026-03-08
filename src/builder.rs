@@ -51,9 +51,9 @@
 //! required for SD endpoint option advertisement.
 
 use crate::config::{
-    clamp_ttl_to_24bit, MulticastAddress, RuntimeConfig, Transport, TransportPolicy,
-    UnicastAddress, DEFAULT_CYCLIC_OFFER_DELAY, DEFAULT_FIND_TTL, DEFAULT_OFFER_TTL,
-    DEFAULT_SD_PORT, DEFAULT_SUBSCRIBE_TTL,
+    clamp_ttl_to_24bit, MulticastAddress, RuntimeConfig, TcpKeepaliveConfig, Transport,
+    TransportPolicy, UnicastAddress, DEFAULT_CYCLIC_OFFER_DELAY, DEFAULT_FIND_TTL,
+    DEFAULT_OFFER_TTL, DEFAULT_SD_PORT, DEFAULT_SUBSCRIBE_TTL,
 };
 use crate::error::Result;
 use crate::handles::SomeIp;
@@ -98,6 +98,8 @@ pub struct SomeIpBuilder<Addr = (), MC = ()> {
     cyclic_offer_delay: u64,
     transport_policy: TransportPolicy,
     magic_cookies: bool,
+    tcp_keepalive_client: Option<TcpKeepaliveConfig>,
+    tcp_keepalive_server: Option<TcpKeepaliveConfig>,
 }
 
 impl SomeIpBuilder<(), ()> {
@@ -114,6 +116,8 @@ impl SomeIpBuilder<(), ()> {
             cyclic_offer_delay: DEFAULT_CYCLIC_OFFER_DELAY,
             transport_policy: TransportPolicy::default(),
             magic_cookies: false,
+            tcp_keepalive_client: None,
+            tcp_keepalive_server: None,
         }
     }
 }
@@ -169,6 +173,8 @@ impl<MC> SomeIpBuilder<(), MC> {
             cyclic_offer_delay: self.cyclic_offer_delay,
             transport_policy: self.transport_policy,
             magic_cookies: self.magic_cookies,
+            tcp_keepalive_client: self.tcp_keepalive_client,
+            tcp_keepalive_server: self.tcp_keepalive_server,
         }
     }
 }
@@ -212,6 +218,8 @@ impl<A> SomeIpBuilder<A, ()> {
             cyclic_offer_delay: self.cyclic_offer_delay,
             transport_policy: self.transport_policy,
             magic_cookies: self.magic_cookies,
+            tcp_keepalive_client: self.tcp_keepalive_client,
+            tcp_keepalive_server: self.tcp_keepalive_server,
         }
     }
 }
@@ -376,6 +384,70 @@ impl<A, MC> SomeIpBuilder<A, MC> {
         self
     }
 
+    /// Set TCP keepalive parameters for outgoing (client-side) connections.
+    ///
+    /// When set, the OS will send keepalive probes on idle client TCP connections.
+    /// This detects dead peers and triggers reconnection via SOME/IP error handling.
+    ///
+    /// Default: `None` (OS default — keepalive not explicitly enabled).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    /// use recentip::config::TcpKeepaliveConfig;
+    /// use std::time::Duration;
+    ///
+    /// # async fn example() -> recentip::Result<()> {
+    /// let someip = recentip::configure()
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
+    ///     .tcp_keepalive_client(Some(TcpKeepaliveConfig {
+    ///         time: Duration::from_secs(60),
+    ///         interval: Duration::from_secs(10),
+    ///         retries: 5,
+    ///     }))
+    ///     .start().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub const fn tcp_keepalive_client(mut self, config: Option<TcpKeepaliveConfig>) -> Self {
+        self.tcp_keepalive_client = config;
+        self
+    }
+
+    /// Set TCP keepalive parameters for incoming (server-side) connections.
+    ///
+    /// When set, the OS will send keepalive probes on idle server TCP connections.
+    /// This allows the server to detect and clean up dead clients.
+    ///
+    /// Default: `None` (OS default — keepalive not explicitly enabled).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use recentip::prelude::*;
+    /// use recentip::config::TcpKeepaliveConfig;
+    /// use std::time::Duration;
+    ///
+    /// # async fn example() -> recentip::Result<()> {
+    /// let someip = recentip::configure()
+    ///     .sd_multicast_group("239.255.255.250".parse().unwrap())
+    ///     .sd_unicast("192.168.1.100".parse().unwrap())
+    ///     .tcp_keepalive_server(Some(TcpKeepaliveConfig {
+    ///         time: Duration::from_secs(60),
+    ///         interval: Duration::from_secs(10),
+    ///         retries: 5,
+    ///     }))
+    ///     .start().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub const fn tcp_keepalive_server(mut self, config: Option<TcpKeepaliveConfig>) -> Self {
+        self.tcp_keepalive_server = config;
+        self
+    }
+
     /// Enable single-socket mode: bind one socket to `0.0.0.0:<sd_port>` instead
     /// of the dual-socket layout.
     ///
@@ -464,6 +536,8 @@ impl SomeIpBuilder<UnicastAddress, MulticastAddress> {
             cyclic_offer_delay: self.cyclic_offer_delay,
             transport_policy: self.transport_policy,
             magic_cookies: self.magic_cookies,
+            tcp_keepalive_client: self.tcp_keepalive_client,
+            tcp_keepalive_server: self.tcp_keepalive_server,
         };
         SomeIp::new(config).await
     }

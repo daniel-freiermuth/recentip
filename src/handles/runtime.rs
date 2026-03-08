@@ -206,8 +206,12 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
         let (tcp_cleanup_tx, tcp_cleanup_rx) = mpsc::channel::<TcpCleanupRequest>(100);
 
         // Create TCP connection pool for client-side TCP connections
-        let tcp_pool: TcpConnectionPool<T> =
-            TcpConnectionPool::new(tcp_client_tx, tcp_cleanup_tx, config.magic_cookies);
+        let tcp_pool: TcpConnectionPool<T> = TcpConnectionPool::new(
+            tcp_client_tx,
+            tcp_cleanup_tx,
+            config.magic_cookies,
+            config.tcp_keepalive_client.clone(),
+        );
 
         // Create dedicated client RPC socket (ephemeral port)
         // Per feat_req_someip_676: Port 30490 is only for SD, not for RPC

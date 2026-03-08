@@ -150,6 +150,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
                     instance_id.value(),
                     tcp_rpc_tx.clone(),
                     config.magic_cookies,
+                    config.tcp_keepalive_server.clone(),
                 ) {
                     Ok(tcp_server) => {
                         tcp_endpoint = Some(tcp_server.local_addr);

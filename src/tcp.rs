@@ -41,7 +41,7 @@
 use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
-use crate::config::PortSpec;
+use crate::config::{PortSpec, TcpKeepaliveConfig};
 use std::sync::Arc;
 
 use bytes::{Buf, Bytes, BytesMut};
@@ -101,6 +101,8 @@ pub(crate) struct TcpConnectionPool<T: TcpStream> {
     next_connection_id: Arc<std::sync::atomic::AtomicU64>,
     /// Enable Magic Cookies for TCP resync (`feat_req_someip_586`)
     magic_cookies: bool,
+    /// TCP keepalive settings applied to outgoing connections (`None` = OS default).
+    keepalive_client: Option<TcpKeepaliveConfig>,
     /// Phantom data for the stream type - use `fn()` -> T for Send+Sync
     _phantom: std::marker::PhantomData<fn() -> T>,
 }
@@ -127,6 +129,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         msg_tx: mpsc::Sender<TcpMessage>,
         cleanup_tx: mpsc::Sender<TcpCleanupRequest>,
         magic_cookies: bool,
+        keepalive_client: Option<TcpKeepaliveConfig>,
     ) -> Self {
         Self {
             connections: Arc::new(DashMap::new()),
@@ -134,6 +137,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             cleanup_tx,
             next_connection_id: Arc::new(std::sync::atomic::AtomicU64::new(1)),
             magic_cookies,
+            keepalive_client,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -235,6 +239,17 @@ impl<T: TcpStream> TcpConnectionPool<T> {
 
         let stream = tcp_connect::<T>(local_ip, local_port, target).await?;
         let local_addr = stream.local_addr()?;
+
+        // Apply client-side keepalive if configured
+        if let Some(ka) = &self.keepalive_client {
+            if let Err(e) = stream.set_keepalive(ka) {
+                tracing::warn!(
+                    "Failed to set TCP keepalive on client connection to {}: {}",
+                    target,
+                    e
+                );
+            }
+        }
 
         // Allocate unique connection ID for cleanup verification
         let connection_id = self
@@ -528,6 +543,7 @@ impl<T: TcpStream> TcpServer<T> {
         instance_id: u16,
         msg_tx: mpsc::Sender<TcpMessage>,
         magic_cookies: bool,
+        keepalive_server: Option<TcpKeepaliveConfig>,
     ) -> io::Result<Self> {
         let local_addr = listener.local_addr()?;
 
@@ -561,6 +577,16 @@ impl<T: TcpStream> TcpServer<T> {
                                     "TCP server: accepted connection from {} for service {:04x}:{:04x}",
                                     peer_addr, service_id, instance_id
                                 );
+
+                                // Apply server-side keepalive if configured
+                                if let Some(ka) = &keepalive_server {
+                                    if let Err(e) = stream.set_keepalive(ka) {
+                                        tracing::warn!(
+                                            "Failed to set TCP keepalive on accepted connection from {}: {}",
+                                            peer_addr, e
+                                        );
+                                    }
+                                }
 
                                 // Create per-connection response channel
                                 let (conn_send_tx, conn_send_rx) = mpsc::channel::<Bytes>(32);

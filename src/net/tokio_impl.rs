@@ -116,6 +116,29 @@ impl TcpStream for tokio::net::TcpStream {
             }
         })
     }
+
+    fn set_keepalive(&self, config: &crate::config::TcpKeepaliveConfig) -> io::Result<()> {
+        use socket2::{SockRef, TcpKeepalive};
+        let keepalive = TcpKeepalive::new()
+            .with_time(config.time)
+            .with_interval(config.interval);
+        // TCP_KEEPCNT is not available on all platforms; skip where unsupported.
+        #[cfg(any(
+            target_os = "android",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "fuchsia",
+            target_os = "illumos",
+            target_os = "ios",
+            target_os = "linux",
+            target_os = "macos",
+            target_os = "netbsd",
+            target_os = "tvos",
+            target_os = "watchos",
+        ))]
+        let keepalive = keepalive.with_retries(config.retries);
+        SockRef::from(self).set_tcp_keepalive(&keepalive)
+    }
 }
 
 impl TcpListener for tokio::net::TcpListener {

@@ -167,6 +167,22 @@ pub trait TcpStream: Send + Sized + 'static {
     ///
     /// Returns an I/O error if the peer address cannot be retrieved.
     fn peer_addr(&self) -> io::Result<SocketAddrV4>;
+
+    /// Apply TCP keepalive settings to this connection.
+    ///
+    /// Called immediately after a connection is established (client) or accepted
+    /// (server) when keepalive is configured.
+    ///
+    /// The default no-op implementation is used by simulated sockets (turmoil)
+    /// where keepalive has no meaning.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the socket option cannot be set.
+    fn set_keepalive(&self, config: &crate::config::TcpKeepaliveConfig) -> io::Result<()> {
+        let _ = config;
+        Ok(())
+    }
 }
 
 /// Async TCP listener abstraction.

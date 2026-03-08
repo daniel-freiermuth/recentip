@@ -760,6 +760,8 @@ mod tests {
             cyclic_offer_delay: crate::config::DEFAULT_CYCLIC_OFFER_DELAY,
             transport_policy: crate::config::TransportPolicy::default(),
             magic_cookies: false,
+            tcp_keepalive_client: None,
+            tcp_keepalive_server: None,
         }
     }
 
