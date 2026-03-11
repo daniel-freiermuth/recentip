@@ -58,15 +58,6 @@ Implementation approach:
 | `subscribe_to_unknown_eventgroup_should_nack` | NACK for unknown eventgroups not sent |
 | `udp_events_real_network` | Real network event delivery failing |
 
-### SD Session ID Per-Peer Tracking
-Currently `unicast_session_id` is global. Should be `HashMap<IpAddr, u16>` per `feat_req_someipsd_765`.
-- [ ] Refactor `unicast_session_id: u16` → `unicast_session_ids: HashMap<IpAddr, u16>`
-- [ ] Add test: each peer gets independent unicast session counter
-
-### Server-Side Reboot Handling
-- [ ] Implement server expiring subscriptions on client reboot (unignore `server_expires_subscriptions_on_client_reboot`)
-- [ ] Implement server expiring subscriptions on client session regression
-
 ### Session Handling Edge Cases
 - [ ] Add test for event session ID handling (`feat_req_someip_667`)
 - [ ] Investigate `feat_req_someip_700` - do we support disabled session handling?
@@ -78,11 +69,11 @@ Currently `unicast_session_id` is global. Should be `HashMap<IpAddr, u16>` per `
 
 1. **Fix `subscribe_to_unknown_eventgroup_should_nack`** - Server should NACK subscriptions to non-offered eventgroups
 2. **Fix `udp_events_real_network`** - Debug real network UDP event delivery
-3. **Implement per-peer unicast session counters** - Refactor `unicast_session_id` to `HashMap<IpAddr, u16>`
-4. **Implement server-side client reboot detection** - Enable `server_expires_subscriptions_on_client_reboot` test
-5. **Start TP segmentation** - Begin with outgoing message segmentation logic
-6. **Create fast session wraparound test** - Mock-based test for 0xFFFF→1 wrap (current takes 256s)
-7. **Add session ID = 0 rejection** - Unignore and implement `sd_session_zero_rejected`
+3. **Start TP segmentation** - Begin with outgoing message segmentation logic
+4. **Create fast session wraparound test** - Mock-based test for 0xFFFF→1 wrap (current takes 256s)
+5. **Test: StopSubscribe session regression triggers reboot detection** - complete coverage
+6. **Add test for event session ID handling** - `feat_req_someip_667`
+7. **Investigate `feat_req_someip_700`** - does the implementation support disabled session handling?
 
 ---
 
@@ -112,10 +103,10 @@ Items not yet scheduled:
 
 | Category | Status |
 |----------|--------|
-| **Total tests** | 365 pass, 19 ignored |
+| **Total tests** | 420 pass, 11 ignored |
 | **Ignored (stubs)** | 9 TP tests, needs implementation |
-| **Ignored (pass)** | ~8 session/reboot tests (mostly work) |
-| **Ignored (fail)** | 2 tests need fixes |
+| **Ignored (design choice)** | 1 test (`subscribe_to_unknown_eventgroup_should_nack`) |
+| **Ignored (network)** | 1 test (`udp_events_real_network`) |
 
 ---
 
@@ -124,3 +115,6 @@ Items not yet scheduled:
 - Session ID & Reboot Flag compliance is **complete** - all core detection working
 - Subscribe clustering implemented with 50ms batching window
 - Reboot detection uses threshold of 100 to tolerate out-of-order delivery
+- **Session zero rejection** implemented (`sd_session_zero_rejected` passing)
+- **Server-side client reboot detection** implemented (server expires subscriptions on client reboot/session regression)
+- **8 previously-ignored tests** now passing: `sd_session_zero_rejected`, `server_expires_subscriptions_on_client_reboot`, `server_expires_subscriptions_on_client_session_regression`, `normal_session_wraparound_does_not_trigger_reboot`, `multicast_session_wraparound_does_not_affect_subscriptions`, `client_tracks_session_ids_per_server_independently`, `client_tracks_reboot_flags_per_server_independently`, `server_detects_client_reboot_clears_subscriptions_port_reuse`

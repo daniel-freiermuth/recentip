@@ -180,9 +180,11 @@ impl PeerChannelSession {
                 true
             }
 
-            // Case 2: Reboot flag stays 1, but session ID regressed or stayed same
-            // Per spec: old.session_id >= new.session_id (i.e., new <= old) is a reboot indicator
-            // This catches both regression (10 → 5) and stale session (5 → 5) with reboot flag
+            // Case 2: Reboot flag stays 1, and new session_id is not greater than old.
+            // Per spec (feat_req_someipsd_764): old.reboot==1 AND new.reboot==1 AND
+            // old.session_id >= new.session_id → Reboot detected.
+            // Equal session_id covers retransmits-that-look-like-reboots and is accepted
+            // per spec in preference to missing a real reboot.
             (Some(last_session), true) if reboot_flag && session_id <= last_session => {
                 tracing::warn!(
                     "  => REBOOT DETECTED: Case 2 - session regression {} → {} with reboot flag still set",

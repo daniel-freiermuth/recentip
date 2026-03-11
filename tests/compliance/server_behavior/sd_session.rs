@@ -26,6 +26,7 @@ use super::helpers::{
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
 
+use core::panic;
 use recentip::Transport;
 use std::time::Duration;
 
@@ -295,10 +296,7 @@ fn sd_session_starts_at_one() {
 /// Per spec, session ID 0x0000 is reserved for "session handling disabled" and
 /// must never be used in normal operation. Messages with session_id=0 should
 /// be silently dropped or ignored.
-///
-/// CURRENTLY FAILING: Implementation does NOT reject session_id=0
 #[test_log::test]
-#[ignore = "Implementation bug: session_id=0 is not being rejected"]
 fn sd_session_zero_rejected() {
     covers!(feat_req_someipsd_41, feat_req_someip_649);
 
@@ -1727,8 +1725,9 @@ fn detect_peer_reboot_session_equal() {
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        // Phase 2: "Reboot" detected - SAME session=100 with reboot=1
-        // Detection: old.reboot=1, new.reboot=1, old.session(100) >= new.session(100) → TRUE
+        // Phase 2: "Reboot" detected - session=104 (SAME as last phase 1 session) with reboot=1
+        // Detection: old.reboot=1, new.reboot=1, old.session(104) >= new.session(104) → TRUE
+        // This tests the equality edge case of spec condition feat_req_someipsd_764.
         for _ in 0..5 {
             let offer = build_sd_offer_with_session(
                 TEST_SERVICE_ID,
@@ -1738,7 +1737,7 @@ fn detect_peer_reboot_session_equal() {
                 my_ip,
                 30509,
                 5,
-                200,  // SAME session 100 (reboot detected!)
+                104,  // SAME as last phase 1 session (equal → reboot detected per spec)
                 true, // reboot=true
                 false,
             );
@@ -2100,7 +2099,6 @@ fn build_sd_find_with_session(
 /// - client1 "reboots" (session regresses with reboot=1)
 /// - Verify: client1's subscription is expired, client2 still receives events
 #[test_log::test]
-#[ignore = "Server-side client reboot detection not yet implemented"]
 fn server_expires_subscriptions_on_client_reboot() {
     covers!(feat_req_someipsd_764, feat_req_someipsd_871);
 
@@ -2191,7 +2189,7 @@ fn server_expires_subscriptions_on_client_reboot() {
     });
 
     // Client 1 - subscribes, then "reboots"
-    sim.host("client_rebooting", || async move {
+    sim.client("client_rebooting", async move {
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
         let event_socket = turmoil::net::UdpSocket::bind("0.0.0.0:40000").await?;
 
@@ -2265,7 +2263,7 @@ fn server_expires_subscriptions_on_client_reboot() {
     });
 
     // Client 2 - subscribes, does NOT reboot (stable)
-    sim.host("client_stable", || async move {
+    sim.client("client_stable", async move {
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
         let event_socket = turmoil::net::UdpSocket::bind("0.0.0.0:40001").await?;
 
@@ -2334,7 +2332,6 @@ fn server_expires_subscriptions_on_client_reboot() {
 ///
 /// NOTE: This is currently NOT IMPLEMENTED in recentIP
 #[test_log::test]
-#[ignore = "Session regression detection not yet implemented"]
 fn server_expires_subscriptions_on_client_session_regression() {
     covers!(feat_req_someipsd_764, feat_req_someipsd_871);
 
@@ -2424,7 +2421,7 @@ fn server_expires_subscriptions_on_client_session_regression() {
     });
 
     // Client 1 - subscribes, then "reboots" via session regression (reboot=1, session drops)
-    sim.host("client_rebooting", || async move {
+    sim.client("client_rebooting", async move {
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
         let event_socket = turmoil::net::UdpSocket::bind("0.0.0.0:40000").await?;
 
@@ -2498,7 +2495,7 @@ fn server_expires_subscriptions_on_client_session_regression() {
     });
 
     // Client 2 - subscribes with reboot=true, sessions always increasing (stable)
-    sim.host("client_stable", || async move {
+    sim.client("client_stable", async move {
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
         let event_socket = turmoil::net::UdpSocket::bind("0.0.0.0:40001").await?;
 
@@ -2959,7 +2956,6 @@ fn subscription_valid_after_high_session_finds() {
 ///
 /// The server should continue to honor the subscription.
 #[test_log::test]
-#[ignore = "Session regression detection not yet implemented - this tests the no-false-positive case"]
 fn normal_session_wraparound_does_not_trigger_reboot() {
     covers!(feat_req_someipsd_764, feat_req_someipsd_765);
 
@@ -3003,7 +2999,9 @@ fn normal_session_wraparound_does_not_trigger_reboot() {
         // Spawn event publisher
         tokio::spawn(async move {
             loop {
-                event_handle.notify(&[0xAA, 0xBB]);
+                if event_handle.notify(&[0xAA, 0xBB]).await.is_err() {
+                    panic!("Failed to send event");
+                }
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         });
@@ -3147,7 +3145,6 @@ fn normal_session_wraparound_does_not_trigger_reboot() {
 /// Similar to above, but tests that multicast session wraparound (from
 /// FindService/OfferService) doesn't affect unicast subscriptions.
 #[test_log::test]
-#[ignore = "Session regression detection not yet implemented - this tests the no-false-positive case"]
 fn multicast_session_wraparound_does_not_affect_subscriptions() {
     covers!(feat_req_someipsd_764, feat_req_someipsd_765);
 
@@ -3190,7 +3187,9 @@ fn multicast_session_wraparound_does_not_affect_subscriptions() {
         // Spawn event publisher
         tokio::spawn(async move {
             loop {
-                event_handle.notify(&[0xCC, 0xDD]);
+                if event_handle.notify(&[0xCC, 0xDD]).await.is_err() {
+                    panic!("Failed to send event");
+                }
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         });
@@ -5832,7 +5831,6 @@ fn client_closes_tcp_on_server_session_regression() {
 /// NOTE: Currently failing - server2 is incorrectly detected as rebooting when
 /// server1 reboots. This suggests per-peer isolation is not working correctly.
 #[test_log::test]
-#[ignore = "Per-peer isolation bug: server2 falsely detected as rebooting when server1 reboots"]
 fn client_tracks_session_ids_per_server_independently() {
     covers!(
         feat_req_someipsd_765,
@@ -5909,13 +5907,19 @@ fn client_tracks_session_ids_per_server_independently() {
 
         tokio::time::sleep(Duration::from_millis(400)).await;
 
-        // Phase 2: After server1 reboots, server1 events should stop, server2 continues
+        // Phase 2: After server1 reboots, server1 events should stop, server2 continues.
+        // Guard sub1 so that once it closes (reboot clears subscription), it doesn't
+        // monopolize the select and starve sub2 of iterations.
+        let mut sub1_open = true;
         for _ in 0..10 {
             tokio::select! {
-                result = sub1.next() => {
-                    if let Some(event) = result {
-                        if event.payload.get(0) == Some(&0x02) {
-                            SERVER1_EVENTS_AFTER.fetch_add(1, Ordering::SeqCst);
+                result = sub1.next(), if sub1_open => {
+                    match result {
+                        None => sub1_open = false,
+                        Some(event) => {
+                            if event.payload.get(0) == Some(&0x02) {
+                                SERVER1_EVENTS_AFTER.fetch_add(1, Ordering::SeqCst);
+                            }
                         }
                     }
                 }
@@ -5943,7 +5947,9 @@ fn client_tracks_session_ids_per_server_independently() {
 
         let sd_socket_discovery = Arc::clone(&sd_socket);
         let discovery_task = tokio::spawn(async move {
-            for _ in 0..20 {
+            // Use incrementing session IDs to avoid triggering false reboot detection
+            // (per spec, old.session_id >= new.session_id with reboot=true is a reboot)
+            for session in 1u16..21 {
                 let offer = build_sd_offer_with_session(
                     SERVER1_SERVICE,
                     0x0001,
@@ -5952,7 +5958,7 @@ fn client_tracks_session_ids_per_server_independently() {
                     my_ip,
                     30509,
                     5,
-                    1,
+                    session,
                     true,
                     false,
                 );
@@ -6521,7 +6527,6 @@ fn client_does_not_confuse_session_wraparound_between_servers() {
 ///
 /// NOTE: Currently failing - per-peer reboot flag isolation not working correctly.
 #[test_log::test]
-#[ignore = "Per-peer isolation bug: reboot flag confusion between servers"]
 fn client_tracks_reboot_flags_per_server_independently() {
     covers!(
         feat_req_someipsd_765,
@@ -6546,6 +6551,7 @@ fn client_tracks_reboot_flags_per_server_independently() {
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
+        .max_message_latency(Duration::from_millis(0))
         .build();
 
     sim.client("client", async move {
@@ -6588,16 +6594,22 @@ fn client_tracks_reboot_flags_per_server_independently() {
 
         tokio::time::sleep(Duration::from_millis(400)).await;
 
-        // Phase 2: After server2 reboot, server1 continues, server2 stops
+        // Phase 2: After server2 reboot, server1 continues, server2 stops.
+        // Guard sub2 so that once it closes (reboot clears subscription), it doesn't
+        // monopolize the select and starve sub1 of iterations.
+        let mut sub2_open = true;
         for _ in 0..10 {
             tokio::select! {
                 Some(_) = sub1.next() => {
                     SERVER1_EVENTS.fetch_add(1, Ordering::SeqCst);
                 }
-                result = sub2.next() => {
-                    if let Some(event) = result {
-                        if event.payload.get(0) == Some(&0x02) {
-                            SERVER2_EVENTS_AFTER.fetch_add(1, Ordering::SeqCst);
+                result = sub2.next(), if sub2_open => {
+                    match result {
+                        None => sub2_open = false,
+                        Some(event) => {
+                            if event.payload.get(0) == Some(&0x02) {
+                                SERVER2_EVENTS_AFTER.fetch_add(1, Ordering::SeqCst);
+                            }
                         }
                     }
                 }
@@ -6620,7 +6632,9 @@ fn client_tracks_reboot_flags_per_server_independently() {
 
         let sd_socket_discovery = Arc::clone(&sd_socket);
         let discovery_task = tokio::spawn(async move {
-            for _ in 0..20 {
+            // Incrementing session IDs: sending the same session_id twice with reboot=true
+            // would trigger false reboot detection (spec: old.session_id >= new.session_id).
+            for session in 1u16..21 {
                 let offer = build_sd_offer_with_session(
                     SERVER1_SERVICE,
                     0x0001,
@@ -6629,7 +6643,7 @@ fn client_tracks_reboot_flags_per_server_independently() {
                     my_ip,
                     30513,
                     5,
-                    1,
+                    session,
                     true,
                     false,
                 );
@@ -6663,8 +6677,8 @@ fn client_tracks_reboot_flags_per_server_independently() {
 
         let sd_socket_clone = Arc::clone(&sd_socket);
         tokio::spawn(async move {
-            // reboot=1, increasing sessions
-            for session in 2..10 {
+            // reboot=1, continuing from where discovery left off (session 20)
+            for session in 21..30 {
                 let offer = build_sd_offer_with_session(
                     SERVER1_SERVICE,
                     0x0001,

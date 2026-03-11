@@ -652,6 +652,16 @@ fn handle_sd_message(
     state: &mut RuntimeState,
     expect_unicast_flag: Option<bool>,
 ) -> Option<Vec<Action>> {
+    // Per feat_req_someipsd_41 / feat_req_someip_649: session_id=0 is reserved and
+    // must be silently dropped.
+    if header.session_id == 0 {
+        tracing::warn!(
+            "SD message from {} has session_id=0 (reserved); dropping",
+            from
+        );
+        return None;
+    }
+
     // Parse SD payload
     let sd_message = SdMessage::parse(cursor)?;
 

@@ -28,9 +28,7 @@ use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 
 use recentip::Transport;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
-use tokio::net::TcpSocket;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -3384,7 +3382,6 @@ fn client_detects_server_reboot_closes_server_tcp_connections() {
 }
 
 #[test_log::test]
-#[ignore = "This need real network. But for interesting real network tests to happen, we need support for the SD unicast endpoint option."]
 fn server_detects_client_reboot_clears_subscriptions_port_reuse() {
     use crate::wire_format::helpers::{ParsedHeader, SdSubscribeBuilder, SOMEIP_HEADER_SIZE};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -3658,11 +3655,9 @@ fn server_detects_client_reboot_clears_subscriptions_port_reuse() {
         // Step 1: Open TWO fresh TCP connections (like a rebooted client would)
         tracing::info!("[wire_client] Opening fresh TCP connections to SERVICE2 and SERVICE3...");
         let tcp_addr2: std::net::SocketAddr = (server_ip, service2_tcp_port).into();
-        let local_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), local_port);
 
-        let socket = TcpSocket::new_v4()?;
-        socket.bind(local_addr)?;
-        let mut tcp_stream2 = socket.connect(tcp_addr2).await?;
+        // Use turmoil TCP streams (port reuse not needed; reboot is detected via session_id=1)
+        let mut tcp_stream2 = turmoil::net::TcpStream::connect(tcp_addr2).await?;
         let local_port2 = tcp_stream2.local_addr()?.port();
         tracing::info!("[wire_client] Connected to SERVICE2, local port {}", local_port2);
 

@@ -99,14 +99,21 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
             let mut bound = None;
             for port in start..=end {
                 match U::bind(SocketAddrV4::new(unicast_ip, port)).await {
-                    Ok(s) => { bound = Some(s); break; }
-                    Err(e) => { last_err = Some(e); }
+                    Ok(s) => {
+                        bound = Some(s);
+                        break;
+                    }
+                    Err(e) => {
+                        last_err = Some(e);
+                    }
                 }
             }
-            let no_port_err = || std::io::Error::new(
-                std::io::ErrorKind::AddrInUse,
-                format!("no port available in range {start}..={end}"),
-            );
+            let no_port_err = || {
+                std::io::Error::new(
+                    std::io::ErrorKind::AddrInUse,
+                    format!("no port available in range {start}..={end}"),
+                )
+            };
             bound.ok_or_else(|| last_err.unwrap_or_else(no_port_err))?
         } */
     };
