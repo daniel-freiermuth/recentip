@@ -617,9 +617,10 @@ pub fn handle_subscribe_request(
         state.queue_unicast_sd(ack, from);
     } else {
         tracing::warn!(
-            "Received SubscribeEventgroup for unknown service {:04x}:{:04x} eventgroup {:04x} from {}",
+            "Received SubscribeEventgroup for unknown service {:04x}:{:04x} v{} eventgroup {:04x} from {}",
             entry.service_id,
             entry.instance_id,
+            entry.major_version,
             entry.eventgroup_id,
             from
         );
