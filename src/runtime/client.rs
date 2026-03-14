@@ -412,8 +412,21 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             state.find_reusable_subscription_endpoint(service_id.value(), instance_id.value())
         } else {
             // For a specific port, check whether that port already has a bound socket.
-            // If so, we can share it rather than attempting a duplicate bind.
-            state.find_existing_port_for_spec(local_port)
+            // Only reuse it when this (service_id, instance_id) is NOT already using that
+            // port — sharing with the same service would mis-route events because the
+            // SOME/IP wire format carries no eventgroup discriminator.
+            let already_owned_by_this_service = match local_port {
+                PortSpec::Fixed(p) => state
+                    .subscription_endpoint_usage
+                    .get(&p)
+                    .is_some_and(|svcs| svcs.contains(&(service_id.value(), instance_id.value()))),
+                _ => false,
+            };
+            if already_owned_by_this_service {
+                None // Force a new dedicated socket; port N is already taken → AddrInUse
+            } else {
+                state.find_existing_port_for_spec(local_port)
+            }
         };
         if let Some(reusable_port) = reuse_port {
             // Found an endpoint used by other services but not this one - reuse it!
