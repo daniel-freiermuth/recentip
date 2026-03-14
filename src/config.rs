@@ -773,6 +773,27 @@ impl OfferConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::OfferedEndpoints;
+
+    // ========================================================================
+    // Helpers
+    // ========================================================================
+
+    fn any_ip() -> std::net::Ipv4Addr {
+        std::net::Ipv4Addr::new(10, 0, 0, 1)
+    }
+
+    fn udp_ep(port: u16) -> std::net::SocketAddrV4 {
+        std::net::SocketAddrV4::new(any_ip(), port)
+    }
+
+    fn tcp_ep(port: u16) -> std::net::SocketAddrV4 {
+        std::net::SocketAddrV4::new(any_ip(), port + 1000)
+    }
+
+    // ========================================================================
+    // TTL tests
+    // ========================================================================
 
     #[test]
     fn test_ttl_clamping_to_24bit_max() {
@@ -784,5 +805,281 @@ mod tests {
         // Values exceeding 24-bit max should be clamped to SD_TTL_INFINITE
         assert_eq!(clamp_ttl_to_24bit(0x01_00_00_00, "test"), SD_TTL_INFINITE);
         assert_eq!(clamp_ttl_to_24bit(u32::MAX, "test"), SD_TTL_INFINITE);
+    }
+
+    // ========================================================================
+    // TransportPolicy selection tests
+    // ========================================================================
+
+    /// Default policy prefers UDP over TCP when both endpoints are available.
+    #[test]
+    fn policy_default_is_prefer_udp() {
+        let policy = TransportPolicy::default();
+        let udp = udp_ep(30500);
+        let tcp = tcp_ep(30500);
+
+        let sel = policy
+            .select(&OfferedEndpoints::Both { udp, tcp })
+            .expect("default policy must select an endpoint");
+
+        assert_eq!(sel.transport, Transport::Udp);
+        assert_eq!(sel.remote_endpoint, udp);
+    }
+
+    /// `prefer_tcp()` selects the TCP endpoint from a `TcpOnly` offer.
+    #[test]
+    fn policy_prefer_tcp_from_tcp_only() {
+        let policy = TransportPolicy::prefer_tcp();
+        let tcp = tcp_ep(30501);
+
+        let sel = policy
+            .select(&OfferedEndpoints::TcpOnly(tcp))
+            .expect("prefer_tcp must match TcpOnly offer");
+
+        assert_eq!(sel.transport, Transport::Tcp);
+        assert_eq!(sel.remote_endpoint, tcp);
+    }
+
+    /// `prefer_tcp()` selects TCP when the server offers both transports.
+    #[test]
+    fn policy_prefer_tcp_from_both() {
+        let policy = TransportPolicy::prefer_tcp();
+        let udp = udp_ep(30502);
+        let tcp = tcp_ep(30502);
+
+        let sel = policy
+            .select(&OfferedEndpoints::Both { udp, tcp })
+            .expect("prefer_tcp must match Both offer");
+
+        assert_eq!(sel.transport, Transport::Tcp);
+        assert_eq!(sel.remote_endpoint, tcp);
+    }
+
+    /// `prefer_tcp()` falls back to UDP when only UDP is offered.
+    #[test]
+    fn policy_prefer_tcp_fallback_to_udp() {
+        let policy = TransportPolicy::prefer_tcp();
+        let udp = udp_ep(30503);
+
+        let sel = policy
+            .select(&OfferedEndpoints::UdpOnly(udp))
+            .expect("prefer_tcp must fall back to UDP when TCP unavailable");
+
+        assert_eq!(sel.transport, Transport::Udp);
+        assert_eq!(sel.remote_endpoint, udp);
+    }
+
+    /// `prefer_udp()` selects the UDP endpoint from a `UdpOnly` offer.
+    #[test]
+    fn policy_prefer_udp_from_udp_only() {
+        let policy = TransportPolicy::prefer_udp();
+        let udp = udp_ep(30504);
+
+        let sel = policy
+            .select(&OfferedEndpoints::UdpOnly(udp))
+            .expect("prefer_udp must match UdpOnly offer");
+
+        assert_eq!(sel.transport, Transport::Udp);
+        assert_eq!(sel.remote_endpoint, udp);
+    }
+
+    /// `prefer_udp()` selects UDP when the server offers both transports.
+    #[test]
+    fn policy_prefer_udp_from_both() {
+        let policy = TransportPolicy::prefer_udp();
+        let udp = udp_ep(30505);
+        let tcp = tcp_ep(30505);
+
+        let sel = policy
+            .select(&OfferedEndpoints::Both { udp, tcp })
+            .expect("prefer_udp must match Both offer");
+
+        assert_eq!(sel.transport, Transport::Udp);
+        assert_eq!(sel.remote_endpoint, udp);
+    }
+
+    /// `prefer_udp()` falls back to TCP when only TCP is offered.
+    #[test]
+    fn policy_prefer_udp_fallback_to_tcp() {
+        let policy = TransportPolicy::prefer_udp();
+        let tcp = tcp_ep(30506);
+
+        let sel = policy
+            .select(&OfferedEndpoints::TcpOnly(tcp))
+            .expect("prefer_udp must fall back to TCP when UDP unavailable");
+
+        assert_eq!(sel.transport, Transport::Tcp);
+        assert_eq!(sel.remote_endpoint, tcp);
+    }
+
+    /// A TCP-only policy (no fallback) returns `None` for a UDP-only server.
+    #[test]
+    fn policy_tcp_only_no_match_for_udp_server() {
+        let policy = TransportPolicy::new(vec![TransportPreference::tcp()]);
+        let udp = udp_ep(30507);
+
+        let sel = policy.select(&OfferedEndpoints::UdpOnly(udp));
+
+        assert!(
+            sel.is_none(),
+            "TCP-only policy should not match a UDP-only server"
+        );
+    }
+
+    /// A UDP-only policy (no fallback) returns `None` for a TCP-only server.
+    #[test]
+    fn policy_udp_only_no_match_for_tcp_server() {
+        let policy = TransportPolicy::new(vec![TransportPreference::udp()]);
+        let tcp = tcp_ep(30508);
+
+        let sel = policy.select(&OfferedEndpoints::TcpOnly(tcp));
+
+        assert!(
+            sel.is_none(),
+            "UDP-only policy should not match a TCP-only server"
+        );
+    }
+
+    /// An empty policy returns `None` for every endpoint type.
+    #[test]
+    fn policy_empty_returns_none() {
+        let policy = TransportPolicy::new(vec![]);
+        let udp = udp_ep(30509);
+        let tcp = tcp_ep(30509);
+
+        assert!(policy.select(&OfferedEndpoints::UdpOnly(udp)).is_none());
+        assert!(policy.select(&OfferedEndpoints::TcpOnly(tcp)).is_none());
+        assert!(policy
+            .select(&OfferedEndpoints::Both { udp, tcp })
+            .is_none());
+    }
+
+    /// `with_port()` stores a `PortSpec::Fixed` in the returned `TransportSelection`.
+    #[test]
+    fn policy_with_fixed_port_sets_port_spec() {
+        let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(30600)]);
+        let udp = udp_ep(30510);
+
+        let sel = policy
+            .select(&OfferedEndpoints::UdpOnly(udp))
+            .expect("policy must match");
+
+        assert_eq!(sel.local_port, PortSpec::Fixed(30600));
+        assert_eq!(sel.transport, Transport::Udp);
+    }
+
+    /*
+    /// `with_port_range()` stores a `PortSpec::Range` in the returned `TransportSelection`.
+    #[test]
+    fn policy_with_port_range_sets_port_spec() {
+        let policy =
+            TransportPolicy::new(vec![TransportPreference::udp().with_port_range(30700, 30710)]);
+        let udp = udp_ep(30511);
+
+        let sel = policy
+            .select(&OfferedEndpoints::UdpOnly(udp))
+            .expect("policy must match");
+
+        assert_eq!(sel.local_port, PortSpec::Range(30700, 30710));
+        assert_eq!(sel.transport, Transport::Udp);
+    } */
+
+    /// `From<Transport::Tcp>` creates a prefer-TCP policy (TCP first, UDP fallback).
+    #[test]
+    fn policy_from_transport_tcp() {
+        let policy = TransportPolicy::from(Transport::Tcp);
+        let udp = udp_ep(30512);
+        let tcp = tcp_ep(30512);
+
+        // Should select TCP when both are offered
+        let sel = policy
+            .select(&OfferedEndpoints::Both { udp, tcp })
+            .expect("must match");
+        assert_eq!(sel.transport, Transport::Tcp);
+
+        // Should fall back to UDP when only UDP is offered
+        let sel = policy
+            .select(&OfferedEndpoints::UdpOnly(udp))
+            .expect("must fall back to UDP");
+        assert_eq!(sel.transport, Transport::Udp);
+    }
+
+    /// `From<Transport::Udp>` creates a prefer-UDP policy (UDP first, TCP fallback).
+    #[test]
+    fn policy_from_transport_udp() {
+        let policy = TransportPolicy::from(Transport::Udp);
+        let udp = udp_ep(30513);
+        let tcp = tcp_ep(30513);
+
+        // Should select UDP when both are offered
+        let sel = policy
+            .select(&OfferedEndpoints::Both { udp, tcp })
+            .expect("must match");
+        assert_eq!(sel.transport, Transport::Udp);
+
+        // Should fall back to TCP when only TCP is offered
+        let sel = policy
+            .select(&OfferedEndpoints::TcpOnly(tcp))
+            .expect("must fall back to TCP");
+        assert_eq!(sel.transport, Transport::Tcp);
+    }
+
+    /// `primary()` returns the transport of the first entry in the policy list.
+    #[test]
+    fn policy_primary_returns_first_transport() {
+        let tcp_first = TransportPolicy::prefer_tcp();
+        assert_eq!(tcp_first.primary(), Transport::Tcp);
+
+        let udp_first = TransportPolicy::prefer_udp();
+        assert_eq!(udp_first.primary(), Transport::Udp);
+
+        let tcp_only = TransportPolicy::new(vec![TransportPreference::tcp()]);
+        assert_eq!(tcp_only.primary(), Transport::Tcp);
+    }
+
+    /// `primary()` returns `Transport::Udp` for an empty policy.
+    #[test]
+    fn policy_primary_empty_defaults_to_udp() {
+        let empty = TransportPolicy::new(vec![]);
+        assert_eq!(empty.primary(), Transport::Udp);
+    }
+
+    /// The selected `remote_endpoint` always exactly matches the address advertised
+    /// by the server for the chosen transport.
+    #[test]
+    fn selection_endpoint_matches_offered() {
+        let udp = std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(192, 168, 5, 10), 31000);
+        let tcp = std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(192, 168, 5, 10), 31001);
+
+        let tcp_sel = TransportPolicy::prefer_tcp()
+            .select(&OfferedEndpoints::Both { udp, tcp })
+            .unwrap();
+        assert_eq!(tcp_sel.remote_endpoint, tcp);
+
+        let udp_sel = TransportPolicy::prefer_udp()
+            .select(&OfferedEndpoints::Both { udp, tcp })
+            .unwrap();
+        assert_eq!(udp_sel.remote_endpoint, udp);
+    }
+
+    /// When multiple preferences are listed, the **first** one that matches wins,
+    /// even if later entries would also match.
+    #[test]
+    fn preference_ordering_first_match_wins() {
+        let policy = TransportPolicy::new(vec![
+            TransportPreference::udp().with_port(30800),
+            TransportPreference::tcp(),
+        ]);
+        let udp = udp_ep(30514);
+        let tcp = tcp_ep(30514);
+
+        let sel = policy
+            .select(&OfferedEndpoints::Both { udp, tcp })
+            .expect("must match");
+
+        // First preference (UDP with port 30800) should be chosen
+        assert_eq!(sel.transport, Transport::Udp);
+        assert_eq!(sel.local_port, PortSpec::Fixed(30800));
+        assert_eq!(sel.remote_endpoint, udp);
     }
 }

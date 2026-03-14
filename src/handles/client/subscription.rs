@@ -41,18 +41,26 @@ use crate::{Event, EventgroupId, InstanceId, ServiceId};
 /// # Ok(())
 /// # }
 /// ```
-#[must_use]
-pub struct SubscriptionBuilder {
-    inner: Arc<RuntimeInner>,
-    service_id: ServiceId,
-    instance_id: InstanceId,
-    major_version: u8,
-    eventgroups: vec1::Vec1<EventgroupId>,
-    transport: crate::config::Transport,
-    remote_endpoint: std::net::SocketAddrV4,
-    sd_endpoint: std::net::SocketAddrV4,
-    local_port: PortSpec,
+/// Internal state of a [`SubscriptionBuilder`].
+enum SubscriptionBuilderState {
+    Ready {
+        inner: Arc<RuntimeInner>,
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        major_version: u8,
+        eventgroups: vec1::Vec1<EventgroupId>,
+        transport: crate::config::Transport,
+        remote_endpoint: std::net::SocketAddrV4,
+        sd_endpoint: std::net::SocketAddrV4,
+        local_port: PortSpec,
+    },
+    /// Builder was created with a pre-set error (e.g. `TransportMismatch`).
+    /// Awaiting it immediately returns `Err(error)`.
+    Errored(Error),
 }
+
+#[must_use]
+pub struct SubscriptionBuilder(SubscriptionBuilderState);
 
 impl SubscriptionBuilder {
     /// Create a new subscription builder with the first eventgroup.
@@ -67,7 +75,7 @@ impl SubscriptionBuilder {
         sd_endpoint: std::net::SocketAddrV4,
         local_port: PortSpec,
     ) -> Self {
-        Self {
+        Self(SubscriptionBuilderState::Ready {
             inner,
             service_id,
             instance_id,
@@ -77,14 +85,26 @@ impl SubscriptionBuilder {
             remote_endpoint,
             sd_endpoint,
             local_port,
-        }
+        })
+    }
+
+    /// Create a builder pre-loaded with an error; awaiting it returns `Err(e)` immediately.
+    pub(crate) const fn errored(e: Error) -> Self {
+        Self(SubscriptionBuilderState::Errored(e))
     }
 
     /// Add another eventgroup to this subscription.
     ///
     /// All eventgroups share the same network endpoint.
+    /// Has no effect when the builder is in an errored state.
     pub fn and(mut self, eventgroup: EventgroupId) -> Self {
-        self.eventgroups.push(eventgroup);
+        if let SubscriptionBuilderState::Ready {
+            ref mut eventgroups,
+            ..
+        } = self.0
+        {
+            eventgroups.push(eventgroup);
+        }
         self
     }
 
@@ -103,29 +123,65 @@ impl SubscriptionBuilder {
     ///
     /// # Errors
     ///
+    /// - [`Error::TransportMismatch`] if the transport policy has no match for the service.
     /// - [`Error::SubscriptionRejected`] if the server sends a NACK.
     /// - [`Error::RuntimeShutdown`] if the runtime has been dropped.
     pub async fn subscribe(self) -> Result<Subscription> {
+        let (
+            inner,
+            service_id,
+            instance_id,
+            major_version,
+            eventgroups,
+            transport,
+            remote_endpoint,
+            sd_endpoint,
+            local_port,
+        ) = match self.0 {
+            SubscriptionBuilderState::Ready {
+                inner,
+                service_id,
+                instance_id,
+                major_version,
+                eventgroups,
+                transport,
+                remote_endpoint,
+                sd_endpoint,
+                local_port,
+            } => (
+                inner,
+                service_id,
+                instance_id,
+                major_version,
+                eventgroups,
+                transport,
+                remote_endpoint,
+                sd_endpoint,
+                local_port,
+            ),
+            SubscriptionBuilderState::Errored(e) => return Err(e),
+        };
+
         let (events_tx, events_rx) = mpsc::channel(64);
         let (response_tx, response_rx) = oneshot::channel();
 
         // Clone eventgroups before consuming it with mapped()
-        let eventgroups_for_subscription = self.eventgroups.clone();
+        let eventgroups_for_subscription = eventgroups.clone();
 
         // Send subscribe command for all eventgroups
-        self.inner
+        inner
             .cmd_tx
             .send(Command::Subscribe {
-                service_id: self.service_id,
-                instance_id: self.instance_id,
-                major_version: self.major_version,
-                eventgroup_ids: self.eventgroups.mapped(|id| id.value()),
+                service_id,
+                instance_id,
+                major_version,
+                eventgroup_ids: eventgroups.mapped(|id| id.value()),
                 events: events_tx,
                 response: response_tx,
-                transport: self.transport,
-                remote_endpoint: self.remote_endpoint,
-                sd_endpoint: self.sd_endpoint,
-                local_port: self.local_port,
+                transport,
+                remote_endpoint,
+                sd_endpoint,
+                local_port,
             })
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
@@ -135,10 +191,10 @@ impl SubscriptionBuilder {
         let subscription_id = response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
 
         Ok(Subscription::new(
-            self.inner,
-            self.service_id,
-            self.instance_id,
-            self.major_version,
+            inner,
+            service_id,
+            instance_id,
+            major_version,
             eventgroups_for_subscription.into_vec(),
             subscription_id,
             events_rx,

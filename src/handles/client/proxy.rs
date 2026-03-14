@@ -8,13 +8,12 @@ use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
-use crate::config::{PortSpec, TransportPolicy, TransportSelection};
+use crate::config::{TransportPolicy, TransportSelection};
 use crate::error::{Error, Result};
 use crate::handles::runtime::RuntimeInner;
 use crate::runtime::Command;
 use crate::{
     EventgroupId, InstanceId, MajorVersion, MethodId, OfferedEndpoints, Response, ServiceId,
-    Transport,
 };
 
 use super::SubscriptionBuilder;
@@ -215,19 +214,18 @@ impl OfferedService {
         }
     }
 
-    /// Get the transport being used for this proxy.
-    ///
-    /// Returns the transport (TCP or UDP) that was selected during service discovery.
-    /// This reflects the `preferred_transport` configuration at the time of discovery,
-    /// or whichever transport was available if only one was offered.
+    /// Get the transport being used for this proxy, or `None` if the configured
+    /// transport policy has no match for the server's offered endpoints.
     ///
     /// # Stability
     ///
     /// **This API is unstable and intended for testing/diagnostics only.**
     /// It may be removed or changed in future versions without notice.
     #[doc(hidden)]
-    pub fn transport(&self) -> crate::config::Transport {
-        self.effective_transport().transport
+    pub fn transport(&self) -> Option<crate::config::Transport> {
+        self.transport_policy
+            .select(&self.remote_endpoints)
+            .map(|sel| sel.transport)
     }
 
     /// Call a method and wait for the response.
@@ -242,7 +240,7 @@ impl OfferedService {
         let payload_bytes = bytes::Bytes::copy_from_slice(payload.as_ref());
         let (response_tx, response_rx) = oneshot::channel();
 
-        let sel = self.effective_transport();
+        let sel = self.effective_transport()?;
 
         self.inner
             .cmd_tx
@@ -268,7 +266,7 @@ impl OfferedService {
     pub async fn fire_and_forget(&self, method: MethodId, payload: &[u8]) -> Result<()> {
         let payload_bytes = bytes::Bytes::copy_from_slice(payload);
 
-        let sel = self.effective_transport();
+        let sel = self.effective_transport()?;
 
         self.inner
             .cmd_tx
@@ -285,22 +283,12 @@ impl OfferedService {
         Ok(())
     }
 
-    fn effective_transport(&self) -> TransportSelection {
-        // Try the transport policy first; fall back to any available endpoint.
-        if let Some(sel) = self.transport_policy.select(&self.remote_endpoints) {
-            return sel;
-        }
-        // Policy found no match — use whatever the server offers with an ephemeral port.
-        let (remote_endpoint, transport) = match &self.remote_endpoints {
-            crate::OfferedEndpoints::UdpOnly(addr) => (*addr, Transport::Udp),
-            crate::OfferedEndpoints::TcpOnly(addr) => (*addr, Transport::Tcp),
-            crate::OfferedEndpoints::Both { udp, .. } => (*udp, Transport::Udp),
-        };
-        TransportSelection {
-            remote_endpoint,
-            transport,
-            local_port: PortSpec::Any,
-        }
+    /// Like `effective_transport`, but returns `Err(TransportMismatch)` when the
+    /// policy has no entry that matches the server's offered endpoints.
+    fn effective_transport(&self) -> Result<TransportSelection> {
+        self.transport_policy
+            .select(&self.remote_endpoints)
+            .ok_or(Error::TransportMismatch)
     }
 
     /// Subscribe to an eventgroup (or multiple with `.and()`).
@@ -325,18 +313,20 @@ impl OfferedService {
     /// # }
     /// ```
     pub fn subscribe(&self, eventgroup: EventgroupId) -> SubscriptionBuilder {
-        let sel = self.effective_transport();
-        SubscriptionBuilder::new(
-            Arc::clone(&self.inner),
-            self.service_id,
-            self.instance_id,
-            self.major_version,
-            eventgroup,
-            sel.transport,
-            sel.remote_endpoint,
-            self.remote_sd_endpoint,
-            sel.local_port,
-        )
+        match self.effective_transport() {
+            Ok(sel) => SubscriptionBuilder::new(
+                Arc::clone(&self.inner),
+                self.service_id,
+                self.instance_id,
+                self.major_version,
+                eventgroup,
+                sel.transport,
+                sel.remote_endpoint,
+                self.remote_sd_endpoint,
+                sel.local_port,
+            ),
+            Err(e) => SubscriptionBuilder::errored(e),
+        }
     }
 
     /// Get the service ID
@@ -354,9 +344,12 @@ impl OfferedService {
         self.major_version
     }
 
-    /// Get the endpoint address
-    pub fn endpoint(&self) -> std::net::SocketAddrV4 {
-        self.effective_transport().remote_endpoint
+    /// Get the endpoint address, or `None` if the configured transport policy
+    /// has no match for the server's offered endpoints.
+    pub fn endpoint(&self) -> Option<std::net::SocketAddrV4> {
+        self.transport_policy
+            .select(&self.remote_endpoints)
+            .map(|sel| sel.remote_endpoint)
     }
 
     /// Check if the service offer is currently alive (TTL not expired).

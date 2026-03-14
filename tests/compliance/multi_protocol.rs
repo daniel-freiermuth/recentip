@@ -1086,7 +1086,7 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
         );
         // Verify transport is TCP (since server only offers TCP)
         assert_eq!(
-            proxy.transport(),
+            proxy.transport().unwrap(),
             Transport::Tcp,
             "Should use TCP when it's the only option"
         );
@@ -1196,7 +1196,7 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
             .expect("Service available");
 
         assert_eq!(
-            proxy.transport(),
+            proxy.transport().unwrap(),
             Transport::Udp,
             "Should use UDP when it's the only option"
         );
@@ -1486,7 +1486,7 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
 
         eprintln!("[client] Service discovered (should be UDP endpoint despite TCP preference)");
         assert_eq!(
-            proxy.transport(),
+            proxy.transport().unwrap(),
             Transport::Udp,
             "Should use UDP when it's the only option"
         );
@@ -1780,12 +1780,12 @@ fn preferred_transport_respected_when_both_available() {
 
         // Verify preferred transport is used
         assert_eq!(
-            proxy.transport(),
+            proxy.transport().unwrap(),
             Transport::Tcp,
             "TCP-preferring client should use TCP transport when both are available"
         );
         eprintln!(
-            "[tcp_client] Using transport: {:?}, endpoint: {}",
+            "[tcp_client] Using transport: {:?}, endpoint: {:?}",
             proxy.transport(),
             proxy.endpoint()
         );
@@ -1829,12 +1829,12 @@ fn preferred_transport_respected_when_both_available() {
 
         // Verify preferred transport is used
         assert_eq!(
-            proxy.transport(),
+            proxy.transport().unwrap(),
             Transport::Udp,
             "UDP-preferring client should use UDP transport when both are available"
         );
         eprintln!(
-            "[udp_client] Using transport: {:?}, endpoint: {}",
+            "[udp_client] Using transport: {:?}, endpoint: {:?}",
             proxy.transport(),
             proxy.endpoint()
         );

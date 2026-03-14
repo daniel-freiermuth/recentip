@@ -136,6 +136,18 @@ pub enum Error {
     /// Service IDs 0x0000 and 0xFFFF are reserved by the SOME/IP specification
     /// and cannot be used. Use a valid service ID in range 0x0001-0xFFFE.
     InvalidServiceId,
+
+    /// The configured transport policy has no matching transport for this service.
+    ///
+    /// The service was discovered but its offered endpoints (UDP-only or TCP-only)
+    /// are incompatible with the strict policy set via
+    /// [`transport_policy`](crate::SomeIpBuilder::transport_policy). For example,
+    /// a TCP-only policy fails when the server only offers UDP.
+    ///
+    /// To fix: use [`TransportPolicy::prefer_tcp`](crate::TransportPolicy::prefer_tcp)
+    /// or [`TransportPolicy::prefer_udp`](crate::TransportPolicy::prefer_udp) which
+    /// include a fallback, or ensure the server offers the required transport.
+    TransportMismatch,
 }
 
 impl fmt::Display for Error {
@@ -154,6 +166,10 @@ impl fmt::Display for Error {
             Self::InvalidServiceId => {
                 write!(f, "Invalid service ID (0x0000 and 0xFFFF are reserved)")
             }
+            Self::TransportMismatch => write!(
+                f,
+                "Transport policy has no matching transport for the offered service endpoints"
+            ),
         }
     }
 }

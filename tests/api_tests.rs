@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 mod helpers;
+#[path = "api_tests/transport_policy.rs"]
+mod transport_policy;
 
 /// Type alias for turmoil-based runtime for convenience
 
@@ -2662,10 +2664,10 @@ fn test_discovered_services() {
         );
         assert_eq!(service.instance_id(), InstanceId::Id(0x0001));
         assert_eq!(service.major_version(), 1);
-        assert_eq!(*service.endpoint().ip(), turmoil::lookup("server"));
+        assert_eq!(*service.endpoint().unwrap().ip(), turmoil::lookup("server"));
 
         use recentip::config::Transport;
-        assert_eq!(service.transport(), Transport::Udp);
+        assert_eq!(service.transport().unwrap(), Transport::Udp);
 
         // The service should be alive
         assert!(service.is_offer_alive(), "Service should be alive");

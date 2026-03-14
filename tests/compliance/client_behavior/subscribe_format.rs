@@ -779,7 +779,7 @@ fn subscribe_format_client_adapts_to_available_transport() {
 
         // Verify the proxy detected UDP transport despite TCP preference
         assert_eq!(
-            proxy.transport(),
+            proxy.transport().unwrap(),
             recentip::Transport::Udp,
             "Proxy should use UDP transport when that's all that's offered"
         );
