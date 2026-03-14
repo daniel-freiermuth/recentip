@@ -4,6 +4,7 @@ use super::{TcpListener, TcpStream, UdpSocket};
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing;
 
 impl UdpSocket for tokio::net::UdpSocket {
     async fn bind(addr: SocketAddrV4) -> io::Result<Self> {
@@ -37,8 +38,10 @@ impl UdpSocket for tokio::net::UdpSocket {
             .await
             .map(|(size, addr)| match addr {
                 SocketAddr::V4(v4) => (size, v4),
-                SocketAddr::V6(_) => {
-                    unreachable!("tokio::net::UdpSocket should only produce IPv4 addresses")
+                SocketAddr::V6(v6) => {
+                    tracing::error!("BUG: tokio::net::UdpSocket produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
+                    // Return 0.0.0.0:0 as a fallback; this should fail gracefully downstream
+                    (size, SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
                 }
             })
     }
@@ -58,8 +61,9 @@ impl UdpSocket for tokio::net::UdpSocket {
     fn local_addr(&self) -> io::Result<SocketAddrV4> {
         Self::local_addr(self).map(|addr| match addr {
             SocketAddr::V4(v4) => v4,
-            SocketAddr::V6(_) => {
-                unreachable!("tokio::net::UdpSocket should only produce IPv4 addresses")
+            SocketAddr::V6(v6) => {
+                tracing::error!("BUG: tokio::net::UdpSocket::local_addr produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
+                SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)
             }
         })
     }
@@ -102,8 +106,9 @@ impl TcpStream for tokio::net::TcpStream {
     fn local_addr(&self) -> io::Result<SocketAddrV4> {
         Self::local_addr(self).map(|addr| match addr {
             SocketAddr::V4(v4) => v4,
-            SocketAddr::V6(_) => {
-                unreachable!("tokio::net::TcpStream should only produce IPv4 addresses")
+            SocketAddr::V6(v6) => {
+                tracing::error!("BUG: tokio::net::TcpStream::local_addr produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
+                SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)
             }
         })
     }
@@ -111,8 +116,9 @@ impl TcpStream for tokio::net::TcpStream {
     fn peer_addr(&self) -> io::Result<SocketAddrV4> {
         Self::peer_addr(self).map(|addr| match addr {
             SocketAddr::V4(v4) => v4,
-            SocketAddr::V6(_) => {
-                unreachable!("tokio::net::TcpStream should only produce IPv4 addresses")
+            SocketAddr::V6(v6) => {
+                tracing::error!("BUG: tokio::net::TcpStream::peer_addr produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
+                SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)
             }
         })
     }
@@ -151,8 +157,9 @@ impl TcpListener for tokio::net::TcpListener {
     async fn accept(&self) -> io::Result<(Self::Stream, SocketAddrV4)> {
         Self::accept(self).await.map(|(stream, addr)| match addr {
             SocketAddr::V4(v4) => (stream, v4),
-            SocketAddr::V6(_) => {
-                unreachable!("tokio::net::TcpListener should only produce IPv4 addresses")
+            SocketAddr::V6(v6) => {
+                tracing::error!("BUG: tokio::net::TcpListener::accept produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
+                (stream, SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
             }
         })
     }
@@ -160,8 +167,9 @@ impl TcpListener for tokio::net::TcpListener {
     fn local_addr(&self) -> io::Result<SocketAddrV4> {
         Self::local_addr(self).map(|addr| match addr {
             SocketAddr::V4(v4) => v4,
-            SocketAddr::V6(_) => {
-                unreachable!("tokio::net::TcpListener should only produce IPv4 addresses")
+            SocketAddr::V6(v6) => {
+                tracing::error!("BUG: tokio::net::TcpListener::local_addr produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
+                SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)
             }
         })
     }

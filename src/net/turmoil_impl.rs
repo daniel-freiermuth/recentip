@@ -1,6 +1,8 @@
 //! Turmoil socket implementations for testing.
 //! Enabled automatically during tests or with the `turmoil` feature.
 
+#![allow(clippy::unreachable)]
+
 use super::{TcpListener, TcpStream, UdpSocket};
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
