@@ -1330,3 +1330,554 @@ fn fixed_port_policy_subscribe_uses_specified_source_port() {
         "server must see subscriber source port {CLIENT_PORT}, got {addr}"
     );
 }
+
+/*
+// -----------------------------------------------------------------------
+// port_range_policy_subscribe_uses_port_in_range
+// -----------------------------------------------------------------------
+
+/// `TransportPreference::udp().with_port_range(A, B)` causes the client to bind
+/// its UDP subscription socket to the first free port in `A..=B`. The server
+/// observes a source port within that range via `ServiceEvent::Subscribe`.
+///
+/// Port binding is a property of the subscription socket, not the RPC socket,
+/// so this test uses `subscribe()` to verify the feature end-to-end.
+#[test_log::test]
+fn port_range_policy_subscribe_uses_port_in_range() {
+    use recentip::config::TransportPreference;
+    use std::net::SocketAddrV4;
+
+    const PORT_RANGE_START: u16 = 49300;
+    const PORT_RANGE_END: u16 = 49310;
+
+    let client_addr_seen: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let capture = Arc::clone(&client_addr_seen);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let capture = Arc::clone(&capture);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offering = runtime
+                .offer(PORT_RANGE_SVC, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+
+            // Capture subscriber address from the Subscribe SD event
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+                *capture.lock().unwrap() = Some(client.address);
+                // Wait for the queued SubscribeAck to be flushed (100ms cluster window)
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let policy = TransportPolicy::new(vec![
+            TransportPreference::udp().with_port_range(PORT_RANGE_START, PORT_RANGE_END),
+        ]);
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .transport_policy(policy)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime.find(PORT_RANGE_SVC).instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery timeout")
+        .expect("discovery failed");
+
+        let _sub = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe timeout")
+        .expect("subscribe failed");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let seen = client_addr_seen.lock().unwrap();
+    let addr = seen.expect("server must have seen subscriber");
+    assert!(
+        (PORT_RANGE_START..=PORT_RANGE_END).contains(&addr.port()),
+        "server must see subscriber source port in {PORT_RANGE_START}..={PORT_RANGE_END}, got {addr}"
+    );
+} */
+
+// -----------------------------------------------------------------------
+// fixed_port_shared_across_two_services
+// -----------------------------------------------------------------------
+
+/// When two services are subscribed with the **same** fixed local port the
+/// runtime reuses the already-bound UDP socket rather than attempting a
+/// duplicate bind.  Both subscriptions succeed, and the server observes
+/// `ServiceEvent::Subscribe` for each service with the same source port.
+///
+/// This mirrors the `PortSpec::Any` sharing behaviour: one OS socket,
+/// multiple logical subscriptions, events routed by service/eventgroup.
+#[test_log::test]
+fn fixed_port_shared_across_two_services() {
+    use recentip::config::TransportPreference;
+    use std::net::SocketAddrV4;
+
+    const PORT: u16 = 49500;
+
+    let addr_a_seen: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let addr_b_seen: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let capture_a = Arc::clone(&addr_a_seen);
+    let capture_b = Arc::clone(&addr_b_seen);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let cap_a = Arc::clone(&capture_a);
+        let cap_b = Arc::clone(&capture_b);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offering_a = runtime
+                .offer(FIXED_PORT_CONFLICT_SVC_A, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+
+            let mut offering_b = runtime
+                .offer(FIXED_PORT_CONFLICT_SVC_B, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+
+            // Capture subscribe events for both services, then wait for ACKs to flush
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering_a.next().await {
+                *cap_a.lock().unwrap() = Some(client.address);
+            }
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering_b.next().await {
+                *cap_b.lock().unwrap() = Some(client.address);
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Global policy: UDP with a specific fixed port
+        let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(PORT)]);
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .transport_policy(policy)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(FIXED_PORT_CONFLICT_SVC_A)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery_a timeout")
+        .expect("discovery_a failed");
+
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(FIXED_PORT_CONFLICT_SVC_B)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery_b timeout")
+        .expect("discovery_b failed");
+
+        // First subscription binds port — must succeed
+        let _sub_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_a.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("first subscribe timeout")
+        .expect("first subscribe must succeed");
+
+        // Second subscription reuses the already-bound socket — must also succeed
+        let _sub_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_b.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("second subscribe timeout")
+        .expect("second subscribe must succeed: socket is shared, not re-bound");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let addr_a = addr_a_seen
+        .lock()
+        .unwrap()
+        .expect("server must have seen subscribe for service A");
+    let addr_b = addr_b_seen
+        .lock()
+        .unwrap()
+        .expect("server must have seen subscribe for service B");
+    assert_eq!(
+        addr_a.port(),
+        PORT,
+        "service A subscriber source port must be {PORT}, got {addr_a}"
+    );
+    assert_eq!(
+        addr_b.port(),
+        PORT,
+        "service B subscriber source port must be {PORT} (shared socket), got {addr_b}"
+    );
+}
+
+// -----------------------------------------------------------------------
+// fixed_port_two_services_two_servers_different_ports
+// -----------------------------------------------------------------------
+
+/// Two independent services hosted on two separate servers.  Each is subscribed
+/// with a **different** fixed port via a per-proxy `TransportPolicy` override.
+///
+/// Both subscriptions succeed; each server observes the expected client source
+/// port in its `ServiceEvent::Subscribe`.
+///
+/// This models the common production pattern: nodes each have a known port for
+/// receiving events, using `with_transport_policy()` to vary the port per proxy
+/// while keeping a simple global default policy.
+#[test_log::test]
+fn fixed_port_two_services_two_servers_different_ports() {
+    use recentip::config::TransportPreference;
+    use std::net::SocketAddrV4;
+
+    const PORT_A: u16 = 49501;
+    const PORT_B: u16 = 49502;
+
+    let port_a_seen: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let port_b_seen: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let capture_a = Arc::clone(&port_a_seen);
+    let capture_b = Arc::clone(&port_b_seen);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server-a", move || {
+        let capture = Arc::clone(&capture_a);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-a")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offering = runtime
+                .offer(FIXED_DUAL_SVC_A, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+                *capture.lock().unwrap() = Some(client.address);
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Ok(())
+        }
+    });
+
+    sim.host("server-b", move || {
+        let capture = Arc::clone(&capture_b);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-b")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offering = runtime
+                .offer(FIXED_DUAL_SVC_B, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+                *capture.lock().unwrap() = Some(client.address);
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // No global fixed port — use per-proxy overrides below
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Each proxy gets its own fixed port via with_transport_policy()
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime.find(FIXED_DUAL_SVC_A).instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery_a timeout")
+        .expect("discovery_a failed")
+        .with_transport_policy(TransportPolicy::new(vec![
+            TransportPreference::udp().with_port(PORT_A)
+        ]));
+
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime.find(FIXED_DUAL_SVC_B).instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery_b timeout")
+        .expect("discovery_b failed")
+        .with_transport_policy(TransportPolicy::new(vec![
+            TransportPreference::udp().with_port(PORT_B)
+        ]));
+
+        let _sub_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_a.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe_a timeout")
+        .expect("subscribe_a failed");
+
+        let _sub_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_b.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe_b timeout")
+        .expect("subscribe_b failed");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let addr_a = port_a_seen
+        .lock()
+        .unwrap()
+        .expect("server-a must have seen subscriber");
+    let addr_b = port_b_seen
+        .lock()
+        .unwrap()
+        .expect("server-b must have seen subscriber");
+    assert_eq!(
+        addr_a.port(),
+        PORT_A,
+        "server-a must see subscriber source port {PORT_A}, got {addr_a}"
+    );
+    assert_eq!(
+        addr_b.port(),
+        PORT_B,
+        "server-b must see subscriber source port {PORT_B}, got {addr_b}"
+    );
+}
+
+// -----------------------------------------------------------------------
+// fixed_port_two_instances_different_ports
+// -----------------------------------------------------------------------
+
+/// The same service ID offered on two separate servers under **different
+/// instance IDs**.  The client subscribes to each instance with its own
+/// per-proxy fixed port.
+///
+/// Instance ID and Service ID together identify an endpoint; different
+/// instances are independent streams.  Both subscriptions succeed and each
+/// server observes the expected client source port.
+#[test_log::test]
+fn fixed_port_two_instances_different_ports() {
+    use recentip::config::TransportPreference;
+    use std::net::SocketAddrV4;
+
+    const PORT_INST1: u16 = 49503;
+    const PORT_INST2: u16 = 49504;
+
+    let port1_seen: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let port2_seen: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let capture1 = Arc::clone(&port1_seen);
+    let capture2 = Arc::clone(&port2_seen);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server-1", move || {
+        let capture = Arc::clone(&capture1);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-1")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offering = runtime
+                .offer(FIXED_INST_SVC, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+                *capture.lock().unwrap() = Some(client.address);
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Ok(())
+        }
+    });
+
+    sim.host("server-2", move || {
+        let capture = Arc::clone(&capture2);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-2")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offering = runtime
+                .offer(FIXED_INST_SVC, InstanceId::Id(2))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+                *capture.lock().unwrap() = Some(client.address);
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime.find(FIXED_INST_SVC).instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery instance-1 timeout")
+        .expect("discovery instance-1 failed")
+        .with_transport_policy(TransportPolicy::new(vec![
+            TransportPreference::udp().with_port(PORT_INST1)
+        ]));
+
+        let proxy2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime.find(FIXED_INST_SVC).instance(InstanceId::Id(2)),
+        )
+        .await
+        .expect("discovery instance-2 timeout")
+        .expect("discovery instance-2 failed")
+        .with_transport_policy(TransportPolicy::new(vec![
+            TransportPreference::udp().with_port(PORT_INST2)
+        ]));
+
+        let _sub1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy1.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe instance-1 timeout")
+        .expect("subscribe instance-1 failed");
+
+        let _sub2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy2.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe instance-2 timeout")
+        .expect("subscribe instance-2 failed");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let addr1 = port1_seen
+        .lock()
+        .unwrap()
+        .expect("server-1 must have seen subscriber for instance-1");
+    let addr2 = port2_seen
+        .lock()
+        .unwrap()
+        .expect("server-2 must have seen subscriber for instance-2");
+    assert_eq!(
+        addr1.port(),
+        PORT_INST1,
+        "server-1 must see subscriber source port {PORT_INST1}, got {addr1}"
+    );
+    assert_eq!(
+        addr2.port(),
+        PORT_INST2,
+        "server-2 must see subscriber source port {PORT_INST2}, got {addr2}"
+    );
+}
