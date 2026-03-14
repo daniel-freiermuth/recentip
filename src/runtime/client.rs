@@ -408,13 +408,17 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         // but only when no specific local port was requested (otherwise we must bind
         // to the requested port and cannot share someone else's socket).
         // Only create a new socket if no reusable endpoint exists.
-        if local_port == PortSpec::Any {
-            if let Some(reusable_port) =
-                state.find_reusable_subscription_endpoint(service_id.value(), instance_id.value())
-            {
-                // Found an endpoint used by other services but not this one - reuse it!
-                let reused_endpoint = SocketAddrV4::new(endpoint_ip, reusable_port);
-                tracing::debug!(
+        let reuse_port = if local_port == PortSpec::Any {
+            state.find_reusable_subscription_endpoint(service_id.value(), instance_id.value())
+        } else {
+            // For a specific port, check whether that port already has a bound socket.
+            // If so, we can share it rather than attempting a duplicate bind.
+            state.find_existing_port_for_spec(local_port)
+        };
+        if let Some(reusable_port) = reuse_port {
+            // Found an endpoint used by other services but not this one - reuse it!
+            let reused_endpoint = SocketAddrV4::new(endpoint_ip, reusable_port);
+            tracing::debug!(
                 "Reusing existing endpoint {} for subscription to {:04x}:{:04x} eventgroups {:?}",
                 reused_endpoint,
                 service_id.value(),
@@ -422,53 +426,53 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                 eventgroup_ids
             );
 
-                // Register this service's usage of the endpoint
-                state.register_subscription_endpoint(
-                    reusable_port,
-                    service_id.value(),
-                    instance_id.value(),
-                );
+            // Register this service's usage of the endpoint
+            state.register_subscription_endpoint(
+                reusable_port,
+                service_id.value(),
+                instance_id.value(),
+            );
 
-                // Store subscription - NOT a dedicated socket since we're sharing
-                let subs = state.subscriptions.entry(key).or_default();
-                for &eventgroup_id in &eventgroup_ids {
-                    subs.push(ClientSubscription {
-                        subscription_id,
-                        eventgroup_id,
-                        events_tx: incoming_events_channel.clone(),
-                        local_endpoint: reused_endpoint,
-                        has_dedicated_socket: false, // Shared endpoint
-                        tcp_conn_key: 0,
-                        transport: Transport::Udp,
-                    });
+            // Store subscription - NOT a dedicated socket since we're sharing
+            let subs = state.subscriptions.entry(key).or_default();
+            for &eventgroup_id in &eventgroup_ids {
+                subs.push(ClientSubscription {
+                    subscription_id,
+                    eventgroup_id,
+                    events_tx: incoming_events_channel.clone(),
+                    local_endpoint: reused_endpoint,
+                    has_dedicated_socket: false, // Shared endpoint
+                    tcp_conn_key: 0,
+                    transport: Transport::Udp,
+                });
+            }
+
+            // Send subscribe messages
+            let mut response_opt = Some(result_response_channel);
+
+            let mut eventgroups_to_subscribe = Vec::new();
+            for &eventgroup_id in &eventgroup_ids {
+                let pending_key = PendingSubscriptionKey {
+                    service_id: service_id.value(),
+                    instance_id: instance_id.value(),
+                    major_version,
+                    eventgroup_id,
+                };
+                let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
+                let is_first_waiter = pending_list.is_empty();
+                pending_list.push(PendingSubscription {
+                    subscription_id,
+                    response: response_opt.take(),
+                });
+
+                if is_first_waiter {
+                    eventgroups_to_subscribe.push(eventgroup_id);
                 }
+            }
 
-                // Send subscribe messages
-                let mut response_opt = Some(result_response_channel);
-
-                let mut eventgroups_to_subscribe = Vec::new();
-                for &eventgroup_id in &eventgroup_ids {
-                    let pending_key = PendingSubscriptionKey {
-                        service_id: service_id.value(),
-                        instance_id: instance_id.value(),
-                        major_version,
-                        eventgroup_id,
-                    };
-                    let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
-                    let is_first_waiter = pending_list.is_empty();
-                    pending_list.push(PendingSubscription {
-                        subscription_id,
-                        response: response_opt.take(),
-                    });
-
-                    if is_first_waiter {
-                        eventgroups_to_subscribe.push(eventgroup_id);
-                    }
-                }
-
-                // Queue subscribe for time-based clustering
-                if !eventgroups_to_subscribe.is_empty() {
-                    tracing::debug!(
+            // Queue subscribe for time-based clustering
+            if !eventgroups_to_subscribe.is_empty() {
+                tracing::debug!(
                     "Queueing subscribe to {:04x}:{:04x} v{} eventgroups {:?} via reused UDP endpoint {} for time-based clustering",
                     service_id.value(),
                     instance_id.value(),
@@ -477,25 +481,24 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                     reused_endpoint
                 );
 
-                    let msg = build_subscribe_message_multi(
-                        service_id.value(),
-                        instance_id.value(),
-                        major_version,
-                        &eventgroups_to_subscribe,
-                        reused_endpoint,
-                        reused_endpoint.port(),
-                        state.sd_flags(true),
-                        state.config.subscribe_ttl,
-                        Transport::Udp,
-                    );
-                    state.queue_unicast_sd(msg, sd_endpoint);
-                }
-
-                return;
+                let msg = build_subscribe_message_multi(
+                    service_id.value(),
+                    instance_id.value(),
+                    major_version,
+                    &eventgroups_to_subscribe,
+                    reused_endpoint,
+                    reused_endpoint.port(),
+                    state.sd_flags(true),
+                    state.config.subscribe_ttl,
+                    Transport::Udp,
+                );
+                state.queue_unicast_sd(msg, sd_endpoint);
             }
-        } // end if local_port == PortSpec::Any
 
-        // No reusable endpoint found (or specific local port requested) - create a new dedicated socket
+            return;
+        } // end reuse_port check
+
+        // No reusable/existing endpoint found — create a new dedicated socket
         match spawn_udp_subscription_socket::<U>(
             endpoint_ip,
             incoming_events_channel.clone(),
@@ -597,83 +600,96 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             }
         }
     } else if local_port != PortSpec::Any {
-        // First subscription for this service, but a specific local port was requested.
-        // Cannot use the shared RPC endpoint — bind a dedicated socket on the requested port.
-        match spawn_udp_subscription_socket::<U>(
-            endpoint_ip,
-            incoming_events_channel.clone(),
-            service_id,
-            instance_id,
-            *eventgroup_ids.first(),
-            local_port,
-        )
-        .await
-        {
-            Ok(dedicated_endpoint) => {
-                state.register_subscription_endpoint(
-                    dedicated_endpoint.port(),
-                    service_id.value(),
-                    instance_id.value(),
-                );
-
-                let subs = state.subscriptions.entry(key).or_default();
-                for &eventgroup_id in &eventgroup_ids {
-                    subs.push(ClientSubscription {
-                        subscription_id,
-                        eventgroup_id,
-                        events_tx: incoming_events_channel.clone(),
-                        local_endpoint: dedicated_endpoint,
-                        has_dedicated_socket: true,
-                        tcp_conn_key: 0,
-                        transport: Transport::Udp,
-                    });
-                }
-
-                let mut response_opt = Some(result_response_channel);
-                let mut eventgroups_to_subscribe = Vec::new();
-                for &eventgroup_id in &eventgroup_ids {
-                    let pending_key = PendingSubscriptionKey {
-                        service_id: service_id.value(),
-                        instance_id: instance_id.value(),
-                        major_version,
-                        eventgroup_id,
-                    };
-                    let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
-                    let is_first_waiter = pending_list.is_empty();
-                    pending_list.push(PendingSubscription {
-                        subscription_id,
-                        response: response_opt.take(),
-                    });
-                    if is_first_waiter {
-                        eventgroups_to_subscribe.push(eventgroup_id);
-                    }
-                }
-
-                if !eventgroups_to_subscribe.is_empty() {
-                    let msg = build_subscribe_message_multi(
+        // First subscription for this service with a specific port.
+        // If a socket is already bound to that port (by a previous subscription for a different
+        // service), reuse it rather than trying to bind again.
+        if let Some(existing_port) = state.find_existing_port_for_spec(local_port) {
+            state.register_subscription_endpoint(
+                existing_port,
+                service_id.value(),
+                instance_id.value(),
+            );
+            // Fall through to the shared-endpoint path at the bottom of the function.
+            SocketAddrV4::new(endpoint_ip, existing_port)
+        } else {
+            // No existing socket — bind a dedicated one on the requested port.
+            match spawn_udp_subscription_socket::<U>(
+                endpoint_ip,
+                incoming_events_channel.clone(),
+                service_id,
+                instance_id,
+                *eventgroup_ids.first(),
+                local_port,
+            )
+            .await
+            {
+                Ok(dedicated_endpoint) => {
+                    state.register_subscription_endpoint(
+                        dedicated_endpoint.port(),
                         service_id.value(),
                         instance_id.value(),
-                        major_version,
-                        &eventgroups_to_subscribe,
-                        dedicated_endpoint,
-                        dedicated_endpoint.port(),
-                        state.sd_flags(true),
-                        state.config.subscribe_ttl,
-                        Transport::Udp,
                     );
-                    state.queue_unicast_sd(msg, sd_endpoint);
+
+                    let subs = state.subscriptions.entry(key).or_default();
+                    for &eventgroup_id in &eventgroup_ids {
+                        subs.push(ClientSubscription {
+                            subscription_id,
+                            eventgroup_id,
+                            events_tx: incoming_events_channel.clone(),
+                            local_endpoint: dedicated_endpoint,
+                            has_dedicated_socket: true,
+                            tcp_conn_key: 0,
+                            transport: Transport::Udp,
+                        });
+                    }
+
+                    let mut response_opt = Some(result_response_channel);
+                    let mut eventgroups_to_subscribe = Vec::new();
+                    for &eventgroup_id in &eventgroup_ids {
+                        let pending_key = PendingSubscriptionKey {
+                            service_id: service_id.value(),
+                            instance_id: instance_id.value(),
+                            major_version,
+                            eventgroup_id,
+                        };
+                        let pending_list =
+                            state.pending_subscriptions.entry(pending_key).or_default();
+                        let is_first_waiter = pending_list.is_empty();
+                        pending_list.push(PendingSubscription {
+                            subscription_id,
+                            response: response_opt.take(),
+                        });
+                        if is_first_waiter {
+                            eventgroups_to_subscribe.push(eventgroup_id);
+                        }
+                    }
+
+                    if !eventgroups_to_subscribe.is_empty() {
+                        let msg = build_subscribe_message_multi(
+                            service_id.value(),
+                            instance_id.value(),
+                            major_version,
+                            &eventgroups_to_subscribe,
+                            dedicated_endpoint,
+                            dedicated_endpoint.port(),
+                            state.sd_flags(true),
+                            state.config.subscribe_ttl,
+                            Transport::Udp,
+                        );
+                        state.queue_unicast_sd(msg, sd_endpoint);
+                    }
+                    return;
                 }
-                return;
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to create dedicated UDP socket for subscription: {}",
+                        e
+                    );
+                    let _ = result_response_channel.send(Err(crate::error::Error::Io(e)));
+                    return;
+                }
             }
-            Err(e) => {
-                tracing::error!(
-                    "Failed to create dedicated UDP socket for subscription: {}",
-                    e
-                );
-                let _ = result_response_channel.send(Err(crate::error::Error::Io(e)));
-                return;
-            }
-        }
+        } // close `else { match ... }` arm of `if let Some(existing_port)`
     } else {
         // First subscription for this service - use the shared RPC endpoint
         state.register_subscription_endpoint(

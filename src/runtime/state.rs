@@ -56,7 +56,7 @@ use crate::error::Result;
 use crate::runtime::event_loop::cluster_sd_actions;
 use crate::tcp::TcpSendMessage;
 use crate::wire::SdMessage;
-use crate::{InstanceId, OfferedEndpoints, ServiceId};
+use crate::{InstanceId, OfferedEndpoints, PortSpec, ServiceId};
 
 // ============================================================================
 // SERVICE KEYS
@@ -714,6 +714,23 @@ impl RuntimeState {
             }
         }
         None
+    }
+
+    /// Check whether a socket is already bound to the port indicated by `local_port`.
+    ///
+    /// Returns `Some(port)` when an existing subscription socket already listens on
+    /// the requested port, enabling it to be shared rather than spuriously
+    /// re-binding.  Returns `None` for [`PortSpec::Any`] and for fixed/range ports
+    /// that have not been bound yet.
+    pub(crate) fn find_existing_port_for_spec(&self, local_port: PortSpec) -> Option<u16> {
+        match local_port {
+            PortSpec::Fixed(p) if self.subscription_endpoint_usage.contains_key(&p) => Some(p),
+            /*
+            PortSpec::Range(start, end) => {
+                (start..=end).find(|p| self.subscription_endpoint_usage.contains_key(p))
+            } */
+            _ => None,
+        }
     }
 
     /// Register that a (`service_id`, `instance_id`) is using a subscription endpoint (port).
