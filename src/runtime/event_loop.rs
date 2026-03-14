@@ -354,7 +354,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     // Special handling for Subscribe
                     // - TCP subscriptions: spawn as concurrent task to avoid blocking on connection establishment (feat_req_someipsd_767)
                     // - UDP subscriptions: handle inline since binding is instant and doesn't block
-                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response, transport, remote_endpoint, sd_endpoint, local_port }) => {
+                    Some(Command::Subscribe { service_id, instance_id, major_version, eventgroup_ids, events, response, transport, remote_endpoint, sd_endpoint, local_port_options }) => {
                         let service_key = ServiceKey::new(service_id, instance_id, major_version);
 
                         if transport == Transport::Tcp {
@@ -387,14 +387,16 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                     subscribe_ttl,
                                     used_conn_keys,
                                     local_ip,
-                                    local_port,
+                                    // TCP doesn't bind to a specific local port, so use the
+                                    // first option (or Any if the list is empty).
+                                    local_port_options.first().copied().unwrap_or(crate::config::PortSpec::Any),
                                 ).await;
                             });
                         } else {
                             // UDP path: Handle inline (binding is instant)
                             client::handle_subscribe_udp::<U>(
                                 service_id, instance_id, major_version, eventgroup_ids,
-                                events, response, sd_endpoint, local_port, &mut state
+                                events, response, sd_endpoint, local_port_options, &mut state
                             ).await;
                         }
                     }

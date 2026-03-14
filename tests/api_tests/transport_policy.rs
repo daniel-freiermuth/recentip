@@ -56,6 +56,8 @@
 //! | `sub_fixed_port_one_server_diff_service_shares_socket` | 1 server, diff service IDs, same instance → both proxies request same explicit port, socket shared, both subscribes succeed |
 //! | `sub_fixed_port_same_service_two_proxies_fails` | same svc, 2 proxies both request same fixed port → second `subscribe()` fails (`AddrInUse`; socket can't be shared within same service) |
 //! | `sub_fixed_port_same_service_same_proxy_second_eg_fails` | same svc, 1 proxy requests same fixed port for two eventgroups sequentially → second `subscribe()` fails (`AddrInUse`) |
+//! | `sub_multi_port_policy_two_proxies_uses_second_port` | same svc, 2 proxies, policy `[port A, port B]` → first proxy takes A, second proxy falls back to B, both succeed |
+//! | `sub_multi_port_policy_same_proxy_uses_second_port` | same svc, 1 proxy, policy `[port A, port B]`, two eventgroups → first sub takes A, second sub falls back to B, both succeed |
 
 //! TODO
 //! - fixed ports and ranges on TCP
@@ -117,6 +119,8 @@ const SUB_FIXED_ONE_SVR_DIFF_SVC_A: u16 = 0x402D; // sub fixed-port: 1 server, d
 const SUB_FIXED_ONE_SVR_DIFF_SVC_B: u16 = 0x402E; // sub fixed-port: 1 server, diff svc, service B → socket shared
 const SUB_FIXED_SAME_SVC_TWO_PROXIES_SVC: u16 = 0x402F; // sub fixed-port: same svc, 2 proxies, same port → second fails
 const SUB_FIXED_SAME_SVC_SAME_PROXY_SVC: u16 = 0x4030; // sub fixed-port: same svc, same proxy, same port, diff eg → second fails
+const SUB_MULTI_PORT_TWO_PROXIES_SVC: u16 = 0x4031; // sub multi-port policy: same svc, 2 proxies → uses port A then B, both succeed
+const SUB_MULTI_PORT_SAME_PROXY_SVC: u16 = 0x4032; // sub multi-port policy: same svc, same proxy, diff egs → uses port A then B, both succeed
 const SVC_VERSION: (u8, u32) = (1, 0);
 
 // -----------------------------------------------------------------------
@@ -4706,5 +4710,274 @@ fn sub_fixed_port_same_service_same_proxy_second_eg_fails() {
             .unwrap()
             .expect("client must have captured result"),
         "second subscribe to the same service with the same fixed port must fail with AddrInUse"
+    );
+}
+
+// -----------------------------------------------------------------------
+// sub_multi_port_policy_two_proxies_uses_second_port
+// -----------------------------------------------------------------------
+
+/// One server offers one service.  **Two independent proxies** (sharing
+/// the same client runtime) each carry a `TransportPolicy` with two
+/// explicit UDP source ports `[PORT_A, PORT_B]`.
+///
+/// * **proxy-1** subscribes first → port A is free for this service → it
+///   binds to `PORT_A`.
+/// * **proxy-2** subscribes next → port A is already owned by this service
+///   instance → the runtime falls back to `PORT_B` and binds there
+///   successfully.
+///
+/// Both subscriptions must succeed and the server must observe the expected
+/// source ports.
+#[test_log::test]
+fn sub_multi_port_policy_two_proxies_uses_second_port() {
+    use recentip::config::TransportPreference;
+    use std::net::SocketAddrV4;
+
+    const PORT_A: u16 = 49620;
+    const PORT_B: u16 = 49621;
+
+    let addr1: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let addr2: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let cap1 = Arc::clone(&addr1);
+    let cap2 = Arc::clone(&addr2);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let c1 = Arc::clone(&cap1);
+        let c2 = Arc::clone(&cap2);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
+            let mut offering = runtime
+                .offer(SUB_MULTI_PORT_TWO_PROXIES_SVC, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+            // First subscription arrives from PORT_A.
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+                *c1.lock().unwrap() = Some(client.address);
+            }
+            // Second subscription arrives from PORT_B.
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+                *c2.lock().unwrap() = Some(client.address);
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Ok(())
+        }
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let policy = TransportPolicy::new(vec![
+            TransportPreference::udp().with_port(PORT_A),
+            TransportPreference::udp().with_port(PORT_B),
+        ]);
+
+        let proxy1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SUB_MULTI_PORT_TWO_PROXIES_SVC)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("proxy-1 discovery timeout")
+        .expect("proxy-1 discovery failed")
+        .with_transport_policy(policy.clone());
+
+        let proxy2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SUB_MULTI_PORT_TWO_PROXIES_SVC)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("proxy-2 discovery timeout")
+        .expect("proxy-2 discovery failed")
+        .with_transport_policy(policy);
+
+        let _sub1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy1.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe proxy-1 timeout")
+        .expect("subscribe proxy-1 must succeed");
+
+        let _sub2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy2.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe proxy-2 timeout")
+        .expect("subscribe proxy-2 must succeed — should fall back to PORT_B");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let a1 = addr1
+        .lock()
+        .unwrap()
+        .expect("server must have seen first Subscribe");
+    let a2 = addr2
+        .lock()
+        .unwrap()
+        .expect("server must have seen second Subscribe");
+    assert_eq!(
+        a1.port(),
+        PORT_A,
+        "first subscriber must use PORT_A, got {a1}"
+    );
+    assert_eq!(
+        a2.port(),
+        PORT_B,
+        "second subscriber must fall back to PORT_B, got {a2}"
+    );
+}
+
+// -----------------------------------------------------------------------
+// sub_multi_port_policy_same_proxy_uses_second_port
+// -----------------------------------------------------------------------
+
+/// One server offers one service with **two distinct eventgroups**.  A single
+/// proxy carries a `TransportPolicy` with two explicit UDP source ports
+/// `[PORT_A, PORT_B]`.
+///
+/// * **eventgroup 1** subscription → port A is free for this service → binds
+///   to `PORT_A`.
+/// * **eventgroup 2** subscription → port A is already owned by this service
+///   instance → the runtime falls back to `PORT_B` and binds there
+///   successfully.
+///
+/// Both subscriptions must succeed and the server must observe the expected
+/// source ports.
+#[test_log::test]
+fn sub_multi_port_policy_same_proxy_uses_second_port() {
+    use recentip::config::TransportPreference;
+    use std::net::SocketAddrV4;
+
+    const PORT_A: u16 = 49622;
+    const PORT_B: u16 = 49623;
+
+    let addr1: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let addr2: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let cap1 = Arc::clone(&addr1);
+    let cap2 = Arc::clone(&addr2);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let c1 = Arc::clone(&cap1);
+        let c2 = Arc::clone(&cap2);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
+            let mut offering = runtime
+                .offer(SUB_MULTI_PORT_SAME_PROXY_SVC, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+            // Subscription for eg-1 arrives from PORT_A.
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+                *c1.lock().unwrap() = Some(client.address);
+            }
+            // Subscription for eg-2 arrives from PORT_B.
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+                *c2.lock().unwrap() = Some(client.address);
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Ok(())
+        }
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let policy = TransportPolicy::new(vec![
+            TransportPreference::udp().with_port(PORT_A),
+            TransportPreference::udp().with_port(PORT_B),
+        ]);
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SUB_MULTI_PORT_SAME_PROXY_SVC)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery timeout")
+        .expect("discovery failed")
+        .with_transport_policy(policy);
+
+        let _sub1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe eg-1 timeout")
+        .expect("subscribe eg-1 must succeed");
+
+        let _sub2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(EventgroupId::new(2).unwrap()),
+        )
+        .await
+        .expect("subscribe eg-2 timeout")
+        .expect("subscribe eg-2 must succeed — should fall back to PORT_B");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let a1 = addr1
+        .lock()
+        .unwrap()
+        .expect("server must have seen Subscribe for eg-1");
+    let a2 = addr2
+        .lock()
+        .unwrap()
+        .expect("server must have seen Subscribe for eg-2");
+    assert_eq!(
+        a1.port(),
+        PORT_A,
+        "eg-1 subscriber must use PORT_A, got {a1}"
+    );
+    assert_eq!(
+        a2.port(),
+        PORT_B,
+        "eg-2 subscriber must fall back to PORT_B, got {a2}"
     );
 }

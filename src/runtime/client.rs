@@ -384,7 +384,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     incoming_events_channel: tokio::sync::mpsc::Sender<Event>,
     result_response_channel: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     sd_endpoint: SocketAddrV4,
-    local_port: PortSpec,
+    local_port_options: Vec<PortSpec>,
     state: &mut RuntimeState,
 ) {
     let key = ServiceKey::new(service_id, instance_id, major_version);
@@ -402,6 +402,36 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         .get(&key)
         .is_some_and(|subs| !subs.is_empty());
 
+    // Select the effective port spec for this subscription.
+    //
+    // When this service already has subscriptions, sharing the same socket is
+    // forbidden (SOME/IP wire format carries no eventgroup discriminator, so
+    // events would be mis-routed).  We therefore iterate through the ordered
+    // port options and skip any that are already owned by this (service, instance).
+    // The first non-owned option is used; if all options are already owned, we
+    // fail with AddrInUse.
+    //
+    // For the first subscription (no existing subscriptions for this service),
+    // the first option is always used — no "already owned" issue can occur yet.
+    let local_port = if service_already_has_subscription {
+        let chosen = local_port_options.iter().copied().find(|&opt| match opt {
+            PortSpec::Fixed(p) => !state
+                .subscription_endpoint_usage
+                .get(&p)
+                .is_some_and(|svcs| svcs.contains(&(service_id.value(), instance_id.value()))),
+            PortSpec::Any => true,
+        });
+        if let Some(p) = chosen { p } else {
+            // All fixed port options are already owned by this service.
+            let _ = result_response_channel.send(Err(crate::error::Error::Io(
+                std::io::Error::from(std::io::ErrorKind::AddrInUse),
+            )));
+            return;
+        }
+    } else {
+        local_port_options.first().copied().unwrap_or(PortSpec::Any)
+    };
+
     let endpoint_for_subscribe = if service_already_has_subscription {
         // This service already has a subscription using some endpoint.
         // Try to REUSE an existing endpoint from a DIFFERENT service first —
@@ -411,22 +441,8 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         let reuse_port = if local_port == PortSpec::Any {
             state.find_reusable_subscription_endpoint(service_id.value(), instance_id.value())
         } else {
-            // For a specific port, check whether that port already has a bound socket.
-            // Only reuse it when this (service_id, instance_id) is NOT already using that
-            // port — sharing with the same service would mis-route events because the
-            // SOME/IP wire format carries no eventgroup discriminator.
-            let already_owned_by_this_service = match local_port {
-                PortSpec::Fixed(p) => state
-                    .subscription_endpoint_usage
-                    .get(&p)
-                    .is_some_and(|svcs| svcs.contains(&(service_id.value(), instance_id.value()))),
-                _ => false,
-            };
-            if already_owned_by_this_service {
-                None // Force a new dedicated socket; port N is already taken → AddrInUse
-            } else {
-                state.find_existing_port_for_spec(local_port)
-            }
+            // local_port was selected above to not be already owned by this service.
+            state.find_existing_port_for_spec(local_port)
         };
         if let Some(reusable_port) = reuse_port {
             // Found an endpoint used by other services but not this one - reuse it!

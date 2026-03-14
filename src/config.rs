@@ -504,6 +504,20 @@ impl TransportPolicy {
         None
     }
 
+    /// Returns every client-side [`PortSpec`] from preferences that match `transport`,
+    /// in policy order.
+    ///
+    /// Used by the subscription path to try each specified port in turn: if the
+    /// first option is already in use by this service, the next is tried, and so
+    /// on.  An empty result means the caller should use [`PortSpec::Any`].
+    pub(crate) fn local_port_options_for(&self, transport: Transport) -> Vec<PortSpec> {
+        self.0
+            .iter()
+            .filter(|p| p.transport == transport)
+            .map(|p| p.local_port)
+            .collect()
+    }
+
     /// Returns the primary (first) transport in the policy, or `Transport::Udp` if empty.
     ///
     /// Used as the default transport for server-side offer configuration.

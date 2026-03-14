@@ -52,7 +52,10 @@ enum SubscriptionBuilderState {
         transport: crate::config::Transport,
         remote_endpoint: std::net::SocketAddrV4,
         sd_endpoint: std::net::SocketAddrV4,
-        local_port: PortSpec,
+        /// Ordered list of port options to try (from the transport policy).
+        /// The runtime iterates these in order, skipping any already in use by
+        /// this service, so the first available port wins.
+        local_port_options: Vec<PortSpec>,
     },
     /// Builder was created with a pre-set error (e.g. `TransportMismatch`).
     /// Awaiting it immediately returns `Err(error)`.
@@ -73,7 +76,7 @@ impl SubscriptionBuilder {
         transport: crate::config::Transport,
         remote_endpoint: std::net::SocketAddrV4,
         sd_endpoint: std::net::SocketAddrV4,
-        local_port: PortSpec,
+        local_port_options: Vec<PortSpec>,
     ) -> Self {
         Self(SubscriptionBuilderState::Ready {
             inner,
@@ -84,7 +87,7 @@ impl SubscriptionBuilder {
             transport,
             remote_endpoint,
             sd_endpoint,
-            local_port,
+            local_port_options,
         })
     }
 
@@ -136,7 +139,7 @@ impl SubscriptionBuilder {
             transport,
             remote_endpoint,
             sd_endpoint,
-            local_port,
+            local_port_options,
         ) = match self.0 {
             SubscriptionBuilderState::Ready {
                 inner,
@@ -147,7 +150,7 @@ impl SubscriptionBuilder {
                 transport,
                 remote_endpoint,
                 sd_endpoint,
-                local_port,
+                local_port_options,
             } => (
                 inner,
                 service_id,
@@ -157,7 +160,7 @@ impl SubscriptionBuilder {
                 transport,
                 remote_endpoint,
                 sd_endpoint,
-                local_port,
+                local_port_options,
             ),
             SubscriptionBuilderState::Errored(e) => return Err(e),
         };
@@ -181,7 +184,7 @@ impl SubscriptionBuilder {
                 transport,
                 remote_endpoint,
                 sd_endpoint,
-                local_port,
+                local_port_options,
             })
             .await
             .map_err(|_| Error::RuntimeShutdown)?;
