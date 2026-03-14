@@ -351,8 +351,11 @@ pub struct TransportPreference {
     pub transport: Transport,
     /// Which local port to bind the client socket to for this transport.
     ///
-    /// For TCP subscriptions the OS always chooses the source port of the
-    /// outbound connection, so this field is ignored for TCP.
+    /// For UDP subscriptions this is the source port of the outbound datagram
+    /// socket.  For TCP subscriptions, [`PortSpec::Fixed`] binds the TCP
+    /// socket to the specified port before connecting (via
+    /// `TcpSocket::bind` + `connect`), which is supported on real tokio
+    /// sockets but silently ignored in turmoil simulation.
     pub local_port: PortSpec,
 }
 

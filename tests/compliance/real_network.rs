@@ -777,3 +777,100 @@ async fn sd_port_non_interference_wildcard_observer() {
         consumed = SENDERS - observer_count,
     );
 }
+
+// ============================================================================
+// TCP fixed client-port via TransportPolicy — real_network
+// ============================================================================
+
+/// A client subscribes to a TCP service with an explicit local TCP port set via
+/// [`TransportPolicy`].  The tokio implementation uses `TcpSocket::bind` before
+/// connecting, so the server-observed Subscribe endpoint should carry exactly
+/// the requested port.
+///
+/// This test requires real sockets because turmoil's simulated
+/// [`TcpStream::connect_from`](recentip::net::TcpStream::connect_from) ignores
+/// the bind address and lets turmoil assign the source port.
+#[tokio::test]
+async fn tcp_fixed_client_port_real_network() {
+    use recentip::config::{TransportPolicy, TransportPreference};
+
+    const SVC_ID: u16 = 0x1236;
+    const SVC_VERSION: (u8, u32) = (1, 0);
+    // Port 19879 is below the Linux default ephemeral range (32768–60999) so
+    // the OS will never assign it to another socket as an ephemeral port.
+    const CLIENT_TCP_PORT: u16 = 19879;
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (port_tx, mut port_rx) = mpsc::channel::<u16>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
+            .start()
+            .await
+            .expect("Server runtime");
+
+        let mut offering = runtime
+            .offer(SVC_ID, InstanceId::Id(0x0001))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .tcp()
+            .start()
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            port_tx.send(client.address.port()).await.ok();
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await
+        .expect("Client runtime");
+
+    let policy = TransportPolicy::new(vec![TransportPreference::tcp().with_port(CLIENT_TCP_PORT)]);
+
+    let proxy = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime.find(SVC_ID).instance(InstanceId::Id(0x0001)),
+    )
+    .await
+    .expect("Discovery timeout")
+    .expect("Service available")
+    .with_transport_policy(policy);
+
+    let _sub = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe timeout")
+    .expect("Subscribe success");
+
+    let observed_port = tokio::time::timeout(Duration::from_secs(5), port_rx.recv())
+        .await
+        .expect("port observation timeout")
+        .expect("server must observe Subscribe");
+
+    assert_eq!(
+        observed_port, CLIENT_TCP_PORT,
+        "server must see fixed TCP client port {CLIENT_TCP_PORT}, got {observed_port}"
+    );
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+
+    runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}

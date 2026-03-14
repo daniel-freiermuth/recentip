@@ -421,7 +421,9 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                 .is_some_and(|svcs| svcs.contains(&(service_id.value(), instance_id.value()))),
             PortSpec::Any => true,
         });
-        if let Some(p) = chosen { p } else {
+        if let Some(p) = chosen {
+            p
+        } else {
             // All fixed port options are already owned by this service.
             let _ = result_response_channel.send(Err(crate::error::Error::Io(
                 std::io::Error::from(std::io::ErrorKind::AddrInUse),

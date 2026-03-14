@@ -87,6 +87,10 @@ impl TcpStream for tokio::net::TcpStream {
 
     async fn connect_from(local: SocketAddrV4, target: SocketAddrV4) -> io::Result<Self> {
         let socket = tokio::net::TcpSocket::new_v4()?;
+        // SO_REUSEADDR lets the client rebind a fixed local port even when a
+        // previous connection on that port is still in TIME_WAIT (important for
+        // deterministic source ports mandated by firewall / SOME/IP config).
+        socket.set_reuseaddr(true)?;
         socket.bind(SocketAddr::V4(local))?;
         socket.connect(SocketAddr::V4(target)).await
     }

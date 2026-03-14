@@ -58,6 +58,7 @@
 //! | `sub_fixed_port_same_service_same_proxy_second_eg_fails` | same svc, 1 proxy requests same fixed port for two eventgroups sequentially → second `subscribe()` fails (`AddrInUse`) |
 //! | `sub_multi_port_policy_two_proxies_uses_second_port` | same svc, 2 proxies, policy `[port A, port B]` → first proxy takes A, second proxy falls back to B, both succeed |
 //! | `sub_multi_port_policy_same_proxy_uses_second_port` | same svc, 1 proxy, policy `[port A, port B]`, two eventgroups → first sub takes A, second sub falls back to B, both succeed |
+//! | `sub_tcp_diff_services_same_server_port_share_connection` | 1 server, 2 services diff svc_ids, same TCP server port → client subscribes to both, TCP connection reused, both Subscribe SD messages carry same client TCP port |
 
 //! TODO
 //! - fixed ports and ranges on TCP
@@ -121,6 +122,8 @@ const SUB_FIXED_SAME_SVC_TWO_PROXIES_SVC: u16 = 0x402F; // sub fixed-port: same 
 const SUB_FIXED_SAME_SVC_SAME_PROXY_SVC: u16 = 0x4030; // sub fixed-port: same svc, same proxy, same port, diff eg → second fails
 const SUB_MULTI_PORT_TWO_PROXIES_SVC: u16 = 0x4031; // sub multi-port policy: same svc, 2 proxies → uses port A then B, both succeed
 const SUB_MULTI_PORT_SAME_PROXY_SVC: u16 = 0x4032; // sub multi-port policy: same svc, same proxy, diff egs → uses port A then B, both succeed
+const SUB_TCP_DIFF_SVC_SHARES_CONN_A: u16 = 0x4033; // TCP sub port reuse: service A, same server TCP port as B, client conn shared
+const SUB_TCP_DIFF_SVC_SHARES_CONN_B: u16 = 0x4034; // TCP sub port reuse: service B, same server TCP port as A, client conn shared
 const SVC_VERSION: (u8, u32) = (1, 0);
 
 // -----------------------------------------------------------------------
@@ -4979,5 +4982,168 @@ fn sub_multi_port_policy_same_proxy_uses_second_port() {
         a2.port(),
         PORT_B,
         "eg-2 subscriber must fall back to PORT_B, got {a2}"
+    );
+}
+
+// -----------------------------------------------------------------------
+// sub_tcp_diff_services_same_server_port_share_connection
+// -----------------------------------------------------------------------
+
+/// One server offers **two different service IDs** on the exact same TCP port.
+///
+/// Because the SOME/IP RPC header carries `service_id`, the single TCP listener
+/// can route incoming connections to the right service — so the server shares
+/// one listener (verified by asserting `proxy_a.endpoint().port() == PORT` and
+/// `proxy_b.endpoint().port() == PORT`).
+///
+/// On the **client** side, both subscriptions target `server:PORT`.  The
+/// runtime's TCP connection pool keys connections by `(target, conn_key)`.
+/// Because each service starts with an empty set of used conn-keys, both
+/// subscriptions get `conn_key = 0` and therefore share the same pooled TCP
+/// connection.  The Subscribe SD messages for both services therefore carry the
+/// **same client TCP endpoint**, verified by asserting
+/// `sub_a.port() == sub_b.port()`.
+#[test_log::test]
+fn sub_tcp_diff_services_same_server_port_share_connection() {
+    use recentip::config::TransportPreference;
+    use std::net::SocketAddrV4;
+
+    const SERVER_TCP_PORT: u16 = 30514;
+
+    let addr_svc_a: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let addr_svc_b: Arc<Mutex<Option<SocketAddrV4>>> = Arc::new(Mutex::new(None));
+    let cap_a = Arc::clone(&addr_svc_a);
+    let cap_b = Arc::clone(&addr_svc_b);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let ca = Arc::clone(&cap_a);
+        let cb = Arc::clone(&cap_b);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offering_a = runtime
+                .offer(SUB_TCP_DIFF_SVC_SHARES_CONN_A, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp_port(SERVER_TCP_PORT)
+                .start()
+                .await
+                .expect("offer service A on fixed TCP port must succeed");
+
+            let mut offering_b = runtime
+                .offer(SUB_TCP_DIFF_SVC_SHARES_CONN_B, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp_port(SERVER_TCP_PORT)
+                .start()
+                .await
+                .expect("offer service B on same fixed TCP port must succeed — listener is shared");
+
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering_a.next().await {
+                *ca.lock().unwrap() = Some(client.address);
+            }
+            if let Some(ServiceEvent::Subscribe { client, .. }) = offering_b.next().await {
+                *cb.lock().unwrap() = Some(client.address);
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Use a TCP-only policy so both subscriptions go via TCP regardless of
+        // any global default.
+        let policy = TransportPolicy::new(vec![TransportPreference::tcp()]);
+
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SUB_TCP_DIFF_SVC_SHARES_CONN_A)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery A timeout")
+        .expect("discovery A failed")
+        .with_transport_policy(policy.clone());
+
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SUB_TCP_DIFF_SVC_SHARES_CONN_B)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery B timeout")
+        .expect("discovery B failed")
+        .with_transport_policy(policy);
+
+        // The server shares one TCP listener — verify both services are at PORT.
+        let port_a = proxy_a
+            .endpoint()
+            .expect("service A must have a TCP endpoint")
+            .port();
+        let port_b = proxy_b
+            .endpoint()
+            .expect("service B must have a TCP endpoint")
+            .port();
+        assert_eq!(
+            port_a, SERVER_TCP_PORT,
+            "service A must advertise TCP port {SERVER_TCP_PORT}, got {port_a}"
+        );
+        assert_eq!(
+            port_b, SERVER_TCP_PORT,
+            "service B must advertise TCP port {SERVER_TCP_PORT}, got {port_b}"
+        );
+
+        let _sub_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_a.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe A timeout")
+        .expect("subscribe A must succeed");
+
+        let _sub_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_b.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe B timeout")
+        .expect("subscribe B must succeed");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let a = addr_svc_a
+        .lock()
+        .unwrap()
+        .expect("server must have seen Subscribe for service A");
+    let b = addr_svc_b
+        .lock()
+        .unwrap()
+        .expect("server must have seen Subscribe for service B");
+    assert_eq!(
+        a.port(),
+        b.port(),
+        "client must reuse the same TCP connection for both services (same server TCP port) — \
+         Subscribe for A came from {a}, Subscribe for B came from {b}"
     );
 }
