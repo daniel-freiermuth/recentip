@@ -122,11 +122,12 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
 
     // Create UDP transport if configured
     if let Some(port) = offer_config.udp_port {
-        // When auto-assigning (port == 0), try to reuse an existing socket from a
-        // service with a DIFFERENT service_id. The RPC header's service_id field
-        // is sufficient for routing so sharing is safe and saves a port/socket.
-        let reused = port == 0 && {
-            if let Some((ep, tx)) = find_shareable_udp_socket(state, service_id) {
+        // Try to reuse an existing socket from a service with a DIFFERENT service_id.
+        // For auto-port (port == 0) any existing socket qualifies; for an explicit port
+        // only a socket already bound to that exact port qualifies.
+        // The RPC header's service_id field is sufficient for routing so sharing is safe.
+        let reused = {
+            if let Some((ep, tx)) = find_shareable_udp_socket(state, service_id, port) {
                 udp_endpoint = Some(ep);
                 udp_transport = Some(tx);
                 true
@@ -868,6 +869,7 @@ pub fn build_notification(
 fn find_shareable_udp_socket(
     state: &RuntimeState,
     my_service_id: ServiceId,
+    port_hint: u16,
 ) -> Option<(SocketAddrV4, RpcTransportSender)> {
     state
         .offered
@@ -876,6 +878,10 @@ fn find_shareable_udp_socket(
             key.service_id != my_service_id.value()
                 && svc.udp_endpoint.is_some()
                 && svc.udp_transport.is_some()
+                // For auto-port (0) any socket qualifies; for a fixed port only
+                // one already bound to that exact port qualifies.
+                && (port_hint == 0
+                    || svc.udp_endpoint.map(|ep| ep.port()) == Some(port_hint))
         })
         .and_then(|(_, svc)| Some((svc.udp_endpoint?, svc.udp_transport.clone()?)))
 }

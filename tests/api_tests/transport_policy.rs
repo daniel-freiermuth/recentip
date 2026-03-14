@@ -36,6 +36,9 @@
 //! | `any_port_same_instance_different_major_use_separate_ports` | same service_id + instance_id, different major versions → server uses separate ports (no version in RPC header), client reuses one source port |
 //! | `stop_offer_then_reoffer_new_instance_does_not_collide` | offer inst-1 + inst-2, stop inst-1, offer inst-3 → inst-3 must not collide with inst-2 |
 //! | `offer_succeeds_when_auto_port_is_preoccupied` | ports 30491–65534 pre-bound + 65535 consumed by runtime’s ephemeral client-RPC socket → `offer()` wraps around and binds on port 1 |
+//! | `server_fixed_port_two_servers_same_port` | two services on the **same** host both bind via `udp_port(N)` → socket is shared, both succeed, client discovers both at port N |
+//! | `server_fixed_port_same_service_id_different_instance_fails` | same service_id, two instances, same `udp_port(N)` → second offer fails (`AddrInUse`; no instance_id in RPC header) |
+//! | `server_fixed_port_same_service_id_different_major_fails` | same service_id, two major versions, same `udp_port(N)` → second offer fails (`AddrInUse`; no version in RPC header) |
 
 //! TODO
 //! - fixed ports and ranges on TCP
@@ -73,6 +76,10 @@ const ANY_PORT_SVC_B: u16 = 0x4015; // any-port multi-svc: service B (different 
 const STOP_REOFFER_SVC: u16 = 0x4016; // stop-then-re-offer port-counter bug
 const PORT_PREOCCUPIED_SVC: u16 = 0x4017; // auto-port collides with externally held port
 const ANY_PORT_DIFF_MAJOR_SVC: u16 = 0x4018; // same service_id + instance_id, different major versions → separate ports
+const SERVER_FIXED_PORT_SVC_A: u16 = 0x4019; // server-side fixed port: service A on server-a
+const SERVER_FIXED_PORT_SVC_B: u16 = 0x401A; // server-side fixed port: service B on server-b (same port, different host)
+const SERVER_FIXED_PORT_SAME_ID_SVC: u16 = 0x401B; // same service_id fixed port: two instances on same port → second must fail
+const SERVER_FIXED_PORT_SAME_ID_DIFF_MAJOR_SVC: u16 = 0x401C; // same service_id fixed port: two major versions on same port → second must fail
 const SVC_VERSION: (u8, u32) = (1, 0);
 
 // -----------------------------------------------------------------------
@@ -2398,6 +2405,233 @@ fn offer_succeeds_when_auto_port_is_preoccupied() {
             .unwrap_or_else(|e| panic!("additional bind failed: {e}"));
 
         tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+// -----------------------------------------------------------------------
+// server_fixed_port_two_servers_same_port
+// -----------------------------------------------------------------------
+
+/// Two **different** service IDs offered by the **same** server host, both
+/// binding their UDP endpoint to the **same** fixed port via `.udp_port(N)`.
+///
+/// Different service IDs can legitimately share one UDP socket because the
+/// `service_id` field in the SOME/IP RPC message header is sufficient to route
+/// incoming requests to the correct handler.  This mirrors the auto-port sharing
+/// behaviour tested in `any_port_two_service_ids_same_host_share_one_port`, but
+/// with an explicit port instead of an OS-assigned one.
+///
+/// This is representative of real deployments where every service on a node is
+/// reachable on a single well-known port.
+///
+/// Assertions:
+/// - Both `offer()` calls succeed.
+/// - The client discovers both services and observes each at port N
+///   (`proxy.endpoint().port() == N`).
+#[test_log::test]
+fn server_fixed_port_two_servers_same_port() {
+    const PORT: u16 = 30501;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let _offering_a = runtime
+            .offer(SERVER_FIXED_PORT_SVC_A, InstanceId::Id(1))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .udp_port(PORT)
+            .start()
+            .await
+            .expect("offer service A on fixed port must succeed");
+
+        // Same port, different service ID — the runtime must reuse the socket.
+        let _offering_b = runtime
+            .offer(SERVER_FIXED_PORT_SVC_B, InstanceId::Id(1))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .udp_port(PORT)
+            .start()
+            .await
+            .expect("offer service B on same fixed port must succeed: socket is shared");
+
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        Ok(())
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SERVER_FIXED_PORT_SVC_A)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery A timeout")
+        .expect("discovery A failed");
+
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SERVER_FIXED_PORT_SVC_B)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery B timeout")
+        .expect("discovery B failed");
+
+        let port_a = proxy_a
+            .endpoint()
+            .expect("service A must have UDP endpoint")
+            .port();
+        let port_b = proxy_b
+            .endpoint()
+            .expect("service B must have UDP endpoint")
+            .port();
+
+        assert_eq!(
+            port_a, PORT,
+            "service A must advertise port {PORT}, got {port_a}"
+        );
+        assert_eq!(
+            port_b, PORT,
+            "service B must advertise port {PORT}, got {port_b}"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+// -----------------------------------------------------------------------
+// server_fixed_port_same_service_id_different_instance_fails
+// -----------------------------------------------------------------------
+
+/// Same service_id, two **different** instance IDs, same host, same fixed
+/// `udp_port(N)`.
+///
+/// Unlike different service IDs, same-service-id instances CANNOT share a UDP
+/// socket: the SOME/IP RPC message header contains `service_id` but NOT
+/// `instance_id`, so there is no way to route an incoming request to the
+/// correct instance without a distinct port per instance.
+///
+/// The second `offer()` must fail with `Error::Io(AddrInUse)`.
+#[test_log::test]
+fn server_fixed_port_same_service_id_different_instance_fails() {
+    use recentip::Error;
+
+    const PORT: u16 = 30502;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(10))
+        .build();
+
+    sim.client("server", async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let _offering1 = runtime
+            .offer(SERVER_FIXED_PORT_SAME_ID_SVC, InstanceId::Id(1))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .udp_port(PORT)
+            .start()
+            .await
+            .expect("first offer must succeed");
+
+        // Same service_id + same port → socket cannot be shared (no instance_id in
+        // the RPC header), so this must fail.
+        let result = runtime
+            .offer(SERVER_FIXED_PORT_SAME_ID_SVC, InstanceId::Id(2))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .udp_port(PORT)
+            .start()
+            .await;
+
+        assert!(
+            matches!(&result, Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::AddrInUse),
+            "second offer of same service_id on same port must fail with AddrInUse; got: {:?}",
+            result.as_ref().err()
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+// -----------------------------------------------------------------------
+// server_fixed_port_same_service_id_different_major_fails
+// -----------------------------------------------------------------------
+
+/// Same service_id, same host, same fixed `udp_port(N)`, but different **major
+/// versions** (1 vs 2).
+///
+/// The runtime routes by `(service_id, port)`, not by version.  Two major
+/// versions of the same service_id cannot share one UDP port for the same
+/// reason instances cannot: the second offer must fail with `AddrInUse`.
+#[test_log::test]
+fn server_fixed_port_same_service_id_different_major_fails() {
+    use recentip::Error;
+
+    const PORT: u16 = 30503;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(10))
+        .build();
+
+    sim.client("server", async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let _offering_v1 = runtime
+            .offer(SERVER_FIXED_PORT_SAME_ID_DIFF_MAJOR_SVC, InstanceId::Id(1))
+            .version(1, 0)
+            .udp_port(PORT)
+            .start()
+            .await
+            .expect("first offer (major v1) must succeed");
+
+        // Same service_id + same port, different major version → still conflicts.
+        let result = runtime
+            .offer(SERVER_FIXED_PORT_SAME_ID_DIFF_MAJOR_SVC, InstanceId::Id(1))
+            .version(2, 0)
+            .udp_port(PORT)
+            .start()
+            .await;
+
+        assert!(
+            matches!(&result, Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::AddrInUse),
+            "second offer of same service_id on same port must fail with AddrInUse; got: {:?}",
+            result.as_ref().err()
+        );
+
         Ok(())
     });
 
