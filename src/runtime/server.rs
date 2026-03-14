@@ -285,34 +285,53 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
                 return;
             }
         } else {
-            // Explicit port: single attempt, no retry.
-            let rpc_addr = SocketAddrV4::new(*state.local_endpoint.ip(), port);
-            match L::bind(rpc_addr).await {
-                Ok(listener) => {
-                    match TcpServer::<T>::spawn(
-                        listener,
-                        service_id.value(),
-                        instance_id.value(),
-                        tcp_rpc_tx.clone(),
-                        config.magic_cookies,
-                        config.tcp_keepalive_server.clone(),
-                    ) {
-                        Ok(tcp_server) => {
-                            tcp_endpoint = Some(tcp_server.local_addr);
-                            tcp_transport = Some(RpcTransportSender::Tcp(tcp_server.send_tx));
-                            tcp_close_peer_tx = Some(tcp_server.close_peer_tx);
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to create TCP server on {}: {}", rpc_addr, e);
-                            let _ = response.send(Err(Error::Io(e)));
-                            return;
+            // Explicit port: try to reuse an existing socket first (same rule as UDP —
+            // different service_ids may share one listener), then bind fresh.
+            let reused = {
+                if let Some((ep, tx, close_tx)) = find_shareable_tcp_socket(state, service_id, port)
+                {
+                    tcp_endpoint = Some(ep);
+                    tcp_transport = Some(tx);
+                    tcp_close_peer_tx = close_tx;
+                    true
+                } else {
+                    false
+                }
+            };
+
+            if !reused {
+                let rpc_addr = SocketAddrV4::new(*state.local_endpoint.ip(), port);
+                match L::bind(rpc_addr).await {
+                    Ok(listener) => {
+                        match TcpServer::<T>::spawn(
+                            listener,
+                            service_id.value(),
+                            instance_id.value(),
+                            tcp_rpc_tx.clone(),
+                            config.magic_cookies,
+                            config.tcp_keepalive_server.clone(),
+                        ) {
+                            Ok(tcp_server) => {
+                                tcp_endpoint = Some(tcp_server.local_addr);
+                                tcp_transport = Some(RpcTransportSender::Tcp(tcp_server.send_tx));
+                                tcp_close_peer_tx = Some(tcp_server.close_peer_tx);
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to create TCP server on {}: {}",
+                                    rpc_addr,
+                                    e
+                                );
+                                let _ = response.send(Err(Error::Io(e)));
+                                return;
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    tracing::error!("Failed to bind TCP listener on {}: {}", rpc_addr, e);
-                    let _ = response.send(Err(Error::Io(e)));
-                    return;
+                    Err(e) => {
+                        tracing::error!("Failed to bind TCP listener on {}: {}", rpc_addr, e);
+                        let _ = response.send(Err(Error::Io(e)));
+                        return;
+                    }
                 }
             }
         }
@@ -884,6 +903,37 @@ fn find_shareable_udp_socket(
                     || svc.udp_endpoint.map(|ep| ep.port()) == Some(port_hint))
         })
         .and_then(|(_, svc)| Some((svc.udp_endpoint?, svc.udp_transport.clone()?)))
+}
+
+/// Returns `(endpoint, transport_sender, close_peer_tx)` of an existing offered service
+/// whose TCP listener can be shared by a new service with `my_service_id`.
+///
+/// Same sharing semantics as [`find_shareable_udp_socket`]: only different `service_id`s
+/// may share one listener because the SOME/IP RPC header carries `service_id` (but not
+/// `instance_id`), so incoming requests are routable even on a shared port.
+fn find_shareable_tcp_socket(
+    state: &RuntimeState,
+    my_service_id: ServiceId,
+    port_hint: u16,
+) -> Option<(
+    SocketAddrV4,
+    RpcTransportSender,
+    Option<tokio::sync::mpsc::Sender<(std::net::Ipv4Addr, Vec<u16>)>>,
+)> {
+    state
+        .offered
+        .iter()
+        .find(|(key, svc)| {
+            key.service_id != my_service_id.value()
+                && svc.tcp_endpoint.is_some()
+                && svc.tcp_transport.is_some()
+                && (port_hint == 0 || svc.tcp_endpoint.map(|ep| ep.port()) == Some(port_hint))
+        })
+        .and_then(|(_, svc)| {
+            let ep = svc.tcp_endpoint?;
+            let tx = svc.tcp_transport.clone()?;
+            Some((ep, tx, svc.tcp_close_peer_tx.clone()))
+        })
 }
 
 /// Spawns a task to handle an RPC socket shared by one or more services
