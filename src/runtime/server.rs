@@ -99,39 +99,121 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     let mut tcp_endpoint: Option<SocketAddrV4> = None;
     let mut tcp_transport: Option<RpcTransportSender> = None;
 
-    // Calculate base port
-    // TODO: add test and fix math
-    let base_port = state.local_endpoint.port() + 1 + (state.offered.len() as u16 * 2);
+    // Port selection for this instance.
+    //
+    // Each instance of the SAME service_id MUST use a different port: the SOME/IP
+    // RPC header carries `service_id` but has no `instance_id` field. If two
+    // instances shared a port the server could not route an incoming request to
+    // the correct instance. The port is the only instance discriminator at the
+    // RPC layer (instance_id lives in SD only).
+    //
+    // Instances of DIFFERENT service_ids CAN share one socket; the service_id
+    // in the header is enough to route those unambiguously. `handle_offer_command`
+    // checks for a shareable socket before binding a fresh one (see below).
+    //
+    // For auto-port (configured port == 0), `state.next_server_rpc_port` provides
+    // the starting candidate. The counter advances by 1 on every successful
+    // auto-port bind AND on every `AddrInUse` skip, so it is strictly monotonically
+    // increasing: neither StopOffer + re-offer nor ports pre-occupied by other
+    // processes can cause a collision with a still-running service.
+    //
+    // The scan covers the entire remaining port space (up to u16::MAX–1),
+    // failing only if every port in that range is occupied.
 
     // Create UDP transport if configured
     if let Some(port) = offer_config.udp_port {
-        let rpc_port = if port == 0 { base_port } else { port };
-        let rpc_addr = SocketAddrV4::new(*state.local_endpoint.ip(), rpc_port);
+        // When auto-assigning (port == 0), try to reuse an existing socket from a
+        // service with a DIFFERENT service_id. The RPC header's service_id field
+        // is sufficient for routing so sharing is safe and saves a port/socket.
+        let reused = port == 0 && {
+            if let Some((ep, tx)) = find_shareable_udp_socket(state, service_id) {
+                udp_endpoint = Some(ep);
+                udp_transport = Some(tx);
+                true
+            } else {
+                false
+            }
+        };
 
-        match U::bind(rpc_addr).await {
-            Ok(rpc_socket) => {
-                match spawn_rpc_socket_task(
-                    rpc_socket,
-                    service_id.value(),
-                    instance_id.value(),
-                    major_version,
-                    rpc_tx.clone(),
-                ) {
-                    Ok((endpoint, rpc_send_tx)) => {
-                        udp_endpoint = Some(endpoint);
-                        udp_transport = Some(RpcTransportSender::Udp(rpc_send_tx));
+        if !reused {
+            if port == 0 {
+                // Auto-port: scan forward with wrap-around through the entire
+                // port space until a free port is found (or a full circle fails).
+                // Wraps u16::MAX → 1, skipping port 0. Gives up only when every
+                // port has been tried once.
+                let scan_start = state.next_server_rpc_port;
+                let mut bound = false;
+                loop {
+                    let candidate = state.next_server_rpc_port;
+                    // Advance counter: wrap MAX→1, skip 0
+                    let next = if candidate == u16::MAX {
+                        1
+                    } else {
+                        candidate + 1
+                    };
+                    let rpc_addr = SocketAddrV4::new(*state.local_endpoint.ip(), candidate);
+                    match U::bind(rpc_addr).await {
+                        Ok(rpc_socket) => {
+                            match spawn_rpc_socket_task(rpc_socket, rpc_tx.clone()) {
+                                Ok((endpoint, rpc_send_tx)) => {
+                                    udp_endpoint = Some(endpoint);
+                                    udp_transport = Some(RpcTransportSender::Udp(rpc_send_tx));
+                                    state.next_server_rpc_port = next;
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to get local address for UDP RPC: {}",
+                                        e
+                                    );
+                                    let _ = response.send(Err(Error::Io(e)));
+                                    return;
+                                }
+                            }
+                            bound = true;
+                            break;
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                            tracing::debug!("UDP RPC auto-port {candidate}: in use, scanning next");
+                            state.next_server_rpc_port = next;
+                            if next == scan_start {
+                                break; // full circle — no free port
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to bind UDP RPC on {}: {}", rpc_addr, e);
+                            let _ = response.send(Err(Error::Io(e)));
+                            return;
+                        }
                     }
+                }
+                if !bound {
+                    let _ = response.send(Err(Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::AddrInUse,
+                        "no free UDP RPC port found (entire port space exhausted)",
+                    ))));
+                    return;
+                }
+            } else {
+                // Explicit port: single attempt, no retry.
+                let rpc_addr = SocketAddrV4::new(*state.local_endpoint.ip(), port);
+                match U::bind(rpc_addr).await {
+                    Ok(rpc_socket) => match spawn_rpc_socket_task(rpc_socket, rpc_tx.clone()) {
+                        Ok((endpoint, rpc_send_tx)) => {
+                            udp_endpoint = Some(endpoint);
+                            udp_transport = Some(RpcTransportSender::Udp(rpc_send_tx));
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to get local address for UDP RPC: {}", e);
+                            let _ = response.send(Err(Error::Io(e)));
+                            return;
+                        }
+                    },
                     Err(e) => {
-                        tracing::error!("Failed to get local address for UDP RPC: {}", e);
+                        tracing::error!("Failed to bind UDP RPC on {}: {}", rpc_addr, e);
                         let _ = response.send(Err(Error::Io(e)));
                         return;
                     }
                 }
-            }
-            Err(e) => {
-                tracing::error!("Failed to bind UDP RPC on {}: {}", rpc_addr, e);
-                let _ = response.send(Err(Error::Io(e)));
-                return;
             }
         }
     }
@@ -139,35 +221,98 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     // Create TCP transport if configured
     let mut tcp_close_peer_tx: Option<mpsc::Sender<(Ipv4Addr, Vec<u16>)>> = None;
     if let Some(port) = offer_config.tcp_port {
-        let rpc_port = if port == 0 { base_port + 1 } else { port };
-        let rpc_addr = SocketAddrV4::new(*state.local_endpoint.ip(), rpc_port);
-
-        match L::bind(rpc_addr).await {
-            Ok(listener) => {
-                match TcpServer::<T>::spawn(
-                    listener,
-                    service_id.value(),
-                    instance_id.value(),
-                    tcp_rpc_tx.clone(),
-                    config.magic_cookies,
-                    config.tcp_keepalive_server.clone(),
-                ) {
-                    Ok(tcp_server) => {
-                        tcp_endpoint = Some(tcp_server.local_addr);
-                        tcp_transport = Some(RpcTransportSender::Tcp(tcp_server.send_tx));
-                        tcp_close_peer_tx = Some(tcp_server.close_peer_tx);
+        if port == 0 {
+            // Auto-port: scan forward with wrap-around.
+            let scan_start = state.next_server_rpc_port;
+            let mut bound = false;
+            loop {
+                let candidate = state.next_server_rpc_port;
+                let next = if candidate == u16::MAX {
+                    1
+                } else {
+                    candidate + 1
+                };
+                let rpc_addr = SocketAddrV4::new(*state.local_endpoint.ip(), candidate);
+                match L::bind(rpc_addr).await {
+                    Ok(listener) => {
+                        match TcpServer::<T>::spawn(
+                            listener,
+                            service_id.value(),
+                            instance_id.value(),
+                            tcp_rpc_tx.clone(),
+                            config.magic_cookies,
+                            config.tcp_keepalive_server.clone(),
+                        ) {
+                            Ok(tcp_server) => {
+                                tcp_endpoint = Some(tcp_server.local_addr);
+                                tcp_transport = Some(RpcTransportSender::Tcp(tcp_server.send_tx));
+                                tcp_close_peer_tx = Some(tcp_server.close_peer_tx);
+                                state.next_server_rpc_port = next;
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to create TCP server on {}: {}",
+                                    rpc_addr,
+                                    e
+                                );
+                                let _ = response.send(Err(Error::Io(e)));
+                                return;
+                            }
+                        }
+                        bound = true;
+                        break;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                        tracing::debug!("TCP RPC auto-port {candidate}: in use, scanning next");
+                        state.next_server_rpc_port = next;
+                        if next == scan_start {
+                            break; // full circle — no free port
+                        }
                     }
                     Err(e) => {
-                        tracing::error!("Failed to create TCP server on {}: {}", rpc_addr, e);
+                        tracing::error!("Failed to bind TCP listener on {}: {}", rpc_addr, e);
                         let _ = response.send(Err(Error::Io(e)));
                         return;
                     }
                 }
             }
-            Err(e) => {
-                tracing::error!("Failed to bind TCP listener on {}: {}", rpc_addr, e);
-                let _ = response.send(Err(Error::Io(e)));
+            if !bound {
+                let _ = response.send(Err(Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::AddrInUse,
+                    "no free TCP RPC port found (entire port space exhausted)",
+                ))));
                 return;
+            }
+        } else {
+            // Explicit port: single attempt, no retry.
+            let rpc_addr = SocketAddrV4::new(*state.local_endpoint.ip(), port);
+            match L::bind(rpc_addr).await {
+                Ok(listener) => {
+                    match TcpServer::<T>::spawn(
+                        listener,
+                        service_id.value(),
+                        instance_id.value(),
+                        tcp_rpc_tx.clone(),
+                        config.magic_cookies,
+                        config.tcp_keepalive_server.clone(),
+                    ) {
+                        Ok(tcp_server) => {
+                            tcp_endpoint = Some(tcp_server.local_addr);
+                            tcp_transport = Some(RpcTransportSender::Tcp(tcp_server.send_tx));
+                            tcp_close_peer_tx = Some(tcp_server.close_peer_tx);
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to create TCP server on {}: {}", rpc_addr, e);
+                            let _ = response.send(Err(Error::Io(e)));
+                            return;
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to bind TCP listener on {}: {}", rpc_addr, e);
+                    let _ = response.send(Err(Error::Io(e)));
+                    return;
+                }
             }
         }
     }
@@ -713,23 +858,36 @@ pub fn build_notification(
 // HELPER FUNCTIONS
 // ============================================================================
 
-/// Spawns a task to handle an RPC socket for a specific service instance
-/// Returns the endpoint and a sender to send outgoing messages
+/// Returns `(endpoint, transport_sender)` of an existing offered service whose
+/// UDP socket can be shared by a new service with `my_service_id`.
+///
+/// Sharing is permissible only between services with **different** `service_id`s:
+/// the SOME/IP RPC header carries `service_id`, so incoming requests can be
+/// unambiguously routed even when multiple services share one socket. Same-service-id
+/// instances MUST each have their own port because the header has no `instance_id`.
+fn find_shareable_udp_socket(
+    state: &RuntimeState,
+    my_service_id: ServiceId,
+) -> Option<(SocketAddrV4, RpcTransportSender)> {
+    state
+        .offered
+        .iter()
+        .find(|(key, svc)| {
+            key.service_id != my_service_id.value()
+                && svc.udp_endpoint.is_some()
+                && svc.udp_transport.is_some()
+        })
+        .and_then(|(_, svc)| Some((svc.udp_endpoint?, svc.udp_transport.clone()?)))
+}
+
+/// Spawns a task to handle an RPC socket shared by one or more services
 pub fn spawn_rpc_socket_task<U: UdpSocket>(
     rpc_socket: U,
-    service_id: u16,
-    instance_id: u16,
-    major_version: u8,
     rpc_tx_to_runtime: mpsc::Sender<RpcMessage>,
 ) -> std::io::Result<(SocketAddrV4, mpsc::Sender<RpcSendMessage>)> {
     let local_endpoint = rpc_socket.local_addr()?;
+    let local_port = local_endpoint.port();
     let (send_tx, mut send_rx) = mpsc::channel::<RpcSendMessage>(100);
-
-    let service_key = ServiceKey {
-        service_id,
-        instance_id,
-        major_version,
-    };
 
     tokio::spawn(async move {
         let mut buf = [0u8; 65535];
@@ -744,16 +902,14 @@ pub fn spawn_rpc_socket_task<U: UdpSocket>(
                                 continue;
                             };
                             let data = received.to_vec();
-                            let msg = RpcMessage { service_key: Some(service_key), data, from };
+                            let msg = RpcMessage { local_port, data, from };
                             if rpc_tx_to_runtime.send(msg).await.is_err() {
-                                tracing::debug!("RPC socket task for service {}/{} shutting down - runtime closed",
-                                    service_id, instance_id);
+                                tracing::debug!("RPC socket task on port {local_port} shutting down - runtime closed");
                                 break;
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Error receiving on RPC socket for service {}/{}: {}",
-                                service_id, instance_id, e);
+                            tracing::error!("Error receiving on RPC socket port {local_port}: {e}");
                         }
                     }
                 }
@@ -762,13 +918,11 @@ pub fn spawn_rpc_socket_task<U: UdpSocket>(
                 msg = send_rx.recv() => {
                     if let Some(send_msg) = msg {
                         if let Err(e) = rpc_socket.send_to(&send_msg.data, send_msg.to).await {
-                            tracing::error!("Error sending on RPC socket for service {}/{}: {}",
-                                service_id, instance_id, e);
+                            tracing::error!("Error sending on RPC socket port {local_port}: {e}");
                         }
                     } else {
                         // Sender was dropped (service stopped offering) - exit
-                        tracing::debug!("RPC socket task for service {}/{} shutting down - sender dropped",
-                            service_id, instance_id);
+                        tracing::debug!("RPC socket task on port {local_port} shutting down - sender dropped");
                         break;
                     }
                 }

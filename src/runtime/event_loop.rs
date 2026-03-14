@@ -197,7 +197,25 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     continue;
                 }
 
-                if let Some(actions) = handle_method_message(&header, &data, method_msg.from, &mut state, method_msg.service_key, Transport::Udp, 0) {
+                // Route by (service_id from header, local port).
+                //
+                // Using the local port as a discriminator correctly handles:
+                //   • Multiple instances of the same service_id: each instance is
+                //     bound to its own dedicated port, so port + service_id → unique.
+                //   • Multiple service_ids sharing one socket: service_id from the
+                //     header disambiguates them even though they share a port.
+                let service_key = state
+                    .offered
+                    .iter()
+                    .find(|(k, svc)| {
+                        k.service_id == header.service_id
+                            && svc
+                                .udp_endpoint
+                                .is_some_and(|ep| ep.port() == method_msg.local_port)
+                    })
+                    .map(|(k, _)| *k);
+
+                if let Some(actions) = handle_method_message(&header, &data, method_msg.from, &mut state, service_key, Transport::Udp, 0) {
                     for action in actions {
                         execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }

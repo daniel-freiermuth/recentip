@@ -273,7 +273,12 @@ pub enum SdChannel {
 /// Message received from an RPC socket task
 #[derive(Debug)]
 pub struct RpcMessage {
-    pub(crate) service_key: Option<ServiceKey>,
+    /// Local port the message arrived on. Used to route to the correct offered
+    /// service: together with `service_id` from the parsed header this
+    /// unambiguously identifies the right `OfferedService` even when multiple
+    /// services share one UDP socket (different service_ids) or when multiple
+    /// instances of the same service_id each occupy their own dedicated port.
+    pub(crate) local_port: u16,
     pub(crate) data: Vec<u8>,
     pub(crate) from: SocketAddrV4,
 }
@@ -517,6 +522,11 @@ pub struct RuntimeState {
     pub(crate) sd_monitors: Vec<mpsc::Sender<crate::SdEvent>>,
     /// Next subscription ID for client-side subscriptions (unique per handle)
     next_subscription_id: u64,
+    /// Monotonically increasing port counter for server-side RPC sockets.
+    /// Incremented by 1 each time a port is successfully bound (or skipped due
+    /// to `AddrInUse`), so re-offering after a stop and externally-occupied
+    /// ports never cause a collision with a still-running service.
+    pub(crate) next_server_rpc_port: u16,
     /// Tracks which (`service_id`, `instance_id`) pairs are using each subscription endpoint (port).
     /// This enables endpoint reuse across DIFFERENT services while maintaining isolation
     /// within the SAME service (events can be routed by `service_id` in header, but not by eventgroup).
@@ -563,6 +573,7 @@ impl RuntimeState {
             peer_sessions: HashMap::new(),
             sd_monitors: Vec::new(),
             next_subscription_id: 1,
+            next_server_rpc_port: local_endpoint.port() + 1,
             subscription_endpoint_usage: HashMap::new(),
         }
     }
