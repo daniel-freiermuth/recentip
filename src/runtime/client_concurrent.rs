@@ -47,12 +47,12 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
     subscribe_ttl: u32,
     used_conn_keys: HashSet<u64>,
     local_ip: Ipv4Addr,
-    local_port: PortSpec,
+    local_port_options: Vec<PortSpec>,
 ) {
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
     // Find the smallest unused conn_key (slot) for this service
-    let conn_key = {
+    let mut conn_key = {
         let mut slot = 0u64;
         while used_conn_keys.contains(&slot) {
             slot += 1;
@@ -60,38 +60,89 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
         slot
     };
 
-    // Establish TCP connection (this is the potentially slow operation)
-    // Now truly concurrent - no mutex held across multiple connections
-    let endpoint_for_subscribe = match tcp_pool
-        .ensure_connected(tcp_endpoint, conn_key, local_ip, local_port)
-        .await
-    {
-        Ok(local_addr) => {
-            tracing::debug!(
-                "TCP connection established to {} (local addr: {}, conn_key: {}) for subscription to {:04x}:{:04x} eventgroups {:?}",
-                tcp_endpoint,
-                local_addr,
-                conn_key,
-                service_id.value(),
-                instance_id.value(),
-                eventgroup_ids
-            );
-            local_addr
+    // Normalise: an empty list behaves like [Any]
+    let port_options = if local_port_options.is_empty() {
+        // TODO: seems suspicious
+        vec![PortSpec::Any]
+    } else {
+        local_port_options
+    };
+
+    // Establish TCP connection, trying each port option in turn.
+    // When a duplicate-4-tuple error occurs (EADDRINUSE / EADDRNOTAVAIL) we
+    // advance the `conn_key` so the pool allocates a fresh connection cell,
+    // then retry with the next port option.
+    let is_port_conflict = |e: &std::io::Error| {
+        matches!(
+            e.kind(),
+            std::io::ErrorKind::AddrInUse | std::io::ErrorKind::AddrNotAvailable
+        )
+    };
+
+    let mut last_err: Option<std::io::Error> = None;
+    let mut chosen_addr: Option<std::net::SocketAddrV4> = None;
+
+    for local_port in &port_options {
+        match tcp_pool
+            .ensure_connected(tcp_endpoint, conn_key, local_ip, *local_port)
+            .await
+        {
+            Ok(local_addr) => {
+                tracing::debug!(
+                    "TCP connection established to {} (local addr: {}, conn_key: {}) for subscription to {:04x}:{:04x} eventgroups {:?}",
+                    tcp_endpoint,
+                    local_addr,
+                    conn_key,
+                    service_id.value(),
+                    instance_id.value(),
+                    eventgroup_ids
+                );
+                chosen_addr = Some(local_addr);
+                last_err = None;
+                break;
+            }
+            Err(e) if is_port_conflict(&e) => {
+                tracing::debug!(
+                    "TCP connect from {:?} to {} failed ({}), trying next port option",
+                    local_port,
+                    tcp_endpoint,
+                    e
+                );
+                last_err = Some(e);
+                // Advance conn_key so the pool creates a fresh cell on the next attempt.
+                conn_key += 1;
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to establish TCP connection to {} for subscription: {}",
+                    tcp_endpoint,
+                    e
+                );
+                let _ = update_tx
+                    .send(SubscribeStateUpdate::Failed {
+                        response,
+                        error: Error::Io(e),
+                    })
+                    .await;
+                return;
+            }
         }
-        Err(e) => {
-            tracing::error!(
-                "Failed to establish TCP connection to {} for subscription: {}",
-                tcp_endpoint,
-                e
-            );
-            let _ = update_tx
-                .send(SubscribeStateUpdate::Failed {
-                    response,
-                    error: Error::Io(e),
-                })
-                .await;
-            return;
-        }
+    }
+
+    let Some(endpoint_for_subscribe) = chosen_addr else {
+        let e = last_err.unwrap_or_else(|| std::io::Error::from(std::io::ErrorKind::AddrInUse));
+        tracing::error!(
+            "Failed to establish TCP connection to {} for subscription: {}",
+            tcp_endpoint,
+            e
+        );
+        let _ = update_tx
+            .send(SubscribeStateUpdate::Failed {
+                response,
+                error: Error::Io(e),
+            })
+            .await;
+        return;
     };
 
     // Build the Subscribe SD message

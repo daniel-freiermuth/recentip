@@ -1309,3 +1309,127 @@ async fn tcp_one_service_two_subs_same_client_port_second_fails_real_network() {
     runtime.shutdown().await;
     tokio::time::sleep(Duration::from_millis(100)).await;
 }
+
+// ============================================================================
+// TCP one service, two subscriptions, two-port policy — second port fallback
+// real_network
+// ============================================================================
+
+/// Same setup as `tcp_one_service_two_subs_same_client_port_second_fails_real_network`,
+/// but the `TransportPolicy` carries **two** TCP ports `[PORT_A, PORT_B]`.
+///
+/// The first subscription binds `PORT_A` and succeeds.  The second subscription
+/// would duplicate the 4-tuple `(client:PORT_A → server:PORT)`, so the runtime
+/// falls back to `PORT_B`, opens a fresh connection from that port, and succeeds.
+///
+/// Assertions:
+/// - first subscription succeeds; server observes `PORT_A`,
+/// - second subscription succeeds; server observes `PORT_B`.
+#[tokio::test]
+async fn tcp_one_service_two_subs_two_port_policy_fallback_real_network() {
+    use recentip::config::{TransportPolicy, TransportPreference};
+
+    const SVC_ID: u16 = 0x123B;
+    const SVC_VERSION: (u8, u32) = (1, 0);
+    const SERVER_TCP_PORT: u16 = 19888;
+    // Both below the Linux default ephemeral range (32768–60999).
+    const PORT_A: u16 = 19889;
+    const PORT_B: u16 = 19890;
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (port1_tx, mut port1_rx) = mpsc::channel::<u16>(1);
+    let (port2_tx, mut port2_rx) = mpsc::channel::<u16>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
+            .start()
+            .await
+            .expect("Server runtime");
+
+        let mut offering = runtime
+            .offer(SVC_ID, InstanceId::Id(0x0001))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .tcp_port(SERVER_TCP_PORT)
+            .start()
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            port1_tx.send(client.address.port()).await.ok();
+        }
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            port2_tx.send(client.address.port()).await.ok();
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await
+        .expect("Client runtime");
+
+    let policy = TransportPolicy::new(vec![
+        TransportPreference::tcp().with_port(PORT_A),
+        TransportPreference::tcp().with_port(PORT_B),
+    ]);
+
+    let proxy = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime.find(SVC_ID).instance(InstanceId::Id(0x0001)),
+    )
+    .await
+    .expect("Discovery timeout")
+    .expect("Service available")
+    .with_transport_policy(policy);
+
+    let _sub1 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg1 timeout")
+    .expect("Subscribe eg1 must succeed");
+
+    let _sub2 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(2).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg2 timeout")
+    .expect("Subscribe eg2 must succeed — runtime falls back to PORT_B");
+
+    let observed1 = tokio::time::timeout(Duration::from_secs(5), port1_rx.recv())
+        .await
+        .expect("port1 observation timeout")
+        .expect("server must observe first Subscribe");
+    let observed2 = tokio::time::timeout(Duration::from_secs(5), port2_rx.recv())
+        .await
+        .expect("port2 observation timeout")
+        .expect("server must observe second Subscribe");
+
+    assert_eq!(
+        observed1, PORT_A,
+        "first Subscribe must use PORT_A ({PORT_A}), got {observed1}"
+    );
+    assert_eq!(
+        observed2, PORT_B,
+        "second Subscribe must fall back to PORT_B ({PORT_B}), got {observed2}"
+    );
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+
+    runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}

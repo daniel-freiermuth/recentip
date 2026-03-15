@@ -387,9 +387,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                     subscribe_ttl,
                                     used_conn_keys,
                                     local_ip,
-                                    // TCP doesn't bind to a specific local port, so use the
-                                    // first option (or Any if the list is empty).
-                                    local_port_options.first().copied().unwrap_or(crate::config::PortSpec::Any),
+                                    local_port_options,
                                 ).await;
                             });
                         } else {
