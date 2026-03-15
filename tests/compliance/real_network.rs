@@ -874,3 +874,438 @@ async fn tcp_fixed_client_port_real_network() {
     runtime.shutdown().await;
     tokio::time::sleep(Duration::from_millis(100)).await;
 }
+
+// ============================================================================
+// TCP two-service same-server-port + fixed client port — real_network
+// ============================================================================
+
+/// Server (127.0.0.2) offers **two different service IDs** on the same TCP port.
+/// Client (127.0.0.1) subscribes to both using a `TransportPolicy` that pins
+/// the local TCP source port to an explicit value.
+///
+/// Because both services share the same server TCP endpoint the runtime's
+/// connection pool returns the same pooled connection for both subscriptions.
+/// As a result both Subscribe SD messages carry the **same** client TCP port —
+/// the one specified in the `TransportPolicy`.
+///
+/// Assertions:
+/// - both subscriptions succeed,
+/// - server-observed Subscribe A port == `CLIENT_TCP_PORT`,
+/// - server-observed Subscribe B port == `CLIENT_TCP_PORT` (shared connection).
+#[tokio::test]
+async fn tcp_two_services_same_server_port_fixed_client_port_real_network() {
+    use recentip::config::{TransportPolicy, TransportPreference};
+
+    const SVC_A: u16 = 0x1237;
+    const SVC_B: u16 = 0x1238;
+    const SVC_VERSION: (u8, u32) = (1, 0);
+    const SERVER_TCP_PORT: u16 = 19881;
+    // Below the Linux default ephemeral range (32768–60999).
+    const CLIENT_TCP_PORT: u16 = 19882;
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (port_a_tx, mut port_a_rx) = mpsc::channel::<u16>(1);
+    let (port_b_tx, mut port_b_rx) = mpsc::channel::<u16>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
+            .start()
+            .await
+            .expect("Server runtime");
+
+        let mut offering_a = runtime
+            .offer(SVC_A, InstanceId::Id(0x0001))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .tcp_port(SERVER_TCP_PORT)
+            .start()
+            .await
+            .expect("Offer service A");
+
+        let mut offering_b = runtime
+            .offer(SVC_B, InstanceId::Id(0x0001))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .tcp_port(SERVER_TCP_PORT)
+            .start()
+            .await
+            .expect("Offer service B on shared TCP port");
+
+        ready_tx.send(()).await.ok();
+
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering_a.next().await {
+            port_a_tx.send(client.address.port()).await.ok();
+        }
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering_b.next().await {
+            port_b_tx.send(client.address.port()).await.ok();
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await
+        .expect("Client runtime");
+
+    let policy = TransportPolicy::new(vec![TransportPreference::tcp().with_port(CLIENT_TCP_PORT)]);
+
+    let proxy_a = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime.find(SVC_A).instance(InstanceId::Id(0x0001)),
+    )
+    .await
+    .expect("Discovery A timeout")
+    .expect("Service A available")
+    .with_transport_policy(policy.clone());
+
+    let proxy_b = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime.find(SVC_B).instance(InstanceId::Id(0x0001)),
+    )
+    .await
+    .expect("Discovery B timeout")
+    .expect("Service B available")
+    .with_transport_policy(policy);
+
+    let _sub_a = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy_a.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe A timeout")
+    .expect("Subscribe A success");
+
+    let _sub_b = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy_b.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe B timeout")
+    .expect("Subscribe B success");
+
+    let port_a = tokio::time::timeout(Duration::from_secs(5), port_a_rx.recv())
+        .await
+        .expect("port A observation timeout")
+        .expect("server must observe Subscribe A");
+    let port_b = tokio::time::timeout(Duration::from_secs(5), port_b_rx.recv())
+        .await
+        .expect("port B observation timeout")
+        .expect("server must observe Subscribe B");
+
+    assert_eq!(
+        port_a, CLIENT_TCP_PORT,
+        "service A Subscribe must carry fixed client port {CLIENT_TCP_PORT}, got {port_a}"
+    );
+    assert_eq!(
+        port_b, CLIENT_TCP_PORT,
+        "service B Subscribe must carry fixed client port {CLIENT_TCP_PORT}, got {port_b}"
+    );
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+
+    runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
+// ============================================================================
+// TCP same-service-id different major version: shared-port fails, diff ports +
+// fixed client port succeeds — real_network
+// ============================================================================
+
+/// Same service_id, same instance, but **different major versions** on the server.
+///
+/// Phase 1 – verify the offer conflict:
+/// Offering both major versions of the service on the **same** TCP port must
+/// fail with `AddrInUse` (the runtime cannot route by version since the RPC
+/// header carries no major version field).
+///
+/// Phase 2 – subscribe with a fixed client port to both:
+/// After re-offering major v2 on a *different* port, the client subscribes to
+/// **both versions** using a `TransportPolicy` that pins the local TCP source
+/// port to an explicit value.  Because the two services sit on different server
+/// TCP ports the connections have distinct 4-tuples
+/// `(client_ip:CLIENT_TCP_PORT, server_ip:PORT_V1)` and
+/// `(client_ip:CLIENT_TCP_PORT, server_ip:PORT_V2)`, so both `bind()` calls
+/// succeed (Linux allows this with `SO_REUSEADDR`).
+///
+/// Assertions:
+/// - second offer on same port → `AddrInUse`,
+/// - both subscriptions succeed,
+/// - server-observed Subscribe v1 port == `CLIENT_TCP_PORT`,
+/// - server-observed Subscribe v2 port == `CLIENT_TCP_PORT`.
+#[tokio::test]
+async fn tcp_same_id_diff_major_same_client_port_real_network() {
+    use recentip::config::{TransportPolicy, TransportPreference};
+    use recentip::Error;
+
+    const SVC_ID: u16 = 0x1239;
+    const SERVER_TCP_PORT_V1: u16 = 19883;
+    const SERVER_TCP_PORT_V2: u16 = 19884;
+    // Below the Linux default ephemeral range (32768–60999).
+    const CLIENT_TCP_PORT: u16 = 19885;
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (port_v1_tx, mut port_v1_rx) = mpsc::channel::<u16>(1);
+    let (port_v2_tx, mut port_v2_rx) = mpsc::channel::<u16>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
+            .start()
+            .await
+            .expect("Server runtime");
+
+        // Phase 1: major v1 at PORT_V1 — must succeed.
+        let mut offering_v1 = runtime
+            .offer(SVC_ID, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .tcp_port(SERVER_TCP_PORT_V1)
+            .start()
+            .await
+            .expect("offering major v1 on its own port must succeed");
+
+        // Phase 1: major v2 on the SAME port as v1 — must fail.
+        let conflict = runtime
+            .offer(SVC_ID, InstanceId::Id(0x0001))
+            .version(2, 0)
+            .tcp_port(SERVER_TCP_PORT_V1)
+            .start()
+            .await;
+        assert!(
+            matches!(&conflict, Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::AddrInUse),
+            "offering same service_id/same port with different major version must fail AddrInUse; got: {:?}",
+            conflict.as_ref().err()
+        );
+
+        // Phase 2: major v2 on a different port — must succeed.
+        let mut offering_v2 = runtime
+            .offer(SVC_ID, InstanceId::Id(0x0001))
+            .version(2, 0)
+            .tcp_port(SERVER_TCP_PORT_V2)
+            .start()
+            .await
+            .expect("offering major v2 on a distinct port must succeed");
+
+        ready_tx.send(()).await.ok();
+
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering_v1.next().await {
+            port_v1_tx.send(client.address.port()).await.ok();
+        }
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering_v2.next().await {
+            port_v2_tx.send(client.address.port()).await.ok();
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await
+        .expect("Client runtime");
+
+    let policy = TransportPolicy::new(vec![TransportPreference::tcp().with_port(CLIENT_TCP_PORT)]);
+
+    // Discover and subscribe to major v1.
+    let proxy_v1 = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime
+            .find(SVC_ID)
+            .instance(InstanceId::Id(0x0001))
+            .major_version(1u8),
+    )
+    .await
+    .expect("Discovery v1 timeout")
+    .expect("Service v1 available")
+    .with_transport_policy(policy.clone());
+
+    // Discover and subscribe to major v2.
+    let proxy_v2 = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime
+            .find(SVC_ID)
+            .instance(InstanceId::Id(0x0001))
+            .major_version(2u8),
+    )
+    .await
+    .expect("Discovery v2 timeout")
+    .expect("Service v2 available")
+    .with_transport_policy(policy);
+
+    // The two services live on different server ports → different 4-tuples →
+    // the same local port can be reused for both connections.
+    let _sub_v1 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy_v1.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe v1 timeout")
+    .expect("Subscribe v1 success");
+
+    let _sub_v2 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy_v2.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe v2 timeout")
+    .expect("Subscribe v2 success");
+
+    let port_v1 = tokio::time::timeout(Duration::from_secs(5), port_v1_rx.recv())
+        .await
+        .expect("port v1 observation timeout")
+        .expect("server must observe Subscribe v1");
+    let port_v2 = tokio::time::timeout(Duration::from_secs(5), port_v2_rx.recv())
+        .await
+        .expect("port v2 observation timeout")
+        .expect("server must observe Subscribe v2");
+
+    assert_eq!(
+        port_v1, CLIENT_TCP_PORT,
+        "service v1 Subscribe must carry fixed client port {CLIENT_TCP_PORT}, got {port_v1}"
+    );
+    assert_eq!(
+        port_v2, CLIENT_TCP_PORT,
+        "service v2 Subscribe must carry fixed client port {CLIENT_TCP_PORT}, got {port_v2}"
+    );
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+
+    runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
+// ============================================================================
+// TCP one service, two subscriptions, same fixed client port — real_network
+// ============================================================================
+
+/// One server offers one service on one TCP port.  The client holds a
+/// `TransportPolicy` that pins the local TCP source port to an explicit value
+/// and subscribes to **two different eventgroups** sequentially.
+///
+/// The first subscription opens a TCP connection
+/// `(client_ip:CLIENT_TCP_PORT → server_ip:SERVER_TCP_PORT)`.
+/// The second subscription targets the same server endpoint and therefore needs
+/// a second TCP connection with the **same** source port — which would produce
+/// an identical 4-tuple.  The Linux TCP stack rejects this: even with
+/// `SO_REUSEADDR`, two simultaneous connections cannot share the same 4-tuple.
+///
+/// Assertions:
+/// - first subscription succeeds; server observes `CLIENT_TCP_PORT`,
+/// - second subscription fails with an I/O error.
+#[tokio::test]
+async fn tcp_one_service_two_subs_same_client_port_second_fails_real_network() {
+    use recentip::config::{TransportPolicy, TransportPreference};
+    use recentip::Error;
+
+    const SVC_ID: u16 = 0x123A;
+    const SVC_VERSION: (u8, u32) = (1, 0);
+    const SERVER_TCP_PORT: u16 = 19886;
+    // Below the Linux default ephemeral range (32768–60999).
+    const CLIENT_TCP_PORT: u16 = 19887;
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (port_tx, mut port_rx) = mpsc::channel::<u16>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
+            .start()
+            .await
+            .expect("Server runtime");
+
+        let mut offering = runtime
+            .offer(SVC_ID, InstanceId::Id(0x0001))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .tcp_port(SERVER_TCP_PORT)
+            .start()
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        // Only the first subscribe arrives (second fails client-side).
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            port_tx.send(client.address.port()).await.ok();
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await
+        .expect("Client runtime");
+
+    let policy = TransportPolicy::new(vec![TransportPreference::tcp().with_port(CLIENT_TCP_PORT)]);
+
+    let proxy = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime.find(SVC_ID).instance(InstanceId::Id(0x0001)),
+    )
+    .await
+    .expect("Discovery timeout")
+    .expect("Service available")
+    .with_transport_policy(policy);
+
+    // First subscription: must succeed and bind CLIENT_TCP_PORT.
+    let _sub1 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg1 timeout")
+    .expect("Subscribe eg1 must succeed");
+
+    let observed_port = tokio::time::timeout(Duration::from_secs(5), port_rx.recv())
+        .await
+        .expect("port observation timeout")
+        .expect("server must observe first Subscribe");
+    assert_eq!(
+        observed_port, CLIENT_TCP_PORT,
+        "first Subscribe must carry fixed client port {CLIENT_TCP_PORT}, got {observed_port}"
+    );
+
+    // Second subscription: targets the same server endpoint → duplicate TCP
+    // 4-tuple → OS rejects the connection attempt.
+    let result2 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(2).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg2 timeout (should return Err fast, not hang)");
+
+    assert!(
+        matches!(result2, Err(Error::Io(_))),
+        "second Subscribe to the same service with the same fixed TCP port must fail with an I/O \
+         error (duplicate 4-tuple); got: {:?}",
+        result2.as_ref().err()
+    );
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+
+    runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
