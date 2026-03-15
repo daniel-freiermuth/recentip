@@ -11,18 +11,6 @@
 //! - **`feat_req_someip_647`**: Client reestablishes after failure
 //! - **`feat_req_someip_586`**: Optional Magic Cookies for resynchronization
 //!
-//! ## Connection Pool
-//!
-//! The [`TcpConnectionPool`] maintains one connection per remote peer:
-//!
-//! ```text
-//! TcpConnectionPool
-//!     │
-//!     ├─── 192.168.1.10:30500 ───▶ [TCP Connection + Reader Task]
-//!     ├─── 192.168.1.20:30500 ───▶ [TCP Connection + Reader Task]
-//!     └─── 192.168.1.30:30500 ───▶ [TCP Connection + Reader Task]
-//! ```
-//!
 //! ## Message Framing
 //!
 //! TCP doesn't have message boundaries. SOME/IP uses the length field in the
