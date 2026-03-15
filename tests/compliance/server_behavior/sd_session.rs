@@ -25,6 +25,7 @@ use super::helpers::{
 };
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
+use tokio::sync::Barrier;
 
 use core::panic;
 use recentip::Transport;
@@ -5830,13 +5831,14 @@ fn client_closes_tcp_on_server_session_regression() {
 ///
 /// NOTE: Currently failing - server2 is incorrectly detected as rebooting when
 /// server1 reboots. This suggests per-peer isolation is not working correctly.
-#[test_log::test]
+#[test]
 fn client_tracks_session_ids_per_server_independently() {
     covers!(
         feat_req_someipsd_765,
         feat_req_someipsd_764,
         feat_req_someipsd_871
     );
+    configure_tracing();
 
     use std::sync::{
         atomic::{AtomicBool, AtomicU32, Ordering},
@@ -5860,9 +5862,15 @@ fn client_tracks_session_ids_per_server_independently() {
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
+        .max_message_latency(Duration::from_millis(50))
         .build();
 
+    let ready_to_reboot = Arc::new(Barrier::new(4));
+    let rebooted = Arc::new(Barrier::new(4));
+
     // Client subscribes to both servers
+    let ready_to_reboot_client = Arc::clone(&ready_to_reboot);
+    let rebooted_client = Arc::clone(&rebooted);
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -5889,23 +5897,29 @@ fn client_tracks_session_ids_per_server_independently() {
         let mut sub2 = proxy2.subscribe(eventgroup).await.unwrap();
 
         // Phase 1: Receive events from both servers before server1 reboot
-        for _ in 0..3 {
+        loop {
             tokio::select! {
                 Some(event) = sub1.next() => {
+                    tracing::info!("Received event from server1 before reboot");
                     if event.payload.get(0) == Some(&0x01) {
                         SERVER1_EVENTS_BEFORE.fetch_add(1, Ordering::SeqCst);
                     }
                 }
                 Some(event) = sub2.next() => {
+                    tracing::info!("Received event from server2 before reboot");
                     if event.payload.get(0) == Some(&0x01) {
                         SERVER2_EVENTS_BEFORE.fetch_add(1, Ordering::SeqCst);
                     }
                 }
-                _ = tokio::time::sleep(Duration::from_millis(300)) => break,
+                _ = tokio::time::sleep(Duration::from_millis(200)) => {
+                    tracing::info!("Finished phase 1 event reception");
+                    break;
+                },
             }
         }
 
-        tokio::time::sleep(Duration::from_millis(400)).await;
+        ready_to_reboot_client.wait().await; // Sync with servers to ensure events are sent before reboot
+        rebooted_client.wait().await; // Wait for server1 to finish rebooting before proceeding
 
         // Phase 2: After server1 reboots, server1 events should stop, server2 continues.
         // Guard sub1 so that once it closes (reboot clears subscription), it doesn't
@@ -5914,6 +5928,7 @@ fn client_tracks_session_ids_per_server_independently() {
         for _ in 0..10 {
             tokio::select! {
                 result = sub1.next(), if sub1_open => {
+                    tracing::info!("Received event from server1 after reboot");
                     match result {
                         None => sub1_open = false,
                         Some(event) => {
@@ -5924,6 +5939,7 @@ fn client_tracks_session_ids_per_server_independently() {
                     }
                 }
                 Some(event) = sub2.next() => {
+                    tracing::info!("Received event from server2 after reboot");
                     if event.payload.get(0) == Some(&0x02) {
                         SERVER2_EVENTS_AFTER.fetch_add(1, Ordering::SeqCst);
                     }
@@ -5937,239 +5953,275 @@ fn client_tracks_session_ids_per_server_independently() {
     });
 
     // Server 1 - REBOOTS (session goes from 100→1 with reboot=1)
-    sim.host("server1", || async move {
-        let sd_socket = Arc::new(turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?);
-        let event_socket = Arc::new(turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?);
+    let ready_to_reboot_server1_ = Arc::clone(&ready_to_reboot);
+    let rebooted_server1_ = Arc::clone(&rebooted);
+    sim.host("server1", move || {
+        let ready_to_reboot_server1 = Arc::clone(&ready_to_reboot_server1_);
+        let rebooted_server1 = Arc::clone(&rebooted_server1_);
+        async move {
+            let sd_socket = Arc::new(turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?);
+            let event_socket = Arc::new(turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?);
 
-        let my_ip: std::net::Ipv4Addr = turmoil::lookup("server1").to_string().parse().unwrap();
-        let client_ip: std::net::IpAddr = turmoil::lookup("client").into();
-        let multicast_addr: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
+            let my_ip: std::net::Ipv4Addr = turmoil::lookup("server1").to_string().parse().unwrap();
+            let client_ip: std::net::IpAddr = turmoil::lookup("client").into();
+            let multicast_addr: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
 
-        let sd_socket_discovery = Arc::clone(&sd_socket);
-        let discovery_task = tokio::spawn(async move {
-            // Use incrementing session IDs to avoid triggering false reboot detection
-            // (per spec, old.session_id >= new.session_id with reboot=true is a reboot)
-            for session in 1u16..21 {
-                let offer = build_sd_offer_with_session(
-                    SERVER1_SERVICE,
-                    0x0001,
-                    1,
-                    0,
-                    my_ip,
-                    30509,
-                    5,
-                    session,
-                    true,
-                    false,
-                );
-                let _ = sd_socket_discovery.send_to(&offer, multicast_addr).await;
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-        });
+            let sd_socket_discovery = Arc::clone(&sd_socket);
+            let discovery_task = tokio::spawn(async move {
+                // Use incrementing session IDs to avoid triggering false reboot detection
+                // (per spec, old.session_id >= new.session_id with reboot=true is a reboot)
+                for session in 1u16..21 {
+                    let offer = build_sd_offer_with_session(
+                        SERVER1_SERVICE,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30509,
+                        5,
+                        session,
+                        true,
+                        false,
+                    );
+                    let _ = sd_socket_discovery.send_to(&offer, multicast_addr).await;
+                    tracing::info!("SD1:Server1 sent SD offer with session {}", session);
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            });
 
-        let mut buf = [0u8; 1500];
-        let client_event_port = loop {
-            match tokio::time::timeout(Duration::from_millis(500), sd_socket.recv_from(&mut buf))
+            let mut buf = [0u8; 1500];
+            let client_event_port = loop {
+                match tokio::time::timeout(
+                    Duration::from_millis(500),
+                    sd_socket.recv_from(&mut buf),
+                )
                 .await
-            {
-                Ok(Ok((len, from))) => {
-                    if len > 40 && buf[24] == 0x06 {
-                        if len > 52 {
-                            let port = u16::from_be_bytes([buf[len - 2], buf[len - 1]]);
-                            let subscribe_ack =
-                                build_sd_subscribe_ack(SERVER1_SERVICE, 0x0001, 1, 1, 5, 1);
-                            let _ = sd_socket.send_to(&subscribe_ack, from).await;
-                            break port;
+                {
+                    Ok(Ok((len, from))) => {
+                        if len > 40 && buf[24] == 0x06 {
+                            if len > 52 {
+                                let port = u16::from_be_bytes([buf[len - 2], buf[len - 1]]);
+                                let subscribe_ack =
+                                    build_sd_subscribe_ack(SERVER1_SERVICE, 0x0001, 1, 1, 5, 1);
+                                let _ = sd_socket.send_to(&subscribe_ack, from).await;
+                                break port;
+                            }
                         }
                     }
+                    Ok(Err(e)) => return Err(e.into()),
+                    Err(_) => continue,
                 }
-                Ok(Err(e)) => return Err(e.into()),
-                Err(_) => continue,
-            }
-        };
-        discovery_task.abort();
-        let client_event_addr = std::net::SocketAddr::new(client_ip, client_event_port);
-
-        let sd_socket_clone = Arc::clone(&sd_socket);
-        let sd_task = tokio::spawn(async move {
-            // Normal operation with high session IDs
-            for session in 100..105 {
-                let offer = build_sd_offer_with_session(
-                    SERVER1_SERVICE,
-                    0x0001,
-                    1,
-                    0,
-                    my_ip,
-                    30509,
-                    5,
-                    session,
-                    true,
-                    false,
-                );
-                let _ = sd_socket_clone.send_to(&offer, multicast_addr).await;
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
-
+            };
+            discovery_task.abort();
+            discovery_task.await.ok();
             tokio::time::sleep(Duration::from_millis(100)).await;
-            SERVER1_REBOOTED.store(true, Ordering::SeqCst);
+            let client_event_addr = std::net::SocketAddr::new(client_ip, client_event_port);
 
-            // REBOOT: Session regresses to 1
-            for session in 1..5 {
-                let offer = build_sd_offer_with_session(
-                    SERVER1_SERVICE,
-                    0x0001,
-                    1,
-                    0,
-                    my_ip,
-                    30509,
-                    5,
-                    session,
-                    true,
-                    false,
-                );
-                let _ = sd_socket_clone.send_to(&offer, multicast_addr).await;
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
-        });
-
-        // Send events
-        for _ in 0..3 {
-            let mut event = vec![0u8; 17];
-            event[0..2].copy_from_slice(&SERVER1_SERVICE.to_be_bytes());
-            event[2..4].copy_from_slice(&0x8001u16.to_be_bytes());
-            event[4..8].copy_from_slice(&9u32.to_be_bytes());
-            event[8..10].copy_from_slice(&0x0000u16.to_be_bytes());
-            event[10..12].copy_from_slice(&100u16.to_be_bytes());
-            event[12] = 0x01;
-            event[13] = 0x01;
-            event[14] = 0x02;
-            event[15] = 0x00;
-            event[16] = 0x01; // Phase 1
-            let _ = event_socket.send_to(&event, client_event_addr).await;
-            tokio::time::sleep(Duration::from_millis(80)).await;
-        }
-
-        tokio::time::sleep(Duration::from_millis(300)).await;
-
-        // Try to send after reboot - should fail due to subscription expired
-        for _ in 0..3 {
-            let mut event = vec![0u8; 17];
-            event[0..2].copy_from_slice(&SERVER1_SERVICE.to_be_bytes());
-            event[2..4].copy_from_slice(&0x8001u16.to_be_bytes());
-            event[4..8].copy_from_slice(&9u32.to_be_bytes());
-            event[8..10].copy_from_slice(&0x0000u16.to_be_bytes());
-            event[10..12].copy_from_slice(&1u16.to_be_bytes());
-            event[12] = 0x01;
-            event[13] = 0x01;
-            event[14] = 0x02;
-            event[15] = 0x00;
-            event[16] = 0x02; // Phase 2
-            let _ = event_socket.send_to(&event, client_event_addr).await;
-            tokio::time::sleep(Duration::from_millis(80)).await;
-        }
-
-        let _ = sd_task.await;
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        Ok(())
-    });
-
-    // Server 2 - STABLE (continues normal operation)
-    sim.host("server2", || async move {
-        let sd_socket = Arc::new(turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?);
-        let event_socket = Arc::new(turmoil::net::UdpSocket::bind("0.0.0.0:30510").await?);
-
-        let my_ip: std::net::Ipv4Addr = turmoil::lookup("server2").to_string().parse().unwrap();
-        let client_ip: std::net::IpAddr = turmoil::lookup("client").into();
-        let multicast_addr: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
-
-        let sd_socket_discovery = Arc::clone(&sd_socket);
-        let discovery_task = tokio::spawn(async move {
-            for session in 1..20 {
-                let offer = build_sd_offer_with_session(
-                    SERVER2_SERVICE,
-                    0x0001,
-                    1,
-                    0,
-                    my_ip,
-                    30510,
-                    5,
-                    session,
-                    session == 1,
-                    false,
-                );
-                let _ = sd_socket_discovery.send_to(&offer, multicast_addr).await;
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-        });
-
-        let mut buf = [0u8; 1500];
-        let client_event_port = loop {
-            match tokio::time::timeout(Duration::from_millis(500), sd_socket.recv_from(&mut buf))
-                .await
-            {
-                Ok(Ok((len, from))) => {
-                    if len > 40 && buf[24] == 0x06 {
-                        if len > 52 {
-                            let port = u16::from_be_bytes([buf[len - 2], buf[len - 1]]);
-                            let subscribe_ack =
-                                build_sd_subscribe_ack(SERVER2_SERVICE, 0x0001, 1, 1, 5, 1);
-                            let _ = sd_socket.send_to(&subscribe_ack, from).await;
-                            break port;
-                        }
-                    }
+            let sd_socket_clone = Arc::clone(&sd_socket);
+            let ready_to_reboot_sd = Arc::clone(&ready_to_reboot_server1);
+            let rebooted_sd = Arc::clone(&rebooted_server1);
+            let sd_task = tokio::spawn(async move {
+                // Normal operation with high session IDs
+                for session in 100..105 {
+                    let offer = build_sd_offer_with_session(
+                        SERVER1_SERVICE,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30509,
+                        5,
+                        session,
+                        true,
+                        false,
+                    );
+                    let _ = sd_socket_clone.send_to(&offer, multicast_addr).await;
+                    tracing::info!("SD2:Server1 sent SD offer with session {}", session);
+                    tokio::time::sleep(Duration::from_millis(50)).await;
                 }
-                Ok(Err(e)) => return Err(e.into()),
-                Err(_) => continue,
-            }
-        };
-        discovery_task.abort();
-        let client_event_addr = std::net::SocketAddr::new(client_ip, client_event_port);
 
-        let sd_socket_clone = Arc::clone(&sd_socket);
-        let sd_task = tokio::spawn(async move {
-            // Server2 continues with normal incremental sessions
-            // Even while server1 is rebooting, server2 stays stable
-            // reboot=false for all after initial discovery
-            for session in 20..40 {
-                let offer = build_sd_offer_with_session(
-                    SERVER2_SERVICE,
-                    0x0001,
-                    1,
-                    0,
-                    my_ip,
-                    30510,
-                    5,
-                    session,
-                    false,
-                    false,
-                );
-                let _ = sd_socket_clone.send_to(&offer, multicast_addr).await;
+                ready_to_reboot_sd.wait().await; // Sync with client to ensure it has received events before reboot
+
                 tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-        });
+                SERVER1_REBOOTED.store(true, Ordering::SeqCst);
 
-        // Send events continuously through both phases
-        for phase in 1..=2 {
-            for _ in 0..5 {
+                // REBOOT: Session regresses to 1
+                for session in 1..5 {
+                    let offer = build_sd_offer_with_session(
+                        SERVER1_SERVICE,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30509,
+                        5,
+                        session,
+                        true,
+                        false,
+                    );
+                    let _ = sd_socket_clone.send_to(&offer, multicast_addr).await;
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                rebooted_sd.wait().await; // Sync with client to ensure it has processed reboot before sending more events
+            });
+
+            // Send events
+            for _ in 0..3 {
                 let mut event = vec![0u8; 17];
-                event[0..2].copy_from_slice(&SERVER2_SERVICE.to_be_bytes());
+                event[0..2].copy_from_slice(&SERVER1_SERVICE.to_be_bytes());
                 event[2..4].copy_from_slice(&0x8001u16.to_be_bytes());
                 event[4..8].copy_from_slice(&9u32.to_be_bytes());
                 event[8..10].copy_from_slice(&0x0000u16.to_be_bytes());
-                event[10..12].copy_from_slice(&10u16.to_be_bytes());
+                event[10..12].copy_from_slice(&100u16.to_be_bytes());
                 event[12] = 0x01;
                 event[13] = 0x01;
                 event[14] = 0x02;
                 event[15] = 0x00;
-                event[16] = phase; // Phase marker
+                event[16] = 0x01; // Phase 1
                 let _ = event_socket.send_to(&event, client_event_addr).await;
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                tracing::info!("Server1 sent event before reboot");
+                tokio::time::sleep(Duration::from_millis(80)).await;
             }
-        }
 
-        let _ = sd_task.await;
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        Ok(())
+            ready_to_reboot_server1.wait().await; // Sync with client to ensure events are sent before reboot
+            rebooted_server1.wait().await; // Wait for client to process reboot before sending more events
+
+            // Try to send after reboot - should fail due to subscription expired
+            for _ in 0..3 {
+                let mut event = vec![0u8; 17];
+                event[0..2].copy_from_slice(&SERVER1_SERVICE.to_be_bytes());
+                event[2..4].copy_from_slice(&0x8001u16.to_be_bytes());
+                event[4..8].copy_from_slice(&9u32.to_be_bytes());
+                event[8..10].copy_from_slice(&0x0000u16.to_be_bytes());
+                event[10..12].copy_from_slice(&1u16.to_be_bytes());
+                event[12] = 0x01;
+                event[13] = 0x01;
+                event[14] = 0x02;
+                event[15] = 0x00;
+                event[16] = 0x02; // Phase 2
+                let _ = event_socket.send_to(&event, client_event_addr).await;
+                tracing::info!("Server1 sent event after reboot");
+                tokio::time::sleep(Duration::from_millis(80)).await;
+            }
+
+            let _ = sd_task.await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            Ok(())
+        }
+    });
+
+    // Server 2 - STABLE (continues normal operation)
+    sim.host("server2", move || {
+        let ready_to_reboot_server2 = Arc::clone(&ready_to_reboot);
+        let rebooted_server2 = Arc::clone(&rebooted);
+        async move {
+            let sd_socket = Arc::new(turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?);
+            let event_socket = Arc::new(turmoil::net::UdpSocket::bind("0.0.0.0:30510").await?);
+
+            let my_ip: std::net::Ipv4Addr = turmoil::lookup("server2").to_string().parse().unwrap();
+            let client_ip: std::net::IpAddr = turmoil::lookup("client").into();
+            let multicast_addr: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+            let sd_socket_discovery = Arc::clone(&sd_socket);
+            let discovery_task = tokio::spawn(async move {
+                for session in 1..20 {
+                    let offer = build_sd_offer_with_session(
+                        SERVER2_SERVICE,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30510,
+                        5,
+                        session,
+                        session == 1,
+                        false,
+                    );
+                    let _ = sd_socket_discovery.send_to(&offer, multicast_addr).await;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            });
+
+            let mut buf = [0u8; 1500];
+            let client_event_port = loop {
+                match tokio::time::timeout(
+                    Duration::from_millis(500),
+                    sd_socket.recv_from(&mut buf),
+                )
+                .await
+                {
+                    Ok(Ok((len, from))) => {
+                        if len > 40 && buf[24] == 0x06 {
+                            if len > 52 {
+                                let port = u16::from_be_bytes([buf[len - 2], buf[len - 1]]);
+                                let subscribe_ack =
+                                    build_sd_subscribe_ack(SERVER2_SERVICE, 0x0001, 1, 1, 5, 1);
+                                let _ = sd_socket.send_to(&subscribe_ack, from).await;
+                                break port;
+                            }
+                        }
+                    }
+                    Ok(Err(e)) => return Err(e.into()),
+                    Err(_) => continue,
+                }
+            };
+            discovery_task.abort();
+            let client_event_addr = std::net::SocketAddr::new(client_ip, client_event_port);
+
+            let sd_socket_clone = Arc::clone(&sd_socket);
+            let sd_task = tokio::spawn(async move {
+                // Server2 continues with normal incremental sessions
+                // Even while server1 is rebooting, server2 stays stable
+                // reboot=false for all after initial discovery
+                for session in 20..40 {
+                    let offer = build_sd_offer_with_session(
+                        SERVER2_SERVICE,
+                        0x0001,
+                        1,
+                        0,
+                        my_ip,
+                        30510,
+                        5,
+                        session,
+                        false,
+                        false,
+                    );
+                    let _ = sd_socket_clone.send_to(&offer, multicast_addr).await;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            });
+
+            // Send events continuously through both phases
+            for phase in 1..=2 {
+                for _ in 0..5 {
+                    let mut event = vec![0u8; 17];
+                    event[0..2].copy_from_slice(&SERVER2_SERVICE.to_be_bytes());
+                    event[2..4].copy_from_slice(&0x8001u16.to_be_bytes());
+                    event[4..8].copy_from_slice(&9u32.to_be_bytes());
+                    event[8..10].copy_from_slice(&0x0000u16.to_be_bytes());
+                    event[10..12].copy_from_slice(&10u16.to_be_bytes());
+                    event[12] = 0x01;
+                    event[13] = 0x01;
+                    event[14] = 0x02;
+                    event[15] = 0x00;
+                    event[16] = phase; // Phase marker
+                    let _ = event_socket.send_to(&event, client_event_addr).await;
+                    tracing::info!("Server2 sent event for phase {}", phase);
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                if phase == 1 {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    ready_to_reboot_server2.wait().await; // Sync with client to ensure it has received events before reboot
+                    tracing::info!("We all are READY...");
+                    rebooted_server2.wait().await; // Wait for server1 to finish rebooting before proceeding
+                    tracing::info!("REBOOT done ...");
+                }
+            }
+
+            let _ = sd_task.await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            Ok(())
+        }
     });
 
     sim.run().unwrap();
