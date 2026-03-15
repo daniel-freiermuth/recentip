@@ -129,11 +129,11 @@ pub enum Command {
         transport: crate::config::Transport,
         remote_endpoint: std::net::SocketAddrV4,
         sd_endpoint: SocketAddrV4,
-        /// Ordered list of client-side port options for the UDP subscription socket.
-        /// The runtime tries each in turn, skipping any already owned by this service
-        /// (SOME/IP wire has no eventgroup discriminator so same-service sharing is
-        /// forbidden).  Ignored for TCP.
-        local_port_options: Vec<crate::config::PortSpec>,
+        /// Client-side port to use for this subscription attempt.
+        /// For UDP: if the port is already owned by this service, returns `AddrInUse`
+        /// and `SubscriptionBuilder` retries with the next policy entry.
+        /// For TCP: ignored (port selection happens during connection).
+        local_port: crate::config::PortSpec,
     },
     /// Unsubscribe from an eventgroup
     Unsubscribe {

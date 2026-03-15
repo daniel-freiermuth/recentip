@@ -1433,3 +1433,596 @@ async fn tcp_one_service_two_subs_two_port_policy_fallback_real_network() {
     runtime.shutdown().await;
     tokio::time::sleep(Duration::from_millis(100)).await;
 }
+
+// ============================================================================
+
+/// Mixed-transport cross-protocol fallback test.
+///
+/// The server offers **both** TCP (port 19891) and UDP (port 19892).  The
+/// client's `TransportPolicy` is `[tcp().with_port(PORT_A=19893),
+/// udp().with_port(PORT_B=19894)]`.
+///
+/// - First subscription (`eg1`): policy selects TCP → connects from `PORT_A`.
+///   Succeeds; server observes the Subscribe with client port `PORT_A` via TCP.
+/// - Second subscription (`eg2`): policy again selects TCP first → same
+///   4-tuple `(client:PORT_A → server:SERVER_TCP_PORT)` → `EADDRNOTAVAIL`.
+///   Since all TCP ports in the policy are exhausted, the runtime falls back to
+///   UDP → connects from `PORT_B`.  Succeeds; server observes the Subscribe
+///   with client port `PORT_B` via UDP.
+///
+/// Assertions:
+/// * `eg1` succeeds; server observes TCP subscribe from `PORT_A`.
+/// * `eg2` succeeds; server observes UDP subscribe from `PORT_B`.
+#[tokio::test]
+async fn tcp_udp_mixed_policy_cross_transport_fallback_real_network() {
+    use recentip::config::{TransportPolicy, TransportPreference};
+
+    const SVC_ID: u16 = 0x123C;
+    const SVC_VERSION: (u8, u32) = (1, 0);
+    const SERVER_TCP_PORT: u16 = 19891;
+    const SERVER_UDP_PORT: u16 = 19892;
+    const PORT_A: u16 = 19893; // TCP, below ephemeral range
+    const PORT_B: u16 = 19894; // UDP, below ephemeral range
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (sub1_tx, mut sub1_rx) = mpsc::channel::<(u16, recentip::config::Transport)>(1);
+    let (sub2_tx, mut sub2_rx) = mpsc::channel::<(u16, recentip::config::Transport)>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
+            .start()
+            .await
+            .expect("Server runtime");
+
+        let mut offering = runtime
+            .offer(SVC_ID, InstanceId::Id(0x0001))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .tcp_port(SERVER_TCP_PORT)
+            .udp_port(SERVER_UDP_PORT)
+            .start()
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            sub1_tx
+                .send((client.address.port(), client.transport))
+                .await
+                .ok();
+        }
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            sub2_tx
+                .send((client.address.port(), client.transport))
+                .await
+                .ok();
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await
+        .expect("Client runtime");
+
+    // TCP first (PORT_A), then UDP (PORT_B) as cross-transport fallback.
+    let policy = TransportPolicy::new(vec![
+        TransportPreference::tcp().with_port(PORT_A),
+        TransportPreference::udp().with_port(PORT_B),
+    ]);
+
+    let proxy = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime.find(SVC_ID).instance(InstanceId::Id(0x0001)),
+    )
+    .await
+    .expect("Discovery timeout")
+    .expect("Service available")
+    .with_transport_policy(policy);
+
+    let _sub1 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg1 timeout")
+    .expect("Subscribe eg1 must succeed via TCP");
+
+    let _sub2 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(2).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg2 timeout")
+    .expect("Subscribe eg2 must succeed via UDP fallback");
+
+    let (observed1_port, observed1_transport) =
+        tokio::time::timeout(Duration::from_secs(5), sub1_rx.recv())
+            .await
+            .expect("sub1 observation timeout")
+            .expect("server must observe first Subscribe");
+    let (observed2_port, observed2_transport) =
+        tokio::time::timeout(Duration::from_secs(5), sub2_rx.recv())
+            .await
+            .expect("sub2 observation timeout")
+            .expect("server must observe second Subscribe");
+
+    assert_eq!(
+        observed1_port, PORT_A,
+        "first Subscribe must use PORT_A ({PORT_A}) via TCP, got port {observed1_port}"
+    );
+    assert_eq!(
+        observed1_transport,
+        recentip::config::Transport::Tcp,
+        "first Subscribe must use TCP, got {observed1_transport:?}"
+    );
+    assert_eq!(
+        observed2_port, PORT_B,
+        "second Subscribe must fall back to PORT_B ({PORT_B}) via UDP, got port {observed2_port}"
+    );
+    assert_eq!(
+        observed2_transport,
+        recentip::config::Transport::Udp,
+        "second Subscribe must use UDP, got {observed2_transport:?}"
+    );
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+
+    runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
+// ============================================================================
+
+/// Mirror of `tcp_udp_mixed_policy_cross_transport_fallback_real_network` with
+/// the policy reversed: UDP first, TCP as cross-transport fallback.
+///
+/// The server offers **both** UDP (port 19895) and TCP (port 19896).  The
+/// client's `TransportPolicy` is `[udp().with_port(PORT_A=19897),
+/// tcp().with_port(PORT_B=19898)]`.
+///
+/// - First subscription (`eg1`): policy selects UDP → binds `PORT_A`. Succeeds.
+/// - Second subscription (`eg2`): policy selects UDP first → same 4-tuple
+///   `(client:PORT_A → server:SERVER_UDP_PORT)` → `EADDRINUSE`.
+///   All UDP ports exhausted → runtime falls back to TCP/`PORT_B`. Succeeds.
+///
+/// Assertions:
+/// * `eg1` succeeds; server observes UDP subscribe from `PORT_A`.
+/// * `eg2` succeeds; server observes TCP subscribe from `PORT_B`.
+#[tokio::test]
+async fn udp_tcp_mixed_policy_cross_transport_fallback_real_network() {
+    use recentip::config::{TransportPolicy, TransportPreference};
+
+    const SVC_ID: u16 = 0x123D;
+    const SVC_VERSION: (u8, u32) = (1, 0);
+    const SERVER_UDP_PORT: u16 = 19895;
+    const SERVER_TCP_PORT: u16 = 19896;
+    const PORT_A: u16 = 19897; // UDP, below ephemeral range
+    const PORT_B: u16 = 19898; // TCP, below ephemeral range
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (sub1_tx, mut sub1_rx) = mpsc::channel::<(u16, recentip::config::Transport)>(1);
+    let (sub2_tx, mut sub2_rx) = mpsc::channel::<(u16, recentip::config::Transport)>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
+            .start()
+            .await
+            .expect("Server runtime");
+
+        let mut offering = runtime
+            .offer(SVC_ID, InstanceId::Id(0x0001))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .udp_port(SERVER_UDP_PORT)
+            .tcp_port(SERVER_TCP_PORT)
+            .start()
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            sub1_tx
+                .send((client.address.port(), client.transport))
+                .await
+                .ok();
+        }
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            sub2_tx
+                .send((client.address.port(), client.transport))
+                .await
+                .ok();
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await
+        .expect("Client runtime");
+
+    // UDP first (PORT_A), then TCP (PORT_B) as cross-transport fallback.
+    let policy = TransportPolicy::new(vec![
+        TransportPreference::udp().with_port(PORT_A),
+        TransportPreference::tcp().with_port(PORT_B),
+    ]);
+
+    let proxy = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime.find(SVC_ID).instance(InstanceId::Id(0x0001)),
+    )
+    .await
+    .expect("Discovery timeout")
+    .expect("Service available")
+    .with_transport_policy(policy);
+
+    let _sub1 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg1 timeout")
+    .expect("Subscribe eg1 must succeed via UDP");
+
+    let _sub2 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(2).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg2 timeout")
+    .expect("Subscribe eg2 must succeed via TCP fallback");
+
+    let (observed1_port, observed1_transport) =
+        tokio::time::timeout(Duration::from_secs(5), sub1_rx.recv())
+            .await
+            .expect("sub1 observation timeout")
+            .expect("server must observe first Subscribe");
+    let (observed2_port, observed2_transport) =
+        tokio::time::timeout(Duration::from_secs(5), sub2_rx.recv())
+            .await
+            .expect("sub2 observation timeout")
+            .expect("server must observe second Subscribe");
+
+    assert_eq!(
+        observed1_port, PORT_A,
+        "first Subscribe must use PORT_A ({PORT_A}) via UDP, got port {observed1_port}"
+    );
+    assert_eq!(
+        observed1_transport,
+        recentip::config::Transport::Udp,
+        "first Subscribe must use UDP, got {observed1_transport:?}"
+    );
+    assert_eq!(
+        observed2_port, PORT_B,
+        "second Subscribe must fall back to PORT_B ({PORT_B}) via TCP, got port {observed2_port}"
+    );
+    assert_eq!(
+        observed2_transport,
+        recentip::config::Transport::Tcp,
+        "second Subscribe must use TCP, got {observed2_transport:?}"
+    );
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+
+    runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
+// ============================================================================
+
+/// Three-entry policy with interleaved transports: `[udp(A), tcp(B), udp(C)]`.
+///
+/// The server offers **both** UDP (port 19899) and TCP (port 19900).  The
+/// client's `TransportPolicy` is `[udp(PORT_A=19901), tcp(PORT_B=19902),
+/// udp(PORT_C=19903)]`.
+///
+/// Policy entries are tried one-by-one in order; a port conflict on entry N
+/// immediately advances to entry N+1 regardless of transport type:
+///
+/// - `eg1`: entry 0 — `udp/PORT_A` → succeeds.
+/// - `eg2`: entry 0 — `udp/PORT_A` → conflict → entry 1 — `tcp/PORT_B` → succeeds.
+///   Entry 2 (`udp/PORT_C`) is never reached.
+///
+/// Assertions:
+/// * `eg1` uses UDP / `PORT_A`.
+/// * `eg2` uses TCP / `PORT_B` (skips the second UDP entry).
+#[tokio::test]
+async fn three_port_policy_udp_tcp_udp_interleaved_fallback_real_network() {
+    use recentip::config::{TransportPolicy, TransportPreference};
+
+    const SVC_ID: u16 = 0x123E;
+    const SVC_VERSION: (u8, u32) = (1, 0);
+    const SERVER_UDP_PORT: u16 = 19899;
+    const SERVER_TCP_PORT: u16 = 19900;
+    const PORT_A: u16 = 19901; // entry 0: UDP
+    const PORT_B: u16 = 19902; // entry 1: TCP
+    const PORT_C: u16 = 19903; // entry 2: UDP (fallback that would be used for a 3rd sub)
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (sub1_tx, mut sub1_rx) = mpsc::channel::<(u16, recentip::config::Transport)>(1);
+    let (sub2_tx, mut sub2_rx) = mpsc::channel::<(u16, recentip::config::Transport)>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
+            .start()
+            .await
+            .expect("Server runtime");
+
+        let mut offering = runtime
+            .offer(SVC_ID, InstanceId::Id(0x0001))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .udp_port(SERVER_UDP_PORT)
+            .tcp_port(SERVER_TCP_PORT)
+            .start()
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            sub1_tx
+                .send((client.address.port(), client.transport))
+                .await
+                .ok();
+        }
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            sub2_tx
+                .send((client.address.port(), client.transport))
+                .await
+                .ok();
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await
+        .expect("Client runtime");
+
+    // Three entries: udp/A, tcp/B, udp/C.  The second UDP entry (C) is present
+    // to prove it is skipped in favour of the interleaved TCP entry (B).
+    let policy = TransportPolicy::new(vec![
+        TransportPreference::udp().with_port(PORT_A),
+        TransportPreference::tcp().with_port(PORT_B),
+        TransportPreference::udp().with_port(PORT_C),
+    ]);
+
+    let proxy = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime.find(SVC_ID).instance(InstanceId::Id(0x0001)),
+    )
+    .await
+    .expect("Discovery timeout")
+    .expect("Service available")
+    .with_transport_policy(policy);
+
+    let _sub1 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg1 timeout")
+    .expect("Subscribe eg1 must succeed via UDP / PORT_A");
+
+    let _sub2 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(2).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg2 timeout")
+    .expect("Subscribe eg2 must skip UDP/PORT_A conflict and use TCP/PORT_B");
+
+    let (observed1_port, observed1_transport) =
+        tokio::time::timeout(Duration::from_secs(5), sub1_rx.recv())
+            .await
+            .expect("sub1 observation timeout")
+            .expect("server must observe first Subscribe");
+    let (observed2_port, observed2_transport) =
+        tokio::time::timeout(Duration::from_secs(5), sub2_rx.recv())
+            .await
+            .expect("sub2 observation timeout")
+            .expect("server must observe second Subscribe");
+
+    assert_eq!(
+        observed1_port, PORT_A,
+        "eg1 must use PORT_A ({PORT_A}) via UDP, got port {observed1_port}"
+    );
+    assert_eq!(
+        observed1_transport,
+        recentip::config::Transport::Udp,
+        "eg1 must use UDP, got {observed1_transport:?}"
+    );
+    assert_eq!(
+        observed2_port, PORT_B,
+        "eg2 must skip UDP/PORT_A conflict and use TCP/PORT_B ({PORT_B}), got port {observed2_port}"
+    );
+    assert_eq!(
+        observed2_transport,
+        recentip::config::Transport::Tcp,
+        "eg2 must use TCP, got {observed2_transport:?}"
+    );
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+
+    runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
+// ============================================================================
+
+/// Three-entry policy with interleaved transports, TCP-first: `[tcp(A), udp(B), tcp(C)]`.
+///
+/// The server offers **both** TCP (port 19904) and UDP (port 19905).  The
+/// client's `TransportPolicy` is `[tcp(PORT_A=19906), udp(PORT_B=19907),
+/// tcp(PORT_C=19908)]`.
+///
+/// Policy entries are tried one-by-one in order:
+///
+/// - `eg1`: entry 0 — `tcp/PORT_A` → succeeds.
+/// - `eg2`: entry 0 — `tcp/PORT_A` → conflict → entry 1 — `udp/PORT_B` → succeeds.
+///   Entry 2 (`tcp/PORT_C`) is never reached.
+///
+/// Assertions:
+/// * `eg1` uses TCP / `PORT_A`.
+/// * `eg2` uses UDP / `PORT_B` (skips the second TCP entry).
+#[tokio::test]
+async fn three_port_policy_tcp_udp_tcp_interleaved_fallback_real_network() {
+    use recentip::config::{TransportPolicy, TransportPreference};
+
+    const SVC_ID: u16 = 0x123F;
+    const SVC_VERSION: (u8, u32) = (1, 0);
+    const SERVER_TCP_PORT: u16 = 19904;
+    const SERVER_UDP_PORT: u16 = 19905;
+    const PORT_A: u16 = 19906; // entry 0: TCP
+    const PORT_B: u16 = 19907; // entry 1: UDP
+    const PORT_C: u16 = 19908; // entry 2: TCP (fallback that would be used for a 3rd sub)
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (sub1_tx, mut sub1_rx) = mpsc::channel::<(u16, recentip::config::Transport)>(1);
+    let (sub2_tx, mut sub2_rx) = mpsc::channel::<(u16, recentip::config::Transport)>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    let server_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
+            .start()
+            .await
+            .expect("Server runtime");
+
+        let mut offering = runtime
+            .offer(SVC_ID, InstanceId::Id(0x0001))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .tcp_port(SERVER_TCP_PORT)
+            .udp_port(SERVER_UDP_PORT)
+            .start()
+            .await
+            .expect("Offer service");
+
+        ready_tx.send(()).await.ok();
+
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            sub1_tx
+                .send((client.address.port(), client.transport))
+                .await
+                .ok();
+        }
+        if let Some(ServiceEvent::Subscribe { client, .. }) = offering.next().await {
+            sub2_tx
+                .send((client.address.port(), client.transport))
+                .await
+                .ok();
+        }
+
+        done_rx.recv().await;
+    });
+
+    ready_rx.recv().await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .start()
+        .await
+        .expect("Client runtime");
+
+    // Three entries: tcp/A, udp/B, tcp/C.  The second TCP entry (C) is present
+    // to prove it is skipped in favour of the interleaved UDP entry (B).
+    let policy = TransportPolicy::new(vec![
+        TransportPreference::tcp().with_port(PORT_A),
+        TransportPreference::udp().with_port(PORT_B),
+        TransportPreference::tcp().with_port(PORT_C),
+    ]);
+
+    let proxy = tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime.find(SVC_ID).instance(InstanceId::Id(0x0001)),
+    )
+    .await
+    .expect("Discovery timeout")
+    .expect("Service available")
+    .with_transport_policy(policy);
+
+    let _sub1 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(1).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg1 timeout")
+    .expect("Subscribe eg1 must succeed via TCP / PORT_A");
+
+    let _sub2 = tokio::time::timeout(
+        Duration::from_secs(5),
+        proxy.subscribe(EventgroupId::new(2).unwrap()),
+    )
+    .await
+    .expect("Subscribe eg2 timeout")
+    .expect("Subscribe eg2 must skip TCP/PORT_A conflict and use UDP/PORT_B");
+
+    let (observed1_port, observed1_transport) =
+        tokio::time::timeout(Duration::from_secs(5), sub1_rx.recv())
+            .await
+            .expect("sub1 observation timeout")
+            .expect("server must observe first Subscribe");
+    let (observed2_port, observed2_transport) =
+        tokio::time::timeout(Duration::from_secs(5), sub2_rx.recv())
+            .await
+            .expect("sub2 observation timeout")
+            .expect("server must observe second Subscribe");
+
+    assert_eq!(
+        observed1_port, PORT_A,
+        "eg1 must use PORT_A ({PORT_A}) via TCP, got port {observed1_port}"
+    );
+    assert_eq!(
+        observed1_transport,
+        recentip::config::Transport::Tcp,
+        "eg1 must use TCP, got {observed1_transport:?}"
+    );
+    assert_eq!(
+        observed2_port, PORT_B,
+        "eg2 must skip TCP/PORT_A conflict and use UDP/PORT_B ({PORT_B}), got port {observed2_port}"
+    );
+    assert_eq!(
+        observed2_transport,
+        recentip::config::Transport::Udp,
+        "eg2 must use UDP, got {observed2_transport:?}"
+    );
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("Server task");
+
+    runtime.shutdown().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}

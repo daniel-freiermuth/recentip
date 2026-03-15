@@ -313,24 +313,16 @@ impl OfferedService {
     /// # }
     /// ```
     pub fn subscribe(&self, eventgroup: EventgroupId) -> SubscriptionBuilder {
-        match self.effective_transport() {
-            Ok(sel) => {
-                let local_port_options =
-                    self.transport_policy.local_port_options_for(sel.transport);
-                SubscriptionBuilder::new(
-                    Arc::clone(&self.inner),
-                    self.service_id,
-                    self.instance_id,
-                    self.major_version,
-                    eventgroup,
-                    sel.transport,
-                    sel.remote_endpoint,
-                    self.remote_sd_endpoint,
-                    local_port_options,
-                )
-            }
-            Err(e) => SubscriptionBuilder::errored(e),
-        }
+        SubscriptionBuilder::new(
+            Arc::clone(&self.inner),
+            self.service_id,
+            self.instance_id,
+            self.major_version,
+            eventgroup,
+            self.transport_policy.clone(),
+            self.remote_endpoints.clone(),
+            self.remote_sd_endpoint,
+        )
     }
 
     /// Get the service ID

@@ -384,7 +384,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     incoming_events_channel: tokio::sync::mpsc::Sender<Event>,
     result_response_channel: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     sd_endpoint: SocketAddrV4,
-    local_port_options: Vec<PortSpec>,
+    local_port: PortSpec,
     state: &mut RuntimeState,
 ) {
     let key = ServiceKey::new(service_id, instance_id, major_version);
@@ -402,37 +402,23 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         .get(&key)
         .is_some_and(|subs| !subs.is_empty());
 
-    // Select the effective port spec for this subscription.
-    //
-    // When this service already has subscriptions, sharing the same socket is
-    // forbidden (SOME/IP wire format carries no eventgroup discriminator, so
-    // events would be mis-routed).  We therefore iterate through the ordered
-    // port options and skip any that are already owned by this (service, instance).
-    // The first non-owned option is used; if all options are already owned, we
-    // fail with AddrInUse.
-    //
-    // For the first subscription (no existing subscriptions for this service),
-    // the first option is always used — no "already owned" issue can occur yet.
-    let local_port = if service_already_has_subscription {
-        let chosen = local_port_options.iter().copied().find(|&opt| match opt {
-            PortSpec::Fixed(p) => !state
+    // With a single port per attempt, just check if it's already owned by this
+    // service. If so, fail immediately — SubscriptionBuilder retries with the
+    // next policy entry.
+    if service_already_has_subscription {
+        if let PortSpec::Fixed(p) = local_port {
+            if state
                 .subscription_endpoint_usage
                 .get(&p)
-                .is_some_and(|svcs| svcs.contains(&(service_id.value(), instance_id.value()))),
-            PortSpec::Any => true,
-        });
-        if let Some(p) = chosen {
-            p
-        } else {
-            // All fixed port options are already owned by this service.
-            let _ = result_response_channel.send(Err(crate::error::Error::Io(
-                std::io::Error::from(std::io::ErrorKind::AddrInUse),
-            )));
-            return;
+                .is_some_and(|svcs| svcs.contains(&(service_id.value(), instance_id.value())))
+            {
+                let _ = result_response_channel.send(Err(crate::error::Error::Io(
+                    std::io::Error::from(std::io::ErrorKind::AddrInUse),
+                )));
+                return;
+            }
         }
-    } else {
-        local_port_options.first().copied().unwrap_or(PortSpec::Any)
-    };
+    }
 
     let endpoint_for_subscribe = if service_already_has_subscription {
         // This service already has a subscription using some endpoint.

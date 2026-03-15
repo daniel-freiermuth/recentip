@@ -10,11 +10,11 @@ use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::config::PortSpec;
+use crate::config::{Transport, TransportPolicy};
 use crate::error::{Error, Result};
 use crate::handles::runtime::RuntimeInner;
 use crate::runtime::Command;
-use crate::{Event, EventgroupId, InstanceId, ServiceId};
+use crate::{Event, EventgroupId, InstanceId, OfferedEndpoints, ServiceId};
 
 /// Builder for subscribing to eventgroups.
 ///
@@ -41,29 +41,22 @@ use crate::{Event, EventgroupId, InstanceId, ServiceId};
 /// # Ok(())
 /// # }
 /// ```
-/// Internal state of a [`SubscriptionBuilder`].
-enum SubscriptionBuilderState {
-    Ready {
-        inner: Arc<RuntimeInner>,
-        service_id: ServiceId,
-        instance_id: InstanceId,
-        major_version: u8,
-        eventgroups: vec1::Vec1<EventgroupId>,
-        transport: crate::config::Transport,
-        remote_endpoint: std::net::SocketAddrV4,
-        sd_endpoint: std::net::SocketAddrV4,
-        /// Ordered list of port options to try (from the transport policy).
-        /// The runtime iterates these in order, skipping any already in use by
-        /// this service, so the first available port wins.
-        local_port_options: Vec<PortSpec>,
-    },
-    /// Builder was created with a pre-set error (e.g. `TransportMismatch`).
-    /// Awaiting it immediately returns `Err(error)`.
-    Errored(Error),
-}
-
 #[must_use]
-pub struct SubscriptionBuilder(SubscriptionBuilderState);
+pub struct SubscriptionBuilder {
+    inner: Arc<RuntimeInner>,
+    service_id: ServiceId,
+    instance_id: InstanceId,
+    major_version: u8,
+    eventgroups: vec1::Vec1<EventgroupId>,
+    /// Full policy: each entry is tried in order.  On a port conflict the
+    /// next entry is attempted, enabling exact preference-ordered fallback,
+    /// e.g. `[udp(A), tcp(B), udp(C)]`:
+    ///   sub1 → udp/A;  sub2 → udp/A conflict → tcp/B;  sub3 → tcp/B conflict → udp/C.
+    transport_policy: TransportPolicy,
+    /// Server's offered endpoints, used to match each preference entry.
+    remote_endpoints: OfferedEndpoints,
+    sd_endpoint: std::net::SocketAddrV4,
+}
 
 impl SubscriptionBuilder {
     /// Create a new subscription builder with the first eventgroup.
@@ -73,41 +66,27 @@ impl SubscriptionBuilder {
         instance_id: InstanceId,
         major_version: u8,
         first_eventgroup: EventgroupId,
-        transport: crate::config::Transport,
-        remote_endpoint: std::net::SocketAddrV4,
+        transport_policy: TransportPolicy,
+        remote_endpoints: OfferedEndpoints,
         sd_endpoint: std::net::SocketAddrV4,
-        local_port_options: Vec<PortSpec>,
     ) -> Self {
-        Self(SubscriptionBuilderState::Ready {
+        Self {
             inner,
             service_id,
             instance_id,
             major_version,
             eventgroups: vec1::vec1![first_eventgroup],
-            transport,
-            remote_endpoint,
+            transport_policy,
+            remote_endpoints,
             sd_endpoint,
-            local_port_options,
-        })
-    }
-
-    /// Create a builder pre-loaded with an error; awaiting it returns `Err(e)` immediately.
-    pub(crate) const fn errored(e: Error) -> Self {
-        Self(SubscriptionBuilderState::Errored(e))
+        }
     }
 
     /// Add another eventgroup to this subscription.
     ///
     /// All eventgroups share the same network endpoint.
-    /// Has no effect when the builder is in an errored state.
     pub fn and(mut self, eventgroup: EventgroupId) -> Self {
-        if let SubscriptionBuilderState::Ready {
-            ref mut eventgroups,
-            ..
-        } = self.0
-        {
-            eventgroups.push(eventgroup);
-        }
+        self.eventgroups.push(eventgroup);
         self
     }
 
@@ -130,78 +109,94 @@ impl SubscriptionBuilder {
     /// - [`Error::SubscriptionRejected`] if the server sends a NACK.
     /// - [`Error::RuntimeShutdown`] if the runtime has been dropped.
     pub async fn subscribe(self) -> Result<Subscription> {
-        let (
+        let Self {
             inner,
             service_id,
             instance_id,
             major_version,
             eventgroups,
-            transport,
-            remote_endpoint,
+            transport_policy,
+            remote_endpoints,
             sd_endpoint,
-            local_port_options,
-        ) = match self.0 {
-            SubscriptionBuilderState::Ready {
-                inner,
-                service_id,
-                instance_id,
-                major_version,
-                eventgroups,
-                transport,
-                remote_endpoint,
-                sd_endpoint,
-                local_port_options,
-            } => (
-                inner,
-                service_id,
-                instance_id,
-                major_version,
-                eventgroups,
-                transport,
-                remote_endpoint,
-                sd_endpoint,
-                local_port_options,
+        } = self;
+
+        // Pre-compute the eventgroup ID list (doesn't change across retries).
+        let eventgroup_ids: vec1::Vec1<u16> = eventgroups.clone().mapped(|id| id.value());
+        let eventgroups_for_subscription = eventgroups.into_vec();
+
+        // True when an IO error indicates a port or 4-tuple conflict.
+        let is_port_conflict = |e: &Error| match e {
+            Error::Io(ie) => matches!(
+                ie.kind(),
+                std::io::ErrorKind::AddrInUse | std::io::ErrorKind::AddrNotAvailable
             ),
-            SubscriptionBuilderState::Errored(e) => return Err(e),
+            _ => false,
         };
 
-        let (events_tx, events_rx) = mpsc::channel(64);
-        let (response_tx, response_rx) = oneshot::channel();
+        // Iterate policy preferences in order, one entry at a time.
+        //
+        // Trying each entry individually (rather than grouping all same-transport
+        // entries together) gives exact preference-ordered backtracking:
+        //   policy [udp(A), tcp(B), udp(C)]:
+        //     sub1 → udp/A;  sub2 → conflict on udp/A → tcp/B;  sub3 → tcp/B conflict → udp/C
+        let mut last_conflict_err: Option<Error> = None;
 
-        // Clone eventgroups before consuming it with mapped()
-        let eventgroups_for_subscription = eventgroups.clone();
+        for pref in transport_policy.preferences() {
+            // Skip entries whose transport the server doesn't offer.
+            let remote_ep = match (pref.transport, &remote_endpoints) {
+                (
+                    Transport::Tcp,
+                    OfferedEndpoints::TcpOnly(a) | OfferedEndpoints::Both { tcp: a, .. },
+                ) => *a,
+                (
+                    Transport::Udp,
+                    OfferedEndpoints::UdpOnly(a) | OfferedEndpoints::Both { udp: a, .. },
+                ) => *a,
+                _ => continue,
+            };
 
-        // Send subscribe command for all eventgroups
-        inner
-            .cmd_tx
-            .send(Command::Subscribe {
-                service_id,
-                instance_id,
-                major_version,
-                eventgroup_ids: eventgroups.mapped(|id| id.value()),
-                events: events_tx,
-                response: response_tx,
-                transport,
-                remote_endpoint,
-                sd_endpoint,
-                local_port_options,
-            })
-            .await
-            .map_err(|_| Error::RuntimeShutdown)?;
+            let (events_tx, events_rx) = mpsc::channel(64);
+            let (response_tx, response_rx) = oneshot::channel();
 
-        // First `?` handles channel dropped (RuntimeShutdown).
-        // Second `?` handles NACK (SubscriptionRejected) or other errors from runtime.
-        let subscription_id = response_rx.await.map_err(|_| Error::RuntimeShutdown)??;
+            inner
+                .cmd_tx
+                .send(Command::Subscribe {
+                    service_id,
+                    instance_id,
+                    major_version,
+                    eventgroup_ids: eventgroup_ids.clone(),
+                    events: events_tx,
+                    response: response_tx,
+                    transport: pref.transport,
+                    remote_endpoint: remote_ep,
+                    sd_endpoint,
+                    local_port: pref.local_port,
+                })
+                .await
+                .map_err(|_| Error::RuntimeShutdown)?;
 
-        Ok(Subscription::new(
-            inner,
-            service_id,
-            instance_id,
-            major_version,
-            eventgroups_for_subscription.into_vec(),
-            subscription_id,
-            events_rx,
-        ))
+            match response_rx.await.map_err(|_| Error::RuntimeShutdown)? {
+                Ok(subscription_id) => {
+                    return Ok(Subscription::new(
+                        inner,
+                        service_id,
+                        instance_id,
+                        major_version,
+                        eventgroups_for_subscription,
+                        subscription_id,
+                        events_rx,
+                    ));
+                }
+                Err(e) if is_port_conflict(&e) => {
+                    last_conflict_err = Some(e);
+                    // continue to next preference entry
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        // No preference entry matched or all conflicted.
+        Err(last_conflict_err.unwrap_or(Error::TransportMismatch))
     }
 }
 
