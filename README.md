@@ -1,8 +1,5 @@
 # RecentIP
 
-> Warning! This is an alpha stage hobby project for exploration.
-The goal is to create a solid, easy-to-use and performant middleware implementation that is easily and fearlessly maintainable.
-
 [![Crate](https://img.shields.io/crates/v/recentip.svg)](https://crates.io/crates/recentip)
 [![Docs](https://docs.rs/recentip/badge.svg)](https://docs.rs/recentip)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
@@ -11,14 +8,19 @@ An opinionated **async and boring SOME/IP protocol implementation**.
 
 [SOME/IP](https://some-ip.com/) (Scalable service-Oriented MiddlewarE over IP) is the standard middleware protocol for automotive Ethernet communication, enabling service-oriented communication between ECUs in modern vehicles.
 
+Right now, this is a hobby project for exploration.
+The goal is to create a solid, performant and easy-to-use and maintain SOME/IP implementation.
+
+### **[=> Show me some examples! <=](https://docs.rs/recentip/latest/recentip/examples/quickstart/index.html)**
+
 ## Features
 
-- **Zero-panic** expect, unwrap, indexing forbidden by clippy rule
-- **Lock-free hot paths** Data is passed using channels for uninterrupted non-blocking flows
-- **Tokio-backed async** scales from single to multicore execution
-- **Spec compliance testsuite and report**
-- **Lint rule for proper usage**
-- **No-unsafe** forbidden by clippy rule
+- Zero-panic. expect, unwrap, indexing forbidden by clippy rule
+- Lock-free hot paths. Data is passed using channels for uninterrupted non-blocking flows
+- Tokio-backed async. scales from single to multicore execution
+- Spec compliance testsuite and report.
+- Brings its own recentIP lint rule for proper usage.
+- No-unsafe. forbidden by clippy rule
 
 ## Supported SOME/IP
 Right now, this lib implements these core parts of the SOME/IP protocol:
@@ -32,14 +34,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-recentip = "0.1"
+recentip = "0.3"
 ```
 
 ## Documentation
 
 **[API Documentation](https://docs.rs/recentip)** — Configuration, API overview, and compile-checked examples
 
-- [Quickstart examples](https://docs.rs/recentip/latest/recentip/examples/quickstart/)
+- [Quickstart examples](https://docs.rs/recentip/latest/recentip/examples/quickstart/index.html)
 - [All examples](https://docs.rs/recentip/latest/recentip/examples/index.html)
 
 ## Testing
@@ -52,10 +54,10 @@ The library heavily leverages [turmoil](https://docs.rs/turmoil) for determinist
 - API behavior tests for non-spec behavior.
 
 ```bash
-# Run most tests (~10s)
+# Run most tests (~15s)
 cargo nextest run
 
-# Run all tests (~10s)
+# Run all tests (~15s)
 cargo nextest run --cargo-profile fast-release --features slow-tests
 
 # Generate coverage report
