@@ -66,6 +66,8 @@ pub enum SubscribeStateUpdate {
         response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
         /// The error that occurred
         error: crate::error::Error,
+        /// Pre-allocated conn_key to release back to the pending set
+        release_conn_key: (crate::runtime::state::ServiceKey, u64),
     },
 }
 
@@ -364,10 +366,10 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             let subscribe_ttl = state.config.subscribe_ttl;
                             let local_ip = state.config.unicast_ip();
 
-                            let used_conn_keys: std::collections::HashSet<u64> = state.subscriptions.get(&service_key)
-                                .map_or_else(std::collections::HashSet::default, |subs| {
-                                    subs.iter().map(|sub| sub.tcp_conn_key).collect()
-                                });
+                            // Allocate conn_key inside the event loop so concurrent Subscribe
+                            // commands for the same service always get distinct slots, even when
+                            // their tasks haven't committed state yet.
+                            let conn_key = state.allocate_tcp_conn_key(service_key);
 
                             tokio::spawn(async move {
                                 handle_subscribe_tcp::<T>(
@@ -384,7 +386,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                     subscription_id,
                                     sd_flags,
                                     subscribe_ttl,
-                                    used_conn_keys,
+                                    conn_key,
                                     local_ip,
                                     local_port,
                                 ).await;
@@ -414,7 +416,10 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                         // Apply state changes from the Subscribe task
                         apply_state(&mut state);
                     }
-                    SubscribeStateUpdate::Failed { response, error } => {
+                    SubscribeStateUpdate::Failed { response, error, release_conn_key } => {
+                        // Release the pre-allocated conn_key before reporting the error
+                        let (key, conn_key) = release_conn_key;
+                        state.release_pending_tcp_conn_key(key, conn_key);
                         // Send error back to caller
                         let _ = response.send(Err(error));
                     }

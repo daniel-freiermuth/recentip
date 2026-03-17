@@ -533,6 +533,14 @@ pub struct RuntimeState {
     /// Key: port number, Value: set of (`service_id`, `instance_id`) using that port
     pub(crate) subscription_endpoint_usage: HashMap<u16, HashSet<(u16, u16)>>,
     payload_session_id: u16,
+    /// TCP connection keys that are in-flight (allocated but not yet committed to `subscriptions`).
+    ///
+    /// When the event loop spawns a `handle_subscribe_tcp` task it pre-allocates the
+    /// `conn_key` and inserts it here so that subsequent Subscribe commands for the
+    /// *same* service issued before the first task finishes cannot pick the same slot.
+    /// The task removes the key from this set inside its `apply_state` closure (on
+    /// success) or in the `Failed` branch (on error).
+    pub(crate) pending_tcp_conn_keys: HashMap<ServiceKey, HashSet<u64>>,
 }
 
 impl RuntimeState {
@@ -575,6 +583,7 @@ impl RuntimeState {
             next_subscription_id: 1,
             next_server_rpc_port: local_endpoint.port() + 1,
             subscription_endpoint_usage: HashMap::new(),
+            pending_tcp_conn_keys: HashMap::new(),
         }
     }
 
@@ -628,6 +637,39 @@ impl RuntimeState {
         // The wrapping is a problem in it's own
         self.next_subscription_id = self.next_subscription_id.wrapping_add(1);
         id
+    }
+
+    /// Allocate and reserve the smallest unused TCP `conn_key` for `service_key`.
+    ///
+    /// Takes into account both already-committed keys (in `self.subscriptions`) and
+    /// in-flight keys (in `self.pending_tcp_conn_keys`) so that concurrent Subscribe
+    /// commands can never pick the same slot.
+    pub(crate) fn allocate_tcp_conn_key(&mut self, service_key: ServiceKey) -> u64 {
+        let committed: HashSet<u64> = self
+            .subscriptions
+            .get(&service_key)
+            .map_or_else(HashSet::new, |subs| {
+                subs.iter().map(|s| s.tcp_conn_key).collect()
+            });
+        let pending = self.pending_tcp_conn_keys.entry(service_key).or_default();
+
+        let mut slot = 0u64;
+        while committed.contains(&slot) || pending.contains(&slot) {
+            slot += 1;
+        }
+        pending.insert(slot);
+        slot
+    }
+
+    /// Release a previously-allocated `conn_key` from the pending set.
+    ///
+    /// Called both on success (inside the task's `apply_state` closure, where
+    /// the key is now recorded in `self.subscriptions`) and on failure (where
+    /// it should simply be discarded).
+    pub(crate) fn release_pending_tcp_conn_key(&mut self, service_key: ServiceKey, conn_key: u64) {
+        if let Some(pending) = self.pending_tcp_conn_keys.get_mut(&service_key) {
+            pending.remove(&conn_key);
+        }
     }
 
     /// Get next session ID for multicast SD messages
