@@ -1082,3 +1082,177 @@ fn tcp_slow_service_doesnt_block_other_services() {
         count
     );
 }
+
+// ============================================================================
+// 6. CONCURRENT SUBSCRIPTION ISOLATION (REGRESSION TEST FOR STALE conn_key BUG)
+// ============================================================================
+
+/// Two concurrent TCP subscriptions for *different* eventgroups of the *same*
+/// service instance must receive events in isolation — no cross-delivery.
+///
+/// # Bug
+///
+/// When a single client subscribes to EG1 and EG2 **concurrently** (via
+/// `tokio::join!`), both spawned `handle_subscribe_tcp` tasks capture the same
+/// stale `used_conn_keys` snapshot (`{}`).  Both therefore choose `conn_key = 0`
+/// and share a single TCP connection.
+///
+/// `handle_incoming_notification` routes by `tcp_conn_key`, not by eventgroup
+/// ID.  With both subscriptions sharing `conn_key = 0` every TCP notification
+/// (regardless of its event ID) is delivered to **both** subscribers.
+///
+/// # Expected behaviour
+///
+/// Each concurrent subscription must get a unique `conn_key` and therefore an
+/// independent TCP connection.  An event sent to EG1 only must arrive on the
+/// EG1 subscriber channel and **not** on the EG2 subscriber channel.
+///
+/// This test fails with the bug (EG2 receives EG1 events) and passes once the
+/// fix (allocate `conn_key` inside the event loop before spawning the task) is
+/// applied.
+#[test_log::test]
+fn tcp_concurrent_subscriptions_isolated_event_delivery() {
+    let eg1_received = Arc::new(AtomicUsize::new(0));
+    let eg2_received = Arc::new(AtomicUsize::new(0));
+    let eg1_clone = Arc::clone(&eg1_received);
+    let eg2_clone = Arc::clone(&eg2_received);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let offering = runtime
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .tcp()
+            .start()
+            .await
+            .unwrap();
+
+        tracing::info!("[server] TCP service offered, waiting for subscriptions");
+
+        // Give the client time to subscribe to both eventgroups before sending events.
+        tokio::time::sleep(Duration::from_millis(800)).await;
+
+        // Only create and send events for EG1.  EG2 has no event handle — the
+        // server never publishes anything to it.
+        let eg1 = EventgroupId::new(0x0001).unwrap();
+        let event_id_1 = EventId::new(0x8001).unwrap();
+        let event_handle1 = offering
+            .event(event_id_1)
+            .eventgroup(eg1)
+            .create()
+            .await
+            .unwrap();
+
+        for i in 0..5u8 {
+            event_handle1.notify(&[i]).await.unwrap();
+            tracing::info!("[server] Sent EG1 event #{}", i);
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        // Keep the service alive so the client can drain its buffers.
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy =
+            tokio::time::timeout(Duration::from_secs(5), runtime.find(TCP_PUB_SUB_SERVICE_ID))
+                .await
+                .expect("Discovery timeout")
+                .expect("Service available");
+
+        let eg1 = EventgroupId::new(0x0001).unwrap();
+        let eg2 = EventgroupId::new(0x0002).unwrap();
+
+        // Subscribe to both eventgroups *concurrently*.
+        //
+        // With the bug both subscribe commands are queued in the event loop's
+        // mpsc channel before either is processed.  Both tasks therefore see
+        // an identical stale `used_conn_keys = {}` snapshot and each chooses
+        // `conn_key = 0`.
+        let (sub1_result, sub2_result) = tokio::join!(proxy.subscribe(eg1), proxy.subscribe(eg2),);
+
+        let mut sub1 = sub1_result.expect("Subscribe to EG1 should succeed");
+        let mut sub2 = sub2_result.expect("Subscribe to EG2 should succeed");
+
+        tracing::info!("[client] Subscribed to both EG1 and EG2 concurrently");
+
+        // Collect events from both subscription channels concurrently.
+        let collect_eg1 = {
+            let counter = Arc::clone(&eg1_clone);
+            async move {
+                while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub1.next())
+                    .await
+                    .ok()
+                    .flatten()
+                {
+                    tracing::info!(
+                        "[client] EG1 received event_id={:04x}",
+                        event.event_id.value()
+                    );
+                    counter.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        };
+
+        let collect_eg2 = {
+            let counter = Arc::clone(&eg2_clone);
+            async move {
+                while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub2.next())
+                    .await
+                    .ok()
+                    .flatten()
+                {
+                    // Any event here is a cross-delivery from the shared conn_key bug.
+                    tracing::warn!(
+                        "[client] EG2 unexpectedly received event_id={:04x} — cross-delivery bug!",
+                        event.event_id.value()
+                    );
+                    counter.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        };
+
+        tokio::join!(collect_eg1, collect_eg2);
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let eg1_count = eg1_received.load(Ordering::SeqCst);
+    let eg2_count = eg2_received.load(Ordering::SeqCst);
+
+    tracing::info!("Results: EG1={}, EG2={}", eg1_count, eg2_count);
+
+    assert!(
+        eg1_count >= 3,
+        "EG1 subscriber should receive EG1 events, got {}",
+        eg1_count
+    );
+    assert_eq!(
+        eg2_count, 0,
+        "EG2 subscriber must receive NO events (server only sent to EG1); \
+         got {} — this is the concurrent conn_key stale-snapshot cross-delivery bug",
+        eg2_count
+    );
+}

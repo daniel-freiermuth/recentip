@@ -45,20 +45,17 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
     subscription_id: u64,
     sd_flags: u8,
     subscribe_ttl: u32,
-    used_conn_keys: HashSet<u64>,
+    // Pre-allocated connection key assigned by the event loop before spawning.
+    // Using a pre-allocated key (rather than deriving it inside the task from
+    // a snapshot of existing keys) ensures that concurrent subscribe tasks for
+    // the same service instance always receive distinct slots.
+    conn_key: u64,
     local_ip: Ipv4Addr,
     local_port: PortSpec,
 ) {
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
-    // Find the smallest unused conn_key (slot) for this service
-    let conn_key = {
-        let mut slot = 0u64;
-        while used_conn_keys.contains(&slot) {
-            slot += 1;
-        }
-        slot
-    };
+    // conn_key is pre-allocated by the event loop — no slot search needed here.
 
     // Establish TCP connection. On port conflict, propagate the error back to
     // SubscriptionBuilder which retries with the next policy entry.
@@ -94,6 +91,7 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 .send(SubscribeStateUpdate::Failed {
                     response,
                     error: Error::Io(e),
+                    release_conn_key: (key, conn_key),
                 })
                 .await;
             return;
@@ -108,6 +106,7 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 .send(SubscribeStateUpdate::Failed {
                     response,
                     error: Error::Io(e),
+                    release_conn_key: (key, conn_key),
                 })
                 .await;
             return;
@@ -130,6 +129,9 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
     // Send state update with closure to apply changes
     let update = SubscribeStateUpdate::Success {
         apply_state: Box::new(move |state: &mut RuntimeState| {
+            // The conn_key is now committed to `subscriptions` — release it from pending.
+            state.release_pending_tcp_conn_key(key, conn_key);
+
             // Register subscription endpoint
             state.register_subscription_endpoint(
                 endpoint_for_subscribe.port(),
