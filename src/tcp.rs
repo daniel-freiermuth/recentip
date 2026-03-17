@@ -45,7 +45,7 @@ use crate::config::{PortSpec, TcpKeepaliveConfig};
 use std::sync::Arc;
 
 use bytes::{Buf, Bytes, BytesMut};
-use dashmap::DashMap;
+use dashmap::{DashMap, Entry};
 use tokio::sync::mpsc;
 
 use crate::net::{TcpListener, TcpStream};
@@ -55,7 +55,7 @@ use crate::wire::{
 
 /// Message received from a TCP connection (client-side response or server-side request)
 #[derive(Debug)]
-pub struct TcpMessage {
+pub(crate) struct TcpMessage {
     /// The raw message data including SOME/IP header
     pub data: Bytes,
     /// The peer address this message came from
@@ -70,7 +70,7 @@ pub struct TcpMessage {
 /// ownership via `connection_id` before removing — this prevents a race where
 /// closing an old connection removes a newer connection's entry.
 #[derive(Debug)]
-pub struct TcpCleanupRequest {
+pub(crate) struct TcpCleanupRequest {
     /// The connection key (peer address, subscription_id)
     pub key: (SocketAddrV4, u64),
     /// Unique ID assigned when the connection was created
@@ -503,7 +503,7 @@ async fn handle_client_tcp_connection<T: TcpStream>(
 
 /// Message to send to a specific TCP connection
 #[derive(Debug)]
-pub struct TcpSendMessage {
+pub(crate) struct TcpSendMessage {
     /// Data to send
     pub data: Bytes,
     /// Target peer address
@@ -517,7 +517,7 @@ pub struct TcpSendMessage {
 /// - Reading framed SOME/IP messages from clients
 /// - Sending responses back to the correct client
 /// - Closing connections from specific peers (feat_req_someipsd_872)
-pub struct TcpServer<T: TcpStream> {
+pub(crate) struct TcpServer<T: TcpStream> {
     /// Local address the server is listening on
     pub local_addr: SocketAddrV4,
     /// Channel to send responses to clients
@@ -554,8 +554,9 @@ impl<T: TcpStream> TcpServer<T> {
         // Tuple: (peer_ip, close_ports) - only connections matching these ports are closed
         let (close_peer_tx, mut close_peer_rx) = mpsc::channel::<(Ipv4Addr, Vec<u16>)>(16);
 
-        // Track active client connections - maps peer addr to a response sender
-        let client_senders: Arc<DashMap<SocketAddrV4, mpsc::Sender<Bytes>>> =
+        // Track active client connections — maps peer addr to (sender, connection_id).
+        // The connection_id lets the cleanup arm verify ownership before removing.
+        let client_senders: Arc<DashMap<SocketAddrV4, (mpsc::Sender<Bytes>, u64)>> =
             Arc::new(DashMap::new());
         let client_senders_for_responses = Arc::clone(&client_senders);
         let client_senders_for_close = Arc::clone(&client_senders);
@@ -567,6 +568,8 @@ impl<T: TcpStream> TcpServer<T> {
 
         // Spawn the main server task
         tokio::spawn(async move {
+            // Monotone counter local to this task — no atomics needed.
+            let mut next_conn_id: u64 = 0;
             loop {
                 tokio::select! {
                     // Accept new connections
@@ -588,11 +591,17 @@ impl<T: TcpStream> TcpServer<T> {
                                     );
                                 }
 
+                                // Assign a unique ID to this connection.
+                                // Used by the cleanup arm to verify ownership before
+                                // removing the sender, preventing Bug [3].
+                                next_conn_id = next_conn_id.wrapping_add(1);
+                                let connection_id = next_conn_id;
+
                                 // Create per-connection response channel
                                 let (conn_send_tx, conn_send_rx) = mpsc::channel::<Bytes>(32);
 
-                                // Register this connection
-                                client_senders.insert(peer_addr, conn_send_tx);
+                                // Register this connection (sender + id)
+                                client_senders.insert(peer_addr, (conn_send_tx, connection_id));
 
                                 // Spawn task to handle this client connection
                                 let msg_tx = msg_tx.clone();
@@ -607,6 +616,7 @@ impl<T: TcpStream> TcpServer<T> {
                                         msg_tx,
                                         conn_send_rx,
                                         senders,
+                                        connection_id,
                                         magic_cookies,
                                     ).await;
                                     // Clean up task handle when done
@@ -622,6 +632,10 @@ impl<T: TcpStream> TcpServer<T> {
                             }
                         }
                     }
+
+                    // TODO BUG: do newer subscription overwrite older ones?
+                    
+                    // TODO BUG: reboot cleanup misses multiple sockets for the same client/server port
 
                     // Close specific connections from a peer (reboot detection)
                     // close_ports contains ports from old subscriptions that should be closed
@@ -662,7 +676,8 @@ impl<T: TcpStream> TcpServer<T> {
                                 service_id, instance_id, addrs_to_remove.len(), peer_ip, close_ports
                             );
                             for addr in addrs_to_remove {
-                                // Remove sender (causes connection task to exit)
+                                // Remove sender (causes connection task to exit).
+                                // Intentional server-initiated close: no id check needed.
                                 client_senders_for_close.remove(&addr);
                                 // Abort the task to ensure it stops immediately
                                 if let Some((_, handle)) = client_tasks_for_close.remove(&addr) {
@@ -675,7 +690,8 @@ impl<T: TcpStream> TcpServer<T> {
                     // Route responses to the appropriate client connection - exit when channel closes
                     msg = send_rx.recv() => {
                         if let Some(send_msg) = msg {
-                            if let Some(sender) = client_senders_for_responses.get(&send_msg.to) {
+                            if let Some(entry) = client_senders_for_responses.get(&send_msg.to) {
+                                let (sender, _) = entry.value();
                                 if sender.send(send_msg.data).await.is_err() {
                                     tracing::warn!("Failed to send response to {}: connection closed", send_msg.to);
                                 }
@@ -719,7 +735,8 @@ async fn handle_tcp_connection<T: TcpStream>(
     instance_id: u16,
     msg_tx: mpsc::Sender<TcpMessage>,
     mut response_rx: mpsc::Receiver<Bytes>,
-    client_senders: Arc<DashMap<SocketAddrV4, mpsc::Sender<Bytes>>>,
+    client_senders: Arc<DashMap<SocketAddrV4, (mpsc::Sender<Bytes>, u64)>>,
+    connection_id: u64,
     magic_cookies: bool,
 ) {
     let mut read_buffer = BytesMut::new();
@@ -814,8 +831,26 @@ async fn handle_tcp_connection<T: TcpStream>(
         }
     }
 
-    // Clean up: remove from senders map
-    client_senders.remove(&peer_addr);
+    // Connection-handler cleanup — verify ownership before removing.
+    // If the peer reconnected and got a new connection_id, the stored id
+    // will differ and we leave the new connection's sender in place.
+    match client_senders.entry(peer_addr) {
+        Entry::Vacant(_) => {},
+        Entry::Occupied(occupied_entry) => {
+            if occupied_entry.get().1 == connection_id {
+                tracing::debug!(
+                    "TCP server {:04x}:{:04x}: cleaning up sender for {} (connection_id={})",
+                    service_id, instance_id, peer_addr, connection_id
+                );
+                occupied_entry.remove();
+            } else {
+                tracing::debug!(
+                    "TCP server {:04x}:{:04x}: ignoring stale cleanup for {} (connection_id={}): newer connection exists",
+                    service_id, instance_id, peer_addr, connection_id
+                );
+            }
+        },
+    }
 }
 
 #[cfg(test)]

@@ -83,7 +83,7 @@ pub(crate) mod runtime;
 pub mod config;
 pub mod error;
 pub mod handles;
-pub mod tcp;
+pub(crate) mod tcp;
 
 /// Wire format parsing for SOME/IP headers and messages.
 /// Exposed for testing and interoperability verification.
