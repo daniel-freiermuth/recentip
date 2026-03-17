@@ -2169,3 +2169,201 @@ async fn udp_pubsub_two_hosts_cyclic_real_network() {
         "Expected at least 18 events in the 20 s collection window, got {received}"
     );
 }
+
+// ============================================================================
+// TcpServer race-condition regression tests
+// ============================================================================
+
+/// Integration regression for **Bug [3] – blind removal on reconnect**.
+///
+/// `handle_tcp_connection` calls `client_senders.remove(&peer_addr)` unconditionally
+/// when a server-side TCP connection closes.  On a multi-threaded runtime this races
+/// with the accept loop inserting a *new* sender for a client that reconnects from
+/// the **same** source `(IP, port)`, because `SO_LINGER = 0` bypasses `TIME_WAIT`:
+///
+/// ```text
+/// [Thread A] old handler:  RST → break → client_senders.remove(addr)  ← arrives late
+/// [Thread B] accept loop:  new SYN    → accept → client_senders.insert(addr, new_tx)
+///                                                 ↑ wiped by Thread A
+/// ```
+///
+/// ### Scenario
+/// 1. Server offers a TCP service on a fixed port via the real `recentip` API.
+/// 2. Client `v_n` connects from a fixed source port.  Server registers `sender_n`.
+/// 3. `v_n` RSTs immediately (SO_LINGER=0), bypassing TIME_WAIT.
+/// 4. Client `v_{n+1}` connects from the **same** source port.
+///    Server registers `sender_{n+1}`.
+/// 5. Old handler (for `v_n`) eventually runs `client_senders.remove(addr)`.
+///    **With the bug** this wipes `sender_{n+1}`.
+/// 6. `v_{n+1}` sends a SOME/IP request.  Server calls `responder.reply()`.
+///    `reply()` routes through `client_senders[addr]` — which is `None` after
+///    the wipe → response silently dropped.  `v_{n+1}` receives nothing.
+///
+/// ### Why the race does not appear in turmoil tests
+/// Turmoil uses a cooperative single-threaded scheduler.  There is no `.await`
+/// point between the loop `break` and `client_senders.remove()` in
+/// `handle_tcp_connection`, so no other task can interleave in that window.
+/// The bug only manifests on a real multi-threaded Tokio runtime where handler
+/// tasks and the accept loop run on separate OS threads simultaneously.
+///
+/// ### Test design
+/// This is a stress test: 50 iterations with 4 Tokio workers.  Each iteration
+/// RSTs `v_n` and immediately reconnects `v_{n+1}` from the same source port in
+/// one `spawn_blocking` call to minimise latency between RST and SYN.  On
+/// machines where the RST and SYN land in the same epoll batch on the server,
+/// the accept loop and old handler task race; when the accept wins, the bug fires.
+/// **After the fix the test is unconditionally stable.**
+#[cfg(feature = "slow-tests")]
+#[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 4))]
+async fn bug3_tcp_server_reconnect_same_port_loses_response_real_network() {
+    use std::io::Write as _;
+    use tokio::io::AsyncReadExt as _;
+
+    const SVC_ID: u16 = 0x2001;
+    const INSTANCE: u16 = 0x0001;
+    const SERVER_TCP_PORT: u16 = 14_221;
+    // Below the Linux ephemeral range (32768–60999) so the OS never picks it
+    // as a source port for another connection and interferes with SO_REUSEADDR.
+    const CLIENT_PORT: u16 = 14_222;
+    const ITERATIONS: usize = 50;
+
+    // Minimal 16-byte SOME/IP REQUEST with no payload (length = 8).
+    // Service 0x2001, method 0x0001, client_id = session_id = 1.
+    const SOMEIP_REQUEST: [u8; 16] = [
+        0x20, 0x01, // Service ID
+        0x00, 0x01, // Method ID
+        0x00, 0x00, 0x00, 0x08, // Length = 8 (second header half only, no payload)
+        0x00, 0x01, // Client ID
+        0x00, 0x01, // Session ID
+        0x01,       // Protocol version
+        0x01,       // Interface version
+        0x00,       // Message type: REQUEST
+        0x00,       // Return code: E_OK
+    ];
+
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    // ── Server ────────────────────────────────────────────────────────────────
+    // sd_unicast("127.0.0.2") causes the TCP listener to bind to 127.0.0.2,
+    // isolating it from other tests running on 127.0.0.1.
+    let server_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().expect("multicast addr"))
+            .sd_unicast("127.0.0.2".parse().expect("sd unicast"))
+            .start()
+            .await
+            .expect("server runtime");
+
+        let mut offering = runtime
+            .offer(SVC_ID, InstanceId::Id(INSTANCE))
+            .version(1, 0)
+            .tcp_port(SERVER_TCP_PORT)
+            .start()
+            .await
+            .expect("offer service");
+
+        ready_tx.send(()).await.ok();
+
+        // Echo all incoming calls until the test signals done.
+        loop {
+            tokio::select! {
+                event = offering.next() => {
+                    match event {
+                        Some(ServiceEvent::Call { responder, .. }) => {
+                            responder.reply(b"PONG").ok();
+                        }
+                        _ => break,
+                    }
+                }
+                _ = done_rx.recv() => break,
+            }
+        }
+
+        runtime.shutdown().await;
+    });
+    ready_rx.recv().await;
+
+    // TCP server is on 127.0.0.2:SERVER_TCP_PORT (bound to the sd_unicast IP).
+    let server_tcp_addr: SocketAddrV4 =
+        format!("127.0.0.2:{SERVER_TCP_PORT}").parse().expect("server addr");
+    // Raw client uses a fixed source (127.0.0.1:CLIENT_PORT).
+    let client_addr: SocketAddrV4 =
+        format!("127.0.0.1:{CLIENT_PORT}").parse().expect("client addr");
+
+    // ── Connect helper ────────────────────────────────────────────────────────
+    // Creates a socket2 socket with SO_REUSEADDR + SO_LINGER=0 (RST on drop),
+    // performs a blocking connect from `client` to `server`, writes `request`
+    // synchronously, then switches to non-blocking mode for tokio conversion.
+    fn rst_connect_and_write(
+        client: SocketAddrV4,
+        server: SocketAddrV4,
+        request: &[u8],
+    ) -> std::io::Result<std::net::TcpStream> {
+        let s = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
+        s.set_reuse_address(true)?;
+        s.set_linger(Some(Duration::ZERO))?; // drop() → RST, no TIME_WAIT
+        s.set_nonblocking(false)?; // blocking for connect + write
+        s.bind(&SocketAddr::V4(client).into())?;
+        s.connect(&SocketAddr::V4(server).into())?;
+        let mut stream: std::net::TcpStream = s.into();
+        stream.write_all(request)?;
+        stream.set_nonblocking(true)?; // non-blocking for tokio
+        Ok(stream)
+    }
+
+    // ── Stress loop ───────────────────────────────────────────────────────────
+    let mut lost = 0usize;
+
+    for _ in 0..ITERATIONS {
+        let (ca, sa) = (client_addr, server_tcp_addr);
+
+        // Both RST and reconnect happen inside one spawn_blocking to minimise the
+        // kernel-level gap between v_n's RST and v_{n+1}'s SYN.  A small gap
+        // gives the server's epoll a chance to see both events in one batch,
+        // making the accept-loop and handler-cleanup tasks race on separate workers.
+        let std_v_next =
+            tokio::task::spawn_blocking(move || -> std::io::Result<std::net::TcpStream> {
+                // Connect v_n and immediately RST it (drop with SO_LINGER=0).
+                let v_n = rst_connect_and_write(ca, sa, &[])?;
+                drop(v_n); // → RST to server; no TIME_WAIT
+
+                // Connect v_{n+1} from the same source port (TIME_WAIT bypassed).
+                // Write the SOME/IP request synchronously before returning so the
+                // server has bytes to process without an extra async round-trip.
+                rst_connect_and_write(ca, sa, &SOMEIP_REQUEST)
+            })
+            .await
+            .expect("spawn_blocking")
+            .expect("connect");
+
+        let mut v_next = tokio::net::TcpStream::from_std(std_v_next).expect("from_std");
+
+        // Allow the server to:
+        //   1. Accept v_{n+1} and register sender_{n+1}    (fast: accept loop)
+        //   2. Process v_n's RST; handler_n removes addr   (may wipe sender_{n+1})
+        //   3. Process v_{n+1}'s request; reply() routes through client_senders
+        tokio::time::sleep(Duration::from_millis(30)).await;
+
+        // v_{n+1} must receive the PONG.  With the bug, client_senders[addr] is
+        // None after step 2 wipes it, so reply() discards the response silently.
+        let mut buf = [0u8; 64];
+        let n = tokio::time::timeout(Duration::from_millis(50), v_next.read(&mut buf))
+            .await
+            .unwrap_or(Ok(0)) // timeout  → 0 bytes
+            .unwrap_or(0); // IO error → 0 bytes
+        if n == 0 {
+            lost += 1;
+        }
+    }
+
+    assert_eq!(
+        lost,
+        0,
+        "Bug [3]: {lost}/{ITERATIONS} responses silently dropped after reconnect — \
+         the old handler's blind client_senders.remove() wiped the new connection's sender"
+    );
+
+    done_tx.send(()).await.ok();
+    server_handle.await.expect("server task");
+}
