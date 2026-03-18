@@ -134,7 +134,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                         let expect_unicast = sd_unicast_socket.is_some().then_some(false);
                         if let Some(actions) = handle_sd_message(&header, &mut data, from, &mut state, expect_unicast) {
                             for action in actions {
-                                execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                                execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                             }
                         }
                     }
@@ -173,7 +173,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                         if let Some(actions) = handle_sd_message(&header, &mut data, from, &mut state, Some(true)) {
                             for action in actions {
-                                execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                                execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                             }
                         }
                     }
@@ -218,7 +218,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &data, method_msg.from, &mut state, service_key, Transport::Udp, 0) {
                     for action in actions {
-                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -249,7 +249,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, service_key, Transport::Tcp, tcp_msg.subscription_id) {
                     for action in actions {
-                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -272,7 +272,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
                 if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, None, Transport::Tcp, tcp_msg.subscription_id) {
                     for action in actions {
-                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -292,7 +292,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             } => {
                 if let Some(actions) = flush_pending_initial_offers(&config, &mut state) {
                     for action in actions {
-                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -300,7 +300,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             // Flush pending unicast SD actions when deadline is reached
             () = state.await_pending_unicast_sd_flush_deadline() => {
                 for action in state.flush_pending_unicast_sd() {
-                    execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                    execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                 }
             }
 
@@ -402,7 +402,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     Some(cmd) => {
                         if let Some(actions) = handle_command(cmd, &mut state) {
                             for action in actions {
-                                execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                                execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                             }
                         }
                     }
@@ -438,13 +438,13 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                 // Also flush any pending initial offers at this time
                 if let Some(actions) = flush_pending_initial_offers(&config, &mut state) {
                     for action in actions {
-                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
 
                 if let Some(actions) = handle_periodic(&mut state) {
                     for action in actions {
-                        execute_action(&sd_multicast_socket, &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
                     }
                 }
             }
@@ -493,6 +493,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 /// Execute an action
 async fn execute_action<U: UdpSocket, T: TcpStream>(
     sd_mc_socket: &U,
+    sd_uc_socket: Option<&U>,
     _config: &RuntimeConfig,
     state: &mut RuntimeState,
     action: Action,
@@ -533,7 +534,15 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
                 entry_types
             );
             let data = message.serialize(session_id);
-            if let Err(e) = sd_mc_socket.send_to(&data, target).await {
+            // Unicast sends must use the unicast socket so the source IP matches sd_unicast.
+            // The mc_socket is bound to the multicast address; its source IP for unicast
+            // sends is routing-determined (127.0.0.1), not the configured sd_unicast IP.
+            let socket = if is_unicast {
+                sd_uc_socket.unwrap_or(sd_mc_socket)
+            } else {
+                sd_mc_socket
+            };
+            if let Err(e) = socket.send_to(&data, target).await {
                 tracing::error!("Failed to send SD message: {}", e);
             }
         }
