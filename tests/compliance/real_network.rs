@@ -2026,3 +2026,146 @@ async fn three_port_policy_tcp_udp_tcp_interleaved_fallback_real_network() {
     runtime.shutdown().await;
     tokio::time::sleep(Duration::from_millis(100)).await;
 }
+
+/// Test cyclic UDP pub/sub on real network where **both** parties also offer a service.
+///
+/// - **host1** (`127.0.0.2`): offers service `0x1001` with a 10 s SD cyclic offer delay,
+///   and sends one event per second as soon as a subscriber arrives.
+/// - **host2** (`127.0.0.1`): offers an unrelated service `0x1002` with a 2 s SD cyclic
+///   offer delay, sends no events.  It subscribes to host1's eventgroup and collects
+///   events for 20 s.
+///
+/// We expect **at least 18 events** — allowing up to ~2 s for discovery and subscription
+/// setup before the 20 s collection window starts.
+#[cfg(feature = "slow-tests")]
+#[test_log::test(tokio::test)]
+async fn udp_pubsub_two_hosts_cyclic_real_network() {
+    const HOST1_SERVICE_ID: u16 = 0x1001;
+    const HOST2_SERVICE_ID: u16 = 0x1002;
+    const SERVICE_VERSION: (u8, u32) = (1, 0);
+    const EVENTGROUP_ID: u16 = 0x0001;
+    const EVENT_ID: u16 = 0x8001;
+
+    let (host1_ready_tx, mut host1_ready_rx) = mpsc::channel::<()>(1);
+    let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+
+    // ── host1: event provider ─────────────────────────────────────────────────
+    let host1_handle = tokio::spawn(async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group("239.255.255.250".parse().unwrap())
+            .sd_unicast("127.0.0.2".parse().unwrap())
+            .cyclic_offer_delay(10_000) // 10 s cyclic SD offer
+            .start()
+            .await
+            .expect("host1 runtime");
+
+        let mut offering = runtime
+            .offer(HOST1_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(SERVICE_VERSION.0, SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .expect("host1 offer");
+
+        host1_ready_tx.send(()).await.ok();
+
+        // Wait for a subscriber, then send one event per second until signalled.
+        loop {
+            match offering.next().await {
+                Some(ServiceEvent::Subscribe { eventgroup, .. }) => {
+                    let event_id = EventId::new(EVENT_ID).unwrap();
+                    let event_handle = offering
+                        .event(event_id)
+                        .eventgroup(eventgroup)
+                        .create()
+                        .await
+                        .expect("create event handle");
+
+                    let mut interval = tokio::time::interval(Duration::from_secs(1));
+                    let mut seq: u32 = 0;
+                    loop {
+                        tokio::select! {
+                            _ = interval.tick() => {
+                                let payload = seq.to_be_bytes();
+                                if event_handle.notify(&payload).await.is_err() {
+                                    break;
+                                }
+                                seq += 1;
+                            }
+                            _ = done_rx.recv() => break,
+                        }
+                    }
+                    break;
+                }
+                Some(_) => continue,
+                None => break,
+            }
+        }
+
+        runtime.shutdown().await;
+    });
+
+    host1_ready_rx.recv().await;
+    // Allow host1's initial SD offer to propagate before host2 starts.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // ── host2: subscriber, also offers its own service ─────────────────────────
+    let host2_runtime = recentip::configure()
+        .sd_multicast_group("239.255.255.250".parse().unwrap())
+        .sd_unicast("127.0.0.1".parse().unwrap())
+        .cyclic_offer_delay(2_000) // 2 s cyclic SD offer
+        .start()
+        .await
+        .expect("host2 runtime");
+
+    // Offer host2's own service (no events).
+    let _host2_offering = host2_runtime
+        .offer(HOST2_SERVICE_ID, InstanceId::Id(0x0001))
+        .version(SERVICE_VERSION.0, SERVICE_VERSION.1)
+        .udp()
+        .start()
+        .await
+        .expect("host2 offer");
+
+    // Discover host1's service and subscribe to its eventgroup.
+    let proxy = host2_runtime
+        .find(HOST1_SERVICE_ID)
+        .instance(InstanceId::Id(0x0001));
+    let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
+        .await
+        .expect("host1 discovery timeout")
+        .expect("host1 service available");
+
+    let eventgroup_id = EventgroupId::new(EVENTGROUP_ID).unwrap();
+    let mut subscription =
+        tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup_id))
+            .await
+            .expect("subscribe timeout")
+            .expect("subscribe success");
+
+    // Collect events for 20 s.
+    let collect_deadline = tokio::time::sleep(Duration::from_secs(20));
+    tokio::pin!(collect_deadline);
+    let mut received: usize = 0;
+    loop {
+        tokio::select! {
+            _ = &mut collect_deadline => break,
+            event = subscription.next() => {
+                if event.is_some() {
+                    received += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    done_tx.send(()).await.ok();
+    host2_runtime.shutdown().await;
+    host1_handle.await.expect("host1 task");
+
+    assert!(
+        received >= 18,
+        "Expected at least 18 events in the 20 s collection window, got {received}"
+    );
+}
