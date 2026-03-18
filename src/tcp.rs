@@ -38,6 +38,7 @@
 //! The [`TcpServer`] handles incoming connections for an offered service.
 //! It spawns reader tasks for each accepted connection.
 
+use std::collections::HashMap;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
@@ -45,7 +46,7 @@ use crate::config::{PortSpec, TcpKeepaliveConfig};
 use std::sync::Arc;
 
 use bytes::{Buf, Bytes, BytesMut};
-use dashmap::{DashMap, Entry};
+use dashmap::DashMap;
 use tokio::sync::mpsc;
 
 use crate::net::{TcpListener, TcpStream};
@@ -554,12 +555,15 @@ impl<T: TcpStream> TcpServer<T> {
         // Tuple: (peer_ip, close_ports) - only connections matching these ports are closed
         let (close_peer_tx, mut close_peer_rx) = mpsc::channel::<(Ipv4Addr, Vec<u16>)>(16);
 
+        // Channel for connection-handler tasks to request cleanup when they exit.
+        // Carrying the connection_id prevents a stale cleanup from removing a newer
+        // connection's sender (Bug [3]: blind removal on reconnect).
+        let (cleanup_tx, mut cleanup_rx) = mpsc::channel::<(SocketAddrV4, u64)>(1024);
+
         // Track active client connections — maps peer addr to (sender, connection_id).
         // The connection_id lets the cleanup arm verify ownership before removing.
-        let client_senders: Arc<DashMap<SocketAddrV4, (mpsc::Sender<Bytes>, u64)>> =
-            Arc::new(DashMap::new());
-        let client_senders_for_responses = Arc::clone(&client_senders);
-        let client_senders_for_close = Arc::clone(&client_senders);
+        let mut client_senders: HashMap<SocketAddrV4, (mpsc::Sender<Bytes>, u64)> =
+            HashMap::new();
 
         // Track connection task handles for abort
         let client_tasks: Arc<DashMap<SocketAddrV4, tokio::task::JoinHandle<()>>> =
@@ -605,7 +609,7 @@ impl<T: TcpStream> TcpServer<T> {
 
                                 // Spawn task to handle this client connection
                                 let msg_tx = msg_tx.clone();
-                                let senders = Arc::clone(&client_senders);
+                                let cleanup_tx_conn = cleanup_tx.clone();
                                 let tasks = Arc::clone(&client_tasks);
                                 let handle = tokio::spawn(async move {
                                     handle_tcp_connection(
@@ -615,7 +619,7 @@ impl<T: TcpStream> TcpServer<T> {
                                         instance_id,
                                         msg_tx,
                                         conn_send_rx,
-                                        senders,
+                                        cleanup_tx_conn,
                                         connection_id,
                                         magic_cookies,
                                     ).await;
@@ -646,23 +650,21 @@ impl<T: TcpStream> TcpServer<T> {
                         );
 
                         // Log all current connections for debugging
-                        let current_connections: Vec<SocketAddrV4> = client_senders_for_close.iter()
-                            .map(|entry| *entry.key())
-                            .collect();
+                        let current_connections: Vec<SocketAddrV4> = client_senders.keys().cloned().collect();
                         tracing::debug!(
                             "TCP server {:04x}:{:04x}: current connections: {:?}",
                             service_id, instance_id, current_connections
                         );
 
                         let mut addrs_to_remove: Vec<SocketAddrV4> = Vec::new();
-                        for entry in client_senders_for_close.iter() {
+                        for key in client_senders.keys() {
                             // Only close connections matching BOTH the peer IP AND a port in close_ports
-                            if *entry.key().ip() == peer_ip && close_ports.contains(&entry.key().port()) {
+                            if *key.ip() == peer_ip && close_ports.contains(&key.port()) {
                                 tracing::debug!(
                                     "TCP server {:04x}:{:04x}: MATCH - will close connection from {:?}",
-                                    service_id, instance_id, entry.key()
+                                    service_id, instance_id, key
                                 );
-                                addrs_to_remove.push(*entry.key());
+                                addrs_to_remove.push(*key);
                             }
                         }
                         if addrs_to_remove.is_empty() {
@@ -678,7 +680,7 @@ impl<T: TcpStream> TcpServer<T> {
                             for addr in addrs_to_remove {
                                 // Remove sender (causes connection task to exit).
                                 // Intentional server-initiated close: no id check needed.
-                                client_senders_for_close.remove(&addr);
+                                client_senders.remove(&addr);
                                 // Abort the task to ensure it stops immediately
                                 if let Some((_, handle)) = client_tasks_for_close.remove(&addr) {
                                     handle.abort();
@@ -690,8 +692,7 @@ impl<T: TcpStream> TcpServer<T> {
                     // Route responses to the appropriate client connection - exit when channel closes
                     msg = send_rx.recv() => {
                         if let Some(send_msg) = msg {
-                            if let Some(entry) = client_senders_for_responses.get(&send_msg.to) {
-                                let (sender, _) = entry.value();
+                            if let Some((sender, _)) = client_senders.get(&send_msg.to) {
                                 if sender.send(send_msg.data).await.is_err() {
                                     tracing::warn!("Failed to send response to {}: connection closed", send_msg.to);
                                 }
@@ -705,6 +706,27 @@ impl<T: TcpStream> TcpServer<T> {
                                 service_id, instance_id
                             );
                             break;
+                        }
+                    }
+
+                    // Connection-handler cleanup — verify ownership before removing.
+                    // If the peer reconnected and got a new connection_id, the stored id
+                    // will differ and we leave the new connection's sender in place.
+                    Some((addr, conn_id)) = cleanup_rx.recv() => {
+                        let should_remove = client_senders
+                            .get(&addr)
+                            .is_some_and(|entry| entry.1 == conn_id);
+                        if should_remove {
+                            tracing::debug!(
+                                "TCP server {:04x}:{:04x}: cleaning up sender for {} (connection_id={})",
+                                service_id, instance_id, addr, conn_id
+                            );
+                            client_senders.remove(&addr);
+                        } else {
+                            tracing::debug!(
+                                "TCP server {:04x}:{:04x}: ignoring stale cleanup for {} (connection_id={}): newer connection exists",
+                                service_id, instance_id, addr, conn_id
+                            );
                         }
                     }
                 }
@@ -728,6 +750,10 @@ impl<T: TcpStream> TcpServer<T> {
 /// When `magic_cookies` is enabled:
 /// - Each write is prepended with a Magic Cookie (`feat_req_someip_591`)
 /// - Magic Cookies in received data are skipped (`feat_req_someip_586`)
+///
+/// On exit, sends `(peer_addr, connection_id)` to `cleanup_tx`. The server
+/// event loop verifies the stored connection_id matches before removing the
+/// sender entry, preventing Bug [3]: a stale cleanup wiping a newer connection.
 async fn handle_tcp_connection<T: TcpStream>(
     mut stream: T,
     peer_addr: SocketAddrV4,
@@ -735,7 +761,7 @@ async fn handle_tcp_connection<T: TcpStream>(
     instance_id: u16,
     msg_tx: mpsc::Sender<TcpMessage>,
     mut response_rx: mpsc::Receiver<Bytes>,
-    client_senders: Arc<DashMap<SocketAddrV4, (mpsc::Sender<Bytes>, u64)>>,
+    cleanup_tx: mpsc::Sender<(SocketAddrV4, u64)>,
     connection_id: u64,
     magic_cookies: bool,
 ) {
@@ -831,26 +857,9 @@ async fn handle_tcp_connection<T: TcpStream>(
         }
     }
 
-    // Connection-handler cleanup — verify ownership before removing.
-    // If the peer reconnected and got a new connection_id, the stored id
-    // will differ and we leave the new connection's sender in place.
-    match client_senders.entry(peer_addr) {
-        Entry::Vacant(_) => {},
-        Entry::Occupied(occupied_entry) => {
-            if occupied_entry.get().1 == connection_id {
-                tracing::debug!(
-                    "TCP server {:04x}:{:04x}: cleaning up sender for {} (connection_id={})",
-                    service_id, instance_id, peer_addr, connection_id
-                );
-                occupied_entry.remove();
-            } else {
-                tracing::debug!(
-                    "TCP server {:04x}:{:04x}: ignoring stale cleanup for {} (connection_id={}): newer connection exists",
-                    service_id, instance_id, peer_addr, connection_id
-                );
-            }
-        },
-    }
+    // Request cleanup via channel — event loop verifies connection_id before removing,
+    // preventing a stale cleanup from wiping a newer connection's sender (Bug [3]).
+    let _ = cleanup_tx.send((peer_addr, connection_id)).await;
 }
 
 #[cfg(test)]
