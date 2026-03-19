@@ -2811,7 +2811,7 @@ fn server_fixed_tcp_port_two_services_same_host_share_socket() {
 fn server_fixed_tcp_port_two_services_rpc_calls() {
     use recentip::handle::ServiceEvent;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    
+
     const PORT: u16 = 30515;
     const METHOD_ID: u16 = 0x0001;
 
@@ -2827,7 +2827,7 @@ fn server_fixed_tcp_port_two_services_rpc_calls() {
     sim.host("server", move || {
         let ca = Arc::clone(&calls_a_server);
         let cb = Arc::clone(&calls_b_server);
-        
+
         async move {
             let runtime = recentip::configure()
                 .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
@@ -2856,10 +2856,20 @@ fn server_fixed_tcp_port_two_services_rpc_calls() {
             // Handle requests for service A
             tokio::spawn(async move {
                 while let Some(event) = offering_a.next().await {
-                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                    if let ServiceEvent::Call {
+                        method,
+                        payload,
+                        responder,
+                        ..
+                    } = event
+                    {
                         ca.fetch_add(1, Ordering::SeqCst);
-                        assert_eq!(method.value(), METHOD_ID, "Service A received unexpected method_id");
-                        
+                        assert_eq!(
+                            method.value(),
+                            METHOD_ID,
+                            "Service A received unexpected method_id"
+                        );
+
                         // Echo the payload with a prefix to verify routing
                         let mut response = b"response_a:".to_vec();
                         response.extend_from_slice(&payload);
@@ -2871,10 +2881,20 @@ fn server_fixed_tcp_port_two_services_rpc_calls() {
             // Handle requests for service B
             tokio::spawn(async move {
                 while let Some(event) = offering_b.next().await {
-                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                    if let ServiceEvent::Call {
+                        method,
+                        payload,
+                        responder,
+                        ..
+                    } = event
+                    {
                         cb.fetch_add(1, Ordering::SeqCst);
-                        assert_eq!(method.value(), METHOD_ID, "Service B received unexpected method_id");
-                        
+                        assert_eq!(
+                            method.value(),
+                            METHOD_ID,
+                            "Service B received unexpected method_id"
+                        );
+
                         // Echo the payload with a prefix to verify routing
                         let mut response = b"response_b:".to_vec();
                         response.extend_from_slice(&payload);
@@ -3017,7 +3037,7 @@ fn server_fixed_tcp_port_two_services_rpc_calls() {
 fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
     use recentip::handle::ServiceEvent;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    
+
     const PORT_1: u16 = 30516;
     const PORT_2: u16 = 30517;
     const METHOD_ID: u16 = 0x0001;
@@ -3026,7 +3046,7 @@ fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
     let calls_b1 = Arc::new(AtomicUsize::new(0));
     let calls_a2 = Arc::new(AtomicUsize::new(0));
     let calls_b2 = Arc::new(AtomicUsize::new(0));
-    
+
     let calls_a1_server = Arc::clone(&calls_a1);
     let calls_b1_server = Arc::clone(&calls_b1);
     let calls_a2_server = Arc::clone(&calls_a2);
@@ -3041,7 +3061,7 @@ fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
         let cb1 = Arc::clone(&calls_b1_server);
         let ca2 = Arc::clone(&calls_a2_server);
         let cb2 = Arc::clone(&calls_b2_server);
-        
+
         async move {
             let runtime = recentip::configure()
                 .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
@@ -3087,10 +3107,20 @@ fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
             // Handle requests for service A instance 1
             tokio::spawn(async move {
                 while let Some(event) = offering_a1.next().await {
-                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                    if let ServiceEvent::Call {
+                        method,
+                        payload,
+                        responder,
+                        ..
+                    } = event
+                    {
                         ca1.fetch_add(1, Ordering::SeqCst);
-                        assert_eq!(method.value(), METHOD_ID, "Service A/1 received unexpected method_id");
-                        
+                        assert_eq!(
+                            method.value(),
+                            METHOD_ID,
+                            "Service A/1 received unexpected method_id"
+                        );
+
                         let mut response = b"response_a1:".to_vec();
                         response.extend_from_slice(&payload);
                         responder.reply(&response).unwrap();
@@ -3101,10 +3131,20 @@ fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
             // Handle requests for service B instance 1
             tokio::spawn(async move {
                 while let Some(event) = offering_b1.next().await {
-                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                    if let ServiceEvent::Call {
+                        method,
+                        payload,
+                        responder,
+                        ..
+                    } = event
+                    {
                         cb1.fetch_add(1, Ordering::SeqCst);
-                        assert_eq!(method.value(), METHOD_ID, "Service B/1 received unexpected method_id");
-                        
+                        assert_eq!(
+                            method.value(),
+                            METHOD_ID,
+                            "Service B/1 received unexpected method_id"
+                        );
+
                         let mut response = b"response_b1:".to_vec();
                         response.extend_from_slice(&payload);
                         responder.reply(&response).unwrap();
@@ -3115,10 +3155,20 @@ fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
             // Handle requests for service A instance 2
             tokio::spawn(async move {
                 while let Some(event) = offering_a2.next().await {
-                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                    if let ServiceEvent::Call {
+                        method,
+                        payload,
+                        responder,
+                        ..
+                    } = event
+                    {
                         ca2.fetch_add(1, Ordering::SeqCst);
-                        assert_eq!(method.value(), METHOD_ID, "Service A/2 received unexpected method_id");
-                        
+                        assert_eq!(
+                            method.value(),
+                            METHOD_ID,
+                            "Service A/2 received unexpected method_id"
+                        );
+
                         let mut response = b"response_a2:".to_vec();
                         response.extend_from_slice(&payload);
                         responder.reply(&response).unwrap();
@@ -3129,10 +3179,20 @@ fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
             // Handle requests for service B instance 2
             tokio::spawn(async move {
                 while let Some(event) = offering_b2.next().await {
-                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                    if let ServiceEvent::Call {
+                        method,
+                        payload,
+                        responder,
+                        ..
+                    } = event
+                    {
                         cb2.fetch_add(1, Ordering::SeqCst);
-                        assert_eq!(method.value(), METHOD_ID, "Service B/2 received unexpected method_id");
-                        
+                        assert_eq!(
+                            method.value(),
+                            METHOD_ID,
+                            "Service B/2 received unexpected method_id"
+                        );
+
                         let mut response = b"response_b2:".to_vec();
                         response.extend_from_slice(&payload);
                         responder.reply(&response).unwrap();
@@ -3199,22 +3259,34 @@ fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
 
         // Verify port assignments
         assert_eq!(
-            proxy_a1.endpoint().expect("A/1 must have TCP endpoint").port(),
+            proxy_a1
+                .endpoint()
+                .expect("A/1 must have TCP endpoint")
+                .port(),
             PORT_1,
             "Service A instance 1 must be at port {PORT_1}"
         );
         assert_eq!(
-            proxy_b1.endpoint().expect("B/1 must have TCP endpoint").port(),
+            proxy_b1
+                .endpoint()
+                .expect("B/1 must have TCP endpoint")
+                .port(),
             PORT_1,
             "Service B instance 1 must be at port {PORT_1} (shared with A/1)"
         );
         assert_eq!(
-            proxy_a2.endpoint().expect("A/2 must have TCP endpoint").port(),
+            proxy_a2
+                .endpoint()
+                .expect("A/2 must have TCP endpoint")
+                .port(),
             PORT_2,
             "Service A instance 2 must be at port {PORT_2}"
         );
         assert_eq!(
-            proxy_b2.endpoint().expect("B/2 must have TCP endpoint").port(),
+            proxy_b2
+                .endpoint()
+                .expect("B/2 must have TCP endpoint")
+                .port(),
             PORT_2,
             "Service B instance 2 must be at port {PORT_2} (shared with A/2)"
         );
@@ -3289,10 +3361,22 @@ fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
     let count_a2 = calls_a2.load(Ordering::SeqCst);
     let count_b2 = calls_b2.load(Ordering::SeqCst);
 
-    assert_eq!(count_a1, 1, "Service A instance 1 should have received 1 call");
-    assert_eq!(count_b1, 1, "Service B instance 1 should have received 1 call");
-    assert_eq!(count_a2, 1, "Service A instance 2 should have received 1 call");
-    assert_eq!(count_b2, 1, "Service B instance 2 should have received 1 call");
+    assert_eq!(
+        count_a1, 1,
+        "Service A instance 1 should have received 1 call"
+    );
+    assert_eq!(
+        count_b1, 1,
+        "Service B instance 1 should have received 1 call"
+    );
+    assert_eq!(
+        count_a2, 1,
+        "Service A instance 2 should have received 1 call"
+    );
+    assert_eq!(
+        count_b2, 1,
+        "Service B instance 2 should have received 1 call"
+    );
 }
 
 // -----------------------------------------------------------------------
@@ -3331,7 +3415,7 @@ fn server_wrong_tcp_port_error_response() {
     sim.host("server", move || {
         let ca = Arc::clone(&calls_a_server);
         let cb = Arc::clone(&calls_b_server);
-        
+
         async move {
             let runtime = recentip::configure()
                 .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
@@ -3428,17 +3512,21 @@ fn server_wrong_tcp_port_error_response() {
 
         // 1) Send request for SERVICE_B to SERVICE_A's port (wrong port)
         //    We expect an error response
-        let req_b_wrong = crate::helpers::SomeIpPacketBuilder::request(SERVER_WRONG_PORT_SVC_B, METHOD_ID)
-            .client_id(0x0001)
-            .session_id(0x0001)
-            .payload(b"testdata")
-            .build();
+        let req_b_wrong =
+            crate::helpers::SomeIpPacketBuilder::request(SERVER_WRONG_PORT_SVC_B, METHOD_ID)
+                .client_id(0x0001)
+                .session_id(0x0001)
+                .payload(b"testdata")
+                .build();
 
         socket.write_all(&req_b_wrong).await.unwrap();
 
         let mut resp_buf = vec![0u8; 1024];
         let n = socket.read(&mut resp_buf).await.unwrap();
-        assert!(n >= 16, "Response should be at least 16 bytes (SOME/IP header)");
+        assert!(
+            n >= 16,
+            "Response should be at least 16 bytes (SOME/IP header)"
+        );
         resp_buf.truncate(n);
 
         // Parse response header - should be an error response
@@ -3462,11 +3550,12 @@ fn server_wrong_tcp_port_error_response() {
         );
 
         // 2) Send correct request to SERVICE_A on correct port to verify it works
-        let req_a_correct = crate::helpers::SomeIpPacketBuilder::request(SERVER_WRONG_PORT_SVC_A, METHOD_ID)
-            .client_id(0x0001)
-            .session_id(0x0002) // Different session ID from first request
-            .payload(b"testdata")
-            .build();
+        let req_a_correct =
+            crate::helpers::SomeIpPacketBuilder::request(SERVER_WRONG_PORT_SVC_A, METHOD_ID)
+                .client_id(0x0001)
+                .session_id(0x0002) // Different session ID from first request
+                .payload(b"testdata")
+                .build();
 
         socket.write_all(&req_a_correct).await.unwrap();
 

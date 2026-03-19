@@ -2235,10 +2235,10 @@ async fn bug3_tcp_server_reconnect_same_port_loses_response_real_network() {
         0x00, 0x00, 0x00, 0x08, // Length = 8 (second header half only, no payload)
         0x00, 0x01, // Client ID
         0x00, 0x01, // Session ID
-        0x01,       // Protocol version
-        0x01,       // Interface version
-        0x00,       // Message type: REQUEST
-        0x00,       // Return code: E_OK
+        0x01, // Protocol version
+        0x01, // Interface version
+        0x00, // Message type: REQUEST
+        0x00, // Return code: E_OK
     ];
 
     let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
@@ -2285,11 +2285,13 @@ async fn bug3_tcp_server_reconnect_same_port_loses_response_real_network() {
     ready_rx.recv().await;
 
     // TCP server is on 127.0.0.2:SERVER_TCP_PORT (bound to the sd_unicast IP).
-    let server_tcp_addr: SocketAddrV4 =
-        format!("127.0.0.2:{SERVER_TCP_PORT}").parse().expect("server addr");
+    let server_tcp_addr: SocketAddrV4 = format!("127.0.0.2:{SERVER_TCP_PORT}")
+        .parse()
+        .expect("server addr");
     // Raw client uses a fixed source (127.0.0.1:CLIENT_PORT).
-    let client_addr: SocketAddrV4 =
-        format!("127.0.0.1:{CLIENT_PORT}").parse().expect("client addr");
+    let client_addr: SocketAddrV4 = format!("127.0.0.1:{CLIENT_PORT}")
+        .parse()
+        .expect("client addr");
 
     // ── Connect helper ────────────────────────────────────────────────────────
     // Creates a socket2 socket with SO_REUSEADDR + SO_LINGER=0 (RST on drop),
@@ -2358,8 +2360,7 @@ async fn bug3_tcp_server_reconnect_same_port_loses_response_real_network() {
     }
 
     assert_eq!(
-        lost,
-        0,
+        lost, 0,
         "Bug [3]: {lost}/{ITERATIONS} responses silently dropped after reconnect — \
          the old handler's blind client_senders.remove() wiped the new connection's sender"
     );

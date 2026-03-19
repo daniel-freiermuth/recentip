@@ -207,7 +207,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                 //
                 // This ensures legitimate requests are routed correctly, while error
                 // responses for unknown services still come from the correct socket.
-                // TODO get rid of service key. It's mostly duplicated state and actually carrying information 
+                // TODO get rid of service key. It's mostly duplicated state and actually carrying information
                 // on the receiving endpoint
                 let service_key = state
                     .offered
@@ -573,8 +573,8 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
 
 /// Execute an action
 async fn execute_action<U: UdpSocket, T: TcpStream>(
-    sd_mc_socket: &U,
-    sd_uc_socket: Option<&U>,
+    sd_multicast_socket: &U,
+    sd_unicast_socket: Option<&U>,
     _config: &RuntimeConfig,
     state: &mut RuntimeState,
     action: Action,
@@ -619,9 +619,9 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             // The mc_socket is bound to the multicast address; its source IP for unicast
             // sends is routing-determined (127.0.0.1), not the configured sd_unicast IP.
             let socket = if is_unicast {
-                sd_uc_socket.unwrap_or(sd_mc_socket)
+                sd_unicast_socket.unwrap_or(sd_multicast_socket)
             } else {
-                sd_mc_socket
+                sd_multicast_socket
             };
             if let Err(e) = socket.send_to(&data, target).await {
                 tracing::error!("Failed to send SD message: {}", e);

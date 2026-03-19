@@ -56,7 +56,7 @@ use crate::wire::{
 
 /// Message received from a client-side TCP connection (responses to our requests)
 #[derive(Debug)]
-pub(crate) struct ClientTcpMessage {
+pub struct ClientTcpMessage {
     /// The raw message data including SOME/IP header
     pub data: Bytes,
     /// The peer address this message came from
@@ -67,7 +67,7 @@ pub(crate) struct ClientTcpMessage {
 
 /// Message received from a server-side TCP connection (requests from clients)
 #[derive(Debug)]
-pub(crate) struct ServerTcpMessage {
+pub struct ServerTcpMessage {
     /// The raw message data including SOME/IP header
     pub data: Bytes,
     /// The peer address this message came from
@@ -82,7 +82,7 @@ pub(crate) struct ServerTcpMessage {
 /// ownership via `connection_id` before removing — this prevents a race where
 /// closing an old connection removes a newer connection's entry.
 #[derive(Debug)]
-pub(crate) struct TcpCleanupRequest {
+pub struct TcpCleanupRequest {
     /// The connection key (peer address, subscription_id)
     pub key: (SocketAddrV4, u64),
     /// Unique ID assigned when the connection was created
@@ -100,7 +100,7 @@ pub(crate) struct TcpCleanupRequest {
 ///
 /// Uses a single DashMap with `OnceCell` for both coordination of concurrent
 /// connection attempts AND storage of established connection state.
-pub(crate) struct TcpConnectionPool<T: TcpStream> {
+pub struct TcpConnectionPool<T: TcpStream> {
     /// Connections indexed by (peer address, `subscription_id`).
     /// OnceCell coordinates concurrent attempts: first caller connects, others wait.
     /// Once initialized, contains full connection state.
@@ -184,11 +184,9 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             // SAFETY: we checked `is_some()` above; no await between check and use,
             // but the cell itself is a OnceCell — `get()` is infallible once initialized.
             if let Some(state) = cell.get() {
-                return state
-                    .sender
-                    .send(data)
-                    .await
-                    .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Connection task closed"));
+                return state.sender.send(data).await.map_err(|_| {
+                    io::Error::new(io::ErrorKind::BrokenPipe, "Connection task closed")
+                });
             }
         }
 
@@ -555,7 +553,7 @@ async fn handle_client_tcp_connection<T: TcpStream>(
 
 /// Message to send to a specific TCP connection
 #[derive(Debug)]
-pub(crate) struct TcpSendMessage {
+pub struct TcpSendMessage {
     /// Data to send
     pub data: Bytes,
     /// Target peer address
@@ -569,7 +567,7 @@ pub(crate) struct TcpSendMessage {
 /// - Reading framed SOME/IP messages from clients
 /// - Sending responses back to the correct client
 /// - Closing connections from specific peers (feat_req_someipsd_872)
-pub(crate) struct TcpServer<T: TcpStream> {
+pub struct TcpServer<T: TcpStream> {
     /// Local address the server is listening on
     pub local_addr: SocketAddrV4,
     /// Channel to send responses to clients
@@ -612,8 +610,7 @@ impl<T: TcpStream> TcpServer<T> {
 
         // Track active client connections — maps peer addr to (sender, connection_id).
         // The connection_id lets the cleanup arm verify ownership before removing.
-        let mut client_senders: HashMap<SocketAddrV4, (mpsc::Sender<Bytes>, u64)> =
-            HashMap::new();
+        let mut client_senders: HashMap<SocketAddrV4, (mpsc::Sender<Bytes>, u64)> = HashMap::new();
 
         // Track connection task handles for abort
         let client_tasks: Arc<DashMap<SocketAddrV4, tokio::task::JoinHandle<()>>> =
@@ -687,7 +684,7 @@ impl<T: TcpStream> TcpServer<T> {
                     }
 
                     // TODO BUG: do newer subscription overwrite older ones?
-                    
+
                     // TODO BUG: reboot cleanup misses multiple sockets for the same client/server port
 
                     // Close specific connections from a peer (reboot detection)
@@ -699,7 +696,7 @@ impl<T: TcpStream> TcpServer<T> {
                         );
 
                         // Log all current connections for debugging
-                        let current_connections: Vec<SocketAddrV4> = client_senders.keys().cloned().collect();
+                        let current_connections: Vec<SocketAddrV4> = client_senders.keys().copied().collect();
                         tracing::debug!(
                             "TCP server on port {}: current connections: {:?}",
                             local_port, current_connections

@@ -2099,10 +2099,17 @@ fn tcp_subscription_and_rpc_share_single_connection() {
                     0x00 => {
                         // FindService — offer SVC_ID via TCP
                         let offer = build_sd_offer(
-                            SVC_ID, INSTANCE_ID, MAJOR_VERSION, 0,
-                            server_ip, TCP_PORT, 0x06, // TCP
+                            SVC_ID,
+                            INSTANCE_ID,
+                            MAJOR_VERSION,
+                            0,
+                            server_ip,
+                            TCP_PORT,
+                            0x06, // TCP
                             0xFFFFFF,
-                            mc_session, true, false,
+                            mc_session,
+                            true,
+                            false,
                         );
                         mc_session += 1;
                         let _ = sd_socket.send_to(&offer, from).await;
@@ -2111,8 +2118,13 @@ fn tcp_subscription_and_rpc_share_single_connection() {
                         // SubscribeEventgroup
                         let ttl = u32::from_be_bytes([0, data[33], data[34], data[35]]);
                         let ack = build_sd_subscribe_ack(
-                            SVC_ID, INSTANCE_ID, MAJOR_VERSION, EVENTGROUP_ID,
-                            ttl, uc_session, true,
+                            SVC_ID,
+                            INSTANCE_ID,
+                            MAJOR_VERSION,
+                            EVENTGROUP_ID,
+                            ttl,
+                            uc_session,
+                            true,
                         );
                         uc_session += 1;
                         let _ = sd_socket.send_to(&ack, from).await;
@@ -2277,10 +2289,17 @@ fn tcp_rpc_first_then_subscription_shares_connection() {
                     0x00 => {
                         // FindService — offer SVC_ID via TCP
                         let offer = build_sd_offer(
-                            SVC_ID, INSTANCE_ID, MAJOR_VERSION, 0,
-                            server_ip, TCP_PORT, 0x06, // TCP
+                            SVC_ID,
+                            INSTANCE_ID,
+                            MAJOR_VERSION,
+                            0,
+                            server_ip,
+                            TCP_PORT,
+                            0x06, // TCP
                             0xFFFFFF,
-                            mc_session, true, false,
+                            mc_session,
+                            true,
+                            false,
                         );
                         mc_session += 1;
                         let _ = sd_socket.send_to(&offer, from).await;
@@ -2289,8 +2308,13 @@ fn tcp_rpc_first_then_subscription_shares_connection() {
                         // SubscribeEventgroup
                         let ttl = u32::from_be_bytes([0, data[33], data[34], data[35]]);
                         let ack = build_sd_subscribe_ack(
-                            SVC_ID, INSTANCE_ID, MAJOR_VERSION, EVENTGROUP_ID,
-                            ttl, uc_session, true,
+                            SVC_ID,
+                            INSTANCE_ID,
+                            MAJOR_VERSION,
+                            EVENTGROUP_ID,
+                            ttl,
+                            uc_session,
+                            true,
                         );
                         uc_session += 1;
                         let _ = sd_socket.send_to(&ack, from).await;
