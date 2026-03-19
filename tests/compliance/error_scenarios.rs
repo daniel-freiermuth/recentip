@@ -1738,3 +1738,591 @@ fn fire_and_forget_service_id_mismatch_ignored() {
 
     sim.run().unwrap();
 }
+
+// ============================================================================
+// Request on subscriber connection
+// ============================================================================
+
+/// A wire server sends a SOME/IP Request on a TCP subscription connection.
+///
+/// When a lib client subscribes over TCP, **the client** establishes the TCP
+/// connection to the server. The server then sends events back on that same
+/// connection. A buggy or malicious server could instead send a SOME/IP
+/// Request — essentially trying to call a method on the client via the
+/// subscriber connection.
+///
+/// The runtime should silently drop such requests: they arrived on a
+/// client-initiated connection, not on the service's own server socket.
+/// Dispatching them to the offered service would give a remote peer unexpected
+/// access to method-call semantics.
+#[test_log::test]
+fn request_on_subscriber_tcp_connection_is_ignored() {
+    use crate::wire_format::helpers::{SdOfferBuilder, SdSubscribeAckBuilder, SomeIpPacketBuilder};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // Service IDs chosen to avoid collisions with other tests in this file.
+    const CLIENT_SVC_ID: u16 = 0x6001; // offered by the lib client
+    const SERVER_SVC_ID: u16 = 0x6000; // offered by the wire server
+    const EVENTGROUP_ID: u16 = 0x0001;
+    const SERVER_TCP_PORT: u16 = 51001;
+    const CLIENT_TCP_PORT: u16 = 52001;
+    const MAJOR_VERSION: u8 = 1;
+    const METHOD_ID: u16 = 0x0001;
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let call_count_client = Arc::clone(&call_count);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(15))
+        .build();
+
+    // Wire server: offers SERVER_SVC_ID via SD with a TCP endpoint.
+    // Once the lib client subscribes and the TCP connection is established,
+    // sends a SOME/IP Request for CLIENT_SVC_ID on that connection.
+    sim.host("wire-server", move || async move {
+        let server_ip: std::net::Ipv4Addr = match turmoil::lookup("wire-server") {
+            std::net::IpAddr::V4(a) => a,
+            _ => unreachable!("expected IPv4"),
+        };
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4(
+            "239.255.0.1".parse().unwrap(),
+            "0.0.0.0".parse().unwrap(),
+        )?;
+
+        let tcp_listener =
+            turmoil::net::TcpListener::bind(format!("0.0.0.0:{SERVER_TCP_PORT}")).await?;
+
+        // Accept the subscriber's incoming TCP connection in background.
+        let accepted: Arc<tokio::sync::Mutex<Option<turmoil::net::TcpStream>>> =
+            Arc::new(tokio::sync::Mutex::new(None));
+        let accepted_bg = Arc::clone(&accepted);
+        tokio::spawn(async move {
+            if let Ok((stream, addr)) = tcp_listener.accept().await {
+                tracing::info!("Wire server: TCP connection from {addr}");
+                *accepted_bg.lock().await = Some(stream);
+            }
+        });
+
+        let sd_multicast: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
+        let mut buf = vec![0u8; 65535];
+        let mut multicast_session = 1u16;
+        let mut unicast_session = 1u16;
+
+        // Send periodic SD offers until the client subscribes.
+        // A single up-front offer would be lost if the client hasn't joined multicast yet.
+        let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+        let subscribe_from = loop {
+            if last_offer.elapsed() >= Duration::from_secs(1) {
+                let offer = SdOfferBuilder::new(SERVER_SVC_ID, 0x0001, server_ip, SERVER_TCP_PORT)
+                    .tcp()
+                    .session_id(multicast_session)
+                    .build();
+                multicast_session += 1;
+                sd_socket.send_to(&offer, sd_multicast).await?;
+                last_offer = tokio::time::Instant::now();
+            }
+
+            let Ok(Ok((len, from))) =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf)).await
+            else {
+                continue;
+            };
+            let data = &buf[..len];
+            if data.len() < 36 {
+                continue;
+            }
+            let svc_id_hdr = u16::from_be_bytes([data[0], data[1]]);
+            let mth_id_hdr = u16::from_be_bytes([data[2], data[3]]);
+            if svc_id_hdr != 0xFFFF || mth_id_hdr != 0x8100 {
+                continue;
+            }
+            // Entry array starts at offset 24 in the SD payload (after SOME/IP+SD headers).
+            let entry_type = data[24];
+            let entry_svc = u16::from_be_bytes([data[28], data[29]]);
+            if entry_type == 0x06 /* SubscribeEventgroup */ && entry_svc == SERVER_SVC_ID {
+                tracing::info!("Wire server: SubscribeEventgroup from {from}");
+                break from;
+            }
+        };
+
+        // Acknowledge the subscription (unicast).
+        let ack = SdSubscribeAckBuilder::new(SERVER_SVC_ID, 0x0001, EVENTGROUP_ID)
+            .major_version(MAJOR_VERSION)
+            .ttl(3000)
+            .session_id(unicast_session)
+            .build();
+        unicast_session += 1;
+        sd_socket.send_to(&ack, subscribe_from).await?;
+
+        // Wait for the TCP connection to be established.
+        let mut stream = loop {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let mut g = accepted.lock().await;
+            if g.is_some() {
+                break g.take().unwrap();
+            }
+        };
+
+        // Give the lib client time to fully process the ACK.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        // Send a SOME/IP Request for CLIENT_SVC_ID on the **subscription** TCP connection.
+        // The lib client established this TCP connection to receive events; the server must
+        // NOT abuse it to trigger method calls on the lib client's service.
+        let request = SomeIpPacketBuilder::request(CLIENT_SVC_ID, METHOD_ID)
+            .client_id(0xDEAD)
+            .session_id(0x0001)
+            .payload(b"bad_request_on_sub_conn")
+            .build();
+        stream.write_all(&request).await?;
+        tracing::info!("Wire server: sent Request for CLIENT_SVC_ID on subscription connection");
+
+        // Expect no response; a brief read confirms nothing is sent back.
+        let mut resp = vec![0u8; 256];
+        match tokio::time::timeout(Duration::from_secs(2), stream.read(&mut resp)).await {
+            Ok(Ok(0)) => tracing::info!("Wire server: connection closed by client"),
+            Ok(Ok(n)) => tracing::warn!("Wire server: unexpected {n}-byte response"),
+            Err(_) => tracing::info!("Wire server: no response (request dropped, as expected)"),
+            Ok(Err(e)) => tracing::warn!("Wire server: read error: {e}"),
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Offer CLIENT_SVC_ID — this is what the wire server will try to call.
+        let mut offering = runtime
+            .offer(CLIENT_SVC_ID, InstanceId::Id(1))
+            .version(MAJOR_VERSION, 0)
+            .tcp_port(CLIENT_TCP_PORT)
+            .start()
+            .await
+            .expect("offer client service");
+
+        let cc = Arc::clone(&call_count_client);
+        tokio::spawn(async move {
+            while let Some(event) = offering.next().await {
+                if let ServiceEvent::Call { responder, .. } = event {
+                    cc.fetch_add(1, Ordering::SeqCst);
+                    let _ = responder.reply(&[]);
+                }
+            }
+        });
+
+        // Find SERVER_SVC_ID and subscribe over TCP.
+        // This causes the runtime to connect TCP to the wire server's SERVER_TCP_PORT.
+        let proxy = tokio::time::timeout(Duration::from_secs(5), runtime.find(SERVER_SVC_ID))
+            .await
+            .expect("service discovery must not timeout")
+            .expect("service must be found");
+
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(EventgroupId::new(EVENTGROUP_ID).unwrap()),
+        )
+        .await
+        .expect("subscribe must not timeout")
+        .expect("subscribe must succeed");
+
+        // Allow time for the wire server to send the bad request and the runtime to process it.
+        tokio::time::sleep(Duration::from_secs(4)).await;
+
+        assert_eq!(
+            call_count_client.load(Ordering::SeqCst),
+            0,
+            "A Request on a subscriber TCP connection must NOT dispatch to the offered service"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// A wire server sends a SOME/IP Request to the UDP socket B uses as its
+/// subscription endpoint.
+///
+/// When a lib client (B) subscribes over UDP, B advertises a UDP endpoint in
+/// the SubscribeEventgroup SD message. A (the wire server) is expected to send
+/// only event *Notifications* to that endpoint. A buggy or malicious server
+/// could instead send a SOME/IP *Request* to that same UDP socket, attempting
+/// to invoke a method on B's offered service via B's subscription socket.
+///
+/// B's subscription socket is the shared client RPC socket (ephemeral port),
+/// not B's server socket. The runtime must silently drop such requests.
+#[test_log::test]
+fn request_on_subscriber_udp_socket_is_ignored() {
+    use crate::wire_format::helpers::{
+        parse_sd_packet, SdOfferBuilder, SdSubscribeAckBuilder, SomeIpPacketBuilder,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    // Different IDs from the TCP variant to avoid conflicts.
+    const CLIENT_SVC_ID: u16 = 0x6003;
+    const SERVER_SVC_ID: u16 = 0x6002;
+    const EVENTGROUP_ID: u16 = 0x0001;
+    const CLIENT_UDP_PORT: u16 = 52002;
+    const MAJOR_VERSION: u8 = 1;
+    const METHOD_ID: u16 = 0x0001;
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let call_count_client = Arc::clone(&call_count);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(15))
+        .build();
+
+    // Wire server (A): offers SERVER_SVC_ID with a UDP endpoint.
+    // Once B subscribes, extracts B's subscription socket port from the
+    // SubscribeEventgroup SD options, then sends a SOME/IP Request for
+    // CLIENT_SVC_ID directly to that endpoint.
+    sim.host("wire-server", move || async move {
+        let server_ip: std::net::Ipv4Addr = match turmoil::lookup("wire-server") {
+            std::net::IpAddr::V4(a) => a,
+            _ => unreachable!("expected IPv4"),
+        };
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4(
+            "239.255.0.1".parse().unwrap(),
+            "0.0.0.0".parse().unwrap(),
+        )?;
+
+        let sd_multicast: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
+        let mut buf = vec![0u8; 65535];
+        let mut multicast_session = 1u16;
+        let mut unicast_session = 1u16;
+
+        // Periodically offer SERVER_SVC_ID (UDP endpoint) until B subscribes.
+        let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+        let (subscribe_from, subscription_port) = loop {
+            if last_offer.elapsed() >= Duration::from_secs(1) {
+                let offer =
+                    SdOfferBuilder::new(SERVER_SVC_ID, 0x0001, server_ip, 50002)
+                        .session_id(multicast_session)
+                        .build();
+                multicast_session += 1;
+                sd_socket.send_to(&offer, sd_multicast).await?;
+                last_offer = tokio::time::Instant::now();
+            }
+
+            let Ok(Ok((len, from))) =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await
+            else {
+                continue;
+            };
+
+            let Some((_hdr, sd)) = parse_sd_packet(&buf[..len]) else {
+                continue;
+            };
+
+            let found_port = sd
+                .subscribe_entries()
+                .filter(|e| e.service_id == SERVER_SVC_ID)
+                .find_map(|e| sd.endpoint_port_for_entry(e));
+
+            if let Some(port) = found_port {
+                tracing::info!("Wire server: SubscribeEventgroup from {from}, subscription port {port}");
+                break (from, port);
+            }
+        };
+
+        // Acknowledge the subscription (unicast to B's SD socket).
+        let ack = SdSubscribeAckBuilder::new(SERVER_SVC_ID, 0x0001, EVENTGROUP_ID)
+            .major_version(MAJOR_VERSION)
+            .ttl(3000)
+            .session_id(unicast_session)
+            .build();
+        unicast_session += 1;
+        sd_socket.send_to(&ack, subscribe_from).await?;
+
+        // Give B time to process the ACK.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        // Derive B's subscription endpoint: the IP from the subscribe sender,
+        // the port from the SD options.
+        let subscriber_ip = match subscribe_from {
+            std::net::SocketAddr::V4(a) => *a.ip(),
+            std::net::SocketAddr::V6(_) => unreachable!("IPv4 only"),
+        };
+        let subscription_addr: std::net::SocketAddr = (subscriber_ip, subscription_port).into();
+
+        // Send a SOME/IP Request for CLIENT_SVC_ID to B's subscription socket.
+        // B's subscription socket is its shared client RPC socket — the runtime
+        // must NOT route this as a method call to B's offered service.
+        let request = SomeIpPacketBuilder::request(CLIENT_SVC_ID, METHOD_ID)
+            .client_id(0xDEAD)
+            .session_id(0x0001)
+            .payload(b"bad_udp_request_on_sub_socket")
+            .build();
+        sd_socket.send_to(&request, subscription_addr).await?;
+        tracing::info!("Wire server: sent Request for CLIENT_SVC_ID to {subscription_addr}");
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Offer CLIENT_SVC_ID — this is what the wire server will try to call.
+        let mut offering = runtime
+            .offer(CLIENT_SVC_ID, InstanceId::Id(1))
+            .version(MAJOR_VERSION, 0)
+            .udp_port(CLIENT_UDP_PORT)
+            .start()
+            .await
+            .expect("offer client service");
+
+        let cc = Arc::clone(&call_count_client);
+        tokio::spawn(async move {
+            while let Some(event) = offering.next().await {
+                if let ServiceEvent::Call { responder, .. } = event {
+                    cc.fetch_add(1, Ordering::SeqCst);
+                    let _ = responder.reply(&[]);
+                }
+            }
+        });
+
+        // Find SERVER_SVC_ID and subscribe via UDP.
+        // With default port selection (PortSpec::Any) and no prior subscriptions
+        // for this service, B will use its client_rpc_endpoint as the subscription
+        // socket — the same socket it uses for outgoing RPC calls.
+        let proxy = tokio::time::timeout(Duration::from_secs(5), runtime.find(SERVER_SVC_ID))
+            .await
+            .expect("service discovery must not timeout")
+            .expect("service must be found");
+
+        let _subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(EventgroupId::new(EVENTGROUP_ID).unwrap()),
+        )
+        .await
+        .expect("subscribe must not timeout")
+        .expect("subscribe must succeed");
+
+        // Allow time for the wire server to send the bad Request and for the runtime to process it.
+        tokio::time::sleep(Duration::from_secs(4)).await;
+
+        assert_eq!(
+            call_count_client.load(Ordering::SeqCst),
+            0,
+            "A Request on B's subscription UDP socket must NOT dispatch to the offered service"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Wire-Party A has a TCP server. Lib-Party B subscribes to A and also offers
+/// its own TCP service. A then opens a TCP connection *to B's server socket*
+/// and sends SOME/IP Notification messages for A's service through that channel.
+///
+/// Per the SOME/IP spec, events flow server→subscriber over the TCP connection
+/// that the *subscriber* (B) established. A connection that A opens to B's
+/// server is a **client** connection — only Requests and Responses are valid on
+/// it. Notifications sent this way must be silently dropped and must not be
+/// delivered to B's subscription handle.
+///
+/// Two independent defences make this safe:
+/// 1. The `tcp_rpc_rx` arm explicitly drops `Notification` messages (only
+///    `Request`, `RequestNoReturn`, and `Response`/`Error` are valid on the
+///    server TCP path).
+/// 2. `allocate_tcp_conn_key` starts from 1, so no subscription ever gets
+///    key == 0, which is the sentinel passed from `tcp_rpc_rx`.
+#[test_log::test]
+fn notification_on_server_tcp_connection_is_ignored() {
+    use crate::wire_format::helpers::{
+        parse_sd_packet, SdOfferBuilder, SdSubscribeAckBuilder, SomeIpPacketBuilder,
+    };
+    use tokio::io::AsyncWriteExt;
+
+    const SERVER_SVC_ID: u16 = 0x6004;
+    const CLIENT_SVC_ID: u16 = 0x6005;
+    const EVENTGROUP_ID: u16 = 0x0001;
+    const SERVER_TCP_PORT: u16 = 50003;
+    const CLIENT_TCP_PORT: u16 = 52003;
+    const MAJOR_VERSION: u8 = 1;
+    const EVENT_ID: u16 = 0x8001; // method IDs 0x8000–0x8FFF are events
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(15))
+        .build();
+
+    // Wire server A: offers SERVER_SVC_ID via TCP.
+    // Waits for B to subscribe (B connects TCP to A's listener then sends SubscribeEventgroup),
+    // sends SubscribeEventgroupAck, then opens a TCP connection to B's TCP server and sends a
+    // Notification on it.
+    sim.host("wire-server", move || async move {
+        let server_ip: std::net::Ipv4Addr = match turmoil::lookup("wire-server") {
+            std::net::IpAddr::V4(a) => a,
+            _ => unreachable!("expected IPv4"),
+        };
+        let client_ip: std::net::Ipv4Addr = match turmoil::lookup("client") {
+            std::net::IpAddr::V4(a) => a,
+            _ => unreachable!("expected IPv4"),
+        };
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4(
+            "239.255.0.1".parse().unwrap(),
+            "0.0.0.0".parse().unwrap(),
+        )?;
+
+        let tcp_listener =
+            turmoil::net::TcpListener::bind(format!("0.0.0.0:{SERVER_TCP_PORT}")).await?;
+
+        let sd_multicast: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
+        let mut buf = vec![0u8; 65535];
+        let mut mc_session = 1u16;
+        let mut uc_session = 1u16;
+
+        // Accept B's TCP connection (B connects before sending SubscribeEventgroup)
+        // and receive the SD subscribe — handle both concurrently.
+        let accepted: std::sync::Arc<tokio::sync::Mutex<Option<turmoil::net::TcpStream>>> =
+            std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        let accepted_bg = std::sync::Arc::clone(&accepted);
+        tokio::spawn(async move {
+            if let Ok((stream, addr)) = tcp_listener.accept().await {
+                tracing::info!("Wire server: B connected for events from {addr}");
+                *accepted_bg.lock().await = Some(stream);
+            }
+        });
+
+        // Periodically offer SERVER_SVC_ID (TCP) until B subscribes.
+        let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
+        let subscribe_from = loop {
+            if last_offer.elapsed() >= Duration::from_secs(1) {
+                let offer = SdOfferBuilder::new(SERVER_SVC_ID, 0x0001, server_ip, SERVER_TCP_PORT)
+                    .tcp()
+                    .session_id(mc_session)
+                    .build();
+                mc_session += 1;
+                sd_socket.send_to(&offer, sd_multicast).await?;
+                last_offer = tokio::time::Instant::now();
+            }
+
+            let Ok(Ok((len, from))) =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await
+            else {
+                continue;
+            };
+
+            let Some((_hdr, sd)) = parse_sd_packet(&buf[..len]) else {
+                continue;
+            };
+
+            if sd.subscribe_entries().any(|e| e.service_id == SERVER_SVC_ID) {
+                tracing::info!("Wire server: SubscribeEventgroup from {from}");
+                break from;
+            }
+        };
+
+        // Acknowledge the subscription.
+        let ack = SdSubscribeAckBuilder::new(SERVER_SVC_ID, 0x0001, EVENTGROUP_ID)
+            .major_version(MAJOR_VERSION)
+            .ttl(3000)
+            .session_id(uc_session)
+            .build();
+        uc_session += 1;
+        sd_socket.send_to(&ack, subscribe_from).await?;
+
+        // Give B time to process the ACK and finalise the subscription.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        // A now connects to B's TCP server — an *incoming* connection on B's server socket.
+        // B receives this on its `tcp_rpc_rx` path (server side), NOT on `tcp_client_rx`.
+        let b_server_addr: std::net::SocketAddr =
+            std::net::SocketAddr::from((client_ip, CLIENT_TCP_PORT));
+        let mut stream_to_b = turmoil::net::TcpStream::connect(b_server_addr).await?;
+        tracing::info!("Wire server: connected to B's TCP server at {b_server_addr}");
+
+        // Send a Notification for SERVER_SVC_ID via B's *server* connection.
+        // Events must only be delivered via the connection B established to A;
+        // this reverse connection must not route the notification to B's subscription.
+        let notification = SomeIpPacketBuilder::notification(SERVER_SVC_ID, EVENT_ID)
+            .client_id(0x0000)
+            .session_id(0x0001)
+            .payload(b"sneaky_notification_via_b_server")
+            .build();
+        stream_to_b.write_all(&notification).await?;
+        tracing::info!("Wire server: sent Notification for SERVER_SVC_ID to B's server socket");
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Offer CLIENT_SVC_ID over TCP — this is the server A will connect to.
+        let _offering = runtime
+            .offer(CLIENT_SVC_ID, InstanceId::Id(1))
+            .version(MAJOR_VERSION, 0)
+            .tcp_port(CLIENT_TCP_PORT)
+            .start()
+            .await
+            .expect("offer B's TCP service");
+
+        // Subscribe to A's SERVER_SVC_ID via TCP.
+        // B opens a TCP connection to A's TCP listener (A_IP:SERVER_TCP_PORT)
+        // before sending SubscribeEventgroup, per feat_req_someipsd_767.
+        let proxy = tokio::time::timeout(Duration::from_secs(5), runtime.find(SERVER_SVC_ID))
+            .await
+            .expect("find must not timeout")
+            .expect("service must be found");
+
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(EventgroupId::new(EVENTGROUP_ID).unwrap()),
+        )
+        .await
+        .expect("subscribe must not timeout")
+        .expect("subscribe must succeed");
+
+        // Wait for A to send its sneaky notification via B's server socket.
+        // If it were incorrectly delivered, subscription.next() would resolve within the timeout.
+        let result = tokio::time::timeout(Duration::from_secs(4), subscription.next()).await;
+        assert!(
+            result.is_err(),
+            "A Notification sent via B's TCP server connection must NOT be delivered to B's subscription"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}

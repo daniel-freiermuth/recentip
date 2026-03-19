@@ -67,7 +67,7 @@ use super::state::{
 use crate::config::RuntimeConfig;
 use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
-use crate::tcp::{TcpMessage, TcpServer};
+use crate::tcp::{ServerTcpMessage, TcpServer};
 use crate::wire::{Header, MessageType, PROTOCOL_VERSION};
 use crate::{InstanceId, ServiceId};
 
@@ -86,7 +86,7 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
     config: &RuntimeConfig,
     state: &mut RuntimeState,
     rpc_tx: &mpsc::Sender<RpcMessage>,
-    tcp_rpc_tx: &mpsc::Sender<TcpMessage>,
+    tcp_rpc_tx: &mpsc::Sender<ServerTcpMessage>,
 ) {
     let key = ServiceKey::new(service_id, instance_id, major_version);
 
@@ -238,8 +238,6 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
                     Ok(listener) => {
                         match TcpServer::<T>::spawn(
                             listener,
-                            service_id.value(),
-                            instance_id.value(),
                             tcp_rpc_tx.clone(),
                             config.magic_cookies,
                             config.tcp_keepalive_server.clone(),
@@ -305,8 +303,6 @@ pub async fn handle_offer_command<U: UdpSocket, T: TcpStream, L: TcpListener<Str
                     Ok(listener) => {
                         match TcpServer::<T>::spawn(
                             listener,
-                            service_id.value(),
-                            instance_id.value(),
                             tcp_rpc_tx.clone(),
                             config.magic_cookies,
                             config.tcp_keepalive_server.clone(),
@@ -555,25 +551,30 @@ pub fn handle_incoming_request(
     service_key: Option<ServiceKey>,
     transport: crate::config::Transport,
 ) {
+    // TODO: instead of sending the error here, can we send it already when receiving?
     // Find the offering:
-    // - If service_key is provided (from server RPC socket), validate service_id matches
-    //   and use exact matching
-    // - Otherwise fall back to service_id-only matching
+    // - service_key is always Some (server RPC socket); matches the port that received the packet
+    // - If service_id matches exactly → route to that service
+    // - If it doesn't → event_loop already tried an exact match, so this is truly unknown → error
+    // - The unreachable None arm is kept for completeness but never reached in practice
     let offering = if let Some(key) = service_key {
-        // Validate that the service_id in the header matches the socket's service
-        // This prevents routing requests to the wrong service when a client sends
-        // a request with a mismatched service_id to a service-specific socket
-        if key.service_id != header.service_id {
+        // Check if service_id matches - if yes, use exact match
+        if key.service_id == header.service_id {
+            state.offered.get_key_value(&key)
+        } else {
+            // Service ID mismatch. The event_loop already tried an exact
+            // (port + service_id) lookup before falling back to `key`, so
+            // there is no same-port service with this service_id to route to.
+            // Send E_UNKNOWN_SERVICE and return.
+            //
+            // Per feat_req_someip_816: E_UNKNOWN_SERVICE is optional but may be
+            // sent when the Service ID is unknown.
             tracing::warn!(
-                "Service ID mismatch: socket belongs to service 0x{:04x} but header has 0x{:04x} from {}",
+                "Unknown service: socket belongs to service 0x{:04x} but header has 0x{:04x} from {}",
                 key.service_id,
                 header.service_id,
                 from
             );
-
-            // Send E_UNKNOWN_SERVICE (0x02) response
-            // Per feat_req_someip_816: E_UNKNOWN_SERVICE is optional and may be sent
-            // when the Service ID is wrong
             let response_data = build_response(
                 header.service_id,
                 header.method_id,
@@ -582,16 +583,16 @@ pub fn handle_incoming_request(
                 header.interface_version,
                 0x02, // E_UNKNOWN_SERVICE
                 &[],
-                false, // No exception config for misrouted services
+                false,
             );
-            actions.push(Action::SendClientMessage {
+            actions.push(Action::SendServerMessage {
+                service_key: key,
                 data: response_data,
                 target: from,
                 transport,
             });
             return;
         }
-        state.offered.get_key_value(&key)
     } else {
         state
             .offered
@@ -714,25 +715,6 @@ pub fn handle_incoming_request(
                 );
             }
         }
-    } else {
-        // Unknown service - send error response via SD socket
-        // Use RESPONSE (0x80) since we don't have method config for unknown services
-        let response_data = build_response(
-            header.service_id,
-            header.method_id,
-            header.client_id,
-            header.session_id,
-            header.interface_version,
-            0x02, // UNKNOWN_SERVICE
-            &[],
-            false, // No exception config for unknown services
-        );
-        // TODO This loos weird or suspicous
-        actions.push(Action::SendClientMessage {
-            data: response_data,
-            target: from,
-            transport,
-        });
     }
 }
 

@@ -38,7 +38,7 @@ use crate::runtime::{
     event_loop::runtime_task,
     state::{RpcMessage, RpcSendMessage, RuntimeState},
 };
-use crate::tcp::{TcpCleanupRequest, TcpConnectionPool, TcpMessage};
+use crate::tcp::{ClientTcpMessage, ServerTcpMessage, TcpCleanupRequest, TcpConnectionPool};
 use crate::{InstanceId, SdEvent, ServiceId};
 
 // ============================================================================
@@ -197,10 +197,10 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
         let (method_tx, method_rx) = mpsc::channel::<RpcMessage>(100);
 
         // Create TCP RPC message channel (for messages from TCP server connections to runtime)
-        let (tcp_method_tx, tcp_method_rx) = mpsc::channel::<TcpMessage>(100);
+        let (tcp_method_tx, tcp_method_rx) = mpsc::channel::<ServerTcpMessage>(100);
 
         // Create TCP client message channel (for responses received on client TCP connections)
-        let (tcp_client_tx, tcp_client_rx) = mpsc::channel::<TcpMessage>(100);
+        let (tcp_client_tx, tcp_client_rx) = mpsc::channel::<ClientTcpMessage>(100);
 
         // Create TCP cleanup channel (for connection tasks to request cleanup via event loop)
         let (tcp_cleanup_tx, tcp_cleanup_rx) = mpsc::channel::<TcpCleanupRequest>(100);

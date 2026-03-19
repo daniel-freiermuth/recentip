@@ -40,6 +40,8 @@
 //! | `server_fixed_port_same_service_id_different_instance_fails` | same service_id, two instances, same `udp_port(N)` → second offer fails (`AddrInUse`; no instance_id in RPC header) |
 //! | `server_fixed_port_same_service_id_different_major_fails` | same service_id, two major versions, same `udp_port(N)` → second offer fails (`AddrInUse`; no version in RPC header) |
 //! | `server_fixed_tcp_port_two_services_same_host_share_socket` | two services on the **same** host both bind via `tcp_port(N)` → listener is shared, both succeed, client discovers both at port N |
+//! | `server_fixed_tcp_port_two_services_rpc_calls` | two services on same TCP port → RPC calls are routed correctly by service_id, both services receive their calls and respond correctly |
+//! | `server_fixed_tcp_port_four_services_two_ports_rpc_calls` | 4 services (2 service_ids × 2 instances) on 2 shared TCP ports → routing works correctly for all 4 services, each receives its RPC request |
 //! | `server_fixed_tcp_port_same_service_id_different_instance_fails` | same service_id, two instances, same `tcp_port(N)` → second offer fails (`AddrInUse`; no instance_id in RPC header) |
 //! | `server_fixed_tcp_port_same_service_id_different_major_fails` | same service_id, two major versions, same `tcp_port(N)` → second offer fails (`AddrInUse`; no version in RPC header) |
 //! | `sub_any_port_two_servers_diff_major_shares_source_port` | 2 servers, same svc+instance, diff major → client reuses one sub socket (same source port for both subscribes) |
@@ -2787,6 +2789,728 @@ fn server_fixed_tcp_port_two_services_same_host_share_socket() {
     });
 
     sim.run().unwrap();
+}
+
+// -----------------------------------------------------------------------
+// server_fixed_tcp_port_two_services_rpc_calls
+// -----------------------------------------------------------------------
+
+/// Two **different** service IDs on the same TCP port handling RPC requests.
+///
+/// Verifies that when two services share a TCP listener (different service_ids),
+/// the runtime correctly routes incoming RPC requests to the correct service
+/// based on the `service_id` field in the SOME/IP header.
+///
+/// Assertions:
+/// - Both services receive method calls
+/// - Service A receives calls intended for service A (service_id match)
+/// - Service B receives calls intended for service B (service_id match)
+/// - Both services can respond successfully
+/// - Client receives the correct responses from each service
+#[test_log::test]
+fn server_fixed_tcp_port_two_services_rpc_calls() {
+    use recentip::handle::ServiceEvent;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    
+    const PORT: u16 = 30515;
+    const METHOD_ID: u16 = 0x0001;
+
+    let calls_a = Arc::new(AtomicUsize::new(0));
+    let calls_b = Arc::new(AtomicUsize::new(0));
+    let calls_a_server = Arc::clone(&calls_a);
+    let calls_b_server = Arc::clone(&calls_b);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let ca = Arc::clone(&calls_a_server);
+        let cb = Arc::clone(&calls_b_server);
+        
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offering_a = runtime
+                .offer(SERVER_FIXED_TCP_PORT_SVC_A, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp_port(PORT)
+                .start()
+                .await
+                .expect("offer service A on fixed TCP port must succeed");
+
+            // Same port, different service ID — the runtime must reuse the listener.
+            let mut offering_b = runtime
+                .offer(SERVER_FIXED_TCP_PORT_SVC_B, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp_port(PORT)
+                .start()
+                .await
+                .expect("offer service B on same fixed TCP port must succeed: listener is shared");
+
+            // Handle requests for service A
+            tokio::spawn(async move {
+                while let Some(event) = offering_a.next().await {
+                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                        ca.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(method.value(), METHOD_ID, "Service A received unexpected method_id");
+                        
+                        // Echo the payload with a prefix to verify routing
+                        let mut response = b"response_a:".to_vec();
+                        response.extend_from_slice(&payload);
+                        responder.reply(&response).unwrap();
+                    }
+                }
+            });
+
+            // Handle requests for service B
+            tokio::spawn(async move {
+                while let Some(event) = offering_b.next().await {
+                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                        cb.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(method.value(), METHOD_ID, "Service B received unexpected method_id");
+                        
+                        // Echo the payload with a prefix to verify routing
+                        let mut response = b"response_b:".to_vec();
+                        response.extend_from_slice(&payload);
+                        responder.reply(&response).unwrap();
+                    }
+                }
+            });
+
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SERVER_FIXED_TCP_PORT_SVC_A)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery A timeout")
+        .expect("discovery A failed");
+
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SERVER_FIXED_TCP_PORT_SVC_B)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery B timeout")
+        .expect("discovery B failed");
+
+        // Verify both services are at the same port
+        let port_a = proxy_a
+            .endpoint()
+            .expect("service A must have TCP endpoint")
+            .port();
+        let port_b = proxy_b
+            .endpoint()
+            .expect("service B must have TCP endpoint")
+            .port();
+
+        assert_eq!(
+            port_a, PORT,
+            "service A must advertise TCP port {PORT}, got {port_a}"
+        );
+        assert_eq!(
+            port_b, PORT,
+            "service B must advertise TCP port {PORT}, got {port_b}"
+        );
+
+        // Call service A
+        let method = MethodId::new(METHOD_ID).unwrap();
+        let response_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_a.call(method, b"request_to_a"),
+        )
+        .await
+        .expect("call to service A timeout")
+        .expect("call to service A must succeed");
+
+        assert_eq!(
+            response_a.payload.as_ref(),
+            b"response_a:request_to_a",
+            "Service A must respond with prefixed payload"
+        );
+
+        // Call service B
+        let response_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_b.call(method, b"request_to_b"),
+        )
+        .await
+        .expect("call to service B timeout")
+        .expect("call to service B must succeed");
+
+        assert_eq!(
+            response_b.payload.as_ref(),
+            b"response_b:request_to_b",
+            "Service B must respond with prefixed payload"
+        );
+
+        // Make additional calls to verify routing consistency
+        let response_a2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_a.call(method, b"second_call_to_a"),
+        )
+        .await
+        .expect("second call to service A timeout")
+        .expect("second call to service A must succeed");
+
+        assert_eq!(
+            response_a2.payload.as_ref(),
+            b"response_a:second_call_to_a",
+            "Service A must respond correctly to second call"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Verify both services received calls
+    let count_a = calls_a.load(Ordering::SeqCst);
+    let count_b = calls_b.load(Ordering::SeqCst);
+
+    assert_eq!(count_a, 2, "Service A should have received 2 calls");
+    assert_eq!(count_b, 1, "Service B should have received 1 call");
+}
+
+// -----------------------------------------------------------------------
+// server_fixed_tcp_port_four_services_two_ports_rpc_calls
+// -----------------------------------------------------------------------
+
+/// Four services (2 service IDs × 2 instances) on two shared TCP ports.
+///
+/// Verifies that:
+/// - Port sharing works across multiple ports
+/// - Service_id-based routing works when same service_ids appear on different ports
+/// - Instance routing is correctly handled via service discovery (not RPC header)
+///
+/// Setup:
+/// - Port 30516: Service A instance 1, Service B instance 1 (shared listener)
+/// - Port 30517: Service A instance 2, Service B instance 2 (shared listener)
+///
+/// Client makes 4 RPC calls - one to each service instance.
+#[test_log::test]
+fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
+    use recentip::handle::ServiceEvent;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    
+    const PORT_1: u16 = 30516;
+    const PORT_2: u16 = 30517;
+    const METHOD_ID: u16 = 0x0001;
+
+    let calls_a1 = Arc::new(AtomicUsize::new(0));
+    let calls_b1 = Arc::new(AtomicUsize::new(0));
+    let calls_a2 = Arc::new(AtomicUsize::new(0));
+    let calls_b2 = Arc::new(AtomicUsize::new(0));
+    
+    let calls_a1_server = Arc::clone(&calls_a1);
+    let calls_b1_server = Arc::clone(&calls_b1);
+    let calls_a2_server = Arc::clone(&calls_a2);
+    let calls_b2_server = Arc::clone(&calls_b2);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let ca1 = Arc::clone(&calls_a1_server);
+        let cb1 = Arc::clone(&calls_b1_server);
+        let ca2 = Arc::clone(&calls_a2_server);
+        let cb2 = Arc::clone(&calls_b2_server);
+        
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            // Port 1: Service A instance 1, Service B instance 1
+            let mut offering_a1 = runtime
+                .offer(SERVER_FIXED_TCP_PORT_SVC_A, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp_port(PORT_1)
+                .start()
+                .await
+                .expect("offer service A instance 1 on port 1");
+
+            let mut offering_b1 = runtime
+                .offer(SERVER_FIXED_TCP_PORT_SVC_B, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp_port(PORT_1)
+                .start()
+                .await
+                .expect("offer service B instance 1 on port 1: listener is shared");
+
+            // Port 2: Service A instance 2, Service B instance 2
+            let mut offering_a2 = runtime
+                .offer(SERVER_FIXED_TCP_PORT_SVC_A, InstanceId::Id(2))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp_port(PORT_2)
+                .start()
+                .await
+                .expect("offer service A instance 2 on port 2");
+
+            let mut offering_b2 = runtime
+                .offer(SERVER_FIXED_TCP_PORT_SVC_B, InstanceId::Id(2))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp_port(PORT_2)
+                .start()
+                .await
+                .expect("offer service B instance 2 on port 2: listener is shared");
+
+            // Handle requests for service A instance 1
+            tokio::spawn(async move {
+                while let Some(event) = offering_a1.next().await {
+                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                        ca1.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(method.value(), METHOD_ID, "Service A/1 received unexpected method_id");
+                        
+                        let mut response = b"response_a1:".to_vec();
+                        response.extend_from_slice(&payload);
+                        responder.reply(&response).unwrap();
+                    }
+                }
+            });
+
+            // Handle requests for service B instance 1
+            tokio::spawn(async move {
+                while let Some(event) = offering_b1.next().await {
+                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                        cb1.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(method.value(), METHOD_ID, "Service B/1 received unexpected method_id");
+                        
+                        let mut response = b"response_b1:".to_vec();
+                        response.extend_from_slice(&payload);
+                        responder.reply(&response).unwrap();
+                    }
+                }
+            });
+
+            // Handle requests for service A instance 2
+            tokio::spawn(async move {
+                while let Some(event) = offering_a2.next().await {
+                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                        ca2.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(method.value(), METHOD_ID, "Service A/2 received unexpected method_id");
+                        
+                        let mut response = b"response_a2:".to_vec();
+                        response.extend_from_slice(&payload);
+                        responder.reply(&response).unwrap();
+                    }
+                }
+            });
+
+            // Handle requests for service B instance 2
+            tokio::spawn(async move {
+                while let Some(event) = offering_b2.next().await {
+                    if let ServiceEvent::Call { method, payload, responder, .. } = event {
+                        cb2.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(method.value(), METHOD_ID, "Service B/2 received unexpected method_id");
+                        
+                        let mut response = b"response_b2:".to_vec();
+                        response.extend_from_slice(&payload);
+                        responder.reply(&response).unwrap();
+                    }
+                }
+            });
+
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Discover all 4 service instances
+        let proxy_a1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SERVER_FIXED_TCP_PORT_SVC_A)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery A/1 timeout")
+        .expect("discovery A/1 failed");
+
+        let proxy_b1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SERVER_FIXED_TCP_PORT_SVC_B)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery B/1 timeout")
+        .expect("discovery B/1 failed");
+
+        let proxy_a2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SERVER_FIXED_TCP_PORT_SVC_A)
+                .instance(InstanceId::Id(2)),
+        )
+        .await
+        .expect("discovery A/2 timeout")
+        .expect("discovery A/2 failed");
+
+        let proxy_b2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SERVER_FIXED_TCP_PORT_SVC_B)
+                .instance(InstanceId::Id(2)),
+        )
+        .await
+        .expect("discovery B/2 timeout")
+        .expect("discovery B/2 failed");
+
+        // Verify port assignments
+        assert_eq!(
+            proxy_a1.endpoint().expect("A/1 must have TCP endpoint").port(),
+            PORT_1,
+            "Service A instance 1 must be at port {PORT_1}"
+        );
+        assert_eq!(
+            proxy_b1.endpoint().expect("B/1 must have TCP endpoint").port(),
+            PORT_1,
+            "Service B instance 1 must be at port {PORT_1} (shared with A/1)"
+        );
+        assert_eq!(
+            proxy_a2.endpoint().expect("A/2 must have TCP endpoint").port(),
+            PORT_2,
+            "Service A instance 2 must be at port {PORT_2}"
+        );
+        assert_eq!(
+            proxy_b2.endpoint().expect("B/2 must have TCP endpoint").port(),
+            PORT_2,
+            "Service B instance 2 must be at port {PORT_2} (shared with A/2)"
+        );
+
+        // Make 4 RPC calls - one to each service instance
+        let method = MethodId::new(METHOD_ID).unwrap();
+
+        let response_a1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_a1.call(method, b"request_to_a1"),
+        )
+        .await
+        .expect("call to A/1 timeout")
+        .expect("call to A/1 must succeed");
+
+        assert_eq!(
+            response_a1.payload.as_ref(),
+            b"response_a1:request_to_a1",
+            "Service A/1 must respond with correct prefix"
+        );
+
+        let response_b1 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_b1.call(method, b"request_to_b1"),
+        )
+        .await
+        .expect("call to B/1 timeout")
+        .expect("call to B/1 must succeed");
+
+        assert_eq!(
+            response_b1.payload.as_ref(),
+            b"response_b1:request_to_b1",
+            "Service B/1 must respond with correct prefix"
+        );
+
+        let response_a2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_a2.call(method, b"request_to_a2"),
+        )
+        .await
+        .expect("call to A/2 timeout")
+        .expect("call to A/2 must succeed");
+
+        assert_eq!(
+            response_a2.payload.as_ref(),
+            b"response_a2:request_to_a2",
+            "Service A/2 must respond with correct prefix"
+        );
+
+        let response_b2 = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_b2.call(method, b"request_to_b2"),
+        )
+        .await
+        .expect("call to B/2 timeout")
+        .expect("call to B/2 must succeed");
+
+        assert_eq!(
+            response_b2.payload.as_ref(),
+            b"response_b2:request_to_b2",
+            "Service B/2 must respond with correct prefix"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Verify all services received their calls
+    let count_a1 = calls_a1.load(Ordering::SeqCst);
+    let count_b1 = calls_b1.load(Ordering::SeqCst);
+    let count_a2 = calls_a2.load(Ordering::SeqCst);
+    let count_b2 = calls_b2.load(Ordering::SeqCst);
+
+    assert_eq!(count_a1, 1, "Service A instance 1 should have received 1 call");
+    assert_eq!(count_b1, 1, "Service B instance 1 should have received 1 call");
+    assert_eq!(count_a2, 1, "Service A instance 2 should have received 1 call");
+    assert_eq!(count_b2, 1, "Service B instance 2 should have received 1 call");
+}
+
+// -----------------------------------------------------------------------
+// server_wrong_tcp_port_error_response
+// -----------------------------------------------------------------------
+
+/// Two TCP services on different ports. A wire client sends a request for
+/// service B to service A's port (wrong port). We expect an error response
+/// since service B is not listening on service A's port.
+///
+/// This tests the error handling when a request arrives at the correct host
+/// but wrong port.
+#[test_log::test]
+fn server_wrong_tcp_port_error_response() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const SERVER_WRONG_PORT_SVC_A: u16 = 0x4050;
+    const SERVER_WRONG_PORT_SVC_B: u16 = 0x4051;
+    const METHOD_ID: u16 = 0x0001;
+    const PORT_A: u16 = 40000;
+    const PORT_B: u16 = 40001;
+    const SVC_VERSION: (u8, u32) = (1, 0);
+
+    let calls_a = Arc::new(AtomicUsize::new(0));
+    let calls_b = Arc::new(AtomicUsize::new(0));
+
+    let calls_a_server = Arc::clone(&calls_a);
+    let calls_b_server = Arc::clone(&calls_b);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // Both services on same host, different TCP ports
+    sim.host("server", move || {
+        let ca = Arc::clone(&calls_a_server);
+        let cb = Arc::clone(&calls_b_server);
+        
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            // Service A on TCP port 40000
+            let mut offering_a = runtime
+                .offer(SERVER_WRONG_PORT_SVC_A, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp_port(PORT_A)
+                .start()
+                .await
+                .expect("offer service A on fixed TCP port must succeed");
+
+            // Service B on TCP port 40001
+            let mut offering_b = runtime
+                .offer(SERVER_WRONG_PORT_SVC_B, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp_port(PORT_B)
+                .start()
+                .await
+                .expect("offer service B on fixed TCP port must succeed");
+
+            // Handle requests for service A
+            let handle_a = tokio::spawn(async move {
+                while let Some(event) = offering_a.next().await {
+                    if let ServiceEvent::Call {
+                        method,
+                        payload,
+                        responder,
+                        ..
+                    } = event
+                    {
+                        ca.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(
+                            method.value(),
+                            METHOD_ID,
+                            "Service A received unexpected method_id"
+                        );
+
+                        let mut response = b"response_a:".to_vec();
+                        response.extend_from_slice(&payload);
+                        responder.reply(&response).unwrap();
+                    }
+                }
+            });
+
+            // Handle requests for service B
+            let handle_b = tokio::spawn(async move {
+                while let Some(event) = offering_b.next().await {
+                    if let ServiceEvent::Call {
+                        method,
+                        payload,
+                        responder,
+                        ..
+                    } = event
+                    {
+                        cb.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(
+                            method.value(),
+                            METHOD_ID,
+                            "Service B received unexpected method_id"
+                        );
+
+                        let mut response = b"response_b:".to_vec();
+                        response.extend_from_slice(&payload);
+                        responder.reply(&response).unwrap();
+                    }
+                }
+            });
+
+            handle_a.await.unwrap();
+            handle_b.await.unwrap();
+
+            Ok(())
+        }
+    });
+
+    // Wire client sends requests
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Look up server's address
+        let server_ip = turmoil::lookup("server");
+        let server_a_addr = format!("{}:{}", server_ip, PORT_A);
+
+        // Connect to service A's port on the server
+        let mut socket = turmoil::net::TcpStream::connect(&server_a_addr)
+            .await
+            .unwrap();
+
+        // 1) Send request for SERVICE_B to SERVICE_A's port (wrong port)
+        //    We expect an error response
+        let req_b_wrong = crate::helpers::SomeIpPacketBuilder::request(SERVER_WRONG_PORT_SVC_B, METHOD_ID)
+            .client_id(0x0001)
+            .session_id(0x0001)
+            .payload(b"testdata")
+            .build();
+
+        socket.write_all(&req_b_wrong).await.unwrap();
+
+        let mut resp_buf = vec![0u8; 1024];
+        let n = socket.read(&mut resp_buf).await.unwrap();
+        assert!(n >= 16, "Response should be at least 16 bytes (SOME/IP header)");
+        resp_buf.truncate(n);
+
+        // Parse response header - should be an error response
+        // Note: Error responses can be either ERROR (0x81) or RESPONSE (0x80) with non-zero return code
+        // The runtime sends RESPONSE (0x80) for unknown services without exception config
+        let resp_service_id = u16::from_be_bytes([resp_buf[0], resp_buf[1]]);
+        let resp_method_id = u16::from_be_bytes([resp_buf[2], resp_buf[3]]);
+        let resp_msg_type = resp_buf[14];
+        let resp_return_code = resp_buf[15];
+
+        assert_eq!(resp_service_id, SERVER_WRONG_PORT_SVC_B);
+        assert_eq!(resp_method_id, METHOD_ID);
+        assert!(
+            resp_msg_type == 0x80 || resp_msg_type == 0x81,
+            "Should be RESPONSE (0x80) or ERROR (0x81) message type, got 0x{:02x}",
+            resp_msg_type
+        );
+        assert_eq!(
+            resp_return_code, 0x02,
+            "Expected E_UNKNOWN_SERVICE (0x02) return code"
+        );
+
+        // 2) Send correct request to SERVICE_A on correct port to verify it works
+        let req_a_correct = crate::helpers::SomeIpPacketBuilder::request(SERVER_WRONG_PORT_SVC_A, METHOD_ID)
+            .client_id(0x0001)
+            .session_id(0x0002) // Different session ID from first request
+            .payload(b"testdata")
+            .build();
+
+        socket.write_all(&req_a_correct).await.unwrap();
+
+        let n2 = socket.read(&mut resp_buf).await.unwrap();
+        assert!(n2 >= 16, "Response should be at least 16 bytes");
+        resp_buf.truncate(n2);
+
+        let resp2_service_id = u16::from_be_bytes([resp_buf[0], resp_buf[1]]);
+        let resp2_method_id = u16::from_be_bytes([resp_buf[2], resp_buf[3]]);
+        let resp2_msg_type = resp_buf[14];
+        let resp2_return_code = resp_buf[15];
+
+        assert_eq!(resp2_service_id, SERVER_WRONG_PORT_SVC_A);
+        assert_eq!(resp2_method_id, METHOD_ID);
+        assert_eq!(resp2_msg_type, 0x80, "Should be RESPONSE message type");
+        assert_eq!(resp2_return_code, 0, "Should be OK");
+
+        // Verify response payload contains "response_a:"
+        if n2 > 16 {
+            let payload = &resp_buf[16..n2];
+            let payload_str = String::from_utf8_lossy(payload);
+            assert!(
+                payload_str.starts_with("response_a:"),
+                "Expected response from service A, got: {}",
+                payload_str
+            );
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let count_a = calls_a.load(Ordering::SeqCst);
+    let count_b = calls_b.load(Ordering::SeqCst);
+
+    assert_eq!(
+        count_a, 1,
+        "Service A should have received 1 call (the correct request)"
+    );
+    assert_eq!(
+        count_b, 0,
+        "Service B should have received 0 calls (request went to wrong port)"
+    );
 }
 
 // -----------------------------------------------------------------------

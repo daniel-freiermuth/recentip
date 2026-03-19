@@ -2003,3 +2003,359 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
         observed_connections.len()
     );
 }
+
+/// When a client both subscribes to events **and** makes RPC calls to the same
+/// TCP server, exactly one TCP connection should be used for both — matching
+/// `feat_req_someip_644` ("single TCP connection per client–server pair").
+///
+/// The subscription establishes the connection first (required by
+/// `feat_req_someipsd_767` before sending `SubscribeEventgroup`). Any
+/// subsequent RPC call to the same server endpoint must reuse that connection
+/// rather than opening a second one.
+#[test_log::test]
+fn tcp_subscription_and_rpc_share_single_connection() {
+    use tokio::io::AsyncReadExt;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(10))
+        .max_message_latency(Duration::from_millis(85))
+        .build();
+
+    let connections_observed = Arc::new(Mutex::new(HashSet::new()));
+    let connections_clone = Arc::clone(&connections_observed);
+
+    const SVC_ID: u16 = 0x5500;
+    const INSTANCE_ID: u16 = 0x0001;
+    const MAJOR_VERSION: u8 = 1;
+    const EVENTGROUP_ID: u16 = 0x0001;
+    const METHOD_ID: u16 = 0x0001;
+    const TCP_PORT: u16 = 30500;
+
+    sim.host("server", move || {
+        let connections = Arc::clone(&connections_clone);
+        async move {
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490")
+                .await
+                .unwrap();
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+            let tcp_listener = turmoil::net::TcpListener::bind(format!("0.0.0.0:{TCP_PORT}"))
+                .await
+                .unwrap();
+
+            // Accept connections and drain their data; count unique remote addrs.
+            let connections_task = Arc::clone(&connections);
+            tokio::spawn(async move {
+                loop {
+                    match tcp_listener.accept().await {
+                        Ok((mut stream, addr)) => {
+                            tracing::info!("TCP connection from {}", addr);
+                            connections_task.lock().unwrap().insert(addr);
+                            // Drain incoming bytes so the write side of the client doesn't stall.
+                            tokio::spawn(async move {
+                                let mut buf = [0u8; 4096];
+                                loop {
+                                    match stream.read(&mut buf).await {
+                                        Ok(0) | Err(_) => break,
+                                        _ => {}
+                                    }
+                                }
+                            });
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+
+            let server_ip = lookup_ipv4("server");
+            let mut buf = vec![0u8; 65535];
+            let mut mc_session = 1u16;
+            let mut uc_session = 1u16;
+            let mut subscribed = false;
+
+            loop {
+                let (len, from) = match tokio::time::timeout(
+                    Duration::from_secs(5),
+                    sd_socket.recv_from(&mut buf),
+                )
+                .await
+                {
+                    Ok(Ok(r)) => r,
+                    _ => break,
+                };
+
+                let data = &buf[..len];
+                if data.len() < 36 {
+                    continue;
+                }
+                let svc = u16::from_be_bytes([data[0], data[1]]);
+                let mth = u16::from_be_bytes([data[2], data[3]]);
+                if svc != 0xFFFF || mth != 0x8100 {
+                    continue;
+                }
+
+                match data[24] {
+                    0x00 => {
+                        // FindService — offer SVC_ID via TCP
+                        let offer = build_sd_offer(
+                            SVC_ID, INSTANCE_ID, MAJOR_VERSION, 0,
+                            server_ip, TCP_PORT, 0x06, // TCP
+                            0xFFFFFF,
+                            mc_session, true, false,
+                        );
+                        mc_session += 1;
+                        let _ = sd_socket.send_to(&offer, from).await;
+                    }
+                    0x06 => {
+                        // SubscribeEventgroup
+                        let ttl = u32::from_be_bytes([0, data[33], data[34], data[35]]);
+                        let ack = build_sd_subscribe_ack(
+                            SVC_ID, INSTANCE_ID, MAJOR_VERSION, EVENTGROUP_ID,
+                            ttl, uc_session, true,
+                        );
+                        uc_session += 1;
+                        let _ = sd_socket.send_to(&ack, from).await;
+                        subscribed = true;
+                        // Give a bit of time after ACK for client to process, then we're done.
+                        tokio::time::sleep(Duration::from_millis(300)).await;
+                    }
+                    _ => {}
+                }
+
+                if subscribed {
+                    // Wait for the client to send the RPC call and then exit.
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    break;
+                }
+            }
+
+            tracing::info!(
+                "Server observed {} TCP connection(s)",
+                connections.lock().unwrap().len()
+            );
+            Ok(())
+        }
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .preferred_transport(recentip::config::Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // 1. Find the service and subscribe (opens the TCP connection).
+        let proxy = runtime
+            .find(SVC_ID)
+            .instance(recentip::InstanceId::Id(INSTANCE_ID))
+            .await
+            .unwrap();
+
+        let _sub = proxy
+            .subscribe(recentip::EventgroupId::new(EVENTGROUP_ID).unwrap())
+            .await
+            .unwrap();
+
+        // 2. Make a fire-and-forget RPC call on the same service/proxy.
+        //    This must reuse the subscription TCP connection, not open a new one.
+        let method = recentip::MethodId::new(METHOD_ID).unwrap();
+        proxy.fire_and_forget(method, b"ping").await.unwrap();
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let observed = connections_observed.lock().unwrap();
+    assert_eq!(
+        observed.len(),
+        1,
+        "Expected exactly 1 TCP connection for both subscription and RPC to the same server. \
+         Got {} connection(s) from addresses: {:?}",
+        observed.len(),
+        *observed
+    );
+
+    tracing::info!("✓ Subscription and RPC share a single TCP connection");
+}
+
+/// Mirror of `tcp_subscription_and_rpc_share_single_connection` but with the
+/// order of operations swapped: the RPC call is made **before** subscribing.
+///
+/// The RPC call opens the TCP connection first (subscription_id = 0 / RPC slot).
+/// The subsequent `subscribe()` must detect the existing connection and reuse it
+/// rather than opening a second TCP connection to the same server endpoint.
+/// Only one connection should be observed by the server in total.
+#[test_log::test]
+fn tcp_rpc_first_then_subscription_shares_connection() {
+    use tokio::io::AsyncReadExt;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(10))
+        .max_message_latency(Duration::from_millis(85))
+        .build();
+
+    let connections_observed = Arc::new(Mutex::new(HashSet::new()));
+    let connections_clone = Arc::clone(&connections_observed);
+
+    const SVC_ID: u16 = 0x5501;
+    const INSTANCE_ID: u16 = 0x0001;
+    const MAJOR_VERSION: u8 = 1;
+    const EVENTGROUP_ID: u16 = 0x0001;
+    const METHOD_ID: u16 = 0x0001;
+    const TCP_PORT: u16 = 30501;
+
+    sim.host("server", move || {
+        let connections = Arc::clone(&connections_clone);
+        async move {
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490")
+                .await
+                .unwrap();
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+            let tcp_listener = turmoil::net::TcpListener::bind(format!("0.0.0.0:{TCP_PORT}"))
+                .await
+                .unwrap();
+
+            let connections_task = Arc::clone(&connections);
+            tokio::spawn(async move {
+                loop {
+                    match tcp_listener.accept().await {
+                        Ok((mut stream, addr)) => {
+                            tracing::info!("TCP connection from {}", addr);
+                            connections_task.lock().unwrap().insert(addr);
+                            tokio::spawn(async move {
+                                let mut buf = [0u8; 4096];
+                                loop {
+                                    match stream.read(&mut buf).await {
+                                        Ok(0) | Err(_) => break,
+                                        _ => {}
+                                    }
+                                }
+                            });
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+
+            let server_ip = lookup_ipv4("server");
+            let mut buf = vec![0u8; 65535];
+            let mut mc_session = 1u16;
+            let mut uc_session = 1u16;
+            let mut subscribed = false;
+
+            loop {
+                let (len, from) = match tokio::time::timeout(
+                    Duration::from_secs(5),
+                    sd_socket.recv_from(&mut buf),
+                )
+                .await
+                {
+                    Ok(Ok(r)) => r,
+                    _ => break,
+                };
+
+                let data = &buf[..len];
+                if data.len() < 36 {
+                    continue;
+                }
+                let svc = u16::from_be_bytes([data[0], data[1]]);
+                let mth = u16::from_be_bytes([data[2], data[3]]);
+                if svc != 0xFFFF || mth != 0x8100 {
+                    continue;
+                }
+
+                match data[24] {
+                    0x00 => {
+                        // FindService — offer SVC_ID via TCP
+                        let offer = build_sd_offer(
+                            SVC_ID, INSTANCE_ID, MAJOR_VERSION, 0,
+                            server_ip, TCP_PORT, 0x06, // TCP
+                            0xFFFFFF,
+                            mc_session, true, false,
+                        );
+                        mc_session += 1;
+                        let _ = sd_socket.send_to(&offer, from).await;
+                    }
+                    0x06 => {
+                        // SubscribeEventgroup
+                        let ttl = u32::from_be_bytes([0, data[33], data[34], data[35]]);
+                        let ack = build_sd_subscribe_ack(
+                            SVC_ID, INSTANCE_ID, MAJOR_VERSION, EVENTGROUP_ID,
+                            ttl, uc_session, true,
+                        );
+                        uc_session += 1;
+                        let _ = sd_socket.send_to(&ack, from).await;
+                        subscribed = true;
+                        tokio::time::sleep(Duration::from_millis(300)).await;
+                    }
+                    _ => {}
+                }
+
+                if subscribed {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    break;
+                }
+            }
+
+            tracing::info!(
+                "Server observed {} TCP connection(s)",
+                connections.lock().unwrap().len()
+            );
+            Ok(())
+        }
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .preferred_transport(recentip::config::Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = runtime
+            .find(SVC_ID)
+            .instance(recentip::InstanceId::Id(INSTANCE_ID))
+            .await
+            .unwrap();
+
+        // 1. RPC call first — opens the TCP connection.
+        let method = recentip::MethodId::new(METHOD_ID).unwrap();
+        proxy.fire_and_forget(method, b"ping").await.unwrap();
+
+        // 2. Subscribe — must reuse the connection opened by the RPC call.
+        let _sub = proxy
+            .subscribe(recentip::EventgroupId::new(EVENTGROUP_ID).unwrap())
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let observed = connections_observed.lock().unwrap();
+    assert_eq!(
+        observed.len(),
+        1,
+        "Expected exactly 1 TCP connection when RPC precedes subscription to the same server. \
+         Got {} connection(s) from addresses: {:?}",
+        observed.len(),
+        *observed
+    );
+
+    tracing::info!("✓ RPC-first, then subscription: single TCP connection reused");
+}

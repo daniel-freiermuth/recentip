@@ -653,7 +653,11 @@ impl RuntimeState {
             });
         let pending = self.pending_tcp_conn_keys.entry(service_key).or_default();
 
-        let mut slot = 0u64;
+        // Start from 1, not 0. The value 0 is used as a sentinel in tcp_rpc_rx
+        // (server-path messages pass subscription_id = 0). Starting from 1 ensures
+        // no subscription ever gets conn_key == 0, preventing accidental delivery of
+        // server-path notifications to the first TCP subscription.
+        let mut slot = 1u64;
         while committed.contains(&slot) || pending.contains(&slot) {
             slot += 1;
         }
