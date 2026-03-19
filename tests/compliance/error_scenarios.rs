@@ -1788,10 +1788,7 @@ fn request_on_subscriber_tcp_connection_is_ignored() {
         };
 
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let tcp_listener =
             turmoil::net::TcpListener::bind(format!("0.0.0.0:{SERVER_TCP_PORT}")).await?;
@@ -1827,7 +1824,8 @@ fn request_on_subscriber_tcp_connection_is_ignored() {
             }
 
             let Ok(Ok((len, from))) =
-                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf)).await
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await
             else {
                 continue;
             };
@@ -1998,10 +1996,7 @@ fn request_on_subscriber_udp_socket_is_ignored() {
         };
 
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let sd_multicast: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
         let mut buf = vec![0u8; 65535];
@@ -2012,10 +2007,9 @@ fn request_on_subscriber_udp_socket_is_ignored() {
         let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
         let (subscribe_from, subscription_port) = loop {
             if last_offer.elapsed() >= Duration::from_secs(1) {
-                let offer =
-                    SdOfferBuilder::new(SERVER_SVC_ID, 0x0001, server_ip, 50002)
-                        .session_id(multicast_session)
-                        .build();
+                let offer = SdOfferBuilder::new(SERVER_SVC_ID, 0x0001, server_ip, 50002)
+                    .session_id(multicast_session)
+                    .build();
                 multicast_session += 1;
                 sd_socket.send_to(&offer, sd_multicast).await?;
                 last_offer = tokio::time::Instant::now();
@@ -2038,7 +2032,9 @@ fn request_on_subscriber_udp_socket_is_ignored() {
                 .find_map(|e| sd.endpoint_port_for_entry(e));
 
             if let Some(port) = found_port {
-                tracing::info!("Wire server: SubscribeEventgroup from {from}, subscription port {port}");
+                tracing::info!(
+                    "Wire server: SubscribeEventgroup from {from}, subscription port {port}"
+                );
                 break (from, port);
             }
         };
@@ -2189,10 +2185,7 @@ fn notification_on_server_tcp_connection_is_ignored() {
         };
 
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket.join_multicast_v4(
-            "239.255.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        )?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let tcp_listener =
             turmoil::net::TcpListener::bind(format!("0.0.0.0:{SERVER_TCP_PORT}")).await?;
@@ -2238,7 +2231,10 @@ fn notification_on_server_tcp_connection_is_ignored() {
                 continue;
             };
 
-            if sd.subscribe_entries().any(|e| e.service_id == SERVER_SVC_ID) {
+            if sd
+                .subscribe_entries()
+                .any(|e| e.service_id == SERVER_SVC_ID)
+            {
                 tracing::info!("Wire server: SubscribeEventgroup from {from}");
                 break from;
             }

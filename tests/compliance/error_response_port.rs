@@ -206,12 +206,12 @@ fn unknown_service_error_uses_server_port_udp() {
 
                 // Verify it's actually an error response with correct header fields
                 let header = parse_header_wire(&buf[..len]).expect("Should parse response header");
-                
+
                 assert_eq!(
                     header.return_code, 0x02,
                     "Should be E_UNKNOWN_SERVICE"
                 );
-                
+
                 // Verify error response echoes request header fields for correlation
                 assert_eq!(
                     header.service_id, req_service_id,
@@ -295,8 +295,7 @@ fn misrouted_service_error_uses_receiving_port_udp() {
 
         // Discover both services via SD
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket
-            .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
         let mut service_a_endpoint: Option<SocketAddr> = None;
@@ -406,12 +405,9 @@ fn misrouted_service_error_uses_receiving_port_udp() {
 
                 // Verify it's an error response with correct header fields
                 let header = parse_header_wire(&buf[..len]).expect("Should parse response header");
-                
-                assert_eq!(
-                    header.return_code, 0x02,
-                    "Should be E_UNKNOWN_SERVICE"
-                );
-                
+
+                assert_eq!(header.return_code, 0x02, "Should be E_UNKNOWN_SERVICE");
+
                 // Verify error response echoes request header fields for correlation
                 assert_eq!(
                     header.service_id, req_service_id,
@@ -487,8 +483,7 @@ fn unknown_service_error_uses_server_port_tcp() {
 
         // Discover server via SD to get TCP endpoint
         let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
-        sd_socket
-            .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
         let mut server_tcp_endpoint: Option<SocketAddr> = None;
@@ -592,14 +587,11 @@ fn unknown_service_error_uses_server_port_tcp() {
                 // server correctly used its server socket. However, the bug
                 // might still cause connection errors logged on the server side.
 
-                let header = parse_header_wire(&response_buf[..len])
-                    .expect("Should parse response header");
-                
-                assert_eq!(
-                    header.return_code, 0x02,
-                    "Should be E_UNKNOWN_SERVICE"
-                );
-                
+                let header =
+                    parse_header_wire(&response_buf[..len]).expect("Should parse response header");
+
+                assert_eq!(header.return_code, 0x02, "Should be E_UNKNOWN_SERVICE");
+
                 // Verify error response echoes request header fields for correlation
                 assert_eq!(
                     header.service_id, req_service_id,
