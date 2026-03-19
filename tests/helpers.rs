@@ -33,6 +33,7 @@ pub(crate) fn unicast(addr: IpAddr) -> UnicastAddress {
 // Import builders from compliance test's wire_format helpers
 #[path = "compliance/wire_format/helpers.rs"]
 mod wire_format_helpers;
+pub(crate) use wire_format_helpers::SomeIpPacketBuilder;
 use wire_format_helpers::{SdOfferBuilder, SdSubscribeAckBuilder};
 
 pub(crate) async fn wait_for_subscription(offering: &mut ServiceOffering) -> Result<(), ()> {

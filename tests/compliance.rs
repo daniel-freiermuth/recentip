@@ -108,6 +108,11 @@ mod fields;
 #[path = "compliance/error_scenarios.rs"]
 mod error_scenarios;
 
+// error_response_port contains tests for verifying error responses use correct source port
+#[cfg(feature = "turmoil")]
+#[path = "compliance/error_response_port.rs"]
+mod error_response_port;
+
 // instances contains turmoil integration tests for service instance management
 #[cfg(feature = "turmoil")]
 #[path = "compliance/instances.rs"]

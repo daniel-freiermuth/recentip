@@ -54,15 +54,26 @@ use crate::wire::{
     Header, is_magic_cookie, magic_cookie_client, magic_cookie_server, parse_someip_length,
 };
 
-/// Message received from a TCP connection (client-side response or server-side request)
+/// Message received from a client-side TCP connection (responses to our requests)
 #[derive(Debug)]
-pub(crate) struct TcpMessage {
+pub(crate) struct ClientTcpMessage {
     /// The raw message data including SOME/IP header
     pub data: Bytes,
     /// The peer address this message came from
     pub from: SocketAddrV4,
     /// The subscription ID this message is for (0 for RPC)
     pub subscription_id: u64,
+}
+
+/// Message received from a server-side TCP connection (requests from clients)
+#[derive(Debug)]
+pub(crate) struct ServerTcpMessage {
+    /// The raw message data including SOME/IP header
+    pub data: Bytes,
+    /// The peer address this message came from
+    pub from: SocketAddrV4,
+    /// The local port that received this message (server's listening port)
+    pub local_port: u16,
 }
 
 /// Request to clean up a TCP connection.
@@ -95,7 +106,7 @@ pub(crate) struct TcpConnectionPool<T: TcpStream> {
     /// Once initialized, contains full connection state.
     connections: Arc<DashMap<(SocketAddrV4, u64), Arc<tokio::sync::OnceCell<TcpConnectionState>>>>,
     /// Channel to forward received messages to the runtime
-    msg_tx: mpsc::Sender<TcpMessage>,
+    msg_tx: mpsc::Sender<ClientTcpMessage>,
     /// Channel to send cleanup requests to the event loop
     cleanup_tx: mpsc::Sender<TcpCleanupRequest>,
     /// Counter for generating unique connection IDs (atomic for thread-safety)
@@ -127,7 +138,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     /// when connections close. This ensures proper synchronization and prevents
     /// race conditions where closing an old connection could remove a newer one.
     pub fn new(
-        msg_tx: mpsc::Sender<TcpMessage>,
+        msg_tx: mpsc::Sender<ClientTcpMessage>,
         cleanup_tx: mpsc::Sender<TcpCleanupRequest>,
         magic_cookies: bool,
         keepalive_client: Option<TcpKeepaliveConfig>,
@@ -151,16 +162,38 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     ///
     /// When a new connection is established, a reader task is spawned to receive
     /// responses and forward them to the runtime via the `msg_tx` channel.
-    /// Uses `subscription_id` 0 for RPC traffic (method calls/responses).
+    /// Uses `subscription_id` 0 for RPC traffic (method calls/responses), but
+    /// will reuse any existing subscription connection to the same target rather
+    /// than opening a second TCP connection (`feat_req_someip_644`).
     ///
     /// # Errors
     ///
     /// Returns an I/O error if connection or send fails.
     pub async fn send(&self, target: SocketAddrV4, data: Bytes) -> io::Result<()> {
-        // Use subscription_id 0 for RPC traffic
-        let key = (target, 0);
+        // If there is already an established connection to this target (any
+        // subscription_id, including dedicated subscription slots), reuse it.
+        // This satisfies feat_req_someip_644: one TCP connection per client–server
+        // pair, regardless of whether the connection was opened for RPC or pub/sub.
+        let existing_cell = self
+            .connections
+            .iter()
+            .find(|e| e.key().0 == target && e.value().get().is_some())
+            .map(|e| e.value().clone());
 
-        // Get or create connection using the same mechanism as ensure_connected
+        if let Some(cell) = existing_cell {
+            // SAFETY: we checked `is_some()` above; no await between check and use,
+            // but the cell itself is a OnceCell — `get()` is infallible once initialized.
+            if let Some(state) = cell.get() {
+                return state
+                    .sender
+                    .send(data)
+                    .await
+                    .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Connection task closed"));
+            }
+        }
+
+        // No existing connection — establish a new RPC connection (subscription_id = 0).
+        let key = (target, 0);
         let cell = self
             .connections
             .entry(key)
@@ -205,6 +238,24 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         local_ip: Ipv4Addr,
         local_port: PortSpec,
     ) -> io::Result<SocketAddrV4> {
+        // If there is already an RPC connection (subscription_id = 0) to this target,
+        // reuse it for the subscription. This satisfies feat_req_someip_644: one TCP
+        // connection per client–server pair. We only reuse the RPC slot (0), not
+        // other subscription connections — those have distinct conn_keys for event
+        // routing isolation between eventgroups.
+        let rpc_key = (target, 0u64);
+        if let Some(cell) = self.connections.get(&rpc_key) {
+            if let Some(state) = cell.value().get() {
+                tracing::debug!(
+                    "Reusing existing RPC TCP connection to {} (local addr: {}) for subscription conn_key={}",
+                    target,
+                    state.local_addr,
+                    subscription_id
+                );
+                return Ok(state.local_addr);
+            }
+        }
+
         let key = (target, subscription_id);
 
         // Get or create a OnceCell for this connection
@@ -400,7 +451,7 @@ async fn tcp_connect<T: TcpStream>(
 async fn handle_client_tcp_connection<T: TcpStream>(
     mut stream: T,
     peer_addr: SocketAddrV4,
-    msg_tx: mpsc::Sender<TcpMessage>,
+    msg_tx: mpsc::Sender<ClientTcpMessage>,
     mut send_rx: mpsc::Receiver<Bytes>,
     cleanup_tx: mpsc::Sender<TcpCleanupRequest>,
     connection_id: u64,
@@ -450,7 +501,7 @@ async fn handle_client_tcp_connection<T: TcpStream>(
                             if read_buffer.len() >= total_size {
                                 // Extract complete message
                                 let message_data = read_buffer.split_to(total_size);
-                                let msg = TcpMessage {
+                                let msg = ClientTcpMessage {
                                     data: message_data.freeze(),
                                     from: peer_addr,
                                     subscription_id,
@@ -540,13 +591,12 @@ impl<T: TcpStream> TcpServer<T> {
     /// Returns an I/O error if retrieving the local address fails.
     pub fn spawn<L: TcpListener<Stream = T>>(
         listener: L,
-        service_id: u16,
-        instance_id: u16,
-        msg_tx: mpsc::Sender<TcpMessage>,
+        msg_tx: mpsc::Sender<ServerTcpMessage>,
         magic_cookies: bool,
         keepalive_server: Option<TcpKeepaliveConfig>,
     ) -> io::Result<Self> {
         let local_addr = listener.local_addr()?;
+        let local_port = local_addr.port();
 
         // Channel for sending responses to clients
         let (send_tx, mut send_rx) = mpsc::channel::<TcpSendMessage>(100);
@@ -581,8 +631,8 @@ impl<T: TcpStream> TcpServer<T> {
                         match result {
                             Ok((stream, peer_addr)) => {
                                 tracing::debug!(
-                                    "TCP server: accepted connection from {} for service {:04x}:{:04x}",
-                                    peer_addr, service_id, instance_id
+                                    "TCP server on port {}: accepted connection from {}",
+                                    local_port, peer_addr
                                 );
 
                                 // Apply server-side keepalive if configured
@@ -615,8 +665,7 @@ impl<T: TcpStream> TcpServer<T> {
                                     handle_tcp_connection(
                                         stream,
                                         peer_addr,
-                                        service_id,
-                                        instance_id,
+                                        local_port,
                                         msg_tx,
                                         conn_send_rx,
                                         cleanup_tx_conn,
@@ -630,8 +679,8 @@ impl<T: TcpStream> TcpServer<T> {
                             }
                             Err(e) => {
                                 tracing::error!(
-                                    "TCP accept error for service {:04x}:{:04x}: {}",
-                                    service_id, instance_id, e
+                                    "TCP accept error on port {}: {}",
+                                    local_port, e
                                 );
                             }
                         }
@@ -645,15 +694,15 @@ impl<T: TcpStream> TcpServer<T> {
                     // close_ports contains ports from old subscriptions that should be closed
                     Some((peer_ip, close_ports)) = close_peer_rx.recv() => {
                         tracing::debug!(
-                            "TCP server {:04x}:{:04x}: received close_peer request for peer {} ports {:?}",
-                            service_id, instance_id, peer_ip, close_ports
+                            "TCP server on port {}: received close_peer request for peer {} ports {:?}",
+                            local_port, peer_ip, close_ports
                         );
 
                         // Log all current connections for debugging
                         let current_connections: Vec<SocketAddrV4> = client_senders.keys().cloned().collect();
                         tracing::debug!(
-                            "TCP server {:04x}:{:04x}: current connections: {:?}",
-                            service_id, instance_id, current_connections
+                            "TCP server on port {}: current connections: {:?}",
+                            local_port, current_connections
                         );
 
                         let mut addrs_to_remove: Vec<SocketAddrV4> = Vec::new();
@@ -661,21 +710,21 @@ impl<T: TcpStream> TcpServer<T> {
                             // Only close connections matching BOTH the peer IP AND a port in close_ports
                             if *key.ip() == peer_ip && close_ports.contains(&key.port()) {
                                 tracing::debug!(
-                                    "TCP server {:04x}:{:04x}: MATCH - will close connection from {:?}",
-                                    service_id, instance_id, key
+                                    "TCP server on port {}: MATCH - will close connection from {:?}",
+                                    local_port, key
                                 );
                                 addrs_to_remove.push(*key);
                             }
                         }
                         if addrs_to_remove.is_empty() {
                             tracing::warn!(
-                                "TCP server {:04x}:{:04x}: No matching connections found for peer {} ports {:?}",
-                                service_id, instance_id, peer_ip, close_ports
+                                "TCP server on port {}: No matching connections found for peer {} ports {:?}",
+                                local_port, peer_ip, close_ports
                             );
                         } else {
                             tracing::debug!(
-                                "TCP server {:04x}:{:04x}: closing {} connection(s) from peer {} (reboot detected, ports: {:?})",
-                                service_id, instance_id, addrs_to_remove.len(), peer_ip, close_ports
+                                "TCP server on port {}: closing {} connection(s) from peer {} (reboot detected, ports: {:?})",
+                                local_port, addrs_to_remove.len(), peer_ip, close_ports
                             );
                             for addr in addrs_to_remove {
                                 // Remove sender (causes connection task to exit).
@@ -702,8 +751,8 @@ impl<T: TcpStream> TcpServer<T> {
                         } else {
                             // Sender was dropped (service stopped offering) - exit
                             tracing::debug!(
-                                "TCP server for service {:04x}:{:04x} shutting down - sender dropped",
-                                service_id, instance_id
+                                "TCP server on port {} shutting down - sender dropped",
+                                local_port
                             );
                             break;
                         }
@@ -718,14 +767,14 @@ impl<T: TcpStream> TcpServer<T> {
                             .is_some_and(|entry| entry.1 == conn_id);
                         if should_remove {
                             tracing::debug!(
-                                "TCP server {:04x}:{:04x}: cleaning up sender for {} (connection_id={})",
-                                service_id, instance_id, addr, conn_id
+                                "TCP server on port {}: cleaning up sender for {} (connection_id={})",
+                                local_port, addr, conn_id
                             );
                             client_senders.remove(&addr);
                         } else {
                             tracing::debug!(
-                                "TCP server {:04x}:{:04x}: ignoring stale cleanup for {} (connection_id={}): newer connection exists",
-                                service_id, instance_id, addr, conn_id
+                                "TCP server on port {}: ignoring stale cleanup for {} (connection_id={}): newer connection exists",
+                                local_port, addr, conn_id
                             );
                         }
                     }
@@ -757,9 +806,8 @@ impl<T: TcpStream> TcpServer<T> {
 async fn handle_tcp_connection<T: TcpStream>(
     mut stream: T,
     peer_addr: SocketAddrV4,
-    service_id: u16,
-    instance_id: u16,
-    msg_tx: mpsc::Sender<TcpMessage>,
+    local_port: u16,
+    msg_tx: mpsc::Sender<ServerTcpMessage>,
     mut response_rx: mpsc::Receiver<Bytes>,
     cleanup_tx: mpsc::Sender<(SocketAddrV4, u64)>,
     connection_id: u64,
@@ -775,8 +823,8 @@ async fn handle_tcp_connection<T: TcpStream>(
                 match result {
                     Ok(0) => {
                         // Connection closed
-                        tracing::debug!("TCP client {} disconnected from service {:04x}:{:04x}",
-                            peer_addr, service_id, instance_id);
+                        tracing::debug!("TCP client {} disconnected from server port {}",
+                            peer_addr, local_port);
                         break;
                     }
                     Ok(n) => {
@@ -809,10 +857,11 @@ async fn handle_tcp_connection<T: TcpStream>(
                             if read_buffer.len() >= total_size {
                                 // Extract complete message
                                 let message_data = read_buffer.split_to(total_size);
-                                let msg = TcpMessage {
+                                // TODO: Weird to put the ids here, since the socket can be reused
+                                let msg = ServerTcpMessage {
                                     data: message_data.freeze(),
                                     from: peer_addr,
-                                    subscription_id: 0, // Server-side, no subscription
+                                    local_port,
                                 };
                                 if msg_tx.send(msg).await.is_err() {
                                     tracing::debug!("SomeIp closed, stopping TCP connection handler");
@@ -825,8 +874,8 @@ async fn handle_tcp_connection<T: TcpStream>(
                         }
                     }
                     Err(e) => {
-                        tracing::error!("TCP read error from {} for service {:04x}:{:04x}: {}",
-                            peer_addr, service_id, instance_id, e);
+                        tracing::error!("TCP read error from {} on server port {}: {}",
+                            peer_addr, local_port, e);
                         break;
                     }
                 }
@@ -843,14 +892,14 @@ async fn handle_tcp_connection<T: TcpStream>(
                 if magic_cookies {
                     let cookie = magic_cookie_server();
                     if let Err(e) = stream.write_all(&cookie).await {
-                        tracing::error!("TCP write error (magic cookie) to {} for service {:04x}:{:04x}: {}",
-                            peer_addr, service_id, instance_id, e);
+                        tracing::error!("TCP write error (magic cookie) to {} on server port {}: {}",
+                            peer_addr, local_port, e);
                         break;
                     }
                 }
                 if let Err(e) = stream.write_all(&data).await {
-                    tracing::error!("TCP write error to {} for service {:04x}:{:04x}: {}",
-                        peer_addr, service_id, instance_id, e);
+                    tracing::error!("TCP write error to {} on server port {}: {}",
+                        peer_addr, local_port, e);
                     break;
                 }
             }
