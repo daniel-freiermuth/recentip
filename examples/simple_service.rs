@@ -17,7 +17,6 @@
 
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
-use std::net::Ipv4Addr;
 
 /// Example service definition
 const EXAMPLE_SERVICE_ID: u16 = 0x1234;
