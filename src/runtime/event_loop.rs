@@ -23,6 +23,8 @@ use crate::OfferedEndpoints;
 use crate::config::{RuntimeConfig, Transport};
 use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
+use crate::runtime::client::{handle_incoming_notification, handle_incoming_response};
+use crate::runtime::server::{handle_incoming_fire_forget, handle_incoming_request};
 use crate::runtime::ServiceAvailability;
 use crate::runtime::{
     Command, client,
@@ -186,73 +188,30 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             // Handle incoming messages from UDP data socket tasks
             Some(method_msg) = method_rx.recv() => {
                 // Convert to Bytes for unified handling (this is the one copy for UDP)
-                let data = Bytes::from(method_msg.data);
-                let mut cursor = &data[..];
-                let Some(header) = Header::parse(&mut cursor) else {
-                    tracing::warn!("Received invalid SOME/IP header on method socket from {}", method_msg.from);
+                let Some((header, payload)) = parse_method_message(&method_msg.data, method_msg.from) else {
+                    tracing::warn!("Received invalid SOME/IP message on TCP server socket from {}", method_msg.from);
                     continue;
                 };
 
-                if header.service_id == SD_SERVICE_ID {
-                    tracing::warn!("Received SD message on method socket from {}", method_msg.from);
-                    continue;
-                }
-
-                // Route by local port and service_id.
-                //
-                // When sockets are shared between services, we need to pick the right
-                // service based on the service_id in the header. We use a two-step lookup:
-                // 1. Try to find a service matching both port AND service_id
-                // 2. If not found, pick any service on that port (for error handling)
-                //
-                // This ensures legitimate requests are routed correctly, while error
-                // responses for unknown services still come from the correct socket.
-                // TODO get rid of service key. It's mostly duplicated state and actually carrying information
-                // on the receiving endpoint
-                let service_key = state
-                    .offered
-                    .iter()
-                    .find(|(k, svc)| {
-                        k.service_id == header.service_id
-                            && svc
-                                .udp_endpoint
-                                .is_some_and(|ep| ep.port() == method_msg.local_port)
-                    })
-                    .or_else(|| {
-                        // No exact match - find any service on this port for error handling
-                        state.offered.iter().find(|(_, svc)| {
-                            svc.udp_endpoint
-                                .is_some_and(|ep| ep.port() == method_msg.local_port)
-                        })
-                    })
-                    .map(|(k, _)| *k);
-
-                // When no offered service claims this local port, the packet arrived on
-                // the client RPC socket (used for outgoing calls and shared UDP subscription
-                // events). Only Response, Error, and Notification are valid on that socket.
-                // Request / RequestNoReturn would route into handle_incoming_request with
-                // service_key=None and end up dispatched to whatever offered service shares
-                // the service_id — silently drop them instead.
-                if service_key.is_none()
-                    && matches!(
-                        header.message_type,
-                        MessageType::Request | MessageType::RequestNoReturn
-                    )
-                {
-                    tracing::warn!(
-                        "Received unexpected {:?} message on client RPC UDP socket from {} \
-                        (service_id=0x{:04X}) — dropping",
-                        header.message_type,
-                        method_msg.from,
-                        header.service_id
-                    );
-                    continue;
-                }
-
-                if let Some(actions) = handle_method_message(&header, &data, method_msg.from, &mut state, service_key, Transport::Udp, 0) {
-                    for action in actions {
-                        execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
-                    }
+                match header.message_type {
+                    MessageType::Request => {
+                        let action = handle_incoming_request(&header, payload, method_msg.from, &state, Transport::Udp, method_msg.local_port);
+                        if let Some(action) = action {
+                            execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        }
+                    },
+                    MessageType::RequestNoReturn =>
+                        handle_incoming_fire_forget(&header, payload, method_msg.from, &state, Transport::Udp, method_msg.local_port),
+                    MessageType::Notification => handle_incoming_notification(&header, payload, method_msg.from, &state, 0),
+                    MessageType::Response |
+                    MessageType::Error => handle_incoming_response(&header, payload, &mut state),
+                    MessageType::TpRequest |
+                    MessageType::TpRequestNoReturn |
+                    MessageType::TpNotification |
+                    MessageType::TpResponse |
+                    MessageType::TpError =>
+                        tracing::warn!("Received unexpected {:?} message on UDP data socket from {} \
+                            (service_id=0x{:04X}) — dropping",header.message_type,method_msg.from,header.service_id),
                 }
             }
 
@@ -261,63 +220,31 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                 // Server-side TCP message - find the service key based on service_id and instance_id
                 // provided by the TCP server (which knows which service accepted the connection).
                 // TCP data is already Bytes - zero-copy path
-                let mut cursor = &tcp_msg.data[..];
-                let Some(header) = Header::parse(&mut cursor) else {
-                    tracing::warn!("Received invalid SOME/IP header on TCP server socket from {}", tcp_msg.from);
+                let Some((header, payload)) = parse_method_message(&tcp_msg.data, tcp_msg.from) else {
+                    tracing::warn!("Received invalid SOME/IP message on TCP server socket from {}", tcp_msg.from);
                     continue;
                 };
 
-                if header.service_id == SD_SERVICE_ID {
-                    tracing::warn!("Received SD message on method socket from {}", tcp_msg.from);
-                    continue;
-                }
-
-                // Find which offered service this belongs to using the local_port that received
-                // the connection. When multiple services share a port, they all have the same
-                // tcp_endpoint port, so we look up by (port, service_id from header).
-                //
-                // Two-step lookup for robust error handling:
-                // 1. Try to find exact match (port AND header.service_id matches)
-                // 2. Fall back to any service with this port (for error responses)
-                //
-                // The fallback ensures we can send error responses via the correct server socket
-                // even when the header's service_id doesn't match (unknown service or shared listener).
-                let service_key = state
-                    .offered
-                    .iter()
-                    .find(|(key, svc)| {
-                        svc.tcp_endpoint.is_some_and(|ep| ep.port() == tcp_msg.local_port)
-                            && key.service_id == header.service_id  // Exact match
-                    })
-                    .or_else(|| {
-                        // No exact match - find any service with this port for error handling
-                        state.offered.iter().find(|(_, svc)| {
-                            svc.tcp_endpoint.is_some_and(|ep| ep.port() == tcp_msg.local_port)
-                        })
-                    })
-                    .map(|(key, _)| *key);
-
-                // Notifications must not arrive on a server TCP connection — they flow
-                // server→subscriber over the connection the *subscriber* opened, not over
-                // connections initiated by *clients* of our service. Drop any Notification
-                // that arrives here to prevent it from being accidentally matched to an
-                // active subscription (defence-in-depth against the subscription_id = 0
-                // collision that tcp_rpc_rx uses as its sentinel).
-                if header.message_type == MessageType::Notification {
-                    tracing::warn!(
-                        "Received unexpected Notification on server TCP connection from {} \
-                        (service_id=0x{:04X}) — dropping",
-                        tcp_msg.from,
-                        header.service_id
-                    );
-                    continue;
-                }
-
-                // Server-side messages are always RPC (subscription_id = 0)
-                if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, service_key, Transport::Tcp, 0) {
-                    for action in actions {
-                        execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                match header.message_type {
+                    MessageType::Request => {
+                        let possible_action = handle_incoming_request(&header, payload, tcp_msg.from, &state, Transport::Tcp, tcp_msg.local_port);
+                        if let Some(action) = possible_action {
+                            execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
+                        }
                     }
+                    MessageType::RequestNoReturn=>{
+                        handle_incoming_fire_forget(&header, payload, tcp_msg.from, &state, Transport::Tcp, tcp_msg.local_port);
+                    }
+                    MessageType::TpRequest|
+                    MessageType::TpRequestNoReturn|
+                    MessageType::TpNotification|
+                    MessageType::TpResponse|
+                    MessageType::TpError|
+                    MessageType::Response|
+                    MessageType::Notification|
+                    MessageType::Error=>
+                        tracing::warn!("Received unexpected {:?} message on server TCP connection from {} \
+                            (service_id=0x{:04X}) — dropping",header.message_type,tcp_msg.from,header.service_id),
                 }
             }
 
@@ -326,35 +253,27 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                 // Client-side TCP message - responses to RPC calls we made as a client
                 // Process them like any other incoming packet
                 // TCP data is already Bytes - zero-copy path
-                let mut cursor = &tcp_msg.data[..];
-                let Some(header) = Header::parse(&mut cursor) else {
-                    tracing::warn!("Received invalid SOME/IP header on TCP client socket from {}", tcp_msg.from);
+                let Some((header, payload)) = parse_method_message(&tcp_msg.data, tcp_msg.from) else {
+                    tracing::warn!("Received invalid SOME/IP message on TCP server socket from {}", tcp_msg.from);
                     continue;
                 };
 
-                if header.service_id == SD_SERVICE_ID {
-                    tracing::warn!("Received SD message on TCP client socket from {}", tcp_msg.from);
-                    continue;
-                }
-
-                // On client-initiated TCP connections (subscriptions), only Response, Error,
-                // and Notification messages are meaningful. A Request or RequestNoReturn here
-                // means the remote peer is trying to invoke methods on us via our subscriber
-                // connection, which is invalid — silently drop it.
-                if matches!(header.message_type, MessageType::Request | MessageType::RequestNoReturn) {
-                    tracing::warn!(
-                        "Received unexpected {:?} message on subscriber TCP connection from {} \
-                        (service_id=0x{:04X}) — dropping",
-                        header.message_type, tcp_msg.from, header.service_id
-                    );
-                    continue;
-                }
-
-                // Client messages always have service_key = None
-                if let Some(actions) = handle_method_message(&header, &tcp_msg.data, tcp_msg.from, &mut state, None, Transport::Tcp, tcp_msg.subscription_id) {
-                    for action in actions {
-                        execute_action(&sd_multicast_socket, sd_unicast_socket.as_ref(), &config, &mut state, action, &mut pending_responses, &tcp_pool).await;
-                    }
+                match header.message_type {
+                    MessageType::Request |
+                    MessageType::RequestNoReturn |
+                    MessageType::TpRequest |
+                    MessageType::TpRequestNoReturn |
+                    MessageType::TpNotification |
+                    MessageType::TpResponse |
+                    MessageType::TpError =>
+                        tracing::warn!(
+                            "Received unexpected {:?} message on client TCP connection from {} \
+                            (service_id=0x{:04X}) — dropping",
+                            header.message_type, tcp_msg.from, header.service_id
+                        ),
+                    MessageType::Notification => handle_incoming_notification(&header, payload, tcp_msg.from, &state, tcp_msg.subscription_id),
+                    MessageType::Response |
+                    MessageType::Error => handle_incoming_response(&header, payload, &mut state),
                 }
             }
 
@@ -569,6 +488,44 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
             }
         }
     }
+}
+
+fn parse_method_message(data: &Bytes, from: SocketAddrV4) -> Option<(Header, Bytes)> {
+    let mut cursor = &data[..];
+    let Some(header) = Header::parse(&mut cursor) else {
+        tracing::warn!(
+            "Received invalid SOME/IP header on TCP server socket from {}",
+            from
+        );
+        return None;
+    };
+
+    if header.service_id == SD_SERVICE_ID {
+        tracing::warn!("Received SD message on method socket from {}", from);
+        return None;
+    }
+    // Validate protocol version - silently drop messages with wrong version
+    if validate_protocol_version(header.protocol_version).is_err() {
+        tracing::warn!(
+            "Dropping message with invalid protocol version 0x{:02X} from {}",
+            header.protocol_version,
+            from
+        );
+        return None;
+    }
+
+    if data.len() < Header::SIZE + header.payload_length() {
+        tracing::warn!(
+            "Received incomplete SOME/IP message from {}: expected length {}, actual length {}",
+            from,
+            Header::SIZE + header.payload_length(),
+            data.len()
+        );
+        return None;
+    }
+    // Zero-copy slice of the payload from the message buffer
+    let payload = data.slice(Header::SIZE..Header::SIZE + header.payload_length());
+    Some((header, payload))
 }
 
 /// Execute an action
@@ -1242,84 +1199,6 @@ pub fn cluster_sd_actions(actions: Vec<Action>) -> Vec<Action> {
     );
 
     other_actions
-}
-
-/// Handle an RPC message (Request, Response, etc.)
-///
-/// Takes a reference to message data as `Bytes` to enable zero-copy payload extraction
-/// via `Bytes::slice()`. For TCP messages this is truly zero-copy; for UDP messages
-/// the data is copied once when converting from the receive buffer to `Bytes`.
-fn handle_method_message(
-    header: &Header,
-    data: &Bytes,
-    from: SocketAddrV4,
-    state: &mut RuntimeState,
-    service_key: Option<ServiceKey>,
-    transport: Transport,
-    subscription_id: u64,
-) -> Option<Vec<Action>> {
-    // Validate protocol version - silently drop messages with wrong version
-    if validate_protocol_version(header.protocol_version).is_err() {
-        tracing::trace!(
-            "Dropping message with invalid protocol version 0x{:02X} from {}",
-            header.protocol_version,
-            from
-        );
-        return None;
-    }
-
-    let payload_len = header.payload_length();
-    let payload_start = Header::SIZE;
-    let payload_end = payload_start + payload_len;
-
-    if data.len() < payload_end {
-        return None;
-    }
-
-    // Zero-copy slice of the payload from the message buffer
-    let payload = data.slice(payload_start..payload_end);
-
-    let mut actions = Vec::new();
-
-    match header.message_type {
-        MessageType::Request => {
-            // Incoming request - route to offering using service_key from RPC socket
-            server::handle_incoming_request(
-                header,
-                payload,
-                from,
-                state,
-                &mut actions,
-                service_key,
-                transport,
-            );
-        }
-        MessageType::RequestNoReturn => {
-            // Incoming fire-and-forget - route to offering with service_key for validation
-            server::handle_incoming_fire_forget(header, payload, from, state, service_key);
-        }
-        MessageType::Response | MessageType::Error => {
-            // Response to our request - route to pending call
-            client::handle_incoming_response(header, payload, state);
-        }
-        MessageType::Notification => {
-            // Event notification - route to subscription
-            client::handle_incoming_notification(header, payload, from, state, subscription_id);
-        }
-        _ => {
-            tracing::trace!(
-                "Ignoring message type {:?} from {}",
-                header.message_type,
-                from
-            );
-        }
-    }
-
-    if actions.is_empty() {
-        None
-    } else {
-        Some(actions)
-    }
 }
 
 /// Handle a command from a handle

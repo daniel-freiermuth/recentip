@@ -69,7 +69,7 @@ use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::tcp::{ServerTcpMessage, TcpServer};
 use crate::wire::{Header, MessageType, PROTOCOL_VERSION};
-use crate::{InstanceId, ServiceId};
+use crate::{InstanceId, ServiceId, Transport};
 
 // ============================================================================
 // ASYNC COMMAND HANDLERS (NEED SOCKET CREATION)
@@ -547,174 +547,177 @@ pub fn handle_incoming_request(
     payload: Bytes,
     from: SocketAddrV4,
     state: &RuntimeState,
-    actions: &mut Vec<Action>,
-    service_key: Option<ServiceKey>,
     transport: crate::config::Transport,
-) {
+    port: u16,
+) -> Option<Action> {
     // TODO: instead of sending the error here, can we send it already when receiving?
     // Find the offering:
     // - service_key is always Some (server RPC socket); matches the port that received the packet
     // - If service_id matches exactly → route to that service
     // - If it doesn't → event_loop already tried an exact match, so this is truly unknown → error
     // - The unreachable None arm is kept for completeness but never reached in practice
-    let offering = if let Some(key) = service_key {
-        // Check if service_id matches - if yes, use exact match
-        if key.service_id == header.service_id {
-            state.offered.get_key_value(&key)
-        } else {
-            // Service ID mismatch. The event_loop already tried an exact
-            // (port + service_id) lookup before falling back to `key`, so
-            // there is no same-port service with this service_id to route to.
-            // Send E_UNKNOWN_SERVICE and return.
-            //
-            // Per feat_req_someip_816: E_UNKNOWN_SERVICE is optional but may be
-            // sent when the Service ID is unknown.
-            tracing::warn!(
-                "Unknown service: socket belongs to service 0x{:04x} but header has 0x{:04x} from {}",
-                key.service_id,
-                header.service_id,
-                from
-            );
-            let response_data = build_response(
-                header.service_id,
-                header.method_id,
-                header.client_id,
-                header.session_id,
-                header.interface_version,
-                0x02, // E_UNKNOWN_SERVICE
-                &[],
-                false,
-            );
-            actions.push(Action::SendServerMessage {
-                service_key: key,
-                data: response_data,
-                target: from,
-                transport,
-            });
-            return;
-        }
-    } else {
-        state
+    let Some((service_key, offering)) = state.offered.iter().find(|(key, svc)| {
+        key.service_id == header.service_id
+            && (transport == Transport::Tcp && svc.tcp_endpoint.is_some_and(|ep| ep.port() == port)
+                || transport == Transport::Udp
+                    && svc.udp_endpoint.is_some_and(|ep| ep.port() == port))
+    }) else {
+        // Service ID mismatch. The event_loop already tried an exact
+        // (port + service_id) lookup before falling back to `key`, so
+        // there is no same-port service with this service_id to route to.
+        // Send E_UNKNOWN_SERVICE and return.
+        //
+        // Per feat_req_someip_816: E_UNKNOWN_SERVICE is optional but may be
+        // sent when the Service ID is unknown.
+        let Some(key) = state
             .offered
             .iter()
-            .find(|(k, _)| k.service_id == header.service_id)
+            .find(|(_, svc)| {
+                transport == Transport::Tcp && svc.tcp_endpoint.is_some_and(|ep| ep.port() == port)
+                    || transport == Transport::Udp
+                        && svc.udp_endpoint.is_some_and(|ep| ep.port() == port)
+            })
+            .map(|(k, _)| k)
+        else {
+            tracing::error!(
+                "Received request on port {} which doesn't match any offered service's RPC port",
+                port
+            );
+            return None;
+        };
+        tracing::warn!(
+            "Unknown service: socket belongs to service 0x{:04x} but header has 0x{:04x} from {}",
+            key.service_id,
+            header.service_id,
+            from
+        );
+        let response_data = build_response(
+            header.service_id,
+            header.method_id,
+            header.client_id,
+            header.session_id,
+            header.interface_version,
+            0x02, // E_UNKNOWN_SERVICE
+            &[],
+            false,
+        );
+        return Some(Action::SendServerMessage {
+            service_key: *key,
+            data: response_data,
+            target: from,
+            transport,
+        });
     };
 
-    if let Some((service_key, offered)) = offering {
-        // Determine transport for response
-        let rpc_transport = match transport {
-            crate::config::Transport::Tcp => offered.tcp_transport.clone(),
-            crate::config::Transport::Udp => offered.udp_transport.clone(),
+    // Determine transport for response
+    let Some(rpc_transport) = (match transport {
+        Transport::Tcp => offering.tcp_transport.clone(),
+        Transport::Udp => offering.udp_transport.clone(),
+    }) else {
+        tracing::error!(
+            "Received request via {:?} which is not configured for service 0x{:04x}",
+            transport,
+            offering.major_version
+        );
+        return None;
+    };
+
+    // Validate method_id early: high bit set means event ID, not method ID
+    // Per SOME/IP spec: method IDs are 0x0000-0x7FFF, event IDs are 0x8000-0xFFFE
+    if header.method_id >= 0x8000 {
+        tracing::warn!(
+            "Received request with invalid method_id 0x{:04x} (high bit set = event ID, not method ID) from {}",
+            header.method_id,
+            from
+        );
+
+        // Send E_MALFORMED_MESSAGE (0x09) response
+        let response_data = build_response(
+            header.service_id,
+            header.method_id,
+            header.client_id,
+            header.session_id,
+            header.interface_version,
+            0x09, // E_MALFORMED_MESSAGE - method_id field contains an event ID
+            &[],
+            offering.method_config.uses_exception(header.method_id),
+        );
+
+        return Some(Action::SendServerMessage {
+            service_key: *service_key,
+            data: response_data,
+            target: from,
+            transport,
+        });
+    }
+
+    // Validate interface version (which equals major version per feat_req_someip_92)
+    // Per feat_req_someip_371: return E_WRONG_INTERFACE_VERSION (0x08) on mismatch
+    // Per feat_req_someip_718: this check comes after service ID check
+    if header.interface_version != offering.major_version {
+        tracing::warn!(
+            "Interface version mismatch for service 0x{:04x}: expected 0x{:02x}, got 0x{:02x} from {}",
+            header.service_id,
+            offering.major_version,
+            header.interface_version,
+            from
+        );
+
+        // Send E_WRONG_INTERFACE_VERSION (0x08) response
+        let response_data = build_response(
+            header.service_id,
+            header.method_id,
+            header.client_id,
+            header.session_id,
+            header.interface_version, // Echo back the client's interface version
+            0x08,                     // E_WRONG_INTERFACE_VERSION
+            &[],
+            offering.method_config.uses_exception(header.method_id),
+        );
+
+        return Some(Action::SendServerMessage {
+            service_key: *service_key,
+            data: response_data,
+            target: from,
+            transport,
+        });
+    }
+
+    // Create a response channel
+    let (response_tx, response_rx) = oneshot::channel();
+
+    // Check if this method uses EXCEPTION for errors
+    let uses_exception = offering.method_config.uses_exception(header.method_id);
+
+    // Send request to the offering handle
+    if offering
+        .requests_tx
+        .try_send(ServiceRequest::MethodCall {
+            method_id: header.method_id,
+            payload,
+            client: from,
+            transport,
+            response: response_tx,
+        })
+        .is_ok()
+    {
+        // Track this pending response - will be polled in the main loop
+        let context = PendingServerResponse {
+            service_id: header.service_id,
+            method_id: header.method_id,
+            client_id: header.client_id,
+            session_id: header.session_id,
+            interface_version: header.interface_version,
+            client_addr: from,
+            uses_exception,
+            rpc_transport,
         };
-
-        // Validate method_id early: high bit set means event ID, not method ID
-        // Per SOME/IP spec: method IDs are 0x0000-0x7FFF, event IDs are 0x8000-0xFFFE
-        if header.method_id >= 0x8000 {
-            tracing::warn!(
-                "Received request with invalid method_id 0x{:04x} (high bit set = event ID, not method ID) from {}",
-                header.method_id,
-                from
-            );
-
-            // Send E_MALFORMED_MESSAGE (0x09) response
-            let response_data = build_response(
-                header.service_id,
-                header.method_id,
-                header.client_id,
-                header.session_id,
-                header.interface_version,
-                0x09, // E_MALFORMED_MESSAGE - method_id field contains an event ID
-                &[],
-                offered.method_config.uses_exception(header.method_id),
-            );
-
-            if rpc_transport.is_some() {
-                actions.push(Action::SendServerMessage {
-                    service_key: *service_key,
-                    data: response_data,
-                    target: from,
-                    transport,
-                });
-            }
-            return;
-        }
-
-        // Validate interface version (which equals major version per feat_req_someip_92)
-        // Per feat_req_someip_371: return E_WRONG_INTERFACE_VERSION (0x08) on mismatch
-        // Per feat_req_someip_718: this check comes after service ID check
-        if header.interface_version != offered.major_version {
-            tracing::warn!(
-                "Interface version mismatch for service 0x{:04x}: expected 0x{:02x}, got 0x{:02x} from {}",
-                header.service_id,
-                offered.major_version,
-                header.interface_version,
-                from
-            );
-
-            // Send E_WRONG_INTERFACE_VERSION (0x08) response
-            let response_data = build_response(
-                header.service_id,
-                header.method_id,
-                header.client_id,
-                header.session_id,
-                header.interface_version, // Echo back the client's interface version
-                0x08,                     // E_WRONG_INTERFACE_VERSION
-                &[],
-                offered.method_config.uses_exception(header.method_id),
-            );
-
-            if rpc_transport.is_some() {
-                actions.push(Action::SendServerMessage {
-                    service_key: *service_key,
-                    data: response_data,
-                    target: from,
-                    transport,
-                });
-            }
-            return;
-        }
-
-        // Create a response channel
-        let (response_tx, response_rx) = oneshot::channel();
-
-        // Check if this method uses EXCEPTION for errors
-        let uses_exception = offered.method_config.uses_exception(header.method_id);
-
-        // Send request to the offering handle
-        if offered
-            .requests_tx
-            .try_send(ServiceRequest::MethodCall {
-                method_id: header.method_id,
-                payload,
-                client: from,
-                transport,
-                response: response_tx,
-            })
-            .is_ok()
-        {
-            // Track this pending response - will be polled in the main loop
-            if let Some(rpc_transport) = rpc_transport {
-                let context = PendingServerResponse {
-                    service_id: header.service_id,
-                    method_id: header.method_id,
-                    client_id: header.client_id,
-                    session_id: header.session_id,
-                    interface_version: header.interface_version,
-                    client_addr: from,
-                    uses_exception,
-                    rpc_transport,
-                };
-                actions.push(Action::TrackServerResponse {
-                    context,
-                    receiver: response_rx,
-                });
-            } else {
-                tracing::error!(
-                    "We seemingly got a request via {:?}, which we don't offer",
-                    transport
-                );
-            }
-        }
+        Some(Action::TrackServerResponse {
+            context,
+            receiver: response_rx,
+        })
+    } else {
+        None
     }
 }
 
@@ -724,56 +727,42 @@ pub fn handle_incoming_fire_forget(
     payload: Bytes,
     from: SocketAddrV4,
     state: &RuntimeState,
-    service_key: Option<ServiceKey>,
+    transport: crate::config::Transport,
+    port: u16,
 ) {
     // Find matching offering with service_id validation
     // If service_key is provided (from server RPC socket), validate service_id matches
-    let offering = if let Some(key) = service_key {
-        // Validate that the service_id in the header matches the socket's service
-        if key.service_id != header.service_id {
-            tracing::warn!(
-                "Fire-and-forget service ID mismatch: socket belongs to service 0x{:04x} but header has 0x{:04x} from {}",
-                key.service_id,
-                header.service_id,
-                from
-            );
-            // Silently ignore - fire-and-forget doesn't get responses
-            return;
-        }
-        state.offered.get(&key)
-    } else {
-        state
-            .offered
-            .iter()
-            .find(|(k, _)| k.service_id == header.service_id)
-            .map(|(_, v)| v)
+    let Some((_, offered)) = state.offered.iter().find(|(key, svc)| {
+        key.service_id == header.service_id
+            && (transport == Transport::Tcp && svc.tcp_endpoint.is_some_and(|ep| ep.port() == port)
+                || transport == Transport::Udp
+                    && svc.udp_endpoint.is_some_and(|ep| ep.port() == port))
+    }) else {
+        return;
     };
 
-    if let Some(offered) = offering {
-        // Validate interface version (which equals major version per feat_req_someip_92)
-        // Per feat_req_someip_654: no error response for fire-and-forget, just silently drop
-        if header.interface_version != offered.major_version {
-            tracing::warn!(
-                "Fire-and-forget interface version mismatch for service 0x{:04x}: expected 0x{:02x}, got 0x{:02x} from {}",
-                header.service_id,
-                offered.major_version,
-                header.interface_version,
-                from
-            );
-            // Silently ignore - fire-and-forget doesn't get error responses
-            return;
-        }
-
-        // Send fire-and-forget request to the offering handle (no response channel)
-        let _ = offered.requests_tx.try_send(ServiceRequest::FireForget {
-            method_id: header.method_id,
-            payload,
-            client: from,
-            transport: crate::config::Transport::Udp, // Fire-and-forget is UDP-only for now
-        });
-        // No response tracking needed - fire and forget
+    // Validate interface version (which equals major version per feat_req_someip_92)
+    // Per feat_req_someip_654: no error response for fire-and-forget, just silently drop
+    if header.interface_version != offered.major_version {
+        tracing::warn!(
+            "Fire-and-forget interface version mismatch for service 0x{:04x}: expected 0x{:02x}, got 0x{:02x} from {}",
+            header.service_id,
+            offered.major_version,
+            header.interface_version,
+            from
+        );
+        // Silently ignore - fire-and-forget doesn't get error responses
+        return;
     }
-    // If unknown service, silently ignore (no error response for fire-and-forget)
+
+    // Send fire-and-forget request to the offering handle (no response channel)
+    let _ = offered.requests_tx.try_send(ServiceRequest::FireForget {
+        method_id: header.method_id,
+        payload,
+        client: from,
+        transport: crate::config::Transport::Udp, // Fire-and-forget is UDP-only for now
+    });
+    // No response tracking needed - fire and forget
 }
 
 // ============================================================================
@@ -940,7 +929,7 @@ pub fn spawn_rpc_socket_task<U: UdpSocket>(
                                 continue;
                             };
                             let data = received.to_vec();
-                            let msg = RpcMessage { local_port, data, from };
+                            let msg = RpcMessage { local_port, data: data.into(), from };
                             if rpc_tx_to_runtime.send(msg).await.is_err() {
                                 tracing::debug!("RPC socket task on port {local_port} shutting down - runtime closed");
                                 break;

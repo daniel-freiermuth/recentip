@@ -238,7 +238,7 @@ impl<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>> SomeIp<U, T, L> {
                                 // Forward to runtime task for processing
                                 let _ = client_method_tx_clone.send(RpcMessage {
                                     local_port: client_method_addr.port(),
-                                    data,
+                                    data: data.into(),
                                     from,
                                 }).await;
                             }

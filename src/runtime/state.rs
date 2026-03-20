@@ -279,7 +279,7 @@ pub struct RpcMessage {
     /// services share one UDP socket (different service_ids) or when multiple
     /// instances of the same service_id each occupy their own dedicated port.
     pub(crate) local_port: u16,
-    pub(crate) data: Vec<u8>,
+    pub(crate) data: Bytes,
     pub(crate) from: SocketAddrV4,
 }
 
