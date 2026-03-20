@@ -25,7 +25,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-recentip = "0.3"
+recentip = "0.4.1"
 ```
 
 ## Documentation
