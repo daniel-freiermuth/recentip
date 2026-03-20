@@ -6,27 +6,18 @@
 
 An opinionated **async and boring SOME/IP protocol implementation**.
 
-[SOME/IP](https://some-ip.com/) (Scalable service-Oriented MiddlewarE over IP) is the standard middleware protocol for automotive Ethernet communication, enabling service-oriented communication between ECUs in modern vehicles.
-
-Right now, this is a hobby project for exploration.
-The goal is to create a solid, performant and easy-to-use and maintain SOME/IP implementation.
+This is a hobby project for fun and exploration.
+The goal is to create a solid, performant and easy-to-use-and-maintain SOME/IP implementation.
 
 ### **[=> Show me some examples! <=](https://docs.rs/recentip/latest/recentip/examples/quickstart/index.html)**
 
-## Features
-
-- Zero-panic. expect, unwrap, indexing forbidden by clippy rule
-- Lock-free hot paths. Data is passed using channels for uninterrupted non-blocking flows
-- Tokio-backed async. scales from single to multicore execution
-- Spec compliance testsuite and report.
-- Brings its own recentIP lint rule for proper usage.
-- No-unsafe. forbidden by clippy rule
-
 ## Supported SOME/IP
-Right now, this lib implements these core parts of the SOME/IP protocol:
+Right now, this lib only implements these core parts of the SOME/IP protocol:
 - **Service Discovery** — Automatic discovery via multicast SD protocol
 - **RPC** — Request/response and fire-and-forget method calls
 - **Pub/Sub** — Event subscriptions with eventgroup management
+
+[Compliance report](https://docs.rs/recentip/0.1.0-alpha.4/recentip/compliance/traceability/index.html)
 
 ## Installation
 
@@ -87,39 +78,9 @@ cargo dylint --all
 
 This implementation targets full compliance with the [open SOME/IP 2025-12 specification](https://github.com/some-ip-com/open-someip-spec/commit/dcdfbd8f772ebfa973317e3cd4580874d848ae7e). Support per requirement can be verified using the [traceability report](https://docs.rs/recentip/0.1.0-alpha.4/recentip/compliance/traceability/index.html). 
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      User Application                       │
-│ SomeIp-Handle     OfferedService          ServiceOffering   │
-└────┬────────────────────┬─────────────────────┬─────────────┘
-     │                    │▲ Events             │▲ Events
-     │           Commands ▼│           Commands ▼│
-┌─────────────────────────────────────────────────────────────┐
-│                     SomeIp (Event Loop)                     │
-│   Multiplexes: commands, SD, RPC, TCP, timers               │
-└─────────────────────────────────────────────────────────────┘
-           │                              │
-           ▼                              ▼
-    ┌─────────────┐                ┌─────────────────────────┐
-    │ SD Socket   │                │ Pub/Sub and RPC Sockets │
-    │ UDP:30490   │                │ UDP/TCP                 │
-    └─────────────┘                └─────────────────────────┘
-```
-
-Handles (`OfferedService`, `ServiceOffering`) don't perform I/O directly—they send commands to the central event loop, which owns all sockets and state.
-
-## Not yet implemented
-- SOME/IP-TP
-- Encryption
-- De-/Serialization
-- Fields, Getter, Setter
-- Configuration handling
-
 ## License
 
-This project is licensed under the [GPL-3.0 License](LICENSE).
+Currently, this project is licensed under the [GPL-3.0 License](LICENSE).
 
 ## Contributing
 
