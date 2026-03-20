@@ -21,6 +21,9 @@ use tokio::sync::mpsc;
 
 use crate::helpers::configure_tracing;
 
+#[cfg(feature = "slow-tests")]
+use std::net::SocketAddrV4;
+
 // ============================================================================
 // Test Service Definition
 // ============================================================================
