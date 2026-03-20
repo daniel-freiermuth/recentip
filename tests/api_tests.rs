@@ -1447,12 +1447,12 @@ proptest::proptest! {
                 .start_turmoil().await.unwrap();
 
             // Find by major version only (instance wildcard)
-            let proxy_v1 = runtime
+            let _proxy_v1 = runtime
                 .find(TEST_SERVICE_ID).major_version(v1)
                 .await
                 .expect("Service with version1 available");
 
-            let proxy_v2 = runtime
+            let _proxy_v2 = runtime
                 .find(TEST_SERVICE_ID).major_version(v2)
                 .await
                 .expect("Service with version2 available");
@@ -1535,13 +1535,13 @@ proptest::proptest! {
                 .start_turmoil().await.unwrap();
 
             // Find by instance ID only (version wildcard via default)
-            let proxy_i1 = runtime
+            let _proxy_i1 = runtime
                 .find(TEST_SERVICE_ID)
                 .instance(InstanceId::Id(i1))
                 .await
                 .expect("Service with instance1 available");
 
-            let proxy_i2 = runtime
+            let _proxy_i2 = runtime
                 .find(TEST_SERVICE_ID)
                 .instance(InstanceId::Id(i2))
                 .await
@@ -1870,117 +1870,6 @@ impl From<u8> for SdEntryType {
 /// Placeholder for SD options
 #[derive(Debug)]
 struct SdOption;
-
-/// Build a raw SOME/IP-SD OfferService message
-fn build_sd_offer(
-    service_id: u16,
-    instance_id: u16,
-    major_version: u8,
-    minor_version: u32,
-    addr: std::net::Ipv4Addr,
-    port: u16,
-    ttl: u32,
-) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(64);
-
-    // SOME/IP Header
-    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
-    packet.extend_from_slice(&0x8100u16.to_be_bytes());
-    let length_offset = packet.len();
-    packet.extend_from_slice(&0u32.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.push(0x01);
-    packet.push(0x01);
-    packet.push(0x02);
-    packet.push(0x00);
-
-    // SD Payload
-    packet.push(0xC0);
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
-    packet.extend_from_slice(&16u32.to_be_bytes());
-
-    // OfferService Entry
-    packet.push(0x01);
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.push(0x10);
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&instance_id.to_be_bytes());
-    packet.push(major_version);
-    let ttl_bytes = ttl.to_be_bytes();
-    packet.extend_from_slice(&ttl_bytes[1..4]);
-    packet.extend_from_slice(&minor_version.to_be_bytes());
-
-    // Options array
-    packet.extend_from_slice(&12u32.to_be_bytes());
-    // IPv4 Endpoint Option
-    packet.extend_from_slice(&9u16.to_be_bytes());
-    packet.push(0x04);
-    packet.push(0x00);
-    packet.extend_from_slice(&addr.octets());
-    packet.push(0x00);
-    packet.push(0x11); // UDP
-    packet.extend_from_slice(&port.to_be_bytes());
-
-    // Fix length
-    let length = (packet.len() - 8) as u32;
-    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-
-    packet
-}
-
-/// Build a raw SOME/IP-SD SubscribeEventgroupNack message (TTL=0)
-fn build_sd_subscribe_nack(
-    service_id: u16,
-    instance_id: u16,
-    major_version: u8,
-    eventgroup_id: u16,
-) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(64);
-
-    // SOME/IP Header
-    packet.extend_from_slice(&0xFFFFu16.to_be_bytes());
-    packet.extend_from_slice(&0x8100u16.to_be_bytes());
-    let length_offset = packet.len();
-    packet.extend_from_slice(&0u32.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.extend_from_slice(&0x0001u16.to_be_bytes());
-    packet.push(0x01);
-    packet.push(0x01);
-    packet.push(0x02);
-    packet.push(0x00);
-
-    // SD Payload
-    packet.push(0xC0);
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
-    packet.extend_from_slice(&16u32.to_be_bytes());
-
-    // SubscribeEventgroupAck Entry with TTL=0 (NACK)
-    packet.push(0x07); // SubscribeEventgroupAck type
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.push(0x00);
-    packet.extend_from_slice(&service_id.to_be_bytes());
-    packet.extend_from_slice(&instance_id.to_be_bytes());
-    packet.push(major_version);
-    // TTL = 0 (NACK)
-    packet.extend_from_slice(&[0x00, 0x00, 0x00]);
-    // Reserved + counter
-    packet.push(0x00);
-    packet.push(0x00);
-    // Eventgroup ID
-    packet.extend_from_slice(&eventgroup_id.to_be_bytes());
-
-    // Options array (empty)
-    packet.extend_from_slice(&0u32.to_be_bytes());
-
-    // Fix length
-    let length = (packet.len() - 8) as u32;
-    packet[length_offset..length_offset + 4].copy_from_slice(&length.to_be_bytes());
-
-    packet
-}
 
 /// Test that duplicate event IDs are detected and rejected
 #[test_log::test]

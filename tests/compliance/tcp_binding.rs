@@ -1218,7 +1218,7 @@ fn tcp_cleanup_on_server_stop_offer() {
 
             let mut buf = [0u8; 1500];
             let mut session_id = 1u16;
-            let mut ack_session_id = 1u16;
+            let ack_session_id = 1u16;
 
             // Send offers periodically until we get a subscribe
             let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
@@ -1262,7 +1262,6 @@ fn tcp_cleanup_on_server_stop_offer() {
                                         .session_id(ack_session_id)
                                         .reboot_flag(false)
                                         .build();
-                                ack_session_id += 1;
                                 sd_socket.send_to(&ack, from).await?;
 
                                 // Wait a bit then send StopOffer
@@ -1861,7 +1860,7 @@ fn reboot_clears_old_services_offers_new() {
 
         // Phase 1: Wait for SERVICE1 to be discovered
         tracing::info!("[lib_client] Phase 1: Looking for SERVICE1");
-        let service1 = tokio::time::timeout(
+        let _service1 = tokio::time::timeout(
             Duration::from_secs(3),
             runtime
                 .find(SERVICE1_ID)
@@ -1893,7 +1892,7 @@ fn reboot_clears_old_services_offers_new() {
         tokio::time::sleep(Duration::from_secs(2)).await;
 
         tracing::info!("[lib_client] Phase 2: Looking for SERVICE2 after reboot");
-        let service2 = tokio::time::timeout(
+        let _service2 = tokio::time::timeout(
             Duration::from_secs(3),
             runtime
                 .find(SERVICE2_ID)
@@ -2083,7 +2082,7 @@ fn server_detects_client_reboot_clears_subscriptions() {
             .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
-        let mut client_session_id = 1u16;
+        let client_session_id = 1u16;
 
         // Wait for Offer for all services, capture TCP ports
         tracing::info!("[wire_client] Waiting for service Offers...");
@@ -2137,7 +2136,7 @@ fn server_detects_client_reboot_clears_subscriptions() {
         .session_id(client_session_id)
         .reboot_flag(true)
         .build();
-        client_session_id += 1;
+        //client_session_id += 1;
 
         let server_sd_addr: std::net::SocketAddr = (server_ip, 30490).into();
         sd_socket.send_to(&subscribe1, server_sd_addr).await?;
@@ -2455,8 +2454,8 @@ fn client_detects_server_reboot_from_subscribe_ack_session_regression() {
     let events_received_phase2 = Arc::new(AtomicUsize::new(0));
     let test_complete = Arc::new(AtomicBool::new(false));
 
-    let events_p1_clone = Arc::clone(&events_received_phase1);
-    let events_p2_clone = Arc::clone(&events_received_phase2);
+    let _events_p1_clone = Arc::clone(&events_received_phase1);
+    let _events_p2_clone = Arc::clone(&events_received_phase2);
     let test_complete_clone = Arc::clone(&test_complete);
 
     let mut sim = turmoil::Builder::new()
@@ -3527,7 +3526,7 @@ fn server_detects_client_reboot_clears_subscriptions_port_reuse() {
             .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
 
         let mut buf = [0u8; 1500];
-        let mut client_session_id = 1u16;
+        let client_session_id = 1u16;
 
         // Wait for Offer for all services, capture TCP ports
         tracing::info!("[wire_client] Waiting for service Offers...");
@@ -3581,7 +3580,7 @@ fn server_detects_client_reboot_clears_subscriptions_port_reuse() {
         .session_id(client_session_id)
         .reboot_flag(true)
         .build();
-        client_session_id += 1;
+        // client_session_id += 1;
 
         let server_sd_addr: std::net::SocketAddr = (server_ip, 30490).into();
         sd_socket.send_to(&subscribe1, server_sd_addr).await?;
@@ -4150,6 +4149,7 @@ fn client_detects_server_reboot_tcp_connections() {
     configure_tracing();
 
     use crate::wire_format::helpers::{SdSubscribeBuilder, SomeIpPacketBuilder};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use tokio::io::AsyncWriteExt;
@@ -4158,14 +4158,12 @@ fn client_detects_server_reboot_tcp_connections() {
 
     const SERVICE_ID: u16 = 0x4567; // Server offers this (event subscription)
     const SERVICE_ID_RPC: u16 = 0x1234; // Server offers this (RPC calls)
-    const SERVICE_CLIENT_ID: u16 = 0x9999; // Client offers this
     const INSTANCE_ID: u16 = 0x0001;
     const EVENTGROUP_ID: u16 = 0x0001;
     const EVENT_ID: u16 = 0x8001;
     const METHOD_ID: u16 = 0x0042;
     const TCP_PORT_SERVER: u16 = 30509;
     const TCP_PORT_RPC: u16 = 30511;
-    const TCP_PORT_CLIENT: u16 = 30510;
     const TTL_3_MIN: u32 = 180; // 3 minutes
 
     let events_received_phase1 = Arc::new(AtomicUsize::new(0));

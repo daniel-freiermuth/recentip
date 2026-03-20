@@ -17,7 +17,6 @@ use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 
 use recentip::wire::{Header, SD_SERVICE_ID};
-use std::net::SocketAddr;
 use std::time::Duration;
 
 use crate::helpers::wait_for_subscription;
@@ -69,14 +68,6 @@ fn parse_udp_datagram(data: &[u8]) -> Vec<Header> {
     }
 
     headers
-}
-
-/// Check if an address is multicast
-fn is_multicast(addr: &SocketAddr) -> bool {
-    match addr {
-        SocketAddr::V4(v4) => v4.ip().is_multicast(),
-        SocketAddr::V6(v6) => v6.ip().is_multicast(),
-    }
 }
 
 // ============================================================================

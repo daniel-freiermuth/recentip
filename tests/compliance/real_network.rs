@@ -15,7 +15,7 @@
 
 use recentip::{EventId, EventgroupId, InstanceId, MethodId, ServiceEvent, Transport, config};
 use socket2::{Domain, Protocol, Socket, Type};
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -609,7 +609,7 @@ async fn udp_events_real_network() {
 /// Test two runtimes binding to the same SD port (SO_REUSEPORT)
 #[tokio::test]
 async fn udp_two_runtimes_same_sd_port() {
-    let sd_port = 30490;
+    let _sd_port = 30490;
 
     // Both runtimes bind to INADDR_ANY on the SD multicast port
     // This tests SO_REUSEPORT functionality

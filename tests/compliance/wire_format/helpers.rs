@@ -7,6 +7,7 @@
 //! from `recentip::wire` to allow proper verification of wire format compliance.
 //! The parsing logic here may mirror what the library does, but it's a separate
 //! implementation to catch any bugs in the library's wire format handling.
+#![allow(dead_code, unused_imports, unused_macros)]
 
 pub use recentip::handle::ServiceEvent;
 pub use recentip::prelude::*;
