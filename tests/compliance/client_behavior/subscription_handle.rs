@@ -4,7 +4,6 @@ use std::{
 };
 
 use crate::helpers::DEFAULT_SD_MULTICAST;
-use recentip::config::DEFAULT_SD_PORT;
 use recentip::{EventId, EventgroupId, InstanceId, OfferedService};
 use tracing::Instrument;
 

@@ -29,7 +29,7 @@
 
 use bytes::{BufMut, BytesMut};
 use recentip::prelude::*;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::time::Duration;
 
 use crate::helpers::DEFAULT_SD_MULTICAST;
@@ -55,7 +55,6 @@ fn parse_header_wire(data: &[u8]) -> Option<recentip::wire::Header> {
 
 /// Helper to parse SD message
 fn parse_sd_message(data: &[u8]) -> Option<(recentip::wire::Header, recentip::wire::SdMessage)> {
-    use bytes::Buf;
     use recentip::wire::SdMessage;
     let mut buf = &data[..];
     let header = recentip::wire::Header::parse(&mut buf)?;

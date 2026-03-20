@@ -8,7 +8,6 @@ use recentip::wire::{SD_METHOD_ID, SD_SERVICE_ID, SdMessage};
 
 // Re-export wire types commonly needed in tests
 pub use recentip::wire::Header;
-pub use recentip::wire::MessageType;
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
@@ -20,14 +19,6 @@ pub(crate) use covers;
 
 // Wire values for TestService
 pub const TEST_SERVICE_ID: u16 = 0x1234;
-
-/// Helper to parse a SOME/IP header from raw bytes
-pub fn parse_header(data: &[u8]) -> Option<Header> {
-    if data.len() < Header::SIZE {
-        return None;
-    }
-    Header::parse(&mut Bytes::copy_from_slice(data))
-}
 
 /// Helper to parse an SD message (header + payload) from raw bytes
 pub fn parse_sd_message(data: &[u8]) -> Option<(Header, SdMessage)> {

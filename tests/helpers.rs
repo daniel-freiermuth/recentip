@@ -1,3 +1,9 @@
+//! Test helper utilities shared across all test suites.
+//!
+//! This module provides common test infrastructure that may not be used by all test
+//! configurations. Dead code warnings are expected here and suppressed.
+#![allow(dead_code, unused_imports, unused_macros)]
+
 use bytes::{Bytes, BytesMut};
 use recentip::ServiceOffering;
 use recentip::config::{MulticastAddress, UnicastAddress};

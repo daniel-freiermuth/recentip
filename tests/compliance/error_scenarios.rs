@@ -1807,7 +1807,7 @@ fn request_on_subscriber_tcp_connection_is_ignored() {
         let sd_multicast: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
         let mut buf = vec![0u8; 65535];
         let mut multicast_session = 1u16;
-        let mut unicast_session = 1u16;
+        let unicast_session = 1u16;
 
         // Send periodic SD offers until the client subscribes.
         // A single up-front offer would be lost if the client hasn't joined multicast yet.
@@ -1853,7 +1853,7 @@ fn request_on_subscriber_tcp_connection_is_ignored() {
             .ttl(3000)
             .session_id(unicast_session)
             .build();
-        unicast_session += 1;
+        // unicast_session += 1;
         sd_socket.send_to(&ack, subscribe_from).await?;
 
         // Wait for the TCP connection to be established.
@@ -2001,7 +2001,7 @@ fn request_on_subscriber_udp_socket_is_ignored() {
         let sd_multicast: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
         let mut buf = vec![0u8; 65535];
         let mut multicast_session = 1u16;
-        let mut unicast_session = 1u16;
+        let unicast_session = 1u16;
 
         // Periodically offer SERVER_SVC_ID (UDP endpoint) until B subscribes.
         let mut last_offer = tokio::time::Instant::now() - Duration::from_secs(10);
@@ -2045,7 +2045,7 @@ fn request_on_subscriber_udp_socket_is_ignored() {
             .ttl(3000)
             .session_id(unicast_session)
             .build();
-        unicast_session += 1;
+        // unicast_session += 1;
         sd_socket.send_to(&ack, subscribe_from).await?;
 
         // Give B time to process the ACK.
@@ -2193,7 +2193,7 @@ fn notification_on_server_tcp_connection_is_ignored() {
         let sd_multicast: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
         let mut buf = vec![0u8; 65535];
         let mut mc_session = 1u16;
-        let mut uc_session = 1u16;
+        let uc_session = 1u16;
 
         // Accept B's TCP connection (B connects before sending SubscribeEventgroup)
         // and receive the SD subscribe — handle both concurrently.
@@ -2246,7 +2246,7 @@ fn notification_on_server_tcp_connection_is_ignored() {
             .ttl(3000)
             .session_id(uc_session)
             .build();
-        uc_session += 1;
+        // uc_session += 1;
         sd_socket.send_to(&ack, subscribe_from).await?;
 
         // Give B time to process the ACK and finalise the subscription.
