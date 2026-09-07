@@ -447,53 +447,53 @@ pub fn handle_subscribe_request(
 
     // Validate that endpoint options contain valid, routable IP addresses
     // Reject unspecified (0.0.0.0) addresses - clients must configure their actual IP
-    if let Some(ep) = client_udp_endpoint {
-        if ep.ip().is_unspecified() {
-            tracing::warn!(
-                "Rejecting subscription for {:04x}:{:04x} eventgroup {:04x} from {}: \
-                 endpoint option has unspecified IP address (0.0.0.0)",
-                entry.service_id,
-                entry.instance_id,
-                entry.eventgroup_id,
-                from
-            );
+    if let Some(ep) = client_udp_endpoint
+        && ep.ip().is_unspecified()
+    {
+        tracing::warn!(
+            "Rejecting subscription for {:04x}:{:04x} eventgroup {:04x} from {}: \
+             endpoint option has unspecified IP address (0.0.0.0)",
+            entry.service_id,
+            entry.instance_id,
+            entry.eventgroup_id,
+            from
+        );
 
-            let mut nack = SdMessage::new(state.sd_flags(true));
-            nack.add_entry(SdEntry::subscribe_eventgroup_nack(
-                entry.service_id,
-                entry.instance_id,
-                entry.major_version,
-                entry.eventgroup_id,
-                entry.counter,
-            ));
+        let mut nack = SdMessage::new(state.sd_flags(true));
+        nack.add_entry(SdEntry::subscribe_eventgroup_nack(
+            entry.service_id,
+            entry.instance_id,
+            entry.major_version,
+            entry.eventgroup_id,
+            entry.counter,
+        ));
 
-            state.queue_unicast_sd(nack, from);
-            return;
-        }
+        state.queue_unicast_sd(nack, from);
+        return;
     }
-    if let Some(ep) = client_tcp_endpoint {
-        if ep.ip().is_unspecified() {
-            tracing::warn!(
-                "Rejecting subscription for {:04x}:{:04x} eventgroup {:04x} from {}: \
-                 endpoint option has unspecified IP address (0.0.0.0)",
-                entry.service_id,
-                entry.instance_id,
-                entry.eventgroup_id,
-                from
-            );
+    if let Some(ep) = client_tcp_endpoint
+        && ep.ip().is_unspecified()
+    {
+        tracing::warn!(
+            "Rejecting subscription for {:04x}:{:04x} eventgroup {:04x} from {}: \
+             endpoint option has unspecified IP address (0.0.0.0)",
+            entry.service_id,
+            entry.instance_id,
+            entry.eventgroup_id,
+            from
+        );
 
-            let mut nack = SdMessage::new(state.sd_flags(true));
-            nack.add_entry(SdEntry::subscribe_eventgroup_nack(
-                entry.service_id,
-                entry.instance_id,
-                entry.major_version,
-                entry.eventgroup_id,
-                entry.counter,
-            ));
+        let mut nack = SdMessage::new(state.sd_flags(true));
+        nack.add_entry(SdEntry::subscribe_eventgroup_nack(
+            entry.service_id,
+            entry.instance_id,
+            entry.major_version,
+            entry.eventgroup_id,
+            entry.counter,
+        ));
 
-            state.queue_unicast_sd(nack, from);
-            return;
-        }
+        state.queue_unicast_sd(nack, from);
+        return;
     }
 
     if let Some(offered) = state.offered.get(&key) {
@@ -666,31 +666,31 @@ pub fn handle_unsubscribe_request(
 
         // Validate that endpoint options contain valid, routable IP addresses
         // Reject unspecified (0.0.0.0) addresses
-        if let Some(ep) = client_udp_endpoint {
-            if ep.ip().is_unspecified() {
-                tracing::warn!(
-                    "Rejecting unsubscribe for {:04x}:{:04x} eventgroup {:04x} from {}: \
-                     endpoint option has unspecified IP address (0.0.0.0)",
-                    entry.service_id,
-                    entry.instance_id,
-                    entry.eventgroup_id,
-                    from
-                );
-                return;
-            }
+        if let Some(ep) = client_udp_endpoint
+            && ep.ip().is_unspecified()
+        {
+            tracing::warn!(
+                "Rejecting unsubscribe for {:04x}:{:04x} eventgroup {:04x} from {}: \
+                 endpoint option has unspecified IP address (0.0.0.0)",
+                entry.service_id,
+                entry.instance_id,
+                entry.eventgroup_id,
+                from
+            );
+            return;
         }
-        if let Some(ep) = client_tcp_endpoint {
-            if ep.ip().is_unspecified() {
-                tracing::warn!(
-                    "Rejecting unsubscribe for {:04x}:{:04x} eventgroup {:04x} from {}: \
-                     endpoint option has unspecified IP address (0.0.0.0)",
-                    entry.service_id,
-                    entry.instance_id,
-                    entry.eventgroup_id,
-                    from
-                );
-                return;
-            }
+        if let Some(ep) = client_tcp_endpoint
+            && ep.ip().is_unspecified()
+        {
+            tracing::warn!(
+                "Rejecting unsubscribe for {:04x}:{:04x} eventgroup {:04x} from {}: \
+                 endpoint option has unspecified IP address (0.0.0.0)",
+                entry.service_id,
+                entry.instance_id,
+                entry.eventgroup_id,
+                from
+            );
+            return;
         }
 
         let Some((client_endpoint, transport)) = offered
@@ -788,10 +788,9 @@ pub fn handle_subscribe_ack(entry: &SdEntry, state: &mut RuntimeState) {
                 if all_acked {
                     // Remove from multi_eventgroup_subscriptions and send success
                     if let Some(completed) = state.multi_eventgroup_subscriptions.remove(&multi_key)
+                        && let Some(response) = completed.response
                     {
-                        if let Some(response) = completed.response {
-                            let _ = response.send(Ok(pending.subscription_id));
-                        }
+                        let _ = response.send(Ok(pending.subscription_id));
                     }
                 }
                 // If not all ACKed yet, wait for more ACKs

@@ -1112,10 +1112,9 @@ impl SdMessage {
                 port,
                 protocol,
             }) = self.options.get(i)
+                && *protocol == target_protocol
             {
-                if *protocol == target_protocol {
-                    return Some(SocketAddrV4::new(*addr, *port));
-                }
+                return Some(SocketAddrV4::new(*addr, *port));
             }
         }
 
@@ -1128,10 +1127,9 @@ impl SdMessage {
                 port,
                 protocol,
             }) = self.options.get(i)
+                && *protocol == target_protocol
             {
-                if *protocol == target_protocol {
-                    return Some(SocketAddrV4::new(*addr, *port));
-                }
+                return Some(SocketAddrV4::new(*addr, *port));
             }
         }
 

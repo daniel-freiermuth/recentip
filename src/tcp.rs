@@ -241,14 +241,14 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         let local_addr = stream.local_addr()?;
 
         // Apply client-side keepalive if configured
-        if let Some(ka) = &self.keepalive_client {
-            if let Err(e) = stream.set_keepalive(ka) {
-                tracing::warn!(
-                    "Failed to set TCP keepalive on client connection to {}: {}",
-                    target,
-                    e
-                );
-            }
+        if let Some(ka) = &self.keepalive_client
+            && let Err(e) = stream.set_keepalive(ka)
+        {
+            tracing::warn!(
+                "Failed to set TCP keepalive on client connection to {}: {}",
+                target,
+                e
+            );
         }
 
         // Allocate unique connection ID for cleanup verification
@@ -345,10 +345,10 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         );
 
         for key in keys_to_close {
-            if let Some((_, cell)) = self.connections.remove(&key) {
-                if let Some(state) = cell.get() {
-                    state.task_handle.abort();
-                }
+            if let Some((_, cell)) = self.connections.remove(&key)
+                && let Some(state) = cell.get()
+            {
+                state.task_handle.abort();
             }
         }
     }
@@ -579,13 +579,13 @@ impl<T: TcpStream> TcpServer<T> {
                                 );
 
                                 // Apply server-side keepalive if configured
-                                if let Some(ka) = &keepalive_server {
-                                    if let Err(e) = stream.set_keepalive(ka) {
-                                        tracing::warn!(
-                                            "Failed to set TCP keepalive on accepted connection from {}: {}",
-                                            peer_addr, e
-                                        );
-                                    }
+                                if let Some(ka) = &keepalive_server
+                                    && let Err(e) = stream.set_keepalive(ka)
+                                {
+                                    tracing::warn!(
+                                        "Failed to set TCP keepalive on accepted connection from {}: {}",
+                                        peer_addr, e
+                                    );
                                 }
 
                                 // Create per-connection response channel
