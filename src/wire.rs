@@ -984,12 +984,9 @@ impl SdMessage {
         let mut entries = Vec::new();
         let mut entries_consumed = 0;
         while entries_consumed + SdEntry::SIZE <= entries_len {
-            if let Some(entry) = SdEntry::parse(buf) {
-                entries.push(entry);
-                entries_consumed += SdEntry::SIZE;
-            } else {
-                return None;
-            }
+            let entry = SdEntry::parse(buf)?;
+            entries.push(entry);
+            entries_consumed += SdEntry::SIZE;
         }
         // Skip any remaining bytes in entries array
         if entries_consumed < entries_len {

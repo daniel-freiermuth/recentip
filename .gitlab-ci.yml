@@ -26,7 +26,7 @@ variables:
 
 # Base image for Rust jobs
 .rust-base:
-  image: rust:1.92
+  image: rust:1.98
   <<: *rust-cache
   before_script:
     - rustup component add clippy rustfmt
@@ -62,6 +62,7 @@ test:
   stage: test
   script:
     - cargo install cargo-llvm-cov cargo-nextest --locked
+    - rustup toolchain install nightly --profile minimal
     - cargo +nightly llvm-cov nextest --no-fail-fast --all-features --branch --cobertura --output-path coverage.xml
     - cargo llvm-cov report --summary-only
   coverage: '/TOTAL.*\s+(\d+\.\d+)%/'

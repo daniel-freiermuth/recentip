@@ -7,6 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing;
 
 impl UdpSocket for tokio::net::UdpSocket {
+    #[allow(clippy::unused_async_trait_impl)] // trait requires Future; this impl is sync
     async fn bind(addr: SocketAddrV4) -> io::Result<Self> {
         // Use socket2 to set SO_REUSEPORT before binding.
         // This allows multiple processes/runtimes to share the same port,
