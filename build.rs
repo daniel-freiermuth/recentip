@@ -382,7 +382,7 @@ fn generate_compliance_doc(
 
         // Truncate summary to ~60 chars
         let summary = if req.text.len() > 60 {
-            format!("{}...", &req.text.chars().take(60).collect::<String>())
+            format!("{}...", req.text.chars().take(60).collect::<String>())
         } else {
             req.text.clone()
         };
