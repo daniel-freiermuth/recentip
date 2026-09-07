@@ -11,6 +11,7 @@
 //!
 //! - `runtime_shutdown_required`: Warns when `Runtime` is used without calling `shutdown()`
 
+extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_lint;
 extern crate rustc_middle;
@@ -22,25 +23,24 @@ use rustc_hir::intravisit::{walk_body, walk_expr, Visitor};
 use rustc_hir::{Expr, ExprKind, HirId, LetStmt, PatKind, QPath};
 use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_middle::ty::{Ty, TyKind};
-use rustc_session::declare_lint_pass;
 use rustc_span::Span;
 
 dylint_linting::dylint_library!();
 
 /// Register all lints provided by this crate
 #[doc(hidden)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint::LintStore) {
     dylint_linting::init_config(sess);
     lint_store.register_lints(&[RUNTIME_SHUTDOWN_REQUIRED]);
-    lint_store.register_late_pass(|_| Box::new(RuntimeShutdownRequired));
+    lint_store.register_late_lint_pass(Box::new(|_| Box::new(RuntimeShutdownRequired)));
 }
 
 // ============================================================================
 // RUNTIME_SHUTDOWN_REQUIRED LINT
 // ============================================================================
 
-rustc_session::declare_lint! {
+rustc_lint::declare_lint! {
     /// ### What it does
     ///
     /// Checks for `someip_runtime::Runtime` variables that are not explicitly
@@ -83,7 +83,7 @@ rustc_session::declare_lint! {
     "someip_runtime::Runtime should be explicitly shut down with .shutdown().await"
 }
 
-declare_lint_pass!(RuntimeShutdownRequired => [RUNTIME_SHUTDOWN_REQUIRED]);
+rustc_lint::declare_lint_pass!(RuntimeShutdownRequired => [RUNTIME_SHUTDOWN_REQUIRED]);
 
 impl<'tcx> LateLintPass<'tcx> for RuntimeShutdownRequired {
     fn check_fn(
@@ -157,23 +157,41 @@ impl<'a, 'tcx> RuntimeUsageVisitor<'a, 'tcx> {
     fn report_missing_shutdowns(&self) {
         for (name, span, _, has_shutdown) in &self.runtime_bindings {
             if !has_shutdown {
-                self.cx.span_lint(
+                self.cx.opt_span_lint(
                     RUNTIME_SHUTDOWN_REQUIRED,
-                    *span,
-                    |diag| {
-                        diag.primary_message(format!(
-                            "Runtime `{}` is dropped without calling `.shutdown().await`",
-                            name
-                        ));
-                        diag.help(
-                            "call `runtime.shutdown().await` before dropping to ensure pending \
-                             RPC responses are sent. Alternatively, enable the `strict-shutdown` \
-                             feature to panic on drop without shutdown."
-                        );
-                    }
+                    Some(*span),
+                    MissingShutdownDiag { name: name.clone() },
                 );
             }
         }
+    }
+}
+
+/// Structured diagnostic for the missing-shutdown lint warning
+struct MissingShutdownDiag {
+    name: String,
+}
+
+impl<'a> rustc_errors::Diagnostic<'a, ()> for MissingShutdownDiag {
+    fn into_diag(
+        self,
+        dcx: rustc_errors::DiagCtxtHandle<'a>,
+        level: rustc_errors::Level,
+    ) -> rustc_errors::Diag<'a, ()> {
+        let mut diag = rustc_errors::Diag::new(
+            dcx,
+            level,
+            format!(
+                "Runtime `{}` is dropped without calling `.shutdown().await`",
+                self.name
+            ),
+        );
+        diag.help(
+            "call `runtime.shutdown().await` before dropping to ensure pending \
+             RPC responses are sent. Alternatively, enable the `strict-shutdown` \
+             feature to panic on drop without shutdown.",
+        );
+        diag
     }
 }
 
@@ -236,7 +254,6 @@ impl<'a, 'tcx> RuntimeUsageVisitor<'a, 'tcx> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn ui_tests() {
