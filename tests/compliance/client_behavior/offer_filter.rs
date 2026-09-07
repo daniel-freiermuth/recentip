@@ -10,13 +10,13 @@
 //! # Requirements Covered
 //! - feat_req_someipsd_1135: Ignore entries with topologically incorrect endpoint IPs
 
-use super::helpers::{build_sd_offer_with_session, covers, parse_sd_message, TEST_SERVICE_ID};
+use super::helpers::{TEST_SERVICE_ID, build_sd_offer_with_session, covers, parse_sd_message};
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// feat_req_someipsd_1135: Client ignores OfferService with unspecified endpoint IP (0.0.0.0)

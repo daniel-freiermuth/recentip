@@ -50,7 +50,7 @@ use tokio::sync::mpsc;
 
 use crate::net::{TcpListener, TcpStream};
 use crate::wire::{
-    is_magic_cookie, magic_cookie_client, magic_cookie_server, parse_someip_length, Header,
+    Header, is_magic_cookie, magic_cookie_client, magic_cookie_server, parse_someip_length,
 };
 
 /// Message received from a TCP connection (client-side response or server-side request)

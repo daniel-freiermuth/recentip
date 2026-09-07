@@ -4,7 +4,7 @@
 //! parse responses, and set up test infrastructure.
 
 use bytes::Bytes;
-use recentip::wire::{SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
+use recentip::wire::{SD_METHOD_ID, SD_SERVICE_ID, SdMessage};
 
 // Re-export wire types commonly needed in tests
 pub use recentip::wire::Header;

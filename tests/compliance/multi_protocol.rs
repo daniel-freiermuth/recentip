@@ -32,8 +32,8 @@ use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 
 use recentip::Transport;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 /// Macro for documenting which spec requirements a test covers

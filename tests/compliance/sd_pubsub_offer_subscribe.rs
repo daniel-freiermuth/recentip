@@ -31,10 +31,10 @@ use crate::helpers::DEFAULT_SD_MULTICAST;
 use bytes::Bytes;
 use recentip::prelude::*;
 
-use recentip::wire::{Header, SdEntryType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
+use recentip::wire::{Header, SD_METHOD_ID, SD_SERVICE_ID, SdEntryType, SdMessage};
 use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 /// Coverage tracking macro

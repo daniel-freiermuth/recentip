@@ -329,8 +329,8 @@ fn notification_message_type() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     let event_received = Arc::new(AtomicBool::new(false));
     let event_received_clone = event_received.clone();

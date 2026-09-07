@@ -59,7 +59,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
 use super::command::ServiceRequest;
-use super::sd::{build_stop_offer_message, Action};
+use super::sd::{Action, build_stop_offer_message};
 use super::state::{
     OfferedService, PendingServerResponse, RpcMessage, RpcSendMessage, RpcTransportSender,
     RuntimeState, ServiceKey, SubscriberKey,

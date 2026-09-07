@@ -34,9 +34,9 @@ use crate::error::{Error, Result};
 use crate::handles::{FindBuilder, ServiceOffering};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::runtime::{
+    Command,
     event_loop::runtime_task,
     state::{RpcMessage, RpcSendMessage, RuntimeState},
-    Command,
 };
 use crate::tcp::{TcpCleanupRequest, TcpConnectionPool, TcpMessage};
 use crate::{InstanceId, SdEvent, ServiceId};

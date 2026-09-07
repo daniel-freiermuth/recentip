@@ -19,10 +19,10 @@
 //! - feat_req_someip_702: Multiple messages per segment supported
 //! - feat_req_someipsd_872: Reboot detection triggers TCP reset
 
-use crate::helpers::configure_tracing;
 use crate::helpers::DEFAULT_SD_MULTICAST;
+use crate::helpers::configure_tracing;
 use crate::wire_format::helpers::{
-    parse_sd_packet, ParsedSdMessage, SdEntryType, SdOfferBuilder, SdSubscribeAckBuilder,
+    ParsedSdMessage, SdEntryType, SdOfferBuilder, SdSubscribeAckBuilder, parse_sd_packet,
 };
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
@@ -1156,8 +1156,8 @@ fn tcp_nodelay_enabled() {
 /// with TCP endpoints is stopped (feat_req_someipsd_872).
 #[test_log::test]
 fn tcp_cleanup_on_server_stop_offer() {
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use tokio::io::AsyncReadExt;
 
     let tcp_connection_opened = Arc::new(AtomicBool::new(false));
@@ -1369,8 +1369,8 @@ fn tcp_cleanup_on_server_stop_offer() {
 /// client-side cleanup, allowing fresh connections after server restart.
 #[test]
 fn tcp_cleanup_after_server_crash_allows_reconnection() {
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     configure_tracing();
 
@@ -1577,8 +1577,8 @@ fn tcp_cleanup_after_server_crash_allows_reconnection() {
 /// This tests that runtime shutdown triggers proper TCP cleanup.
 #[test_log::test]
 fn tcp_connection_closed_on_client_shutdown() {
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::io::AsyncReadExt;
 
     let tcp_connection_opened = Arc::new(AtomicBool::new(false));
@@ -1946,9 +1946,9 @@ fn reboot_clears_old_services_offers_new() {
 /// - feat_req_someipsd_872: Server resets TCP connections on client reboot
 #[test_log::test]
 fn server_detects_client_reboot_clears_subscriptions() {
-    use crate::wire_format::helpers::{ParsedHeader, SdSubscribeBuilder, SOMEIP_HEADER_SIZE};
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use crate::wire_format::helpers::{ParsedHeader, SOMEIP_HEADER_SIZE, SdSubscribeBuilder};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use tokio::io::AsyncReadExt;
 
     covers!(feat_req_someipsd_871, feat_req_someipsd_872);
@@ -2438,8 +2438,8 @@ fn client_detects_server_reboot_from_subscribe_ack_session_regression() {
     configure_tracing();
 
     use crate::wire_format::helpers::SomeIpPacketBuilder;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use tokio::io::AsyncWriteExt;
 
     covers!(feat_req_someipsd_871, feat_req_someipsd_872);
@@ -2817,8 +2817,8 @@ fn client_detects_server_reboot_closes_server_tcp_connections() {
     configure_tracing();
 
     use crate::wire_format::helpers::{SdSubscribeBuilder, SomeIpPacketBuilder};
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use tokio::io::AsyncWriteExt;
 
     covers!(feat_req_someipsd_871, feat_req_someipsd_872);
@@ -3361,8 +3361,13 @@ fn client_detects_server_reboot_closes_server_tcp_connections() {
     let tcp_was_closed = server_tcp_closed.load(Ordering::SeqCst);
     let rpc_was_closed = rpc_tcp_closed.load(Ordering::SeqCst);
 
-    tracing::info!("Test results: Phase 1 events={}, Phase 2 events={}, server_tcp_closed={}, rpc_tcp_closed={}",
-        p1_events, p2_events, tcp_was_closed, rpc_was_closed);
+    tracing::info!(
+        "Test results: Phase 1 events={}, Phase 2 events={}, server_tcp_closed={}, rpc_tcp_closed={}",
+        p1_events,
+        p2_events,
+        tcp_was_closed,
+        rpc_was_closed
+    );
 
     assert!(
         p1_events >= 3,
@@ -3374,7 +3379,10 @@ fn client_detects_server_reboot_closes_server_tcp_connections() {
         "Phase 2: Should receive events after re-subscribe despite reboot detection. Got {}",
         p2_events
     );
-    assert!(tcp_was_closed, "Client should have closed server-side TCP connection (subscription) after detecting reboot");
+    assert!(
+        tcp_was_closed,
+        "Client should have closed server-side TCP connection (subscription) after detecting reboot"
+    );
     assert!(
         rpc_was_closed,
         "Client should have closed server-side TCP connection (RPC) after detecting reboot"
@@ -3383,9 +3391,9 @@ fn client_detects_server_reboot_closes_server_tcp_connections() {
 
 #[test_log::test]
 fn server_detects_client_reboot_clears_subscriptions_port_reuse() {
-    use crate::wire_format::helpers::{ParsedHeader, SdSubscribeBuilder, SOMEIP_HEADER_SIZE};
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use crate::wire_format::helpers::{ParsedHeader, SOMEIP_HEADER_SIZE, SdSubscribeBuilder};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use tokio::io::AsyncReadExt;
 
     covers!(feat_req_someipsd_871, feat_req_someipsd_872);
@@ -3857,8 +3865,8 @@ fn server_detects_client_reboot_clears_subscriptions_port_reuse() {
 #[test_log::test]
 fn client_closes_tcp_on_server_reboot_detection() {
     use crate::wire_format::helpers::SomeIpPacketBuilder;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     covers!(feat_req_someipsd_872);
@@ -4142,8 +4150,8 @@ fn client_detects_server_reboot_tcp_connections() {
     configure_tracing();
 
     use crate::wire_format::helpers::{SdSubscribeBuilder, SomeIpPacketBuilder};
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use tokio::io::AsyncWriteExt;
 
     covers!(feat_req_someipsd_871, feat_req_someipsd_872);

@@ -11,14 +11,14 @@
 //! - feat_req_someipsd_1168: Server shall not send duplicate events for overlapping eventgroups
 
 use super::helpers::{
-    build_sd_subscribe_with_tcp_endpoint, build_sd_subscribe_with_udp_endpoint, covers,
-    parse_header, parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION,
+    TEST_SERVICE_ID, TEST_SERVICE_VERSION, build_sd_subscribe_with_tcp_endpoint,
+    build_sd_subscribe_with_udp_endpoint, covers, parse_header, parse_sd_message,
 };
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
 
-use recentip::wire::MessageType;
 use recentip::ServiceEvent;
+use recentip::wire::MessageType;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;

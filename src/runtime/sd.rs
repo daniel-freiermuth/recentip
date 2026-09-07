@@ -64,9 +64,9 @@ use super::state::{
     DiscoveredService, MultiEventgroupSubscriptionKey, OfferedService, PendingServerResponse,
     PendingSubscriptionKey, RuntimeState, ServerSubscription, ServiceKey, SubscriberKey,
 };
-use crate::config::{Transport, SD_TTL_INFINITE};
-use crate::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
 use crate::OfferedEndpoints;
+use crate::config::{SD_TTL_INFINITE, Transport};
+use crate::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
 
 // ============================================================================
 // ACTION TYPE
@@ -303,14 +303,14 @@ pub fn handle_offer(
         // Use this subscription's local endpoint for renewal
         let endpoint_for_subscribe = SocketAddrV4::new(endpoint_ip, sub.local_endpoint.port());
         tracing::debug!(
-                "Queueing offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroups {:?} via {:?} (port {}) for time-based clustering",
-                entry.service_id,
-                entry.instance_id,
-                entry.major_version,
-                sub.eventgroup_id,
-                sub.transport,
-                endpoint_for_subscribe.port()
-            );
+            "Queueing offer-triggered subscription renewal for {:04x}:{:04x} v{} eventgroups {:?} via {:?} (port {}) for time-based clustering",
+            entry.service_id,
+            entry.instance_id,
+            entry.major_version,
+            sub.eventgroup_id,
+            sub.transport,
+            endpoint_for_subscribe.port()
+        );
 
         // Build SubscribeEventgroup message with all eventgroups
         let msg = build_subscribe_message(

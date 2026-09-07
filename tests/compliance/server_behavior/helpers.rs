@@ -4,7 +4,7 @@
 //! parse responses, and set up test infrastructure.
 
 use bytes::Bytes;
-use recentip::wire::{Header, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
+use recentip::wire::{Header, SD_METHOD_ID, SD_SERVICE_ID, SdMessage};
 
 /// Macro for documenting which spec requirements a test covers
 macro_rules! covers {
