@@ -11,6 +11,7 @@
 //!
 //! - `runtime_shutdown_required`: Warns when `Runtime` is used without calling `shutdown()`
 
+extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_lint;
 extern crate rustc_middle;
@@ -33,7 +34,7 @@ dylint_linting::dylint_library!();
 pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint::LintStore) {
     dylint_linting::init_config(sess);
     lint_store.register_lints(&[RUNTIME_SHUTDOWN_REQUIRED]);
-    lint_store.register_late_pass(|_| Box::new(RuntimeShutdownRequired));
+    lint_store.register_late_lint_pass(Box::new(|_| Box::new(RuntimeShutdownRequired)));
 }
 
 // ============================================================================
@@ -157,10 +158,10 @@ impl<'a, 'tcx> RuntimeUsageVisitor<'a, 'tcx> {
     fn report_missing_shutdowns(&self) {
         for (name, span, _, has_shutdown) in &self.runtime_bindings {
             if !has_shutdown {
-                self.cx.span_lint(
+                self.cx.emit_span_lint(
                     RUNTIME_SHUTDOWN_REQUIRED,
                     *span,
-                    |diag| {
+                    rustc_errors::DiagDecorator(|diag| {
                         diag.primary_message(format!(
                             "Runtime `{}` is dropped without calling `.shutdown().await`",
                             name
@@ -170,7 +171,7 @@ impl<'a, 'tcx> RuntimeUsageVisitor<'a, 'tcx> {
                              RPC responses are sent. Alternatively, enable the `strict-shutdown` \
                              feature to panic on drop without shutdown."
                         );
-                    }
+                    })
                 );
             }
         }
