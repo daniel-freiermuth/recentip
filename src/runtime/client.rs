@@ -405,19 +405,17 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     // With a single port per attempt, just check if it's already owned by this
     // service. If so, fail immediately — SubscriptionBuilder retries with the
     // next policy entry.
-    if service_already_has_subscription {
-        if let PortSpec::Fixed(p) = local_port {
-            if state
-                .subscription_endpoint_usage
-                .get(&p)
-                .is_some_and(|svcs| svcs.contains(&(service_id.value(), instance_id.value())))
-            {
-                let _ = result_response_channel.send(Err(crate::error::Error::Io(
-                    std::io::Error::from(std::io::ErrorKind::AddrInUse),
-                )));
-                return;
-            }
-        }
+    if service_already_has_subscription
+        && let PortSpec::Fixed(p) = local_port
+        && state
+            .subscription_endpoint_usage
+            .get(&p)
+            .is_some_and(|svcs| svcs.contains(&(service_id.value(), instance_id.value())))
+    {
+        let _ = result_response_channel.send(Err(crate::error::Error::Io(
+            std::io::Error::from(std::io::ErrorKind::AddrInUse),
+        )));
+        return;
     }
 
     let endpoint_for_subscribe = if service_already_has_subscription {
@@ -871,20 +869,20 @@ pub fn handle_unsubscribe(
 
     // If this port is no longer used by any subscription for this service, unregister it
     // This allows the port to be reused by future subscriptions
-    if !port_still_in_use {
-        if let Some(endpoint) = removed_endpoint {
-            state.unregister_subscription_endpoint(
-                endpoint.port(),
-                service_id.value(),
-                instance_id.value(),
-            );
-            tracing::debug!(
-                "Unregistered service {:04x}:{:04x} from endpoint port {} (no more subscriptions using this port)",
-                service_id.value(),
-                instance_id.value(),
-                endpoint.port()
-            );
-        }
+    if !port_still_in_use
+        && let Some(endpoint) = removed_endpoint
+    {
+        state.unregister_subscription_endpoint(
+            endpoint.port(),
+            service_id.value(),
+            instance_id.value(),
+        );
+        tracing::debug!(
+            "Unregistered service {:04x}:{:04x} from endpoint port {} (no more subscriptions using this port)",
+            service_id.value(),
+            instance_id.value(),
+            endpoint.port()
+        );
     }
 
     // TODO looks fishy: We should unsub for every port

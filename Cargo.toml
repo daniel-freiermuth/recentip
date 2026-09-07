@@ -1,7 +1,7 @@
 [package]
 name = "recentip"
 version = "0.4.0"
-edition = "2021"
+edition = "2024"
 description = "An opinionated async SOME/IP implementation for Rust — boring by design, backed by Tokio."
 license = "GPL-3.0-only"
 repository = "https://github.com/daniel-freiermuth/recentip"

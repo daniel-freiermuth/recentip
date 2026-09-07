@@ -745,7 +745,7 @@ fn split_server_tcp_pubsub() {
 
         // Randomize which subscription gets which eventgroup
         use rand::Rng;
-        let sub_a_gets_eg1 = rand::thread_rng().gen::<bool>();
+        let sub_a_gets_eg1 = rand::thread_rng().r#gen::<bool>();
         let (eg_a, eg_b) = if sub_a_gets_eg1 {
             (0x0001u16, 0x0002u16)
         } else {
