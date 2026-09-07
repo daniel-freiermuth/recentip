@@ -20,8 +20,8 @@
 use crate::helpers::configure_tracing;
 
 use super::helpers::{
-    build_sd_subscribe_ack, build_sd_subscribe_with_udp_endpoint, covers, parse_sd_flags,
-    parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION,
+    TEST_SERVICE_ID, TEST_SERVICE_VERSION, build_sd_subscribe_ack,
+    build_sd_subscribe_with_udp_endpoint, covers, parse_sd_flags, parse_sd_message,
 };
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
@@ -1145,8 +1145,8 @@ fn no_false_positive_on_session_wraparound_reboot_0() {
 
     use recentip::EventgroupId;
     use std::sync::{
-        atomic::{AtomicU32, AtomicU8, Ordering},
         Arc,
+        atomic::{AtomicU8, AtomicU32, Ordering},
     };
 
     static EVENTS_BEFORE_WRAPAROUND: AtomicU32 = AtomicU32::new(0);
@@ -1557,8 +1557,8 @@ fn detect_peer_reboot_session_equal() {
 
     use recentip::EventgroupId;
     use std::sync::{
-        atomic::{AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicU32, Ordering},
     };
 
     static EVENTS_BEFORE_REBOOT: AtomicU32 = AtomicU32::new(0);
@@ -1779,9 +1779,11 @@ fn detect_peer_reboot_session_equal() {
         "Should receive events before reboot (got {})",
         events_before
     );
-    assert_eq!(events_after, 0,
-        "Should NOT receive events after reboot detection (session stayed equal) - got {} events, expected 0", 
-        events_after);
+    assert_eq!(
+        events_after, 0,
+        "Should NOT receive events after reboot detection (session stayed equal) - got {} events, expected 0",
+        events_after
+    );
 }
 
 /// feat_req_someipsd_764: Detect reboot via session regression (case 2) - multi-peer
@@ -4886,8 +4888,8 @@ fn client_closes_tcp_on_server_reboot_flag_0_to_1() {
 
     use recentip::EventgroupId;
     use std::sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering},
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -5263,8 +5265,8 @@ fn client_keeps_tcp_on_normal_session_wraparound() {
 
     use recentip::EventgroupId;
     use std::sync::{
-        atomic::{AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicU32, Ordering},
     };
     use tokio::io::AsyncWriteExt;
 
@@ -5534,8 +5536,8 @@ fn client_closes_tcp_on_server_session_regression() {
 
     use recentip::EventgroupId;
     use std::sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering},
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -5805,9 +5807,11 @@ fn client_closes_tcp_on_server_session_regression() {
         "Should receive events before reboot (got {})",
         events_before
     );
-    assert_eq!(events_after, 0,
-        "Should NOT receive events after reboot (session regression) - TCP should be closed (got {})", 
-        events_after);
+    assert_eq!(
+        events_after, 0,
+        "Should NOT receive events after reboot (session regression) - TCP should be closed (got {})",
+        events_after
+    );
     assert!(
         TCP_CLOSED.load(Ordering::SeqCst),
         "TCP connection should be closed after session regression reboot detection"
@@ -5841,8 +5845,8 @@ fn client_tracks_session_ids_per_server_independently() {
     configure_tracing();
 
     use std::sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering},
     };
 
     static SERVER1_EVENTS_BEFORE: AtomicU32 = AtomicU32::new(0);
@@ -6246,7 +6250,11 @@ fn client_tracks_session_ids_per_server_independently() {
         "Should receive events from server2 in phase 1 (got {})",
         s2_before
     );
-    assert!(s2_after > 0, "Should CONTINUE receiving events from server2 in phase 2 - server1 reboot should not affect server2 (got {})", s2_after);
+    assert!(
+        s2_after > 0,
+        "Should CONTINUE receiving events from server2 in phase 2 - server1 reboot should not affect server2 (got {})",
+        s2_after
+    );
 }
 
 /// feat_req_someipsd_765: Per-peer session tracking (client perspective)
@@ -6258,8 +6266,8 @@ fn client_does_not_confuse_session_wraparound_between_servers() {
     covers!(feat_req_someipsd_765, feat_req_someipsd_764);
 
     use std::sync::{
-        atomic::{AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicU32, Ordering},
     };
 
     static SERVER1_EVENTS: AtomicU32 = AtomicU32::new(0);
@@ -6587,8 +6595,8 @@ fn client_tracks_reboot_flags_per_server_independently() {
     );
 
     use std::sync::{
-        atomic::{AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicU32, Ordering},
     };
 
     static SERVER1_EVENTS: AtomicU32 = AtomicU32::new(0);

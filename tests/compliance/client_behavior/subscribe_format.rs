@@ -12,15 +12,15 @@
 //! - feat_req_someip_324: Client adapts to available transport
 
 use super::helpers::{
-    build_sd_offer_dual_stack_with_session, build_sd_offer_tcp_only, build_sd_offer_with_session,
-    build_sd_subscribe_ack_with_session, covers, parse_sd_message, TEST_SERVICE_ID,
+    TEST_SERVICE_ID, build_sd_offer_dual_stack_with_session, build_sd_offer_tcp_only,
+    build_sd_offer_with_session, build_sd_subscribe_ack_with_session, covers, parse_sd_message,
 };
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 /// Verify subscribe message format for initial and subsequent subscribes

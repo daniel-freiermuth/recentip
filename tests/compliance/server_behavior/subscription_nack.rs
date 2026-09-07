@@ -10,8 +10,8 @@
 //! - feat_req_someipsd_1137: SubscribeEventgroupNack for invalid subscribes
 
 use super::helpers::{
-    build_sd_subscribe_with_udp_endpoint, covers, parse_sd_message, TEST_SERVICE_ID,
-    TEST_SERVICE_VERSION,
+    TEST_SERVICE_ID, TEST_SERVICE_VERSION, build_sd_subscribe_with_udp_endpoint, covers,
+    parse_sd_message,
 };
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;

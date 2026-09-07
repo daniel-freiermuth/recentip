@@ -21,8 +21,8 @@ use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 
 use recentip::wire::{
-    Header, SdMessage, INTERFACE_VERSION_OFFSET, PROTOCOL_VERSION, PROTOCOL_VERSION_OFFSET,
-    SD_METHOD_ID, SD_SERVICE_ID,
+    Header, INTERFACE_VERSION_OFFSET, PROTOCOL_VERSION, PROTOCOL_VERSION_OFFSET, SD_METHOD_ID,
+    SD_SERVICE_ID, SdMessage,
 };
 use std::net::SocketAddr;
 use std::time::Duration;

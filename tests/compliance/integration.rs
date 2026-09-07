@@ -411,8 +411,8 @@ fn successful_call_returns_ok() {
 /// After repair(), communication should resume.
 #[test_log::test]
 fn network_partition_handling() {
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(60))
@@ -539,8 +539,8 @@ fn network_partition_handling() {
 /// depend on network communication, which the current mock may not fully support.
 #[test_log::test]
 fn service_restart_recovery() {
-    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(60))

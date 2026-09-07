@@ -20,8 +20,8 @@ use recentip::prelude::*;
 
 use recentip::wire::{L4Protocol, SdOption};
 use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 /// Build a raw SOME/IP-SD SubscribeEventgroupNack message (ACK with TTL=0)

@@ -26,8 +26,8 @@ use crate::helpers::{configure_tracing, is_magic_cookie, magic_cookie_server, re
 #[path = "wire_format/helpers.rs"]
 mod wire_format_helpers;
 use wire_format_helpers::{
+    ParsedSdMessage, SD_METHOD_ID, SD_SERVICE_ID, SOMEIP_HEADER_SIZE, SdOfferBuilder,
     build_notification, build_response, build_sd_offer, build_sd_subscribe_ack, parse_header,
-    ParsedSdMessage, SdOfferBuilder, SD_METHOD_ID, SD_SERVICE_ID, SOMEIP_HEADER_SIZE,
 };
 
 /// Macro for documenting which spec requirements a test covers

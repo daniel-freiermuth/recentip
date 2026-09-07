@@ -15,35 +15,34 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use tokio::sync::mpsc;
 
+use crate::OfferedEndpoints;
 use crate::config::{RuntimeConfig, Transport};
 use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::runtime::ServiceAvailability;
 use crate::runtime::{
-    client,
+    Command, client,
     client_concurrent::handle_subscribe_tcp,
     sd::{
-        build_find_message, build_offer_message, handle_find_request, handle_offer,
+        Action, build_find_message, build_offer_message, handle_find_request, handle_offer,
         handle_stop_offer as handle_sd_stop_offer, handle_subscribe_ack, handle_subscribe_nack,
-        handle_subscribe_request, handle_unsubscribe_request, Action,
+        handle_subscribe_request, handle_unsubscribe_request,
     },
     server::{self, build_response},
     state::{
         PendingServerResponse, PendingSubscriptionKey, RpcMessage, RpcSendMessage, RuntimeState,
         SdChannel, ServiceKey,
     },
-    Command,
 };
 use crate::tcp::{TcpCleanupRequest, TcpConnectionPool, TcpMessage};
 use crate::wire::{
-    validate_protocol_version, Header, L4Protocol, MessageType, SdEntry, SdEntryType, SdMessage,
-    SdOption, SD_METHOD_ID, SD_SERVICE_ID,
+    Header, L4Protocol, MessageType, SD_METHOD_ID, SD_SERVICE_ID, SdEntry, SdEntryType, SdMessage,
+    SdOption, validate_protocol_version,
 };
-use crate::OfferedEndpoints;
 
 // ============================================================================
 // SUBSCRIBE STATE UPDATE TYPES
@@ -628,7 +627,9 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             // Close TCP connections related to the rebooted peer
             tracing::info!(
                 "Detected reboot of peer {}, closing TCP connections: server_ports={:?}, client_endpoints={:?}",
-                peer, server_ports, client_endpoints
+                peer,
+                server_ports,
+                client_endpoints
             );
 
             // Close exactly the client-side TCP connections that belonged to removed

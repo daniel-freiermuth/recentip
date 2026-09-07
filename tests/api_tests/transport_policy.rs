@@ -848,8 +848,8 @@ fn server_call_event_reflects_client_transport() {
 /// deferred to the first operation that requires a live transport.
 #[test_log::test]
 fn tcp_only_policy_fails_with_udp_only_server() {
-    use recentip::config::TransportPreference;
     use recentip::Error;
+    use recentip::config::TransportPreference;
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -924,8 +924,8 @@ fn tcp_only_policy_fails_with_udp_only_server() {
 /// Mirror of `tcp_only_policy_fails_with_udp_only_server`.
 #[test_log::test]
 fn udp_only_policy_fails_with_tcp_only_server() {
-    use recentip::config::TransportPreference;
     use recentip::Error;
+    use recentip::config::TransportPreference;
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1000,8 +1000,8 @@ fn udp_only_policy_fails_with_tcp_only_server() {
 /// Mirror of `tcp_only_policy_fails_with_udp_only_server` for fire-and-forget.
 #[test_log::test]
 fn tcp_only_policy_fire_and_forget_fails_with_udp_only_server() {
-    use recentip::config::TransportPreference;
     use recentip::Error;
+    use recentip::config::TransportPreference;
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1075,8 +1075,8 @@ fn tcp_only_policy_fire_and_forget_fails_with_udp_only_server() {
 /// Mirror of `udp_only_policy_fails_with_tcp_only_server` for fire-and-forget.
 #[test_log::test]
 fn udp_only_policy_fire_and_forget_fails_with_tcp_only_server() {
-    use recentip::config::TransportPreference;
     use recentip::Error;
+    use recentip::config::TransportPreference;
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1150,8 +1150,8 @@ fn udp_only_policy_fire_and_forget_fails_with_tcp_only_server() {
 /// Mirror of `tcp_only_policy_fails_with_udp_only_server` for subscriptions.
 #[test_log::test]
 fn tcp_only_policy_subscribe_fails_with_udp_only_server() {
-    use recentip::config::TransportPreference;
     use recentip::Error;
+    use recentip::config::TransportPreference;
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1224,8 +1224,8 @@ fn tcp_only_policy_subscribe_fails_with_udp_only_server() {
 /// Mirror of `udp_only_policy_fails_with_tcp_only_server` for subscriptions.
 #[test_log::test]
 fn udp_only_policy_subscribe_fails_with_tcp_only_server() {
-    use recentip::config::TransportPreference;
     use recentip::Error;
+    use recentip::config::TransportPreference;
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
@@ -1584,7 +1584,7 @@ fn fixed_port_two_services_two_servers_different_ports() {
         .expect("discovery_a timeout")
         .expect("discovery_a failed")
         .with_transport_policy(TransportPolicy::new(vec![
-            TransportPreference::udp().with_port(PORT_A)
+            TransportPreference::udp().with_port(PORT_A),
         ]));
 
         let proxy_b = tokio::time::timeout(
@@ -1595,7 +1595,7 @@ fn fixed_port_two_services_two_servers_different_ports() {
         .expect("discovery_b timeout")
         .expect("discovery_b failed")
         .with_transport_policy(TransportPolicy::new(vec![
-            TransportPreference::udp().with_port(PORT_B)
+            TransportPreference::udp().with_port(PORT_B),
         ]));
 
         let _sub_a = tokio::time::timeout(
@@ -1737,7 +1737,7 @@ fn fixed_port_two_instances_different_ports() {
         .expect("discovery instance-1 timeout")
         .expect("discovery instance-1 failed")
         .with_transport_policy(TransportPolicy::new(vec![
-            TransportPreference::udp().with_port(PORT_INST1)
+            TransportPreference::udp().with_port(PORT_INST1),
         ]));
 
         let proxy2 = tokio::time::timeout(
@@ -1748,7 +1748,7 @@ fn fixed_port_two_instances_different_ports() {
         .expect("discovery instance-2 timeout")
         .expect("discovery instance-2 failed")
         .with_transport_policy(TransportPolicy::new(vec![
-            TransportPreference::udp().with_port(PORT_INST2)
+            TransportPreference::udp().with_port(PORT_INST2),
         ]));
 
         let _sub1 = tokio::time::timeout(
@@ -4519,8 +4519,8 @@ fn sub_fixed_port_one_server_diff_service_shares_socket() {
 /// must return `Err(Error::Io(AddrInUse))`.
 #[test_log::test]
 fn sub_fixed_port_same_service_two_proxies_fails() {
-    use recentip::config::TransportPreference;
     use recentip::Error;
+    use recentip::config::TransportPreference;
 
     const PORT: u16 = 49610;
 
@@ -4630,8 +4630,8 @@ fn sub_fixed_port_same_service_two_proxies_fails() {
 /// The second `subscribe()` must return `Err(Error::Io(AddrInUse))`.
 #[test_log::test]
 fn sub_fixed_port_same_service_same_proxy_second_eg_fails() {
-    use recentip::config::TransportPreference;
     use recentip::Error;
+    use recentip::config::TransportPreference;
 
     const PORT: u16 = 49611;
 

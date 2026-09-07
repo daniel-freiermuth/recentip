@@ -58,14 +58,14 @@ use tokio::time::Instant;
 
 use super::command::ServiceAvailability;
 use super::sd::{
-    build_find_message, build_subscribe_message_multi, build_unsubscribe_message, Action,
+    Action, build_find_message, build_subscribe_message_multi, build_unsubscribe_message,
 };
 use super::state::{
     CallKey, ClientSubscription, FindRequest, MultiEventgroupSubscription,
     MultiEventgroupSubscriptionKey, PendingCall, PendingSubscription, PendingSubscriptionKey,
     RuntimeState, ServiceKey,
 };
-use crate::config::{PortSpec, Transport, DEFAULT_FIND_REPETITIONS};
+use crate::config::{DEFAULT_FIND_REPETITIONS, PortSpec, Transport};
 use crate::net::UdpSocket;
 use crate::wire::{Header, MessageType};
 use crate::{Event, EventId, OfferedEndpoints, Response, ReturnCode};
@@ -412,9 +412,9 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             .get(&p)
             .is_some_and(|svcs| svcs.contains(&(service_id.value(), instance_id.value())))
     {
-        let _ = result_response_channel.send(Err(crate::error::Error::Io(
-            std::io::Error::from(std::io::ErrorKind::AddrInUse),
-        )));
+        let _ = result_response_channel.send(Err(crate::error::Error::Io(std::io::Error::from(
+            std::io::ErrorKind::AddrInUse,
+        ))));
         return;
     }
 
@@ -526,12 +526,12 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         {
             Ok(dedicated_endpoint) => {
                 tracing::debug!(
-                        "Created dedicated UDP socket {} for subscription to {:04x}:{:04x} eventgroups {:?} (no reusable endpoint)",
-                        dedicated_endpoint,
-                        service_id.value(),
-                        instance_id.value(),
-                        eventgroup_ids
-                    );
+                    "Created dedicated UDP socket {} for subscription to {:04x}:{:04x} eventgroups {:?} (no reusable endpoint)",
+                    dedicated_endpoint,
+                    service_id.value(),
+                    instance_id.value(),
+                    eventgroup_ids
+                );
 
                 // Register this new endpoint's usage
                 state.register_subscription_endpoint(
@@ -869,9 +869,7 @@ pub fn handle_unsubscribe(
 
     // If this port is no longer used by any subscription for this service, unregister it
     // This allows the port to be reused by future subscriptions
-    if !port_still_in_use
-        && let Some(endpoint) = removed_endpoint
-    {
+    if !port_still_in_use && let Some(endpoint) = removed_endpoint {
         state.unregister_subscription_endpoint(
             endpoint.port(),
             service_id.value(),

@@ -13,7 +13,7 @@
 //! The turmoil-based tests provide comprehensive
 //! network testing with simulated separate hosts.
 
-use recentip::{config, EventId, EventgroupId, InstanceId, MethodId, ServiceEvent, Transport};
+use recentip::{EventId, EventgroupId, InstanceId, MethodId, ServiceEvent, Transport, config};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
@@ -1043,8 +1043,8 @@ async fn tcp_two_services_same_server_port_fixed_client_port_real_network() {
 /// - server-observed Subscribe v2 port == `CLIENT_TCP_PORT`.
 #[tokio::test]
 async fn tcp_same_id_diff_major_same_client_port_real_network() {
-    use recentip::config::{TransportPolicy, TransportPreference};
     use recentip::Error;
+    use recentip::config::{TransportPolicy, TransportPreference};
 
     const SVC_ID: u16 = 0x1239;
     const SERVER_TCP_PORT_V1: u16 = 19883;
@@ -1209,8 +1209,8 @@ async fn tcp_same_id_diff_major_same_client_port_real_network() {
 /// - second subscription fails with an I/O error.
 #[tokio::test]
 async fn tcp_one_service_two_subs_same_client_port_second_fails_real_network() {
-    use recentip::config::{TransportPolicy, TransportPreference};
     use recentip::Error;
+    use recentip::config::{TransportPolicy, TransportPreference};
 
     const SVC_ID: u16 = 0x123A;
     const SVC_VERSION: (u8, u32) = (1, 0);

@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use crate::helpers::configure_tracing;
 use crate::wire_format::helpers::{
-    parse_sd_packet, ParsedSdOption, SdEntryType, SdOfferBuilder, SdSubscribeAckBuilder,
-    SomeIpPacketBuilder, SD_METHOD_ID, SD_SERVICE_ID,
+    ParsedSdOption, SD_METHOD_ID, SD_SERVICE_ID, SdEntryType, SdOfferBuilder,
+    SdSubscribeAckBuilder, SomeIpPacketBuilder, parse_sd_packet,
 };
 
 /// Macro for documenting which spec requirements a test covers

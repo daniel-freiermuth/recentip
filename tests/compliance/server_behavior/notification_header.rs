@@ -15,8 +15,8 @@ use super::helpers::{
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
 
-use recentip::wire::MessageType;
 use recentip::ServiceEvent;
+use recentip::wire::MessageType;
 use std::net::SocketAddr;
 use std::time::Duration;
 

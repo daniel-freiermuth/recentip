@@ -15,7 +15,7 @@ use bytes::Bytes;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 
-use recentip::wire::{Header, MessageType, SdMessage, SD_METHOD_ID, SD_SERVICE_ID};
+use recentip::wire::{Header, MessageType, SD_METHOD_ID, SD_SERVICE_ID, SdMessage};
 use std::net::SocketAddr;
 use std::time::Duration;
 

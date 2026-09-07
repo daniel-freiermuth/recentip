@@ -52,8 +52,8 @@
 //! ```
 
 use clap::Parser;
-use recentip::prelude::*;
 use recentip::SdEvent;
+use recentip::prelude::*;
 
 /// SOME/IP Service Discovery Monitor
 ///

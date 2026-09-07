@@ -961,9 +961,11 @@ mod tests {
 
         assert!(policy.select(&OfferedEndpoints::UdpOnly(udp)).is_none());
         assert!(policy.select(&OfferedEndpoints::TcpOnly(tcp)).is_none());
-        assert!(policy
-            .select(&OfferedEndpoints::Both { udp, tcp })
-            .is_none());
+        assert!(
+            policy
+                .select(&OfferedEndpoints::Both { udp, tcp })
+                .is_none()
+        );
     }
 
     /// `with_port()` stores a `PortSpec::Fixed` in the returned `TransportSelection`.

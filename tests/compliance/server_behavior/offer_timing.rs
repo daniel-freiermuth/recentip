@@ -22,10 +22,10 @@
 //! The first few intervals may vary due to Initial/Repetition phases,
 //! so we're lenient on early intervals and strict on later ones.
 
-use super::helpers::{covers, parse_sd_message, TEST_SERVICE_ID, TEST_SERVICE_VERSION};
+use super::helpers::{TEST_SERVICE_ID, TEST_SERVICE_VERSION, covers, parse_sd_message};
+use crate::helpers::DEFAULT_SD_MULTICAST;
 #[cfg(feature = "slow-tests")]
 use crate::helpers::configure_tracing;
-use crate::helpers::DEFAULT_SD_MULTICAST;
 #[cfg(feature = "slow-tests")]
 use proptest::prelude::*;
 use recentip::prelude::*;

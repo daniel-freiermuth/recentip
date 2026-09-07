@@ -51,9 +51,9 @@
 //! required for SD endpoint option advertisement.
 
 use crate::config::{
-    clamp_ttl_to_24bit, MulticastAddress, RuntimeConfig, TcpKeepaliveConfig, Transport,
-    TransportPolicy, UnicastAddress, DEFAULT_CYCLIC_OFFER_DELAY, DEFAULT_FIND_TTL,
-    DEFAULT_OFFER_TTL, DEFAULT_SD_PORT, DEFAULT_SUBSCRIBE_TTL,
+    DEFAULT_CYCLIC_OFFER_DELAY, DEFAULT_FIND_TTL, DEFAULT_OFFER_TTL, DEFAULT_SD_PORT,
+    DEFAULT_SUBSCRIBE_TTL, MulticastAddress, RuntimeConfig, TcpKeepaliveConfig, Transport,
+    TransportPolicy, UnicastAddress, clamp_ttl_to_24bit,
 };
 use crate::error::Result;
 use crate::handles::SomeIp;

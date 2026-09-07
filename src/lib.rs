@@ -543,13 +543,13 @@ pub enum OfferedEndpoints {
 
 pub mod prelude {
     pub use crate::config::{
-        InvalidAddressError, MulticastAddress, UnicastAddress, DEFAULT_SD_PORT,
+        DEFAULT_SD_PORT, InvalidAddressError, MulticastAddress, UnicastAddress,
     };
     pub use crate::{
-        configure, ApplicationError, Error, Event, EventBuilder, EventHandle, EventId,
-        EventgroupId, InstanceId, MajorVersion, MethodConfig, MethodId, MinorVersion,
-        OfferedService, PortSpec, Response, Result, ReturnCode, RuntimeConfig, ServiceId,
-        ServiceOffering, SomeIp, SomeIpBuilder, Subscription, SubscriptionBuilder, Transport,
-        TransportPolicy, TransportPreference, TransportSelection,
+        ApplicationError, Error, Event, EventBuilder, EventHandle, EventId, EventgroupId,
+        InstanceId, MajorVersion, MethodConfig, MethodId, MinorVersion, OfferedService, PortSpec,
+        Response, Result, ReturnCode, RuntimeConfig, ServiceId, ServiceOffering, SomeIp,
+        SomeIpBuilder, Subscription, SubscriptionBuilder, Transport, TransportPolicy,
+        TransportPreference, TransportSelection, configure,
     };
 }

@@ -1,6 +1,6 @@
 use bytes::{Bytes, BytesMut};
-use recentip::config::{MulticastAddress, UnicastAddress};
 use recentip::ServiceOffering;
+use recentip::config::{MulticastAddress, UnicastAddress};
 use std::net::{IpAddr, Ipv4Addr};
 
 /// Multicast group used in turmoil-based tests and single-host loopback setups.

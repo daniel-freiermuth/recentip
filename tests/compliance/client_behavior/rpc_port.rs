@@ -16,15 +16,15 @@
 use crate::wire_format::helpers::{build_response, parse_header as parse_header_independent};
 
 use super::helpers::{
-    build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers, parse_sd_message,
-    TEST_SERVICE_ID,
+    TEST_SERVICE_ID, build_sd_offer, build_sd_offer_tcp_only, build_sd_subscribe_ack, covers,
+    parse_sd_message,
 };
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::Notify;
 
