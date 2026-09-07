@@ -1,7 +1,7 @@
-# GitHub Actions CI — mirrors the pipeline formerly in .gitlab-ci.yml
+# GitHub Actions CI — mirrors the pipeline in .gitlab-ci.yml
 #
 # Triggers: push to main, pull requests
-# Jobs: fmt, clippy, test (nextest), doc-test, requirement-coverage, build-release
+# Jobs: fmt, clippy, test (nextest + llvm-cov), doc-test, requirement-coverage, build-release
 
 name: CI
 
@@ -45,9 +45,20 @@ jobs:
         with:
           submodules: true
       - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@nextest
-      - run: cargo nextest run --all-features
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,nextest
+      - name: Run tests with coverage
+        run: cargo +nightly llvm-cov nextest --no-fail-fast --all-features --branch --cobertura --output-path coverage.xml
+      - name: Coverage summary
+        run: cargo +nightly llvm-cov report --summary-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
 
   doc-test:
     name: Doc Tests
