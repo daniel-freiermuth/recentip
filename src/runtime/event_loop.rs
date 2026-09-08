@@ -689,7 +689,7 @@ fn handle_sd_message(
         let is_unicast = (sd_message.flags & SdMessage::FLAG_UNICAST) != 0;
         if is_unicast != expected_unicast {
             tracing::warn!(
-                "SD message from {} has unexpected unicast flag (expected={}, actual={}); processing anyway",
+                "SD message from {} has unexpected unicast flag (expected={}, actual={}); dropping",
                 from,
                 expected_unicast,
                 is_unicast,
