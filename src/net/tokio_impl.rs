@@ -6,6 +6,24 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing;
 
+/// Extract an IPv4 address from a [`SocketAddr`], logging an error and falling
+/// back to `0.0.0.0:0` when an IPv6 address is encountered unexpectedly.
+///
+/// All tokio socket wrappers in this module bind to IPv4 only, so receiving an
+/// IPv6 address indicates a bug.
+fn expect_v4(addr: SocketAddr, context: &str) -> SocketAddrV4 {
+    match addr {
+        SocketAddr::V4(v4) => v4,
+        SocketAddr::V6(v6) => {
+            tracing::error!(
+                "BUG: {context} produced IPv6 address: {v6}. \
+                 Returning fallback IPv4 address."
+            );
+            SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)
+        }
+    }
+}
+
 impl UdpSocket for tokio::net::UdpSocket {
     #[allow(clippy::unused_async_trait_impl)] // trait requires Future; this impl is sync
     async fn bind(addr: SocketAddrV4) -> io::Result<Self> {
@@ -37,14 +55,7 @@ impl UdpSocket for tokio::net::UdpSocket {
     async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddrV4)> {
         Self::recv_from(self, buf)
             .await
-            .map(|(size, addr)| match addr {
-                SocketAddr::V4(v4) => (size, v4),
-                SocketAddr::V6(v6) => {
-                    tracing::error!("BUG: tokio::net::UdpSocket produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
-                    // Return 0.0.0.0:0 as a fallback; this should fail gracefully downstream
-                    (size, SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
-                }
-            })
+            .map(|(size, addr)| (size, expect_v4(addr, "tokio::net::UdpSocket::recv_from")))
     }
 
     fn join_multicast_v4(&self, multiaddr: Ipv4Addr, interface: Ipv4Addr) -> io::Result<()> {
@@ -60,13 +71,7 @@ impl UdpSocket for tokio::net::UdpSocket {
     }
 
     fn local_addr(&self) -> io::Result<SocketAddrV4> {
-        Self::local_addr(self).map(|addr| match addr {
-            SocketAddr::V4(v4) => v4,
-            SocketAddr::V6(v6) => {
-                tracing::error!("BUG: tokio::net::UdpSocket::local_addr produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
-                SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)
-            }
-        })
+        Self::local_addr(self).map(|addr| expect_v4(addr, "tokio::net::UdpSocket::local_addr"))
     }
 
     fn set_multicast_if_v4(&self, addr: Ipv4Addr) -> io::Result<()> {
@@ -109,23 +114,11 @@ impl TcpStream for tokio::net::TcpStream {
     }
 
     fn local_addr(&self) -> io::Result<SocketAddrV4> {
-        Self::local_addr(self).map(|addr| match addr {
-            SocketAddr::V4(v4) => v4,
-            SocketAddr::V6(v6) => {
-                tracing::error!("BUG: tokio::net::TcpStream::local_addr produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
-                SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)
-            }
-        })
+        Self::local_addr(self).map(|addr| expect_v4(addr, "tokio::net::TcpStream::local_addr"))
     }
 
     fn peer_addr(&self) -> io::Result<SocketAddrV4> {
-        Self::peer_addr(self).map(|addr| match addr {
-            SocketAddr::V4(v4) => v4,
-            SocketAddr::V6(v6) => {
-                tracing::error!("BUG: tokio::net::TcpStream::peer_addr produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
-                SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)
-            }
-        })
+        Self::peer_addr(self).map(|addr| expect_v4(addr, "tokio::net::TcpStream::peer_addr"))
     }
 
     fn set_keepalive(&self, config: &crate::config::TcpKeepaliveConfig) -> io::Result<()> {
@@ -160,22 +153,12 @@ impl TcpListener for tokio::net::TcpListener {
     }
 
     async fn accept(&self) -> io::Result<(Self::Stream, SocketAddrV4)> {
-        Self::accept(self).await.map(|(stream, addr)| match addr {
-            SocketAddr::V4(v4) => (stream, v4),
-            SocketAddr::V6(v6) => {
-                tracing::error!("BUG: tokio::net::TcpListener::accept produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
-                (stream, SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
-            }
-        })
+        Self::accept(self)
+            .await
+            .map(|(stream, addr)| (stream, expect_v4(addr, "tokio::net::TcpListener::accept")))
     }
 
     fn local_addr(&self) -> io::Result<SocketAddrV4> {
-        Self::local_addr(self).map(|addr| match addr {
-            SocketAddr::V4(v4) => v4,
-            SocketAddr::V6(v6) => {
-                tracing::error!("BUG: tokio::net::TcpListener::local_addr produced IPv6 address: {}. Returning fallback IPv4 address.", v6);
-                SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)
-            }
-        })
+        Self::local_addr(self).map(|addr| expect_v4(addr, "tokio::net::TcpListener::local_addr"))
     }
 }
