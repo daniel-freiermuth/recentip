@@ -54,7 +54,7 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::Duration;
 
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
@@ -68,7 +68,7 @@ use crate::config::RuntimeConfig;
 use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::tcp::{TcpMessage, TcpServer};
-use crate::wire::{Header, MessageType, PROTOCOL_VERSION};
+use crate::wire::{Header, MessageType};
 use crate::{InstanceId, ServiceId};
 
 // ============================================================================
@@ -814,10 +814,6 @@ pub fn build_response(
     payload: &[u8],
     uses_exception: bool,
 ) -> Bytes {
-    let length = 8 + payload.len() as u32;
-
-    let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
-
     // feat_req_someip_655: Error message must copy request header fields
     // feat_req_someip_727: Error messages have return code != 0x00
     // Only use EXCEPTION (0x81) if configured for this method AND it's an error
@@ -827,21 +823,16 @@ pub fn build_response(
         MessageType::Response
     };
 
-    let header = Header {
+    crate::wire::build_someip_message(
         service_id,
         method_id,
-        length,
         client_id,
         session_id,
-        protocol_version: PROTOCOL_VERSION,
         interface_version,
         message_type,
         return_code,
-    };
-
-    header.serialize(&mut buf);
-    buf.extend_from_slice(payload);
-    buf.freeze()
+        payload,
+    )
 }
 
 /// Build a SOME/IP notification (event) message
@@ -853,25 +844,16 @@ pub fn build_notification(
     interface_version: u8,
     payload: &[u8],
 ) -> Bytes {
-    let length = 8 + payload.len() as u32;
-
-    let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
-
-    let header = Header {
+    crate::wire::build_someip_message(
         service_id,
-        method_id: event_id, // Event ID goes in method_id field
-        length,
+        event_id, // Event ID goes in method_id field
         client_id,
         session_id,
-        protocol_version: PROTOCOL_VERSION,
         interface_version,
-        message_type: MessageType::Notification,
-        return_code: 0x00,
-    };
-
-    header.serialize(&mut buf);
-    buf.extend_from_slice(payload);
-    buf.freeze()
+        MessageType::Notification,
+        0x00,
+        payload,
+    )
 }
 
 // ============================================================================
