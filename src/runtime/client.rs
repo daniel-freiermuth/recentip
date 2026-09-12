@@ -1089,8 +1089,7 @@ pub fn handle_incoming_notification(
 // MESSAGE BUILDING (CLIENT-SIDE)
 // ============================================================================
 
-use crate::wire::PROTOCOL_VERSION;
-use bytes::BytesMut;
+use crate::wire::build_someip_message;
 
 /// Build a SOME/IP request message
 pub fn build_request(
@@ -1101,25 +1100,16 @@ pub fn build_request(
     interface_version: u8,
     payload: &[u8],
 ) -> Bytes {
-    let length = 8 + payload.len() as u32;
-
-    let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
-
-    let header = Header {
+    build_someip_message(
         service_id,
         method_id,
-        length,
         client_id,
         session_id,
-        protocol_version: PROTOCOL_VERSION,
         interface_version,
-        message_type: MessageType::Request,
-        return_code: 0x00,
-    };
-
-    header.serialize(&mut buf);
-    buf.extend_from_slice(payload);
-    buf.freeze()
+        MessageType::Request,
+        0x00,
+        payload,
+    )
 }
 
 /// Build a SOME/IP fire-and-forget (`REQUEST_NO_RETURN`) message
@@ -1131,23 +1121,14 @@ pub fn build_fire_and_forget(
     interface_version: u8,
     payload: &[u8],
 ) -> Bytes {
-    let length = 8 + payload.len() as u32;
-
-    let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
-
-    let header = Header {
+    build_someip_message(
         service_id,
         method_id,
-        length,
         client_id,
         session_id,
-        protocol_version: PROTOCOL_VERSION,
         interface_version,
-        message_type: MessageType::RequestNoReturn,
-        return_code: 0x00,
-    };
-
-    header.serialize(&mut buf);
-    buf.extend_from_slice(payload);
-    buf.freeze()
+        MessageType::RequestNoReturn,
+        0x00,
+        payload,
+    )
 }
