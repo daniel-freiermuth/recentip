@@ -1,0 +1,11 @@
+warning: Runtime `runtime` is dropped without calling `.shutdown().await`
+  --> $DIR/missing_shutdown.rs:14:5
+   |
+LL |     let runtime = Runtime::new();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call `runtime.shutdown().await` before dropping to ensure pending RPC responses are sent. Alternatively, enable the `strict-shutdown` feature to panic on drop without shutdown.
+   = note: `#[warn(runtime_shutdown_required)]` on by default
+
+warning: 1 warning emitted
+

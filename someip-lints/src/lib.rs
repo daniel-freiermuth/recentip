@@ -237,10 +237,47 @@ impl<'a, 'tcx> RuntimeUsageVisitor<'a, 'tcx> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    /// Workaround: on recent nightly cargo, `dylint-link` creates the
+    /// `@`-toolchain library inside `target/debug/build/.../out/` instead of
+    /// `target/debug/` where `dylint_testing` expects it. Find the file and
+    /// copy it to the expected location.
+    fn ensure_toolchain_library() {
+        use std::fs;
+        use std::path::Path;
+
+        let target_debug = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug");
+        let suffix = format!("@{}.so", env!("RUSTUP_TOOLCHAIN"));
+        let lib_name = format!("libsomeip_lints{suffix}");
+        let expected = target_debug.join(&lib_name);
+
+        if expected.exists() {
+            return;
+        }
+
+        // Search in target/debug/build/someip-lints/*/out/
+        let build_dir = target_debug.join("build").join("someip-lints");
+        if let Ok(entries) = fs::read_dir(&build_dir) {
+            for entry in entries.flatten() {
+                let candidate = entry.path().join("out").join(&lib_name);
+                if candidate.exists() {
+                    let _ = fs::hard_link(&candidate, &expected)
+                        .or_else(|_| fs::copy(&candidate, &expected).map(|_| ()));
+                    return;
+                }
+            }
+        }
+
+        // Fallback: hard-link from the plain .so (same binary, different name)
+        let plain = target_debug.join("libsomeip_lints.so");
+        if plain.exists() {
+            let _ = fs::hard_link(&plain, &expected)
+                .or_else(|_| fs::copy(&plain, &expected).map(|_| ()));
+        }
+    }
 
     #[test]
     fn ui_tests() {
+        ensure_toolchain_library();
         dylint_testing::ui_test(
             env!("CARGO_PKG_NAME"),
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui"),
