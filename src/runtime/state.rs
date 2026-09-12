@@ -51,7 +51,7 @@ use tokio::time::Instant;
 
 use super::command::ServiceRequest;
 use super::sd::Action;
-use crate::config::{MethodConfig, RuntimeConfig};
+use crate::config::{MethodConfig, RuntimeConfig, Transport};
 use crate::error::Result;
 use crate::runtime::event_loop::cluster_sd_actions;
 use crate::tcp::TcpSendMessage;
@@ -761,6 +761,92 @@ impl RuntimeState {
                 self.subscription_endpoint_usage.remove(&port);
             }
         }
+    }
+
+    /// Record client subscription state and track pending subscriptions.
+    ///
+    /// This is the shared core of every subscribe path (UDP inline, TCP concurrent):
+    /// 1. Push [`ClientSubscription`] entries for each eventgroup
+    /// 2. Optionally track multi-eventgroup all-or-nothing completion
+    /// 3. Track [`PendingSubscription`] per eventgroup, collecting first-waiter IDs
+    ///
+    /// Returns eventgroup IDs that need a Subscribe SD message (first-waiter only —
+    /// if another subscription for the same eventgroup is already pending, no
+    /// duplicate SD message is needed).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn record_subscription_state(
+        &mut self,
+        key: ServiceKey,
+        subscription_id: u64,
+        eventgroup_ids: &[u16],
+        events_tx: mpsc::Sender<crate::Event>,
+        response: oneshot::Sender<crate::error::Result<u64>>,
+        endpoint: SocketAddrV4,
+        has_dedicated_socket: bool,
+        tcp_conn_key: u64,
+        transport: Transport,
+        track_multi_eventgroup: bool,
+    ) -> Vec<u16> {
+        // 1. Push ClientSubscription entries
+        let subs = self.subscriptions.entry(key).or_default();
+        for &eventgroup_id in eventgroup_ids {
+            subs.push(ClientSubscription {
+                subscription_id,
+                eventgroup_id,
+                events_tx: events_tx.clone(),
+                local_endpoint: endpoint,
+                has_dedicated_socket,
+                tcp_conn_key,
+                transport,
+            });
+        }
+
+        // 2. Multi-eventgroup all-or-nothing tracking
+        let is_multi_eventgroup = track_multi_eventgroup && eventgroup_ids.len() > 1;
+        let mut response_opt = Some(response);
+
+        if is_multi_eventgroup {
+            let multi_key = MultiEventgroupSubscriptionKey {
+                service_id: key.service_id,
+                instance_id: key.instance_id,
+                major_version: key.major_version,
+                subscription_id,
+            };
+            self.multi_eventgroup_subscriptions.insert(
+                multi_key,
+                MultiEventgroupSubscription {
+                    eventgroup_ids: eventgroup_ids.to_vec(),
+                    acked_eventgroups: HashSet::new(),
+                    response: response_opt.take(),
+                },
+            );
+        }
+
+        // 3. Track pending subscriptions, collect first-waiter eventgroup IDs
+        let mut eventgroups_to_subscribe = Vec::new();
+        for &eventgroup_id in eventgroup_ids {
+            let pending_key = PendingSubscriptionKey {
+                service_id: key.service_id,
+                instance_id: key.instance_id,
+                major_version: key.major_version,
+                eventgroup_id,
+            };
+            let pending_list = self.pending_subscriptions.entry(pending_key).or_default();
+            let is_first_waiter = pending_list.is_empty();
+            pending_list.push(PendingSubscription {
+                subscription_id,
+                response: if is_multi_eventgroup {
+                    None
+                } else {
+                    response_opt.take()
+                },
+            });
+            if is_first_waiter {
+                eventgroups_to_subscribe.push(eventgroup_id);
+            }
+        }
+
+        eventgroups_to_subscribe
     }
 }
 

@@ -60,11 +60,7 @@ use super::command::ServiceAvailability;
 use super::sd::{
     Action, build_find_message, build_subscribe_message_multi, build_unsubscribe_message,
 };
-use super::state::{
-    CallKey, ClientSubscription, FindRequest, MultiEventgroupSubscription,
-    MultiEventgroupSubscriptionKey, PendingCall, PendingSubscription, PendingSubscriptionKey,
-    RuntimeState, ServiceKey,
-};
+use super::state::{CallKey, FindRequest, PendingCall, RuntimeState, ServiceKey};
 use crate::config::{DEFAULT_FIND_REPETITIONS, PortSpec, Transport};
 use crate::net::UdpSocket;
 use crate::wire::{Header, MessageType};
@@ -213,6 +209,68 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
     });
 
     Ok(local_endpoint)
+}
+
+/// Complete a UDP subscription: record state and queue the SD Subscribe message.
+///
+/// This is the common tail shared by every branch in [`handle_subscribe_udp`]:
+/// 1. Push [`ClientSubscription`] entries for each eventgroup
+/// 2. Track pending subscriptions (with optional multi-eventgroup tracking)
+/// 3. Build and queue the SD Subscribe message via time-based clustering
+///
+/// `track_multi_eventgroup` controls whether multi-eventgroup all-or-nothing
+/// tracking is applied (response sent only when all eventgroups are ACKed).
+/// The early-return branches (reuse / dedicated socket) pass `false` to
+/// preserve their existing per-eventgroup response semantics.
+#[allow(clippy::too_many_arguments)]
+fn complete_udp_subscription(
+    state: &mut RuntimeState,
+    key: ServiceKey,
+    subscription_id: u64,
+    eventgroup_ids: &vec1::Vec1<u16>,
+    events_tx: mpsc::Sender<Event>,
+    response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
+    endpoint: SocketAddrV4,
+    has_dedicated_socket: bool,
+    sd_endpoint: SocketAddrV4,
+    track_multi_eventgroup: bool,
+) {
+    let eventgroups_to_subscribe = state.record_subscription_state(
+        key,
+        subscription_id,
+        eventgroup_ids,
+        events_tx,
+        response,
+        endpoint,
+        has_dedicated_socket,
+        0,
+        Transport::Udp,
+        track_multi_eventgroup,
+    );
+
+    if !eventgroups_to_subscribe.is_empty() {
+        tracing::debug!(
+            "Queueing subscribe to {:04x}:{:04x} v{} eventgroups {:?} via UDP endpoint {} for time-based clustering",
+            key.service_id,
+            key.instance_id,
+            key.major_version,
+            eventgroups_to_subscribe,
+            endpoint,
+        );
+
+        let msg = build_subscribe_message_multi(
+            key.service_id,
+            key.instance_id,
+            key.major_version,
+            &eventgroups_to_subscribe,
+            endpoint,
+            endpoint.port(),
+            state.sd_flags(true),
+            state.config.subscribe_ttl,
+            Transport::Udp,
+        );
+        state.queue_unicast_sd(msg, sd_endpoint);
+    }
 }
 
 // ============================================================================
@@ -448,68 +506,11 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                 instance_id.value(),
             );
 
-            // Store subscription - NOT a dedicated socket since we're sharing
-            let subs = state.subscriptions.entry(key).or_default();
-            for &eventgroup_id in &eventgroup_ids {
-                subs.push(ClientSubscription {
-                    subscription_id,
-                    eventgroup_id,
-                    events_tx: incoming_events_channel.clone(),
-                    local_endpoint: reused_endpoint,
-                    has_dedicated_socket: false, // Shared endpoint
-                    tcp_conn_key: 0,
-                    transport: Transport::Udp,
-                });
-            }
-
-            // Send subscribe messages
-            let mut response_opt = Some(result_response_channel);
-
-            let mut eventgroups_to_subscribe = Vec::new();
-            for &eventgroup_id in &eventgroup_ids {
-                let pending_key = PendingSubscriptionKey {
-                    service_id: service_id.value(),
-                    instance_id: instance_id.value(),
-                    major_version,
-                    eventgroup_id,
-                };
-                let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
-                let is_first_waiter = pending_list.is_empty();
-                pending_list.push(PendingSubscription {
-                    subscription_id,
-                    response: response_opt.take(),
-                });
-
-                if is_first_waiter {
-                    eventgroups_to_subscribe.push(eventgroup_id);
-                }
-            }
-
-            // Queue subscribe for time-based clustering
-            if !eventgroups_to_subscribe.is_empty() {
-                tracing::debug!(
-                    "Queueing subscribe to {:04x}:{:04x} v{} eventgroups {:?} via reused UDP endpoint {} for time-based clustering",
-                    service_id.value(),
-                    instance_id.value(),
-                    major_version,
-                    eventgroups_to_subscribe,
-                    reused_endpoint
-                );
-
-                let msg = build_subscribe_message_multi(
-                    service_id.value(),
-                    instance_id.value(),
-                    major_version,
-                    &eventgroups_to_subscribe,
-                    reused_endpoint,
-                    reused_endpoint.port(),
-                    state.sd_flags(true),
-                    state.config.subscribe_ttl,
-                    Transport::Udp,
-                );
-                state.queue_unicast_sd(msg, sd_endpoint);
-            }
-
+            complete_udp_subscription(
+                state, key, subscription_id, &eventgroup_ids,
+                incoming_events_channel, result_response_channel,
+                reused_endpoint, false, sd_endpoint, false,
+            );
             return;
         } // end reuse_port check
 
@@ -540,69 +541,11 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                     instance_id.value(),
                 );
 
-                // Store subscription with dedicated socket flag
-                // Track all eventgroups with a shared events channel
-                let subs = state.subscriptions.entry(key).or_default();
-                for &eventgroup_id in &eventgroup_ids {
-                    subs.push(ClientSubscription {
-                        subscription_id,
-                        eventgroup_id,
-                        events_tx: incoming_events_channel.clone(),
-                        local_endpoint: dedicated_endpoint,
-                        has_dedicated_socket: true, // Events received on dedicated socket
-                        tcp_conn_key: 0,            // Not used for UDP subscriptions
-                        transport: Transport::Udp,
-                    });
-                }
-
-                // Track pending subscriptions and send subscribe messages
-                let mut response_opt = Some(result_response_channel);
-
-                let mut eventgroups_to_subscribe = Vec::new();
-                for &eventgroup_id in &eventgroup_ids {
-                    let pending_key = PendingSubscriptionKey {
-                        service_id: service_id.value(),
-                        instance_id: instance_id.value(),
-                        major_version,
-                        eventgroup_id,
-                    };
-                    let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
-                    let is_first_waiter = pending_list.is_empty();
-                    pending_list.push(PendingSubscription {
-                        subscription_id,
-                        response: response_opt.take(),
-                    });
-
-                    if is_first_waiter {
-                        eventgroups_to_subscribe.push(eventgroup_id);
-                    }
-                }
-
-                // Queue subscribe for time-based clustering
-                if !eventgroups_to_subscribe.is_empty() {
-                    tracing::debug!(
-                        "Queueing subscribe to {:04x}:{:04x} v{} eventgroups {:?} via dedicated UDP endpoint {} for time-based clustering",
-                        service_id.value(),
-                        instance_id.value(),
-                        major_version,
-                        eventgroups_to_subscribe,
-                        dedicated_endpoint
-                    );
-
-                    let msg = build_subscribe_message_multi(
-                        service_id.value(),
-                        instance_id.value(),
-                        major_version,
-                        &eventgroups_to_subscribe,
-                        dedicated_endpoint,
-                        dedicated_endpoint.port(),
-                        state.sd_flags(true),
-                        state.config.subscribe_ttl,
-                        Transport::Udp,
-                    );
-                    state.queue_unicast_sd(msg, sd_endpoint);
-                }
-
+                complete_udp_subscription(
+                    state, key, subscription_id, &eventgroup_ids,
+                    incoming_events_channel, result_response_channel,
+                    dedicated_endpoint, true, sd_endpoint, false,
+                );
                 return;
             }
             Err(e) => {
@@ -645,54 +588,11 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                         instance_id.value(),
                     );
 
-                    let subs = state.subscriptions.entry(key).or_default();
-                    for &eventgroup_id in &eventgroup_ids {
-                        subs.push(ClientSubscription {
-                            subscription_id,
-                            eventgroup_id,
-                            events_tx: incoming_events_channel.clone(),
-                            local_endpoint: dedicated_endpoint,
-                            has_dedicated_socket: true,
-                            tcp_conn_key: 0,
-                            transport: Transport::Udp,
-                        });
-                    }
-
-                    let mut response_opt = Some(result_response_channel);
-                    let mut eventgroups_to_subscribe = Vec::new();
-                    for &eventgroup_id in &eventgroup_ids {
-                        let pending_key = PendingSubscriptionKey {
-                            service_id: service_id.value(),
-                            instance_id: instance_id.value(),
-                            major_version,
-                            eventgroup_id,
-                        };
-                        let pending_list =
-                            state.pending_subscriptions.entry(pending_key).or_default();
-                        let is_first_waiter = pending_list.is_empty();
-                        pending_list.push(PendingSubscription {
-                            subscription_id,
-                            response: response_opt.take(),
-                        });
-                        if is_first_waiter {
-                            eventgroups_to_subscribe.push(eventgroup_id);
-                        }
-                    }
-
-                    if !eventgroups_to_subscribe.is_empty() {
-                        let msg = build_subscribe_message_multi(
-                            service_id.value(),
-                            instance_id.value(),
-                            major_version,
-                            &eventgroups_to_subscribe,
-                            dedicated_endpoint,
-                            dedicated_endpoint.port(),
-                            state.sd_flags(true),
-                            state.config.subscribe_ttl,
-                            Transport::Udp,
-                        );
-                        state.queue_unicast_sd(msg, sd_endpoint);
-                    }
+                    complete_udp_subscription(
+                        state, key, subscription_id, &eventgroup_ids,
+                        incoming_events_channel, result_response_channel,
+                        dedicated_endpoint, true, sd_endpoint, false,
+                    );
                     return;
                 }
                 Err(e) => {
@@ -715,94 +615,11 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         SocketAddrV4::new(endpoint_ip, state.client_rpc_endpoint.port())
     };
 
-    // Track all eventgroups with a shared events channel (cloned sender)
-    let subs = state.subscriptions.entry(key).or_default();
-    for &eventgroup_id in &eventgroup_ids {
-        subs.push(ClientSubscription {
-            subscription_id,
-            eventgroup_id,
-            events_tx: incoming_events_channel.clone(),
-            local_endpoint: endpoint_for_subscribe,
-            has_dedicated_socket: false, // Both UDP and TCP use shared sockets/connections; events route via handle_incoming_notification
-            tcp_conn_key: 0, // Track whicho TCP connection this subscription uses for event routing
-            transport: Transport::Udp,
-        });
-    }
-
-    // Track pending subscriptions for all eventgroups
-    // For multi-eventgroup subscriptions, use "all or nothing" tracking
-    let is_multi_eventgroup = eventgroup_ids.len() > 1;
-    let mut response_opt = Some(result_response_channel);
-
-    if is_multi_eventgroup {
-        let multi_key = MultiEventgroupSubscriptionKey {
-            service_id: service_id.value(),
-            instance_id: instance_id.value(),
-            major_version,
-            subscription_id,
-        };
-        state.multi_eventgroup_subscriptions.insert(
-            multi_key,
-            MultiEventgroupSubscription {
-                eventgroup_ids: eventgroup_ids.to_vec(),
-                acked_eventgroups: std::collections::HashSet::new(),
-                response: response_opt.take(),
-            },
-        );
-    }
-
-    // Collect eventgroups that need Subscribe messages (first waiter only)
-    let mut eventgroups_to_subscribe = Vec::new();
-
-    for &eventgroup_id in &eventgroup_ids {
-        let pending_key = PendingSubscriptionKey {
-            service_id: service_id.value(),
-            instance_id: instance_id.value(),
-            major_version,
-            eventgroup_id,
-        };
-        let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
-        let is_first_waiter = pending_list.is_empty();
-
-        pending_list.push(PendingSubscription {
-            subscription_id,
-            response: if is_multi_eventgroup {
-                None
-            } else {
-                response_opt.take()
-            },
-        });
-
-        if is_first_waiter {
-            eventgroups_to_subscribe.push(eventgroup_id);
-        }
-    }
-
-    // Send ONE SD message with all SubscribeEventgroup entries
-    if !eventgroups_to_subscribe.is_empty() {
-        tracing::debug!(
-            "Queueing subscribe to {:04x}:{:04x} v{} eventgroups {:?} via UDP (endpoint: {}) for time-based clustering",
-            service_id.value(),
-            instance_id.value(),
-            major_version,
-            eventgroups_to_subscribe,
-            endpoint_for_subscribe
-        );
-
-        let msg = build_subscribe_message_multi(
-            service_id.value(),
-            instance_id.value(),
-            major_version,
-            &eventgroups_to_subscribe,
-            endpoint_for_subscribe,
-            endpoint_for_subscribe.port(),
-            state.sd_flags(true),
-            state.config.subscribe_ttl,
-            Transport::Udp,
-        );
-
-        state.queue_unicast_sd(msg, sd_endpoint);
-    }
+    complete_udp_subscription(
+        state, key, subscription_id, &eventgroup_ids,
+        incoming_events_channel, result_response_channel,
+        endpoint_for_subscribe, false, sd_endpoint, true,
+    );
 }
 
 /// Handle `Command::Unsubscribe`
