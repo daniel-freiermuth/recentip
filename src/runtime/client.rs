@@ -228,7 +228,7 @@ fn complete_udp_subscription(
     key: ServiceKey,
     subscription_id: u64,
     eventgroup_ids: &vec1::Vec1<u16>,
-    events_tx: mpsc::Sender<Event>,
+    events_tx: &mpsc::Sender<Event>,
     response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     endpoint: SocketAddrV4,
     has_dedicated_socket: bool,
@@ -507,9 +507,16 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             );
 
             complete_udp_subscription(
-                state, key, subscription_id, &eventgroup_ids,
-                incoming_events_channel, result_response_channel,
-                reused_endpoint, false, sd_endpoint, false,
+                state,
+                key,
+                subscription_id,
+                &eventgroup_ids,
+                &incoming_events_channel,
+                result_response_channel,
+                reused_endpoint,
+                false,
+                sd_endpoint,
+                false,
             );
             return;
         } // end reuse_port check
@@ -542,9 +549,16 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                 );
 
                 complete_udp_subscription(
-                    state, key, subscription_id, &eventgroup_ids,
-                    incoming_events_channel, result_response_channel,
-                    dedicated_endpoint, true, sd_endpoint, false,
+                    state,
+                    key,
+                    subscription_id,
+                    &eventgroup_ids,
+                    &incoming_events_channel,
+                    result_response_channel,
+                    dedicated_endpoint,
+                    true,
+                    sd_endpoint,
+                    false,
                 );
                 return;
             }
@@ -589,9 +603,16 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                     );
 
                     complete_udp_subscription(
-                        state, key, subscription_id, &eventgroup_ids,
-                        incoming_events_channel, result_response_channel,
-                        dedicated_endpoint, true, sd_endpoint, false,
+                        state,
+                        key,
+                        subscription_id,
+                        &eventgroup_ids,
+                        &incoming_events_channel,
+                        result_response_channel,
+                        dedicated_endpoint,
+                        true,
+                        sd_endpoint,
+                        false,
                     );
                     return;
                 }
@@ -616,9 +637,16 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     };
 
     complete_udp_subscription(
-        state, key, subscription_id, &eventgroup_ids,
-        incoming_events_channel, result_response_channel,
-        endpoint_for_subscribe, false, sd_endpoint, true,
+        state,
+        key,
+        subscription_id,
+        &eventgroup_ids,
+        &incoming_events_channel,
+        result_response_channel,
+        endpoint_for_subscribe,
+        false,
+        sd_endpoint,
+        true,
     );
 }
 

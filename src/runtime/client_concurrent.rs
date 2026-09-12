@@ -139,7 +139,7 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 key,
                 subscription_id,
                 &eventgroup_ids,
-                events,
+                &events,
                 response,
                 endpoint_for_subscribe,
                 false,

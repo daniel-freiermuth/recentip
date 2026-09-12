@@ -779,7 +779,7 @@ impl RuntimeState {
         key: ServiceKey,
         subscription_id: u64,
         eventgroup_ids: &[u16],
-        events_tx: mpsc::Sender<crate::Event>,
+        events_tx: &mpsc::Sender<crate::Event>,
         response: oneshot::Sender<crate::error::Result<u64>>,
         endpoint: SocketAddrV4,
         has_dedicated_socket: bool,
