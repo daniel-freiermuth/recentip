@@ -460,6 +460,40 @@ impl Header {
     }
 }
 
+/// Build a complete SOME/IP message (header + payload) in one allocation.
+///
+/// This is the shared core for all message-building helpers (`build_request`,
+/// `build_fire_and_forget`, `build_response`, `build_notification`).
+pub fn build_someip_message(
+    service_id: u16,
+    method_id: u16,
+    client_id: u16,
+    session_id: u16,
+    interface_version: u8,
+    message_type: MessageType,
+    return_code: u8,
+    payload: &[u8],
+) -> Bytes {
+    let length = 8 + payload.len() as u32;
+    let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
+
+    let header = Header {
+        service_id,
+        method_id,
+        length,
+        client_id,
+        session_id,
+        protocol_version: PROTOCOL_VERSION,
+        interface_version,
+        message_type,
+        return_code,
+    };
+
+    header.serialize(&mut buf);
+    buf.extend_from_slice(payload);
+    buf.freeze()
+}
+
 /// A complete SOME/IP message (header + payload)
 #[derive(Debug, Clone)]
 pub struct Message {
