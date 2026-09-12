@@ -13,10 +13,7 @@ use crate::error::Error;
 use crate::net::TcpStream;
 use crate::runtime::event_loop::SubscribeStateUpdate;
 use crate::runtime::sd::build_subscribe_message_multi;
-use crate::runtime::state::{
-    ClientSubscription, MultiEventgroupSubscription, MultiEventgroupSubscriptionKey,
-    PendingSubscription, PendingSubscriptionKey, RuntimeState, ServiceKey,
-};
+use crate::runtime::state::{RuntimeState, ServiceKey};
 use crate::tcp::TcpConnectionPool;
 use crate::{Event, InstanceId, ServiceId};
 
@@ -137,62 +134,19 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 instance_id.value(),
             );
 
-            // Track all eventgroups with a shared events channel
-            let subs = state.subscriptions.entry(key).or_default();
-            for &eventgroup_id in &eventgroup_ids {
-                subs.push(ClientSubscription {
-                    subscription_id,
-                    eventgroup_id,
-                    events_tx: events.clone(),
-                    local_endpoint: endpoint_for_subscribe,
-                    has_dedicated_socket: false,
-                    tcp_conn_key: conn_key,
-                    transport: Transport::Tcp,
-                });
-            }
-
-            // Track pending subscriptions
-            let is_multi_eventgroup = eventgroup_ids.len() > 1;
-            let mut response_opt = Some(response);
-
-            if is_multi_eventgroup {
-                let multi_key = MultiEventgroupSubscriptionKey {
-                    service_id: service_id.value(),
-                    instance_id: instance_id.value(),
-                    major_version,
-                    subscription_id,
-                };
-                state.multi_eventgroup_subscriptions.insert(
-                    multi_key,
-                    MultiEventgroupSubscription {
-                        eventgroup_ids: eventgroup_ids.to_vec(),
-                        acked_eventgroups: HashSet::new(),
-                        response: response_opt.take(),
-                    },
-                );
-            }
-
-            // Track pending subscriptions for each eventgroup
-            let mut eventgroups_to_subscribe = Vec::new();
-            for &eventgroup_id in &eventgroup_ids {
-                let pending_key = PendingSubscriptionKey {
-                    service_id: service_id.value(),
-                    instance_id: instance_id.value(),
-                    major_version,
-                    eventgroup_id,
-                };
-                let pending_list = state.pending_subscriptions.entry(pending_key).or_default();
-                let is_first_waiter = pending_list.is_empty();
-
-                pending_list.push(PendingSubscription {
-                    subscription_id,
-                    response: response_opt.take(),
-                });
-
-                if is_first_waiter {
-                    eventgroups_to_subscribe.push(eventgroup_id);
-                }
-            }
+            // Record subscription state (subscriptions + pending tracking)
+            let eventgroups_to_subscribe = state.record_subscription_state(
+                key,
+                subscription_id,
+                &eventgroup_ids,
+                &events,
+                response,
+                endpoint_for_subscribe,
+                false,
+                conn_key,
+                Transport::Tcp,
+                true,
+            );
 
             // Queue the Subscribe SD message
             if !eventgroups_to_subscribe.is_empty() {
