@@ -159,6 +159,46 @@ requirement-coverage:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+# =============================================================================
+# MUTATION TESTING
+# =============================================================================
+
+# PR-diff mutation testing: only mutate code touched by the merge request.
+# Fast feedback on whether new/changed code is well-tested.
+mutation-test-diff:
+  extends: .rust-base
+  stage: test
+  script:
+    - cargo install cargo-mutants --locked
+    - git diff origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD > diff.patch
+    - cargo mutants --in-place --in-diff diff.patch -vV
+  artifacts:
+    when: always
+    paths:
+      - mutants.out/
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Full mutation testing: scheduled or manual, covers entire codebase.
+# With 838 mutants and ~2min per test cycle, expect ~4-6h with -j4.
+mutation-test-full:
+  extends: .rust-base
+  stage: test
+  script:
+    - cargo install cargo-mutants --locked
+    - cargo mutants --in-place -vV
+  artifacts:
+    when: always
+    paths:
+      - mutants.out/
+    expire_in: 1 week
+  timeout: 8h
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - when: manual
+      allow_failure: true
+
 sonarcloud-check:
   image:
     name: sonarsource/sonar-scanner-cli:latest
