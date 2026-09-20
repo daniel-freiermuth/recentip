@@ -242,16 +242,16 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         // other subscription connections — those have distinct conn_keys for event
         // routing isolation between eventgroups.
         let rpc_key = (target, 0u64);
-        if let Some(cell) = self.connections.get(&rpc_key) {
-            if let Some(state) = cell.value().get() {
-                tracing::debug!(
-                    "Reusing existing RPC TCP connection to {} (local addr: {}) for subscription conn_key={}",
-                    target,
-                    state.local_addr,
-                    subscription_id
-                );
-                return Ok(state.local_addr);
-            }
+        if let Some(cell) = self.connections.get(&rpc_key)
+            && let Some(state) = cell.value().get()
+        {
+            tracing::debug!(
+                "Reusing existing RPC TCP connection to {} (local addr: {}) for subscription conn_key={}",
+                target,
+                state.local_addr,
+                subscription_id
+            );
+            return Ok(state.local_addr);
         }
 
         let key = (target, subscription_id);

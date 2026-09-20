@@ -23,9 +23,9 @@ use crate::OfferedEndpoints;
 use crate::config::{RuntimeConfig, Transport};
 use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
+use crate::runtime::ServiceAvailability;
 use crate::runtime::client::{handle_incoming_notification, handle_incoming_response};
 use crate::runtime::server::{handle_incoming_fire_forget, handle_incoming_request};
-use crate::runtime::ServiceAvailability;
 use crate::runtime::{
     Command, client,
     client_concurrent::handle_subscribe_tcp,
