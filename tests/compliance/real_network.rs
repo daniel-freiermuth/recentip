@@ -13,7 +13,7 @@
 //! The turmoil-based tests provide comprehensive
 //! network testing with simulated separate hosts.
 
-use recentip::{EventId, EventgroupId, InstanceId, MethodId, ServiceEvent, Transport, config};
+use recentip::{EventId, EventgroupId, InstanceId, MethodId, ServiceEvent, Transport};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;
