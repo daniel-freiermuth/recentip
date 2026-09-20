@@ -4149,8 +4149,8 @@ fn client_detects_server_reboot_tcp_connections() {
     configure_tracing();
 
     use crate::wire_format::helpers::{SdSubscribeBuilder, SomeIpPacketBuilder};
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use tokio::io::AsyncWriteExt;
 

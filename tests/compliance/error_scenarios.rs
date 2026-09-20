@@ -1758,8 +1758,8 @@ fn fire_and_forget_service_id_mismatch_ignored() {
 #[test_log::test]
 fn request_on_subscriber_tcp_connection_is_ignored() {
     use crate::wire_format::helpers::{SdOfferBuilder, SdSubscribeAckBuilder, SomeIpPacketBuilder};
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     // Service IDs chosen to avoid collisions with other tests in this file.
@@ -1965,10 +1965,10 @@ fn request_on_subscriber_tcp_connection_is_ignored() {
 #[test_log::test]
 fn request_on_subscriber_udp_socket_is_ignored() {
     use crate::wire_format::helpers::{
-        parse_sd_packet, SdOfferBuilder, SdSubscribeAckBuilder, SomeIpPacketBuilder,
+        SdOfferBuilder, SdSubscribeAckBuilder, SomeIpPacketBuilder, parse_sd_packet,
     };
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     // Different IDs from the TCP variant to avoid conflicts.
     const CLIENT_SVC_ID: u16 = 0x6003;
@@ -2154,7 +2154,7 @@ fn request_on_subscriber_udp_socket_is_ignored() {
 #[test_log::test]
 fn notification_on_server_tcp_connection_is_ignored() {
     use crate::wire_format::helpers::{
-        parse_sd_packet, SdOfferBuilder, SdSubscribeAckBuilder, SomeIpPacketBuilder,
+        SdOfferBuilder, SdSubscribeAckBuilder, SomeIpPacketBuilder, parse_sd_packet,
     };
     use tokio::io::AsyncWriteExt;
 
