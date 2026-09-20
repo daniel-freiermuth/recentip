@@ -2,7 +2,6 @@
 
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use crate::helpers::configure_tracing;
-use recentip::config::DEFAULT_SD_PORT;
 use recentip::handle::ServiceEvent;
 use recentip::{EventId, EventgroupId, InstanceId, MethodId, OfferedEndpoints, ServiceId};
 use std::net::SocketAddrV4;

@@ -26,9 +26,7 @@ use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
 
 use recentip::Transport;
-use std::future::IntoFuture;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
