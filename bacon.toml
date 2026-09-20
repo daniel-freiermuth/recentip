@@ -123,7 +123,20 @@ allow_warnings = true
 # a project, for example a shortcut to launch a specific job.
 # Shortcuts to internal functions (scrolling, toggling, etc.)
 # should go in your personal global prefs.toml file instead.
+# Mutation testing — runs cargo-mutants on files changed since main.
+# Usage: bacon mutants
+# For a specific file: bacon mutants -- -f src/wire.rs
+[jobs.mutants]
+command = [
+    "cargo", "mutants", "--in-place",
+    "--test-tool", "nextest",
+]
+need_stdout = true
+allow_warnings = true
+on_change_strategy = "kill_then_restart"
+
 [keybindings]
 # alt-m = "job:my-job"
 c = "job:clippy-all" # comment this to have 'c' run clippy on only the default target
 p = "job:pedantic" 
+m = "job:mutants"

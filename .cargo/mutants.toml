@@ -1,0 +1,57 @@
+# Mutation testing configuration for cargo-mutants
+# See: https://mutants.rs/
+
+# Use nextest as the test runner (matches project convention)
+test_tool = "nextest"
+
+# Timeout multiplier: tests use turmoil network simulation with
+# async timing, so mutants can cause hangs. 3x is generous enough
+# to avoid false timeouts while still catching infinite loops.
+timeout_multiplier = 3.0
+build_timeout_multiplier = 3.0
+
+# Minimum test timeout in seconds — some mutants cause retries/delays
+# in the simulated network that legitimately take longer.
+minimum_test_timeout = 60
+
+# Cap rustc lints: the project uses deny(clippy::*) extensively,
+# which would make many mutants "unviable" (won't compile due to
+# warnings-as-errors on unused variables etc). Capping lints lets
+# us test whether the *behavior* is caught, not whether clippy
+# rejects the mutant.
+cap_lints = true
+
+# Run the full workspace test suite against every mutant,
+# since integration tests in tests/ exercise src/ code.
+test_workspace = true
+
+# Features: turmoil is required for the integration test suite
+additional_cargo_args = ["--features", "turmoil"]
+
+# --- Filters ---
+
+# Exclude files that contain no meaningful logic to mutate:
+# - Documentation-only modules
+# - Network backend implementations (platform glue, not business logic)
+# - Build script (compile-time only)
+exclude_globs = [
+    "src/examples.rs",
+    "src/compliance.rs",
+    "src/internals.rs",
+]
+
+# Skip calls to these functions — mutations in logging/tracing
+# arguments are noise (tests don't assert on log output).
+skip_calls = [
+    "tracing::debug",
+    "tracing::info",
+    "tracing::warn",
+    "tracing::error",
+    "tracing::trace",
+    "debug",
+    "info",
+    "warn",
+    "error",
+    "trace",
+    "profiling::scope",
+]
