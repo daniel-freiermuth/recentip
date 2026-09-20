@@ -2322,3 +2322,189 @@ fn notification_on_server_tcp_connection_is_ignored() {
 
     sim.run().unwrap();
 }
+
+/// A Request sent to a host's **client RPC socket** (the ephemeral port used for
+/// outgoing RPC and event subscriptions) must be silently dropped.
+///
+/// The client RPC socket is not owned by any offered service — it is the runtime's
+/// shared socket for sending client requests and receiving responses/events.
+/// The server-side request dispatch (`handle_incoming_request`) should find no
+/// offered service matching that port and return `None`, causing the event loop
+/// to silently ignore the packet.
+///
+/// This test catches a mutation where `&&` is weakened to `||` in the fallback
+/// port lookup (server.rs lines 576/578), which would turn the transport+port
+/// condition into a tautology and incorrectly route the request to an unrelated
+/// offered service.
+///
+/// Scenario:
+/// 1. "target" offers service 0x5000 on UDP and subscribes to a service on "wire_server"
+/// 2. "wire_server" observes the SubscribeEventgroup SD message to learn "target"'s
+///    client RPC port
+/// 3. "wire_server" sends a raw SOME/IP Request to that client RPC port
+/// 4. Assert: no response arrives (the request is silently dropped)
+#[cfg(feature = "turmoil")]
+#[test_log::test]
+fn request_on_client_rpc_port_is_silently_dropped() {
+    use recentip::prelude::*;
+    use std::net::SocketAddr;
+    use std::time::Duration;
+
+    covers!(feat_req_someip_816);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    // "target" host: offers service 0x5000 on UDP AND subscribes to service 0x6000
+    // on "wire_server". The subscription creates a client RPC socket whose port
+    // we want to attack.
+    sim.host("target", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("target")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Offer a service on an explicit port so state.offered is non-empty.
+        // Using an explicit port (not auto-port) guarantees the server RPC socket
+        // is on 30501, distinct from the client RPC ephemeral port. This matters
+        // if a future change lets the runtime share a single UDP socket for both
+        // server and client roles — with a shared socket the fallback lookup would
+        // legitimately find the offered service, defeating this test.
+        let mut offering = runtime
+            .offer(0x5000, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp_port(30501)
+            .start()
+            .await
+            .unwrap();
+
+        // Find and subscribe to the wire_server's fake service to create a client RPC socket
+        let proxy = runtime.find(0x6000).await.unwrap();
+        let subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(EventgroupId::new(0x0001).unwrap()),
+        )
+        .await
+        .expect("subscribe must not timeout")
+        .expect("subscribe must succeed");
+
+        // Keep both alive for the duration of the test.
+        // The offered service should NOT receive any requests.
+        let result = tokio::time::timeout(Duration::from_secs(5), offering.next()).await;
+        assert!(
+            result.is_err(),
+            "Offered service must NOT receive requests sent to the client RPC port"
+        );
+
+        drop(subscription);
+        Ok(())
+    });
+
+    // "wire_server": acts as a raw SD peer.
+    // 1. Sends an OfferService for 0x6000 so "target" subscribes
+    // 2. Reads the SubscribeEventgroup to learn target's client RPC port
+    // 3. Sends SubscribeEventgroupAck so the subscription completes
+    // 4. Sends a raw Request to target's client RPC port
+    // 5. Listens for any response — there should be none
+    sim.client("wire_server", async move {
+        use crate::helpers::WireServer;
+        use crate::wire_format::helpers::{
+            SdSubscribeAckBuilder, SomeIpPacketBuilder,
+        };
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let wire_server_ip: std::net::Ipv4Addr = crate::helpers::ipv4(turmoil::lookup("wire_server"));
+
+        let mut wire = WireServer::new();
+
+        // Step 1: Send OfferService for 0x6000 so "target" discovers and subscribes
+        let offer = wire.build_offer(0x6000, 0x0001, 1, 0, wire_server_ip, 40000, 0xFFFFFF);
+        sd_socket
+            .send_to(&offer, "239.255.0.1:30490")
+            .await?;
+
+        // Step 2: Wait for target's SubscribeEventgroup to learn its client RPC port
+        let mut target_client_port: Option<u16> = None;
+        let mut target_ip: Option<std::net::IpAddr> = None;
+        let mut buf = [0u8; 1500];
+
+        for _ in 0..40 {
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), sd_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                if let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) {
+                    for entry in &sd_msg.entries {
+                        // SubscribeEventgroup = 0x06
+                        if entry.entry_type as u8 == 0x06 && entry.service_id == 0x6000 {
+                            if let Some(opt) = sd_msg.options.first() {
+                                if let recentip::wire::SdOption::Ipv4Endpoint { port, .. } = opt {
+                                    target_client_port = Some(*port);
+                                    target_ip = Some(from.ip());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if target_client_port.is_some() {
+                break;
+            }
+        }
+
+        let client_port = target_client_port.expect("Should receive SubscribeEventgroup with endpoint");
+        let target_addr = target_ip.expect("Should know target IP");
+
+        let ack = SdSubscribeAckBuilder::new(0x6000, 0x0001, 0x0001)
+            .major_version(1)
+            .ttl(0xFFFFFF)
+            .session_id(2) // session 2 (offer was session 1)
+            .reboot_flag(false)
+            .unicast_flag(true)
+            .build();
+        let target_sd_addr = SocketAddr::new(target_addr, 30490);
+        sd_socket.send_to(&ack, target_sd_addr).await?;
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Step 4: Send a raw Request to target's client RPC port.
+        // This port belongs to no offered service — the request must be silently dropped.
+        let attack_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let target_rpc_addr = SocketAddr::new(target_addr, client_port);
+
+        let bad_request = SomeIpPacketBuilder::request(0x5000, 0x0001)
+            .client_id(0x0042)
+            .session_id(0x0001)
+            .payload(b"attack")
+            .build();
+
+        attack_socket.send_to(&bad_request, target_rpc_addr).await?;
+
+        // Step 5: Listen for any response — there should be none.
+        // With the mutant (tautology), the runtime would match service 0x5000
+        // and send E_UNKNOWN_SERVICE from its server RPC port.
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            attack_socket.recv_from(&mut buf),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "No response should arrive — a Request to the client RPC port must be silently dropped, \
+             not routed through an unrelated offered service"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
