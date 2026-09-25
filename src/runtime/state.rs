@@ -813,7 +813,8 @@ impl RuntimeState {
     ///
     /// This is the shared core of every subscribe path (UDP inline, TCP concurrent):
     /// 1. Push [`ClientSubscription`] entries for each eventgroup
-    /// 2. Optionally track multi-eventgroup all-or-nothing completion
+    /// 2. Multi-eventgroup all-or-nothing completion (response sent only once
+    ///    every eventgroup is ACKed; any NACK fails the whole subscription)
     /// 3. Track [`PendingSubscription`] per eventgroup, collecting first-waiter IDs
     ///
     /// Returns eventgroup IDs that need a Subscribe SD message (first-waiter only —
@@ -831,7 +832,6 @@ impl RuntimeState {
         has_dedicated_socket: bool,
         tcp_conn_key: u64,
         transport: Transport,
-        track_multi_eventgroup: bool,
     ) -> Vec<u16> {
         // 1. Push ClientSubscription entries
         let subs = self.subscriptions.entry(key).or_default();
@@ -848,7 +848,7 @@ impl RuntimeState {
         }
 
         // 2. Multi-eventgroup all-or-nothing tracking
-        let is_multi_eventgroup = track_multi_eventgroup && eventgroup_ids.len() > 1;
+        let is_multi_eventgroup = eventgroup_ids.len() > 1;
         let mut response_opt = Some(response);
 
         if is_multi_eventgroup {
@@ -1035,11 +1035,7 @@ mod tests {
         )
     }
 
-    fn record(
-        state: &mut RuntimeState,
-        eventgroup_ids: &[u16],
-        track_multi_eventgroup: bool,
-    ) -> oneshot::Receiver<Result<u64>> {
+    fn record(state: &mut RuntimeState, eventgroup_ids: &[u16]) -> oneshot::Receiver<Result<u64>> {
         let (events_tx, _events_rx) = mpsc::channel(1);
         let (response_tx, response_rx) = oneshot::channel();
         state.record_subscription_state(
@@ -1052,38 +1048,22 @@ mod tests {
             false,
             0,
             Transport::Udp,
-            track_multi_eventgroup,
         );
         response_rx
     }
 
     /// A single-eventgroup subscription is tracked as a plain pending
-    /// subscription even when multi-eventgroup tracking is requested:
-    /// the response rides on the `PendingSubscription` and no
+    /// subscription: the response rides on the `PendingSubscription` and no
     /// all-or-nothing entry is created.
     #[test_log::test]
     fn single_eventgroup_subscription_is_not_multi_tracked() {
         let mut state = test_state();
-        let mut response_rx = record(&mut state, &[0x0010], true);
+        let mut response_rx = record(&mut state, &[0x0010]);
 
         assert!(
             state.multi_eventgroup_subscriptions.is_empty(),
             "single-eventgroup subscription must not create multi-eventgroup tracking"
         );
-
-        crate::runtime::sd::handle_subscribe_ack(&ack(0x0010), &mut state);
-        assert_eq!(response_rx.try_recv().unwrap().unwrap(), 7);
-    }
-
-    /// Without multi-eventgroup tracking (early-return subscribe paths), the
-    /// response is resolved by the first ACK — it does not wait for every
-    /// eventgroup to be acknowledged.
-    #[test_log::test]
-    fn untracked_multi_eventgroup_subscription_resolves_on_first_ack() {
-        let mut state = test_state();
-        let mut response_rx = record(&mut state, &[0x0010, 0x0020], false);
-
-        assert!(state.multi_eventgroup_subscriptions.is_empty());
 
         crate::runtime::sd::handle_subscribe_ack(&ack(0x0010), &mut state);
         assert_eq!(response_rx.try_recv().unwrap().unwrap(), 7);

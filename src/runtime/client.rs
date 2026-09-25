@@ -215,13 +215,8 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
 ///
 /// This is the common tail shared by every branch in [`handle_subscribe_udp`]:
 /// 1. Push [`ClientSubscription`] entries for each eventgroup
-/// 2. Track pending subscriptions (with optional multi-eventgroup tracking)
+/// 2. Track pending subscriptions (all-or-nothing for multi-eventgroup)
 /// 3. Build and queue the SD Subscribe message via time-based clustering
-///
-/// `track_multi_eventgroup` controls whether multi-eventgroup all-or-nothing
-/// tracking is applied (response sent only when all eventgroups are ACKed).
-/// The early-return branches (reuse / dedicated socket) pass `false` to
-/// preserve their existing per-eventgroup response semantics.
 #[allow(clippy::too_many_arguments)]
 fn complete_udp_subscription(
     state: &mut RuntimeState,
@@ -233,7 +228,6 @@ fn complete_udp_subscription(
     endpoint: SocketAddrV4,
     has_dedicated_socket: bool,
     sd_endpoint: SocketAddrV4,
-    track_multi_eventgroup: bool,
 ) {
     let eventgroups_to_subscribe = state.record_subscription_state(
         key,
@@ -245,7 +239,6 @@ fn complete_udp_subscription(
         has_dedicated_socket,
         0,
         Transport::Udp,
-        track_multi_eventgroup,
     );
 
     if !eventgroups_to_subscribe.is_empty() {
@@ -516,7 +509,6 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                 reused_endpoint,
                 false,
                 sd_endpoint,
-                false,
             );
             return;
         } // end reuse_port check
@@ -558,7 +550,6 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                     dedicated_endpoint,
                     true,
                     sd_endpoint,
-                    false,
                 );
                 return;
             }
@@ -612,7 +603,6 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                         dedicated_endpoint,
                         true,
                         sd_endpoint,
-                        false,
                     );
                     return;
                 }
@@ -646,7 +636,6 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         endpoint_for_subscribe,
         false,
         sd_endpoint,
-        true,
     );
 }
 
