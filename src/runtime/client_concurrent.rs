@@ -146,7 +146,6 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 false,
                 conn_key,
                 Transport::Tcp,
-                true,
             );
 
             // Queue the Subscribe SD message

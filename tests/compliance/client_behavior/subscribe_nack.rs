@@ -1376,6 +1376,251 @@ fn multi_eventgroup_subscription_fails_if_one_nacked() {
     );
 }
 
+/// Wire-level server for the multi-eventgroup tests below.
+///
+/// Offers every service in `service_ids` (UDP only) on each matching
+/// FindService, ACKs every SubscribeEventgroup except `nack_eventgroup`,
+/// which is NACKed.
+fn spawn_ack_all_but_one_server(
+    sim: &mut turmoil::Sim<'_>,
+    service_ids: &'static [u16],
+    major_version: u8,
+    nack_eventgroup: u16,
+) {
+    sim.host("wire_server", move || async move {
+        let my_ip: Ipv4Addr = turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+        let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+        let mut buf = [0u8; 65535];
+        let mut next_multicast_session_id = 1u16;
+        let mut next_unicast_session_id = 1u16;
+
+        loop {
+            let (len, from) = sd_socket.recv_from(&mut buf).await?;
+            let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) else {
+                continue;
+            };
+            for entry in &sd_msg.entries {
+                if !service_ids.contains(&entry.service_id) {
+                    continue;
+                }
+                match entry.entry_type {
+                    recentip::wire::SdEntryType::FindService => {
+                        let offer = build_sd_offer_with_session(
+                            entry.service_id,
+                            entry.instance_id,
+                            major_version,
+                            0x00000001,
+                            my_ip,
+                            30509,
+                            0xFFFFFF,
+                            next_multicast_session_id,
+                            true,  // reboot_flag
+                            false, // unicast_flag (multicast offer)
+                        );
+                        next_multicast_session_id += 1;
+                        sd_socket.send_to(&offer, sd_multicast).await?;
+                    }
+                    recentip::wire::SdEntryType::SubscribeEventgroup => {
+                        let reply = if entry.eventgroup_id == nack_eventgroup {
+                            build_sd_subscribe_nack(
+                                entry.service_id,
+                                entry.instance_id,
+                                major_version,
+                                entry.eventgroup_id,
+                                next_unicast_session_id,
+                            )
+                        } else {
+                            build_sd_subscribe_ack_with_session(
+                                entry.service_id,
+                                entry.instance_id,
+                                major_version,
+                                entry.eventgroup_id,
+                                0xFFFFFF,
+                                next_unicast_session_id,
+                            )
+                        };
+                        next_unicast_session_id += 1;
+                        sd_socket.send_to(&reply, from).await?;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    });
+}
+
+/// Discover `service_id` on a turmoil client runtime.
+async fn discover(
+    runtime: &SomeIp<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>,
+    service_id: u16,
+    instance_id: u16,
+    major_version: u8,
+) -> OfferedService {
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        runtime
+            .find(service_id)
+            .major_version(major_version)
+            .instance(InstanceId::Id(instance_id)),
+    )
+    .await
+    .expect("Discovery timeout")
+    .expect("Service available")
+}
+
+/// Multi-eventgroup all-or-nothing semantics must also hold when the
+/// subscription gets a dedicated UDP socket.
+///
+/// # Scenario
+/// - Client subscribes to EG1 → shared RPC endpoint, ACKed
+/// - Client subscribes to EG2 + EG3 on the same service → the service already
+///   has a subscription, so this one binds a dedicated UDP socket
+/// - Server ACKs EG2, NACKs EG3
+/// - The second subscription must fail, even though the ACK for EG2 arrives first
+#[test_log::test]
+fn multi_eventgroup_subscription_on_dedicated_socket_fails_if_one_nacked() {
+    covers!(feat_req_someipsd_1137);
+
+    const SERVICE_ID: u16 = 0x1234;
+    const INSTANCE_ID: u16 = 0x0001;
+    const MAJOR_VERSION: u8 = 1;
+    const EG1: u16 = 0x0001;
+    const EG2: u16 = 0x0002;
+    const EG_NACKED: u16 = 0x0003;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    spawn_ack_all_but_one_server(&mut sim, &[SERVICE_ID], MAJOR_VERSION, EG_NACKED);
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = discover(&runtime, SERVICE_ID, INSTANCE_ID, MAJOR_VERSION).await;
+
+        let _first = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(EventgroupId::new(EG1).unwrap()),
+        )
+        .await
+        .expect("First subscribe timeout")
+        .expect("First subscription (EG1) is ACKed");
+
+        let second = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy
+                .subscribe(EventgroupId::new(EG2).unwrap())
+                .and(EventgroupId::new(EG_NACKED).unwrap()),
+        )
+        .await
+        .expect("Second subscribe timeout");
+
+        match second {
+            Ok(_) => panic!(
+                "Multi-eventgroup subscription on a dedicated socket succeeded although EG3 was NACKed"
+            ),
+            Err(e) => assert!(
+                matches!(e, Error::SubscriptionRejected),
+                "Expected SubscriptionRejected, got {e:?}"
+            ),
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Multi-eventgroup all-or-nothing semantics must also hold when the
+/// subscription reuses another service's dedicated UDP endpoint.
+///
+/// # Scenario
+/// - Client subscribes to A/EG1 (shared RPC endpoint) and A/EG2 (dedicated socket D)
+/// - Client subscribes to B/EG1 (shared RPC endpoint)
+/// - Client subscribes to B/EG2 + B/EG3 → B already has a subscription and D is
+///   not yet used by B, so this subscription reuses D
+/// - Server ACKs EG2, NACKs EG3
+/// - The B/EG2+EG3 subscription must fail, even though the ACK for EG2 arrives first
+#[test_log::test]
+fn multi_eventgroup_subscription_on_reused_endpoint_fails_if_one_nacked() {
+    covers!(feat_req_someipsd_1137);
+
+    const SERVICE_A: u16 = 0x1234;
+    const SERVICE_B: u16 = 0x5678;
+    const INSTANCE_ID: u16 = 0x0001;
+    const MAJOR_VERSION: u8 = 1;
+    const EG1: u16 = 0x0001;
+    const EG2: u16 = 0x0002;
+    const EG_NACKED: u16 = 0x0003;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    spawn_ack_all_but_one_server(&mut sim, &[SERVICE_A, SERVICE_B], MAJOR_VERSION, EG_NACKED);
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy_a = discover(&runtime, SERVICE_A, INSTANCE_ID, MAJOR_VERSION).await;
+        let proxy_b = discover(&runtime, SERVICE_B, INSTANCE_ID, MAJOR_VERSION).await;
+
+        let mut keep_alive = Vec::new();
+        for (proxy, eventgroup) in [(&proxy_a, EG1), (&proxy_a, EG2), (&proxy_b, EG1)] {
+            let sub = tokio::time::timeout(
+                Duration::from_secs(5),
+                proxy.subscribe(EventgroupId::new(eventgroup).unwrap()),
+            )
+            .await
+            .expect("Single-eventgroup subscribe timeout")
+            .expect("Single-eventgroup subscription is ACKed");
+            keep_alive.push(sub);
+        }
+
+        let reused = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_b
+                .subscribe(EventgroupId::new(EG2).unwrap())
+                .and(EventgroupId::new(EG_NACKED).unwrap()),
+        )
+        .await
+        .expect("Reused-endpoint subscribe timeout");
+
+        match reused {
+            Ok(_) => panic!(
+                "Multi-eventgroup subscription on a reused endpoint succeeded although EG3 was NACKed"
+            ),
+            Err(e) => assert!(
+                matches!(e, Error::SubscriptionRejected),
+                "Expected SubscriptionRejected, got {e:?}"
+            ),
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
 /// Test that a multi-eventgroup subscription over TCP fails if ANY eventgroup is NACKed.
 ///
 /// Same as `multi_eventgroup_subscription_fails_if_one_nacked` but uses TCP transport.
