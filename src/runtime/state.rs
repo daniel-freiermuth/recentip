@@ -1010,4 +1010,82 @@ mod tests {
             assert_ne!(id, 0, "Session ID must never be 0");
         }
     }
+
+    const SUB_KEY: ServiceKey = ServiceKey {
+        service_id: 0x1234,
+        instance_id: 0x0001,
+        major_version: 1,
+    };
+
+    fn test_state() -> RuntimeState {
+        let addr = "127.0.0.1:30490".parse().unwrap();
+        let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
+        let (client_rpc_tx, _) = mpsc::channel(1);
+        RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, test_config())
+    }
+
+    fn ack(eventgroup_id: u16) -> crate::wire::SdEntry {
+        crate::wire::SdEntry::subscribe_eventgroup_ack(
+            SUB_KEY.service_id,
+            SUB_KEY.instance_id,
+            SUB_KEY.major_version,
+            eventgroup_id,
+            3,
+            0,
+        )
+    }
+
+    fn record(
+        state: &mut RuntimeState,
+        eventgroup_ids: &[u16],
+        track_multi_eventgroup: bool,
+    ) -> oneshot::Receiver<Result<u64>> {
+        let (events_tx, _events_rx) = mpsc::channel(1);
+        let (response_tx, response_rx) = oneshot::channel();
+        state.record_subscription_state(
+            SUB_KEY,
+            7,
+            eventgroup_ids,
+            &events_tx,
+            response_tx,
+            "127.0.0.1:40000".parse().unwrap(),
+            false,
+            0,
+            Transport::Udp,
+            track_multi_eventgroup,
+        );
+        response_rx
+    }
+
+    /// A single-eventgroup subscription is tracked as a plain pending
+    /// subscription even when multi-eventgroup tracking is requested:
+    /// the response rides on the `PendingSubscription` and no
+    /// all-or-nothing entry is created.
+    #[test_log::test]
+    fn single_eventgroup_subscription_is_not_multi_tracked() {
+        let mut state = test_state();
+        let mut response_rx = record(&mut state, &[0x0010], true);
+
+        assert!(
+            state.multi_eventgroup_subscriptions.is_empty(),
+            "single-eventgroup subscription must not create multi-eventgroup tracking"
+        );
+
+        crate::runtime::sd::handle_subscribe_ack(&ack(0x0010), &mut state);
+        assert_eq!(response_rx.try_recv().unwrap().unwrap(), 7);
+    }
+
+    /// Without multi-eventgroup tracking (early-return subscribe paths), the
+    /// response is resolved by the first ACK — it does not wait for every
+    /// eventgroup to be acknowledged.
+    #[test_log::test]
+    fn untracked_multi_eventgroup_subscription_resolves_on_first_ack() {
+        let mut state = test_state();
+        let mut response_rx = record(&mut state, &[0x0010, 0x0020], false);
+
+        assert!(state.multi_eventgroup_subscriptions.is_empty());
+
+        crate::runtime::sd::handle_subscribe_ack(&ack(0x0010), &mut state);
+        assert_eq!(response_rx.try_recv().unwrap().unwrap(), 7);
+    }
 }
