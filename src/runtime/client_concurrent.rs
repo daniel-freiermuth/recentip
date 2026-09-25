@@ -3,7 +3,6 @@
 //! This module implements concurrent TCP Subscribe command processing to avoid blocking
 //! the event loop during TCP connection establishment.
 
-use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
