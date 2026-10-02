@@ -1255,3 +1255,110 @@ fn tcp_concurrent_subscriptions_isolated_event_delivery() {
         eg2_count
     );
 }
+
+// ============================================================================
+// 7. RPC CONNECTION REUSED FOR SUBSCRIPTION
+// ============================================================================
+
+/// A TCP subscription that reuses an already-established RPC connection
+/// (feat_req_someip_644: one TCP connection per client–server pair) must still
+/// receive the events the server pushes over that connection.
+///
+/// The RPC call opens the connection first; the subsequent `subscribe()`
+/// advertises that connection's local address in its SubscribeEventgroup, so
+/// the server sends every notification over the RPC connection.  The client
+/// must route those notifications to the subscriber.
+#[test_log::test]
+fn tcp_subscription_reusing_rpc_connection_receives_events() {
+    covers!(feat_req_someip_644, feat_req_someipsd_767);
+
+    let received = Arc::new(AtomicUsize::new(0));
+    let received_clone = Arc::clone(&received);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let offering = runtime
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .tcp()
+            .start()
+            .await
+            .unwrap();
+
+        let event_handle = offering
+            .event(EventId::new(0x8001).unwrap())
+            .eventgroup(EventgroupId::new(0x0001).unwrap())
+            .create()
+            .await
+            .unwrap();
+
+        // Give the client time to call the method and subscribe.
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+
+        for i in 0..5u8 {
+            event_handle.notify(&[i]).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy =
+            tokio::time::timeout(Duration::from_secs(5), runtime.find(TCP_PUB_SUB_SERVICE_ID))
+                .await
+                .expect("Discovery timeout")
+                .expect("Service available");
+
+        // 1. RPC first — opens the TCP connection (RPC slot).
+        proxy
+            .fire_and_forget(MethodId::new(0x0001).unwrap(), b"ping")
+            .await
+            .unwrap();
+
+        // 2. Subscribe — reuses the RPC connection.
+        let mut sub = proxy
+            .subscribe(EventgroupId::new(0x0001).unwrap())
+            .await
+            .expect("Subscribe should succeed");
+
+        while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub.next())
+            .await
+            .ok()
+            .flatten()
+        {
+            tracing::info!("[client] received event_id={:04x}", event.event_id.value());
+            received_clone.fetch_add(1, Ordering::SeqCst);
+        }
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let count = received.load(Ordering::SeqCst);
+    assert!(
+        count >= 3,
+        "Subscriber sharing the RPC TCP connection should receive events, got {count}"
+    );
+}
