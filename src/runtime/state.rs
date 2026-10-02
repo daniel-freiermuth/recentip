@@ -1068,4 +1068,122 @@ mod tests {
         crate::runtime::sd::handle_subscribe_ack(&ack(0x0010), &mut state);
         assert_eq!(response_rx.try_recv().unwrap().unwrap(), 7);
     }
+
+    // ------------------------------------------------------------------------
+    // Reboot detection state machine (feat_req_someipsd_764 / _871 / _872)
+    // ------------------------------------------------------------------------
+
+    /// Builds a channel whose baseline is `(session_id, reboot_flag)`.
+    fn channel_with_baseline(session_id: u16, reboot_flag: bool) -> PeerChannelSession {
+        let mut channel = PeerChannelSession::default();
+        assert!(
+            !channel.check_and_update(session_id, reboot_flag),
+            "first contact must only establish a baseline"
+        );
+        channel
+    }
+
+    /// First contact never reports a reboot, regardless of the flag, and is
+    /// recorded as the baseline for subsequent comparisons.
+    #[test_log::test]
+    fn first_contact_establishes_baseline_without_reboot() {
+        for reboot_flag in [false, true] {
+            let mut channel = PeerChannelSession::default();
+            assert!(!channel.check_and_update(0x0042, reboot_flag));
+            assert_eq!(channel.last_session_id, Some(0x0042));
+            assert_eq!(channel.last_reboot_flag, reboot_flag);
+        }
+    }
+
+    /// Case 1: baseline with flag=0, then flag=1 → reboot, even when the
+    /// session ID increases.
+    #[test_log::test]
+    fn reboot_flag_transition_false_to_true_detects_reboot() {
+        let mut channel = channel_with_baseline(0x0100, false);
+        assert!(!channel.check_and_update(0x0101, false));
+        assert!(channel.check_and_update(0x0102, true));
+    }
+
+    /// Case 2 equality edge: flag stays 1 and the session ID repeats. The spec
+    /// says `old.session_id >= new.session_id` → reboot, so equality counts.
+    #[test_log::test]
+    fn equal_session_id_with_reboot_flag_set_detects_reboot() {
+        let mut channel = channel_with_baseline(0x0010, true);
+        assert!(channel.check_and_update(0x0010, true));
+    }
+
+    /// Case 2: flag stays 1 and the session ID regresses → reboot.
+    #[test_log::test]
+    fn session_regression_with_reboot_flag_set_detects_reboot() {
+        let mut channel = channel_with_baseline(0x0010, true);
+        assert!(channel.check_and_update(0x000F, true));
+    }
+
+    /// Flag stays 1 and the session ID increments → normal operation.
+    #[test_log::test]
+    fn increasing_session_id_with_reboot_flag_set_is_not_reboot() {
+        let mut channel = channel_with_baseline(0x0010, true);
+        assert!(!channel.check_and_update(0x0011, true));
+        assert!(!channel.check_and_update(0x0012, true));
+    }
+
+    /// First wraparound: the sender clears the reboot flag as it wraps
+    /// 0xFFFF → 0x0001. Flag 1 → 0 is not a reboot.
+    #[test_log::test]
+    fn first_wraparound_clearing_reboot_flag_is_not_reboot() {
+        let mut channel = channel_with_baseline(0xFFFF, true);
+        assert!(!channel.check_and_update(0x0001, false));
+    }
+
+    /// Later wraparounds: flag stays 0 across 0xFFFF → 0x0001. A session
+    /// regression without the reboot flag is not a reboot.
+    #[test_log::test]
+    fn wraparound_with_reboot_flag_clear_is_not_reboot() {
+        let mut channel = channel_with_baseline(0xFFFF, false);
+        assert!(!channel.check_and_update(0x0001, false));
+        assert!(!channel.check_and_update(0x0002, false));
+    }
+
+    /// A reboot detected on either channel resets session tracking on BOTH
+    /// channels, so the next message on each channel is a fresh baseline.
+    #[test_log::test]
+    fn reboot_on_one_channel_resets_both_channels() {
+        for (detecting, other) in [
+            (SdChannel::Multicast, SdChannel::Unicast),
+            (SdChannel::Unicast, SdChannel::Multicast),
+        ] {
+            let mut peer = PeerSessionState::default();
+            assert!(!peer.check_reboot_and_reset(SdChannel::Multicast, 0x0500, true));
+            assert!(!peer.check_reboot_and_reset(SdChannel::Unicast, 0x0700, true));
+
+            assert!(
+                peer.check_reboot_and_reset(detecting, 0x0001, true),
+                "regression on {detecting:?} must be detected"
+            );
+            assert_eq!(peer.multicast.last_session_id, None);
+            assert_eq!(peer.unicast.last_session_id, None);
+            assert!(!peer.multicast.last_reboot_flag);
+            assert!(!peer.unicast.last_reboot_flag);
+
+            // Without the reset this would regress 0x0700/0x0500 → 0x0002 with
+            // the flag set and be reported as a second reboot.
+            assert!(
+                !peer.check_reboot_and_reset(other, 0x0002, true),
+                "{other:?} must start from a fresh baseline after the reset"
+            );
+        }
+    }
+
+    /// Reboot detection on one channel does not consult the other channel's
+    /// counters: independent sequences with no regression stay quiet.
+    #[test_log::test]
+    fn channels_track_session_ids_independently() {
+        let mut peer = PeerSessionState::default();
+        assert!(!peer.check_reboot_and_reset(SdChannel::Multicast, 0x0100, true));
+        assert!(!peer.check_reboot_and_reset(SdChannel::Unicast, 0x0005, true));
+        assert!(!peer.check_reboot_and_reset(SdChannel::Multicast, 0x0101, true));
+        assert!(!peer.check_reboot_and_reset(SdChannel::Unicast, 0x0006, true));
+        assert_eq!(peer.multicast.last_session_id, Some(0x0101));
+        assert_eq!(peer.unicast.last_session_id, Some(0x0006));
+    }
 }
