@@ -212,7 +212,9 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         Ok(())
     }
 
-    /// Ensure a connection exists to a peer and return our local address on that connection.
+    /// Ensure a connection exists to a peer and return our local address on that
+    /// connection together with the connection key its reader task tags received
+    /// messages with.
     ///
     /// This is used for TCP pub/sub: the client must connect to the server BEFORE
     /// subscribing (per `feat_req_someipsd_767`), and must advertise the correct
@@ -221,6 +223,8 @@ impl<T: TcpStream> TcpConnectionPool<T> {
     ///
     /// The `subscription_id` allows multiple connections per server (one per subscription),
     /// mirroring UDP's per-subscription socket approach. Use 0 for RPC connections.
+    /// If an RPC connection (key 0) already exists it is reused and key 0 is returned,
+    /// so the caller must route events by the returned key, not by `subscription_id`.
     ///
     /// This method coordinates concurrent connection attempts to the same endpoint:
     /// only one task actually establishes the connection while others wait on the result.
@@ -235,7 +239,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
         subscription_id: u64,
         local_ip: Ipv4Addr,
         local_port: PortSpec,
-    ) -> io::Result<SocketAddrV4> {
+    ) -> io::Result<(SocketAddrV4, u64)> {
         // If there is already an RPC connection (subscription_id = 0) to this target,
         // reuse it for the subscription. This satisfies feat_req_someip_644: one TCP
         // connection per client–server pair. We only reuse the RPC slot (0), not
@@ -251,7 +255,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
                 state.local_addr,
                 subscription_id
             );
-            return Ok(state.local_addr);
+            return Ok((state.local_addr, 0));
         }
 
         let key = (target, subscription_id);
@@ -269,7 +273,7 @@ impl<T: TcpStream> TcpConnectionPool<T> {
             .get_or_try_init(|| self.do_connect(target, subscription_id, local_ip, local_port))
             .await?;
 
-        Ok(state.local_addr)
+        Ok((state.local_addr, subscription_id))
     }
 
     /// Perform the actual TCP connection and setup.
