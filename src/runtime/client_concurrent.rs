@@ -55,21 +55,21 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
 
     // Establish TCP connection. On port conflict, propagate the error back to
     // SubscriptionBuilder which retries with the next policy entry.
-    let endpoint_for_subscribe = match tcp_pool
+    let (endpoint_for_subscribe, routing_conn_key) = match tcp_pool
         .ensure_connected(tcp_endpoint, conn_key, local_ip, local_port)
         .await
     {
-        Ok(local_addr) => {
+        Ok((local_addr, routing_conn_key)) => {
             tracing::debug!(
                 "TCP connection established to {} (local addr: {}, conn_key: {}) for subscription to {:04x}:{:04x} eventgroups {:?}",
                 tcp_endpoint,
                 local_addr,
-                conn_key,
+                routing_conn_key,
                 service_id.value(),
                 instance_id.value(),
                 eventgroup_ids
             );
-            local_addr
+            (local_addr, routing_conn_key)
         }
         Err(e)
             if matches!(
@@ -135,7 +135,9 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 instance_id.value(),
             );
 
-            // Record subscription state (subscriptions + pending tracking)
+            // Record subscription state (subscriptions + pending tracking).
+            // Route by the key of the connection actually used: a reused RPC
+            // connection tags its events with 0, not with the allocated conn_key.
             let eventgroups_to_subscribe = state.record_subscription_state(
                 key,
                 subscription_id,
@@ -144,7 +146,7 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 response,
                 endpoint_for_subscribe,
                 false,
-                conn_key,
+                routing_conn_key,
                 Transport::Tcp,
             );
 

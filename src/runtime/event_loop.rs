@@ -202,7 +202,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     },
                     MessageType::RequestNoReturn =>
                         handle_incoming_fire_forget(&header, payload, method_msg.from, &state, Transport::Udp, method_msg.local_port),
-                    MessageType::Notification => handle_incoming_notification(&header, payload, method_msg.from, &state, 0),
+                    MessageType::Notification => handle_incoming_notification(&header, payload, method_msg.from, &state, 0, Transport::Udp),
                     MessageType::Response |
                     MessageType::Error => handle_incoming_response(&header, payload, &mut state),
                     MessageType::TpRequest |
@@ -271,7 +271,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             (service_id=0x{:04X}) — dropping",
                             header.message_type, tcp_msg.from, header.service_id
                         ),
-                    MessageType::Notification => handle_incoming_notification(&header, payload, tcp_msg.from, &state, tcp_msg.subscription_id),
+                    MessageType::Notification => handle_incoming_notification(&header, payload, tcp_msg.from, &state, tcp_msg.subscription_id, Transport::Tcp),
                     MessageType::Response |
                     MessageType::Error => handle_incoming_response(&header, payload, &mut state),
                 }

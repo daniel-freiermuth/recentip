@@ -850,6 +850,7 @@ pub fn handle_incoming_notification(
     from: SocketAddrV4,
     state: &RuntimeState,
     subscription_id: u64,
+    transport: Transport,
 ) {
     // Method ID is the event ID for notifications
     let Some(event_id) = EventId::new(header.method_id) else {
@@ -896,6 +897,12 @@ pub fn handle_incoming_notification(
             // UDP subscriptions have dedicated sockets and skip this path entirely
             if sub.has_dedicated_socket {
                 continue; // This subscription receives events on its own dedicated socket
+            }
+
+            // Connection keys are only meaningful within one transport: UDP subscriptions
+            // on the shared endpoint and TCP subscriptions on the RPC connection both use 0.
+            if sub.transport != transport {
+                continue;
             }
 
             // TCP subscriptions: Route based on connection key matching
