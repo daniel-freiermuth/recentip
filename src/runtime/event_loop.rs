@@ -1589,3 +1589,275 @@ async fn send_stop_offers<U: UdpSocket>(
     let data = msg.serialize(session_id);
     let _ = sd_socket.send_to(&data, config.sd_multicast_addr()).await;
 }
+
+// ============================================================================
+// UNIT TESTS
+// ============================================================================
+
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+
+    const TARGET_A: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 10), 30490);
+    const TARGET_B: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 20), 30490);
+
+    fn endpoint(last_octet: u8, port: u16) -> SdOption {
+        SdOption::Ipv4Endpoint {
+            addr: Ipv4Addr::new(10, 0, 0, last_octet),
+            port,
+            protocol: L4Protocol::Udp,
+        }
+    }
+
+    /// Ack entry referencing `num_1` options at `idx_1` (run 1) and `num_2` at `idx_2` (run 2).
+    fn ack_entry(eventgroup_id: u16, idx_1: u8, num_1: u8, idx_2: u8, num_2: u8) -> SdEntry {
+        let mut entry = SdEntry::subscribe_eventgroup_ack(0x1234, 0x0001, 1, eventgroup_id, 3, 0);
+        entry.index_1st_option = idx_1;
+        entry.num_options_1 = num_1;
+        entry.index_2nd_option = idx_2;
+        entry.num_options_2 = num_2;
+        entry
+    }
+
+    fn send_sd(
+        flags: u8,
+        entries: Vec<SdEntry>,
+        options: Vec<SdOption>,
+        target: SocketAddrV4,
+    ) -> Action {
+        let mut message = SdMessage::new(flags);
+        for option in options {
+            message.add_option(option);
+        }
+        for entry in entries {
+            message.add_entry(entry);
+        }
+        Action::SendSd { message, target }
+    }
+
+    /// Extract all `SendSd` actions keyed by target; panics on duplicate targets.
+    fn sd_messages_by_target(
+        actions: &[Action],
+    ) -> std::collections::HashMap<SocketAddrV4, &SdMessage> {
+        let mut by_target = std::collections::HashMap::new();
+        for action in actions {
+            if let Action::SendSd { message, target } = action {
+                assert!(
+                    by_target.insert(*target, message).is_none(),
+                    "target {target} must appear in exactly one SendSd after clustering"
+                );
+            }
+        }
+        by_target
+    }
+
+    /// Resolve the options an entry references through its run-1 and run-2 indices.
+    fn referenced_options<'a>(message: &'a SdMessage, entry: &SdEntry) -> Vec<&'a SdOption> {
+        let run = |idx: u8, num: u8| {
+            let start = usize::from(idx);
+            message.options[start..start + usize::from(num)].iter()
+        };
+        run(entry.index_1st_option, entry.num_options_1)
+            .chain(run(entry.index_2nd_option, entry.num_options_2))
+            .collect()
+    }
+
+    #[test_log::test]
+    fn cluster_sd_actions_empty_input_yields_no_actions() {
+        assert!(cluster_sd_actions(Vec::new()).is_empty());
+    }
+
+    #[test_log::test]
+    fn cluster_sd_actions_merges_same_target_and_rebases_option_indices() {
+        let first = send_sd(
+            SdMessage::FLAG_UNICAST,
+            vec![ack_entry(1, 0, 1, 1, 1), ack_entry(2, 0, 0, 0, 0)],
+            vec![endpoint(1, 1000), endpoint(2, 2000)],
+            TARGET_A,
+        );
+        let second = send_sd(
+            SdMessage::FLAG_REBOOT | SdMessage::FLAG_UNICAST,
+            vec![ack_entry(3, 1, 2, 0, 1)],
+            vec![endpoint(3, 3000), endpoint(4, 4000), endpoint(5, 5000)],
+            TARGET_A,
+        );
+
+        let clustered = cluster_sd_actions(vec![first, second]);
+
+        assert_eq!(clustered.len(), 1);
+        let messages = sd_messages_by_target(&clustered);
+        let merged = messages[&TARGET_A];
+        assert_eq!(
+            merged.flags,
+            SdMessage::FLAG_UNICAST,
+            "flags of the first message to a target win"
+        );
+        assert_eq!(
+            merged.options,
+            vec![
+                endpoint(1, 1000),
+                endpoint(2, 2000),
+                endpoint(3, 3000),
+                endpoint(4, 4000),
+                endpoint(5, 5000),
+            ]
+        );
+        assert_eq!(
+            merged
+                .entries
+                .iter()
+                .map(|e| e.eventgroup_id)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3],
+            "entries keep submission order"
+        );
+
+        // Entries of the first message are unchanged (offset 0).
+        assert_eq!(merged.entries[0], ack_entry(1, 0, 1, 1, 1));
+        // Entries without options keep their (meaningless) indices untouched.
+        assert_eq!(merged.entries[1], ack_entry(2, 0, 0, 0, 0));
+        // Entries of the second message are shifted by the 2 options already present.
+        assert_eq!(merged.entries[2], ack_entry(3, 3, 2, 2, 1));
+
+        // Every entry still resolves to the endpoints its original message referenced.
+        assert_eq!(
+            referenced_options(merged, &merged.entries[0]),
+            vec![&endpoint(1, 1000), &endpoint(2, 2000)]
+        );
+        assert_eq!(
+            referenced_options(merged, &merged.entries[2]),
+            vec![&endpoint(4, 4000), &endpoint(5, 5000), &endpoint(3, 3000)]
+        );
+    }
+
+    #[test_log::test]
+    fn cluster_sd_actions_rebases_only_the_option_run_that_is_used() {
+        // Run 2 unused (num_options_2 == 0): its index must not be shifted, and vice versa.
+        let first = send_sd(
+            0,
+            vec![ack_entry(1, 0, 1, 0, 0)],
+            vec![endpoint(1, 1000)],
+            TARGET_A,
+        );
+        let second = send_sd(
+            0,
+            vec![ack_entry(2, 0, 1, 0, 0), ack_entry(3, 0, 0, 0, 1)],
+            vec![endpoint(2, 2000)],
+            TARGET_A,
+        );
+
+        let clustered = cluster_sd_actions(vec![first, second]);
+
+        let messages = sd_messages_by_target(&clustered);
+        let merged = messages[&TARGET_A];
+        assert_eq!(merged.entries[1], ack_entry(2, 1, 1, 0, 0));
+        assert_eq!(merged.entries[2], ack_entry(3, 0, 0, 1, 1));
+    }
+
+    #[test_log::test]
+    fn cluster_sd_actions_keeps_distinct_targets_separate() {
+        let to_a = send_sd(
+            0,
+            vec![ack_entry(1, 0, 1, 0, 0)],
+            vec![endpoint(1, 1000)],
+            TARGET_A,
+        );
+        let to_b = send_sd(
+            0,
+            vec![ack_entry(2, 0, 1, 0, 0)],
+            vec![endpoint(2, 2000)],
+            TARGET_B,
+        );
+
+        let clustered = cluster_sd_actions(vec![to_a, to_b]);
+
+        assert_eq!(clustered.len(), 2);
+        let messages = sd_messages_by_target(&clustered);
+        for (target, eventgroup_id, option) in [
+            (TARGET_A, 1, endpoint(1, 1000)),
+            (TARGET_B, 2, endpoint(2, 2000)),
+        ] {
+            let message = messages[&target];
+            assert_eq!(message.options, vec![option]);
+            assert_eq!(message.entries, vec![ack_entry(eventgroup_id, 0, 1, 0, 0)]);
+        }
+    }
+
+    #[test_log::test]
+    fn cluster_sd_actions_preserves_non_sd_actions_in_order() {
+        let reset = |last_octet: u8| Action::ResetPeerTcpConnections {
+            peer: Ipv4Addr::new(10, 0, 0, last_octet),
+            server_ports: vec![u16::from(last_octet)],
+            client_endpoints: Vec::new(),
+        };
+        let actions = vec![
+            reset(1),
+            send_sd(
+                0,
+                vec![ack_entry(1, 0, 1, 0, 0)],
+                vec![endpoint(1, 1000)],
+                TARGET_A,
+            ),
+            reset(2),
+            send_sd(
+                0,
+                vec![ack_entry(2, 0, 1, 0, 0)],
+                vec![endpoint(2, 2000)],
+                TARGET_A,
+            ),
+            reset(3),
+        ];
+
+        let clustered = cluster_sd_actions(actions);
+
+        assert_eq!(clustered.len(), 4);
+        let peers: Vec<Ipv4Addr> = clustered
+            .iter()
+            .filter_map(|action| match action {
+                Action::ResetPeerTcpConnections { peer, .. } => Some(*peer),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            peers,
+            vec![
+                Ipv4Addr::new(10, 0, 0, 1),
+                Ipv4Addr::new(10, 0, 0, 2),
+                Ipv4Addr::new(10, 0, 0, 3),
+            ]
+        );
+        let messages = sd_messages_by_target(&clustered);
+        assert_eq!(messages[&TARGET_A].entries.len(), 2);
+        assert_eq!(
+            messages[&TARGET_A].entries[1],
+            ack_entry(2, 1, 1, 0, 0),
+            "SendSd among other actions is still clustered and rebased"
+        );
+    }
+
+    /// Boundary: the last option index representable in the u8 wire field (255)
+    /// is reached exactly, without clamping.
+    #[test_log::test]
+    fn cluster_sd_actions_rebases_to_highest_representable_option_index() {
+        let filler: Vec<SdOption> = (0..255u16).map(|port| endpoint(1, port)).collect();
+        let first = send_sd(0, vec![ack_entry(1, 0, 1, 0, 0)], filler, TARGET_A);
+        let second = send_sd(
+            0,
+            vec![ack_entry(2, 0, 1, 0, 0)],
+            vec![endpoint(2, 2000)],
+            TARGET_A,
+        );
+
+        let clustered = cluster_sd_actions(vec![first, second]);
+
+        let messages = sd_messages_by_target(&clustered);
+        let merged = messages[&TARGET_A];
+        assert_eq!(merged.options.len(), 256);
+        assert_eq!(merged.entries[1], ack_entry(2, 255, 1, 0, 0));
+        assert_eq!(
+            referenced_options(merged, &merged.entries[1]),
+            vec![&endpoint(2, 2000)]
+        );
+    }
+}
