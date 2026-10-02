@@ -135,8 +135,15 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 instance_id.value(),
             );
 
-            // Record subscription state (subscriptions + pending tracking)
-            let eventgroups_to_subscribe = state.record_subscription_state(
+            // Record subscription state (subscriptions + pending tracking).
+            //
+            // The first-waiter result is deliberately not used to suppress the
+            // Subscribe: every TCP subscription owns a dedicated connection
+            // (unique `conn_key`), and notifications are routed by `conn_key`.
+            // The server must learn this connection's endpoint even if another
+            // subscription to the same eventgroup is still awaiting its ACK,
+            // otherwise this subscription never receives events.
+            state.record_subscription_state(
                 key,
                 subscription_id,
                 &eventgroup_ids,
@@ -149,18 +156,16 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
             );
 
             // Queue the Subscribe SD message
-            if !eventgroups_to_subscribe.is_empty() {
-                tracing::debug!(
-                    "Subscribing to {:04x}:{:04x} v{} eventgroups {:?} via TCP (endpoint: {}, subscription_id: {})",
-                    service_id.value(),
-                    instance_id.value(),
-                    major_version,
-                    eventgroups_to_subscribe,
-                    endpoint_for_subscribe,
-                    subscription_id
-                );
-                state.queue_unicast_sd(msg, sd_endpoint);
-            }
+            tracing::debug!(
+                "Subscribing to {:04x}:{:04x} v{} eventgroups {:?} via TCP (endpoint: {}, subscription_id: {})",
+                service_id.value(),
+                instance_id.value(),
+                major_version,
+                eventgroup_ids,
+                endpoint_for_subscribe,
+                subscription_id
+            );
+            state.queue_unicast_sd(msg, sd_endpoint);
         }),
     };
 

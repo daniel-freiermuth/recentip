@@ -1255,3 +1255,132 @@ fn tcp_concurrent_subscriptions_isolated_event_delivery() {
         eg2_count
     );
 }
+
+/// Two concurrent TCP subscriptions to the *same* eventgroup must both
+/// receive events.
+///
+/// # Bug
+///
+/// Every TCP Subscribe gets its own pre-allocated `conn_key` and therefore its
+/// own TCP connection (local endpoint). The second subscription, however, was
+/// only recorded as a non-first waiter in `pending_subscriptions`, so its
+/// SubscribeEventgroup was never sent. The server never learned about the
+/// second connection, sent events only on the first one, and the client routes
+/// TCP notifications by `conn_key` — so the second subscriber starved. With an
+/// infinite subscribe TTL there is no offer-triggered renewal to repair this.
+///
+/// [feat_req_someipsd_767] Client opens TCP connection before SubscribeEventgroup.
+#[test_log::test]
+fn tcp_concurrent_subscriptions_same_eventgroup_both_receive_events() {
+    covers!(feat_req_someipsd_767);
+
+    let sub1_received = Arc::new(AtomicUsize::new(0));
+    let sub2_received = Arc::new(AtomicUsize::new(0));
+    let sub1_clone = Arc::clone(&sub1_received);
+    let sub2_clone = Arc::clone(&sub2_received);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let offering = runtime
+            .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .tcp()
+            .start()
+            .await
+            .unwrap();
+
+        // Give the client time to subscribe twice before sending events.
+        tokio::time::sleep(Duration::from_millis(800)).await;
+
+        let eg1 = EventgroupId::new(0x0001).unwrap();
+        let event_handle = offering
+            .event(EventId::new(0x8001).unwrap())
+            .eventgroup(eg1)
+            .create()
+            .await
+            .unwrap();
+
+        for i in 0..5u8 {
+            event_handle.notify(&[i]).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Infinite subscribe TTL disables offer-triggered renewal, so a
+        // missing initial Subscribe is never repaired.
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .preferred_transport(Transport::Tcp)
+            .subscribe_ttl(0xFF_FFFF)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy =
+            tokio::time::timeout(Duration::from_secs(5), runtime.find(TCP_PUB_SUB_SERVICE_ID))
+                .await
+                .expect("Discovery timeout")
+                .expect("Service available");
+
+        let eg1 = EventgroupId::new(0x0001).unwrap();
+
+        let (sub1_result, sub2_result) = tokio::join!(proxy.subscribe(eg1), proxy.subscribe(eg1));
+        let mut sub1 = sub1_result.expect("First subscribe should succeed");
+        let mut sub2 = sub2_result.expect("Second subscribe should succeed");
+
+        let collect_sub1 = async move {
+            while tokio::time::timeout(Duration::from_secs(3), sub1.next())
+                .await
+                .ok()
+                .flatten()
+                .is_some()
+            {
+                sub1_clone.fetch_add(1, Ordering::SeqCst);
+            }
+        };
+        let collect_sub2 = async move {
+            while tokio::time::timeout(Duration::from_secs(3), sub2.next())
+                .await
+                .ok()
+                .flatten()
+                .is_some()
+            {
+                sub2_clone.fetch_add(1, Ordering::SeqCst);
+            }
+        };
+
+        tokio::join!(collect_sub1, collect_sub2);
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let sub1_count = sub1_received.load(Ordering::SeqCst);
+    let sub2_count = sub2_received.load(Ordering::SeqCst);
+
+    assert!(
+        sub1_count >= 3,
+        "First subscriber should receive events, got {sub1_count}"
+    );
+    assert!(
+        sub2_count >= 3,
+        "Second subscriber to the same eventgroup should receive events, got {sub2_count}"
+    );
+}
