@@ -960,7 +960,11 @@ fn server_fire_forget_event_reflects_client_transport() {
     sim.run().unwrap();
 
     let seen = transports_seen.lock().unwrap();
-    assert_eq!(seen.len(), 2, "server must see exactly 2 fire-and-forget requests");
+    assert_eq!(
+        seen.len(),
+        2,
+        "server must see exactly 2 fire-and-forget requests"
+    );
     assert!(
         seen.contains(&Transport::Tcp),
         "server must see a TCP fire-and-forget; got: {:?}",
