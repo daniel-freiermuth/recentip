@@ -20,6 +20,7 @@
 //! | `prefer_udp_falls_back_to_tcp_for_tcp_only_server` | No UDP available → falls back to TCP |
 //! | `per_proxy_policy_overrides_global_policy` | `with_transport_policy()` overrides global setting |
 //! | `server_call_event_reflects_client_transport` | `ServiceEvent::Call` `client.transport` matches actual transport |
+//! | `server_fire_forget_event_reflects_client_transport` | `ServiceEvent::FireForget` `client.transport` matches actual transport |
 //! | `tcp_only_policy_fails_with_udp_only_server` | TCP-only policy + UDP-only server → `call()` returns `TransportMismatch` |
 //! | `udp_only_policy_fails_with_tcp_only_server` | UDP-only policy + TCP-only server → `call()` returns `TransportMismatch` |
 //! | `tcp_only_policy_fire_and_forget_fails_with_udp_only_server` | TCP-only policy + UDP-only server → `fire_and_forget()` returns `TransportMismatch` |
@@ -123,6 +124,7 @@ const SUB_MULTI_PORT_TWO_PROXIES_SVC: u16 = 0x4031; // sub multi-port policy: sa
 const SUB_MULTI_PORT_SAME_PROXY_SVC: u16 = 0x4032; // sub multi-port policy: same svc, same proxy, diff egs → uses port A then B, both succeed
 const SUB_TCP_DIFF_SVC_SHARES_CONN_A: u16 = 0x4033; // TCP sub port reuse: service A, same server TCP port as B, client conn shared
 const SUB_TCP_DIFF_SVC_SHARES_CONN_B: u16 = 0x4034; // TCP sub port reuse: service B, same server TCP port as A, client conn shared
+const FF_TRANSPORT_REPORT_SVC: u16 = 0x4035; // fire-and-forget: server sees actual client transport
 const SVC_VERSION: (u8, u32) = (1, 0);
 
 // -----------------------------------------------------------------------
@@ -831,6 +833,146 @@ fn server_call_event_reflects_client_transport() {
     assert!(
         seen.contains(&Transport::Udp),
         "server must see a UDP call; got: {:?}",
+        *seen
+    );
+}
+
+// -----------------------------------------------------------------------
+// server_fire_forget_event_reflects_client_transport
+// -----------------------------------------------------------------------
+
+/// The `client.transport` field in `ServiceEvent::FireForget` accurately
+/// reflects the transport protocol used by the client, mirroring
+/// `server_call_event_reflects_client_transport` for fire-and-forget.
+///
+/// Two clients send fire-and-forget to the same dual-stack server:
+///   - Client A uses TCP
+///   - Client B uses UDP
+///
+/// The server sees the correct `client.transport` for each.
+#[test_log::test]
+fn server_fire_forget_event_reflects_client_transport() {
+    let transports_seen: Arc<Mutex<Vec<Transport>>> = Arc::new(Mutex::new(Vec::new()));
+    let server_capture = Arc::clone(&transports_seen);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let capture = Arc::clone(&server_capture);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offering = runtime
+                .offer(FF_TRANSPORT_REPORT_SVC, InstanceId::Id(1))
+                .version(SVC_VERSION.0, SVC_VERSION.1)
+                .tcp()
+                .udp()
+                .start()
+                .await
+                .unwrap();
+
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+            let mut received = 0usize;
+
+            while tokio::time::Instant::now() < deadline && received < 2 {
+                if let Ok(Some(ServiceEvent::FireForget { client, .. })) =
+                    tokio::time::timeout(Duration::from_millis(200), offering.next()).await
+                {
+                    capture.lock().unwrap().push(client.transport);
+                    received += 1;
+                }
+            }
+
+            Ok(())
+        }
+    });
+
+    sim.client("tcp_client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("tcp_client")))
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(FF_TRANSPORT_REPORT_SVC)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery timeout")
+        .expect("discovery failed");
+
+        proxy
+            .fire_and_forget(MethodId::new(1).unwrap(), b"from-tcp")
+            .await
+            .expect("fire_and_forget failed");
+
+        // Keep the runtime (and its TCP connection) alive until delivered.
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        Ok(())
+    });
+
+    sim.client("udp_client", async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("udp_client")))
+            .preferred_transport(Transport::Udp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(FF_TRANSPORT_REPORT_SVC)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery timeout")
+        .expect("discovery failed");
+
+        proxy
+            .fire_and_forget(MethodId::new(1).unwrap(), b"from-udp")
+            .await
+            .expect("fire_and_forget failed");
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let seen = transports_seen.lock().unwrap();
+    assert_eq!(
+        seen.len(),
+        2,
+        "server must see exactly 2 fire-and-forget requests"
+    );
+    assert!(
+        seen.contains(&Transport::Tcp),
+        "server must see a TCP fire-and-forget; got: {:?}",
+        *seen
+    );
+    assert!(
+        seen.contains(&Transport::Udp),
+        "server must see a UDP fire-and-forget; got: {:?}",
         *seen
     );
 }
