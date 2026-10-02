@@ -1068,4 +1068,93 @@ mod tests {
         crate::runtime::sd::handle_subscribe_ack(&ack(0x0010), &mut state);
         assert_eq!(response_rx.try_recv().unwrap().unwrap(), 7);
     }
+
+    /// TCP and UDP subscriptions of the same service may both carry connection
+    /// key 0 (UDP: shared client endpoint; TCP: reused RPC connection). A
+    /// notification must only reach subscriptions of the transport it arrived on.
+    #[test_log::test]
+    fn notification_routing_with_shared_conn_key_respects_transport() {
+        let udp: SocketAddrV4 = "10.0.0.1:30509".parse().unwrap();
+        let tcp: SocketAddrV4 = "10.0.0.1:30510".parse().unwrap();
+        let mut state = test_state();
+        state.discovered.insert(
+            SUB_KEY,
+            DiscoveredService {
+                offered_endpoints: crate::OfferedEndpoints::Both { udp, tcp },
+                sd_endpoint: "10.0.0.1:30490".parse().unwrap(),
+                minor_version: 0,
+                ttl_expires: Instant::now() + std::time::Duration::from_secs(60),
+            },
+        );
+
+        let (udp_tx, mut udp_rx) = mpsc::channel(4);
+        let (tcp_tx, mut tcp_rx) = mpsc::channel(4);
+        let local: SocketAddrV4 = "127.0.0.1:40000".parse().unwrap();
+        let (response_tx, _) = oneshot::channel();
+        state.record_subscription_state(
+            SUB_KEY,
+            1,
+            &[0x0001],
+            &udp_tx,
+            response_tx,
+            local,
+            false,
+            0,
+            Transport::Udp,
+        );
+        let (response_tx, _) = oneshot::channel();
+        state.record_subscription_state(
+            SUB_KEY,
+            2,
+            &[0x0002],
+            &tcp_tx,
+            response_tx,
+            local,
+            false,
+            0,
+            Transport::Tcp,
+        );
+
+        let header = crate::wire::Header {
+            service_id: SUB_KEY.service_id,
+            method_id: 0x8001,
+            length: 8,
+            client_id: 0,
+            session_id: 1,
+            protocol_version: 1,
+            interface_version: 1,
+            message_type: crate::wire::MessageType::Notification,
+            return_code: 0,
+        };
+        let notify = |state: &RuntimeState, from, transport| {
+            crate::runtime::client::handle_incoming_notification(
+                &header,
+                bytes::Bytes::new(),
+                from,
+                state,
+                0,
+                transport,
+            );
+        };
+
+        notify(&state, tcp, Transport::Tcp);
+        assert!(
+            tcp_rx.try_recv().is_ok(),
+            "TCP subscriber must receive TCP event"
+        );
+        assert!(
+            udp_rx.try_recv().is_err(),
+            "UDP subscriber must not receive TCP event"
+        );
+
+        notify(&state, udp, Transport::Udp);
+        assert!(
+            udp_rx.try_recv().is_ok(),
+            "UDP subscriber must receive UDP event"
+        );
+        assert!(
+            tcp_rx.try_recv().is_err(),
+            "TCP subscriber must not receive UDP event"
+        );
+    }
 }
