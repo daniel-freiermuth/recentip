@@ -92,6 +92,7 @@ Items not yet scheduled:
 - TTL expiry vs reboot-triggered cancellation test
 - FindService → OfferService session continuity test
 - **`cluster_sd_actions` option-index overflow** (`src/runtime/event_loop.rs`): once a clustered message holds >255 options, `clustered.options.len() as u8` wraps (256 → 0) and `saturating_add` clamps at 255, so merged entries silently reference wrong options. Should split into a second SD message (or reject) instead. Index 255 boundary is covered by `cluster_sd_actions_rebases_to_highest_representable_option_index`.
+- TCP eventgroup isolation when an RPC connection exists first: every subsequent TCP subscription to that server reuses the RPC connection (conn_key 0), so events of different eventgroups of the same service are delivered to all of those subscribers (subscribe-first order keeps per-eventgroup connections)
 - Sort out hardcoded timings
   - Set turmoils max_message_latency for all tests
   - Offer distance timing
