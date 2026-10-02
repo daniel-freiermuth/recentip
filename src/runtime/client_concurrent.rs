@@ -143,14 +143,24 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 Transport::Tcp,
             );
 
-            // Queue the Subscribe SD message
-            if !eventgroups_to_subscribe.is_empty() {
+            // Queue the Subscribe SD message.
+            //
+            // The first-waiter result only de-duplicates Subscribes that would
+            // advertise an endpoint already being subscribed. A dedicated
+            // connection (`routing_conn_key == conn_key`) has its own local
+            // endpoint and notifications are routed by `conn_key`, so the
+            // server must learn it even while another subscription to the same
+            // eventgroup awaits its ACK; otherwise this subscription never
+            // receives events. A reused RPC connection shares its endpoint, so
+            // the de-duplication still applies there.
+            let dedicated_connection = routing_conn_key == conn_key;
+            if dedicated_connection || !eventgroups_to_subscribe.is_empty() {
                 tracing::debug!(
                     "Subscribing to {:04x}:{:04x} v{} eventgroups {:?} via TCP (endpoint: {}, subscription_id: {})",
                     service_id.value(),
                     instance_id.value(),
                     major_version,
-                    eventgroups_to_subscribe,
+                    eventgroup_ids,
                     endpoint_for_subscribe,
                     subscription_id
                 );
