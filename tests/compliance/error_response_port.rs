@@ -207,7 +207,7 @@ fn unknown_service_error_uses_server_port_udp() {
                 let header = parse_header_wire(&buf[..len]).expect("Should parse response header");
 
                 assert_eq!(
-                    header.return_code, 0x02,
+                    header.return_code, ReturnCode::UnknownService,
                     "Should be E_UNKNOWN_SERVICE"
                 );
 
@@ -405,7 +405,11 @@ fn misrouted_service_error_uses_receiving_port_udp() {
                 // Verify it's an error response with correct header fields
                 let header = parse_header_wire(&buf[..len]).expect("Should parse response header");
 
-                assert_eq!(header.return_code, 0x02, "Should be E_UNKNOWN_SERVICE");
+                assert_eq!(
+                    header.return_code,
+                    ReturnCode::UnknownService,
+                    "Should be E_UNKNOWN_SERVICE"
+                );
 
                 // Verify error response echoes request header fields for correlation
                 assert_eq!(
@@ -589,7 +593,11 @@ fn unknown_service_error_uses_server_port_tcp() {
                 let header =
                     parse_header_wire(&response_buf[..len]).expect("Should parse response header");
 
-                assert_eq!(header.return_code, 0x02, "Should be E_UNKNOWN_SERVICE");
+                assert_eq!(
+                    header.return_code,
+                    ReturnCode::UnknownService,
+                    "Should be E_UNKNOWN_SERVICE"
+                );
 
                 // Verify error response echoes request header fields for correlation
                 assert_eq!(
