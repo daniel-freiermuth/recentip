@@ -838,8 +838,7 @@ fn fire_forget_with_wrong_interface_version_is_ignored() {
 /// Start a turmoil-backed library runtime on `host`.
 async fn start_runtime(
     host: &str,
-) -> recentip::SomeIp<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener>
-{
+) -> recentip::SomeIp<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> {
     recentip::configure()
         .sd_multicast_group(DEFAULT_SD_MULTICAST)
         .sd_unicast(crate::helpers::unicast(turmoil::lookup(host)))
@@ -935,7 +934,9 @@ fn fire_and_forget_to_major_version_2_service_is_delivered() {
             .expect("Fire-and-forget to v2 offering was not delivered")
             .expect("Offering closed");
         match event {
-            ServiceEvent::FireForget { method, payload, .. } => {
+            ServiceEvent::FireForget {
+                method, payload, ..
+            } => {
                 assert_eq!(method.value(), 0x0001);
                 assert_eq!(&payload[..], b"fnf");
             }
