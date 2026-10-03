@@ -96,6 +96,8 @@ Items not yet scheduled:
   - SD message slowdown in tests
   - Offer timing test (proptest and basic test)
   - Unsub timing test
+- `cargo test` (shared test process) fails ~26 tests at `tests/helpers.rs:248` `.expect("Configure tracing")` — global tracing subscriber init races between tests; `cargo nextest run` (process-per-test) is unaffected. Make init idempotent (`try_init`/`Once`)
+- Cross-compile check for `aarch64-unknown-nto-qnx710` after the typed `ReturnCode` change (target not installed on dev box)
 
 ---
 

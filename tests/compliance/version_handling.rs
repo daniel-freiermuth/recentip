@@ -599,8 +599,6 @@ fn response_preserves_interface_version() {
 fn server_returns_wrong_interface_version_error() {
     covers!(feat_req_someip_92, feat_req_someip_371, feat_req_someip_718);
 
-    const E_WRONG_INTERFACE_VERSION: u8 = 0x08;
-
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))
         .build();
@@ -698,7 +696,8 @@ fn server_returns_wrong_interface_version_error() {
 
         // Verify error response
         assert_eq!(
-            response.return_code, E_WRONG_INTERFACE_VERSION,
+            response.return_code,
+            ReturnCode::WrongInterfaceVersion,
             "Server must return E_WRONG_INTERFACE_VERSION (0x08) for interface version mismatch"
         );
 

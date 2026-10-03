@@ -52,6 +52,7 @@
 //! doesn't need to interact with wire formats directly.
 //!
 //! ```
+//! use recentip::ReturnCode;
 //! use recentip::wire::{Header, MessageType};
 //! use bytes::{Buf, BytesMut, BufMut};
 //!
@@ -65,7 +66,7 @@
 //!     protocol_version: 0x01,
 //!     interface_version: 0x01,
 //!     message_type: MessageType::Request,
-//!     return_code: 0x00,
+//!     return_code: ReturnCode::Ok,
 //! };
 //!
 //! // Serialize to bytes
@@ -88,6 +89,7 @@
 //! - Method IDs use bit 15 to distinguish methods (0) from events (1)
 //! - SD always uses UDP port 30490
 
+use crate::ReturnCode;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::fmt::Display;
 use std::net::{Ipv4Addr, SocketAddrV4};
@@ -396,7 +398,7 @@ pub struct Header {
     /// Message type
     pub message_type: MessageType,
     /// Return code
-    pub return_code: u8,
+    pub return_code: ReturnCode,
 }
 
 impl Header {
@@ -416,7 +418,7 @@ impl Header {
         let protocol_version = buf.get_u8();
         let interface_version = buf.get_u8();
         let message_type_raw = buf.get_u8();
-        let return_code = buf.get_u8();
+        let return_code = ReturnCode::from_u8(buf.get_u8());
 
         let message_type = MessageType::from_u8(message_type_raw)?;
 
@@ -451,7 +453,7 @@ impl Header {
         buf.put_u8(self.protocol_version);
         buf.put_u8(self.interface_version);
         buf.put_u8(self.message_type as u8);
-        buf.put_u8(self.return_code);
+        buf.put_u8(self.return_code.as_u8());
     }
 
     /// Get the payload length (excluding the 8 bytes counted in length field)
@@ -471,7 +473,7 @@ pub fn build_someip_message(
     session_id: u16,
     interface_version: u8,
     message_type: MessageType,
-    return_code: u8,
+    return_code: ReturnCode,
     payload: &[u8],
 ) -> Bytes {
     let length = 8 + payload.len() as u32;
@@ -1094,7 +1096,7 @@ impl SdMessage {
             protocol_version: PROTOCOL_VERSION,
             interface_version: SD_INTERFACE_VERSION,
             message_type: MessageType::Notification,
-            return_code: 0x00,
+            return_code: ReturnCode::Ok,
         };
 
         let mut buf = BytesMut::with_capacity(Header::SIZE + payload.len());
@@ -1186,7 +1188,7 @@ mod tests {
             protocol_version: PROTOCOL_VERSION,
             interface_version: 0x01,
             message_type: MessageType::Request,
-            return_code: 0x00,
+            return_code: ReturnCode::Ok,
         };
 
         let mut buf = BytesMut::new();
