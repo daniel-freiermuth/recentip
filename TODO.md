@@ -101,6 +101,7 @@ Items not yet scheduled:
   - Add QNX SDP 8.0 (`aarch64-unknown-qnx`) to `qnx-check` once mio/socket2 support `target_os = "qnx"`
   - TCP keepalive `interval`/`retries` are ignored on QNX 7.x (socket2 only sets the idle time there)
   - Keep the `QNX_TOOLCHAIN` nightly pin in CI moving (currently same date as `someip-lints/rust-toolchain`)
+- `cargo test` (shared test process) fails ~26 tests at `tests/helpers.rs:248` `.expect("Configure tracing")` — global tracing subscriber init races between tests; `cargo nextest run` (process-per-test) is unaffected. Make init idempotent (`try_init`/`Once`)
 
 ---
 
