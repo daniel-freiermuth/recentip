@@ -246,6 +246,7 @@ impl OfferedService {
             .cmd_tx
             .send(Command::Call {
                 service_id: self.service_id,
+                interface_version: self.major_version,
                 method_id: method.value(),
                 payload: payload_bytes,
                 response: response_tx,
@@ -272,6 +273,7 @@ impl OfferedService {
             .cmd_tx
             .send(Command::FireAndForget {
                 service_id: self.service_id,
+                interface_version: self.major_version,
                 method_id: method.value(),
                 payload: payload_bytes,
                 target_endpoint: sel.remote_endpoint,

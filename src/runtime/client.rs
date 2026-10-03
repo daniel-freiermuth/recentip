@@ -355,6 +355,7 @@ pub fn handle_stop_find(
 /// Handle `Command::Call`
 pub fn handle_call(
     service_id: crate::ServiceId,
+    interface_version: u8,
     method_id: u16,
     payload: &Bytes,
     response: tokio::sync::oneshot::Sender<crate::error::Result<Response>>,
@@ -372,7 +373,7 @@ pub fn handle_call(
         method_id,
         client_id,
         session_id,
-        1, // interface version
+        interface_version,
         payload,
     );
 
@@ -395,6 +396,7 @@ pub fn handle_call(
 /// Handle `Command::FireAndForget`
 pub fn handle_fire_and_forget(
     service_id: crate::ServiceId,
+    interface_version: u8,
     method_id: u16,
     payload: &Bytes,
     target_endpoint: SocketAddrV4,
@@ -411,7 +413,7 @@ pub fn handle_fire_and_forget(
         method_id,
         client_id,
         session_id,
-        1, // interface version
+        interface_version,
         payload,
     );
 
