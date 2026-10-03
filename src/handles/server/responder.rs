@@ -84,7 +84,7 @@ impl Responder {
         if let Some(tx) = self.response.take() {
             let _ = tx.send(Err(Error::Protocol(crate::error::ProtocolError {
                 message: format!("Application error: {error:?}"),
-                return_code: Some(error.as_u8()),
+                return_code: Some(error.return_code()),
             })));
         }
         Ok(())
