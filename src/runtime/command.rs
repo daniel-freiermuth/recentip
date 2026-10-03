@@ -99,6 +99,8 @@ pub enum Command {
     /// Call a method
     Call {
         service_id: ServiceId,
+        /// Interface version for the header (the service's major version)
+        interface_version: u8,
         method_id: u16,
         payload: Bytes,
         response: oneshot::Sender<Result<crate::Response>>,
@@ -110,6 +112,8 @@ pub enum Command {
     /// Fire-and-forget call (no response expected)
     FireAndForget {
         service_id: ServiceId,
+        /// Interface version for the header (the service's major version)
+        interface_version: u8,
         method_id: u16,
         payload: Bytes,
         /// Target endpoint (resolved by proxy during discovery)
