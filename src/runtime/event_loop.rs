@@ -1240,6 +1240,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
 
         Command::Call {
             service_id,
+            interface_version,
             method_id,
             payload,
             response,
@@ -1248,6 +1249,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         } => {
             client::handle_call(
                 service_id,
+                interface_version,
                 method_id,
                 &payload,
                 response,
@@ -1260,6 +1262,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
 
         Command::FireAndForget {
             service_id,
+            interface_version,
             method_id,
             payload,
             target_endpoint,
@@ -1267,6 +1270,7 @@ fn handle_command(cmd: Command, state: &mut RuntimeState) -> Option<Vec<Action>>
         } => {
             client::handle_fire_and_forget(
                 service_id,
+                interface_version,
                 method_id,
                 &payload,
                 target_endpoint,
