@@ -52,6 +52,8 @@
 use std::fmt;
 use std::io;
 
+use crate::ReturnCode;
+
 /// Result type alias using the library's [`Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -208,7 +210,7 @@ impl ConfigError {
 pub struct ProtocolError {
     pub message: String,
     /// SOME/IP return code (for server error responses)
-    pub return_code: Option<u8>,
+    pub return_code: Option<ReturnCode>,
 }
 
 impl ProtocolError {
@@ -220,7 +222,7 @@ impl ProtocolError {
     }
 
     /// Create a protocol error with a specific SOME/IP return code
-    pub fn with_return_code(message: impl Into<String>, return_code: u8) -> Self {
+    pub fn with_return_code(message: impl Into<String>, return_code: ReturnCode) -> Self {
         Self {
             message: message.into(),
             return_code: Some(return_code),
