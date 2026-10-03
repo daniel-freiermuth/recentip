@@ -331,38 +331,174 @@ impl MinorVersion {
 // RETURN CODES
 // ============================================================================
 
-/// SOME/IP return codes (for parsing received responses).
+/// SOME/IP return codes.
 ///
-/// This enum represents all possible SOME/IP return codes as defined in the
-/// specification. It is used when **receiving** responses from servers.
+/// This enum represents every value the 8-bit return code field can carry.
+/// Raw bytes are converted exactly once, at the wire boundary, via
+/// [`ReturnCode::from_u8`]; everything above the wire layer works with this
+/// type.
 ///
 /// For **sending** error responses from a server, use [`ApplicationError`]
 /// instead, which only exposes the codes that applications should generate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
 pub enum ReturnCode {
     /// No error occurred (0x00)
-    Ok = 0x00,
+    Ok,
     /// An unspecified error occurred (0x01)
-    NotOk = 0x01,
+    NotOk,
     /// The requested Service ID is unknown (0x02) - optional
-    UnknownService = 0x02,
+    UnknownService,
     /// The requested Method ID is unknown (0x03) - optional
-    UnknownMethod = 0x03,
+    UnknownMethod,
     /// Application not running (0x04) - deprecated
-    NotReady = 0x04,
+    NotReady,
     /// System not reachable (0x05) - deprecated, internal only
-    NotReachable = 0x05,
+    NotReachable,
     /// Timeout occurred (0x06) - deprecated, internal only
-    Timeout = 0x06,
+    Timeout,
     /// SOME/IP protocol version not supported (0x07) - obsolete
-    WrongProtocolVersion = 0x07,
+    WrongProtocolVersion,
     /// Interface version mismatch (0x08)
-    WrongInterfaceVersion = 0x08,
+    WrongInterfaceVersion,
     /// Payload deserialization error (0x09)
-    MalformedMessage = 0x09,
+    MalformedMessage,
     /// Unexpected message type received (0x0A)
-    WrongMessageType = 0x0A,
+    WrongMessageType,
+    /// Service-specific error (0x20-0x3F)
+    ServiceSpecific(ServiceErrorCode),
+    /// Value reserved by the specification (0x0B-0x1F, 0x40-0xFF).
+    ///
+    /// Only produced when parsing a received message.
+    Reserved(ReservedReturnCode),
+}
+
+impl ReturnCode {
+    /// Classify a raw return code byte. Total: every byte maps to exactly one
+    /// variant, and [`ReturnCode::as_u8`] round-trips it.
+    ///
+    /// ```
+    /// use recentip::ReturnCode;
+    ///
+    /// assert_eq!(ReturnCode::from_u8(0x00), ReturnCode::Ok);
+    /// assert!(matches!(ReturnCode::from_u8(0x21), ReturnCode::ServiceSpecific(c) if c.value() == 0x21));
+    /// assert!(matches!(ReturnCode::from_u8(0x40), ReturnCode::Reserved(c) if c.value() == 0x40));
+    /// ```
+    #[must_use]
+    pub const fn from_u8(value: u8) -> Self {
+        match value {
+            0x00 => Self::Ok,
+            0x01 => Self::NotOk,
+            0x02 => Self::UnknownService,
+            0x03 => Self::UnknownMethod,
+            0x04 => Self::NotReady,
+            0x05 => Self::NotReachable,
+            0x06 => Self::Timeout,
+            0x07 => Self::WrongProtocolVersion,
+            0x08 => Self::WrongInterfaceVersion,
+            0x09 => Self::MalformedMessage,
+            0x0A => Self::WrongMessageType,
+            ServiceErrorCode::MIN..=ServiceErrorCode::MAX => {
+                Self::ServiceSpecific(ServiceErrorCode(value))
+            }
+            _ => Self::Reserved(ReservedReturnCode(value)),
+        }
+    }
+
+    /// Get the wire format value for this return code.
+    #[must_use]
+    pub const fn as_u8(self) -> u8 {
+        match self {
+            Self::Ok => 0x00,
+            Self::NotOk => 0x01,
+            Self::UnknownService => 0x02,
+            Self::UnknownMethod => 0x03,
+            Self::NotReady => 0x04,
+            Self::NotReachable => 0x05,
+            Self::Timeout => 0x06,
+            Self::WrongProtocolVersion => 0x07,
+            Self::WrongInterfaceVersion => 0x08,
+            Self::MalformedMessage => 0x09,
+            Self::WrongMessageType => 0x0A,
+            Self::ServiceSpecific(code) => code.value(),
+            Self::Reserved(code) => code.value(),
+        }
+    }
+}
+
+impl From<u8> for ReturnCode {
+    fn from(value: u8) -> Self {
+        Self::from_u8(value)
+    }
+}
+
+impl From<ReturnCode> for u8 {
+    fn from(code: ReturnCode) -> Self {
+        code.as_u8()
+    }
+}
+
+/// A service-specific SOME/IP return code, guaranteed to be in 0x20-0x3F.
+///
+/// The only ways to obtain one are [`ServiceErrorCode::new`] (validating) or
+/// parsing a received message, so an out-of-range value cannot be sent as a
+/// service-specific error.
+///
+/// ```compile_fail
+/// use recentip::ServiceErrorCode;
+///
+/// // The field is private: unvalidated construction does not compile.
+/// let _ = ServiceErrorCode(0x00);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ServiceErrorCode(u8);
+
+impl ServiceErrorCode {
+    /// Lowest service-specific return code (0x20).
+    pub const MIN: u8 = 0x20;
+    /// Highest service-specific return code (0x3F).
+    pub const MAX: u8 = 0x3F;
+
+    /// Validate a service-specific return code.
+    ///
+    /// Returns `None` if `code` is outside 0x20-0x3F.
+    ///
+    /// ```
+    /// use recentip::ServiceErrorCode;
+    ///
+    /// assert!(ServiceErrorCode::new(0x20).is_some());
+    /// assert!(ServiceErrorCode::new(0x3F).is_some());
+    /// assert!(ServiceErrorCode::new(0x1F).is_none());
+    /// assert!(ServiceErrorCode::new(0x40).is_none());
+    /// ```
+    #[must_use]
+    pub const fn new(code: u8) -> Option<Self> {
+        if code >= Self::MIN && code <= Self::MAX {
+            Some(Self(code))
+        } else {
+            None
+        }
+    }
+
+    /// Get the wire format value.
+    #[must_use]
+    pub const fn value(self) -> u8 {
+        self.0
+    }
+}
+
+/// A return code value reserved by the SOME/IP specification
+/// (0x0B-0x1F, 0x40-0xFF).
+///
+/// Only obtainable by parsing a received message via [`ReturnCode::from_u8`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ReservedReturnCode(u8);
+
+impl ReservedReturnCode {
+    /// Get the wire format value.
+    #[must_use]
+    pub const fn value(self) -> u8 {
+        self.0
+    }
 }
 
 // ============================================================================
@@ -426,10 +562,10 @@ pub enum ApplicationError {
     /// Service-specific error (0x20-0x3F).
     ///
     /// Use this for errors defined by your service's interface specification.
-    /// The value must be in the range 0x20-0x3F.
+    /// The payload is a [`ServiceErrorCode`], which guarantees the 0x20-0x3F range.
     ///
     /// Create with [`ApplicationError::service_specific()`].
-    ServiceSpecific(u8),
+    ServiceSpecific(ServiceErrorCode),
 }
 
 impl ApplicationError {
@@ -441,7 +577,7 @@ impl ApplicationError {
     ///
     /// # Returns
     ///
-    /// Returns `Some(ApplicationError::ServiceSpecific(code))` if the code
+    /// Returns `Some(ApplicationError::ServiceSpecific(_))` if the code
     /// is in the valid range, `None` otherwise.
     ///
     /// # Example
@@ -459,22 +595,33 @@ impl ApplicationError {
     /// ```
     #[must_use]
     pub const fn service_specific(code: u8) -> Option<Self> {
-        if code >= 0x20 && code <= 0x3F {
-            Some(Self::ServiceSpecific(code))
-        } else {
-            None
+        match ServiceErrorCode::new(code) {
+            Some(code) => Some(Self::ServiceSpecific(code)),
+            None => None,
+        }
+    }
+
+    /// Get the return code carried on the wire for this error.
+    #[must_use]
+    pub const fn return_code(self) -> ReturnCode {
+        match self {
+            Self::NotOk => ReturnCode::NotOk,
+            Self::UnknownMethod => ReturnCode::UnknownMethod,
+            Self::MalformedMessage => ReturnCode::MalformedMessage,
+            Self::ServiceSpecific(code) => ReturnCode::ServiceSpecific(code),
         }
     }
 
     /// Get the wire format value for this error.
     #[must_use]
     pub const fn as_u8(&self) -> u8 {
-        match self {
-            Self::NotOk => 0x01,
-            Self::UnknownMethod => 0x03,
-            Self::MalformedMessage => 0x09,
-            Self::ServiceSpecific(code) => *code,
-        }
+        self.return_code().as_u8()
+    }
+}
+
+impl From<ApplicationError> for ReturnCode {
+    fn from(error: ApplicationError) -> Self {
+        error.return_code()
     }
 }
 
@@ -548,8 +695,8 @@ pub mod prelude {
     pub use crate::{
         ApplicationError, Error, Event, EventBuilder, EventHandle, EventId, EventgroupId,
         InstanceId, MajorVersion, MethodConfig, MethodId, MinorVersion, OfferedService, PortSpec,
-        Response, Result, ReturnCode, RuntimeConfig, ServiceId, ServiceOffering, SomeIp,
-        SomeIpBuilder, Subscription, SubscriptionBuilder, Transport, TransportPolicy,
+        Response, Result, ReturnCode, RuntimeConfig, ServiceErrorCode, ServiceId, ServiceOffering,
+        SomeIp, SomeIpBuilder, Subscription, SubscriptionBuilder, Transport, TransportPolicy,
         TransportPreference, TransportSelection, configure,
     };
 }

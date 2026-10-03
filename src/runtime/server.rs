@@ -69,7 +69,7 @@ use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::tcp::{ServerTcpMessage, TcpServer};
 use crate::wire::{Header, MessageType};
-use crate::{InstanceId, ServiceId, Transport};
+use crate::{InstanceId, ReturnCode, ServiceId, Transport};
 
 // ============================================================================
 // ASYNC COMMAND HANDLERS (NEED SOCKET CREATION)
@@ -597,7 +597,7 @@ pub fn handle_incoming_request(
             header.client_id,
             header.session_id,
             header.interface_version,
-            0x02, // E_UNKNOWN_SERVICE
+            ReturnCode::UnknownService,
             &[],
             false,
         );
@@ -638,7 +638,7 @@ pub fn handle_incoming_request(
             header.client_id,
             header.session_id,
             header.interface_version,
-            0x09, // E_MALFORMED_MESSAGE - method_id field contains an event ID
+            ReturnCode::MalformedMessage, // method_id field contains an event ID
             &[],
             offering.method_config.uses_exception(header.method_id),
         );
@@ -670,7 +670,7 @@ pub fn handle_incoming_request(
             header.client_id,
             header.session_id,
             header.interface_version, // Echo back the client's interface version
-            0x08,                     // E_WRONG_INTERFACE_VERSION
+            ReturnCode::WrongInterfaceVersion,
             &[],
             offering.method_config.uses_exception(header.method_id),
         );
@@ -781,14 +781,14 @@ pub fn build_response(
     client_id: u16,
     session_id: u16,
     interface_version: u8,
-    return_code: u8,
+    return_code: ReturnCode,
     payload: &[u8],
     uses_exception: bool,
 ) -> Bytes {
     // feat_req_someip_655: Error message must copy request header fields
     // feat_req_someip_727: Error messages have return code != 0x00
     // Only use EXCEPTION (0x81) if configured for this method AND it's an error
-    let message_type = if return_code != 0x00 && uses_exception {
+    let message_type = if return_code != ReturnCode::Ok && uses_exception {
         MessageType::Error
     } else {
         MessageType::Response
@@ -822,7 +822,7 @@ pub fn build_notification(
         session_id,
         interface_version,
         MessageType::Notification,
-        0x00,
+        ReturnCode::Ok,
         payload,
     )
 }

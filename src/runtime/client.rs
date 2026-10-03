@@ -813,23 +813,8 @@ pub fn handle_incoming_response(header: &Header, payload: Bytes, state: &mut Run
     };
 
     if let Some(pending) = state.pending_calls.remove(&call_key) {
-        let return_code = match header.return_code {
-            0x00 => ReturnCode::Ok,
-            0x01 => ReturnCode::NotOk,
-            0x02 => ReturnCode::UnknownService,
-            0x03 => ReturnCode::UnknownMethod,
-            0x04 => ReturnCode::NotReady,
-            0x05 => ReturnCode::NotReachable,
-            0x06 => ReturnCode::Timeout,
-            0x07 => ReturnCode::WrongProtocolVersion,
-            0x08 => ReturnCode::WrongInterfaceVersion,
-            0x09 => ReturnCode::MalformedMessage,
-            0x0A => ReturnCode::WrongMessageType,
-            _ => ReturnCode::NotOk,
-        };
-
         let response = Response {
-            return_code,
+            return_code: header.return_code,
             payload,
         };
 
@@ -941,7 +926,7 @@ pub fn build_request(
         session_id,
         interface_version,
         MessageType::Request,
-        0x00,
+        ReturnCode::Ok,
         payload,
     )
 }
@@ -962,7 +947,7 @@ pub fn build_fire_and_forget(
         session_id,
         interface_version,
         MessageType::RequestNoReturn,
-        0x00,
+        ReturnCode::Ok,
         payload,
     )
 }

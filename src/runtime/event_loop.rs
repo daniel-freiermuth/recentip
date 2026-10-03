@@ -19,7 +19,6 @@ use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use tokio::sync::mpsc;
 
-use crate::OfferedEndpoints;
 use crate::config::{RuntimeConfig, Transport};
 use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
@@ -45,6 +44,7 @@ use crate::wire::{
     Header, L4Protocol, MessageType, SD_METHOD_ID, SD_SERVICE_ID, SdEntry, SdEntryType, SdMessage,
     SdOption, validate_protocol_version,
 };
+use crate::{OfferedEndpoints, ReturnCode};
 
 // ============================================================================
 // SUBSCRIBE STATE UPDATE TYPES
@@ -322,7 +322,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                     context.client_id,
                                     context.session_id,
                                     context.interface_version,
-                                    0x00, // OK
+                                    ReturnCode::Ok,
                                     &payload,
                                     false,
                                 ),
@@ -332,7 +332,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                                     context.client_id,
                                     context.session_id,
                                     context.interface_version,
-                                    0x01, // NOT_OK
+                                    ReturnCode::NotOk,
                                     &[],
                                     context.uses_exception,
                                 ),
@@ -458,14 +458,16 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                         context.client_id,
                         context.session_id,
                         context.interface_version,
-                        0x00, // OK
+                        ReturnCode::Ok,
                         &payload,
                         false, // uses_exception doesn't matter for OK responses
                     ),
                     Err(ref e) => {
                         let return_code = match e {
-                            Error::Protocol(proto_err) => proto_err.return_code.unwrap_or(0x01),
-                            _ => 0x01, // NOT_OK for other errors
+                            Error::Protocol(proto_err) => {
+                                proto_err.return_code.unwrap_or(ReturnCode::NotOk)
+                            }
+                            _ => ReturnCode::NotOk,
                         };
                         build_response(
                             context.service_id,
