@@ -1139,16 +1139,18 @@ fn multi_eventgroup_subscription_lifecycle() {
         unsub_count,
     );
 
-    // Sub1 should have received event1_first at least once (before drop) and event1_second at least once (after re-subscribe)
-    // Note: may receive duplicates because event is in multiple eventgroups
-    let has_event1_first = sub1_events.iter().any(|e| e == b"event1_first");
-    let has_event1_second = sub1_events.iter().any(|e| e == b"event1_second");
-    assert!(
-        has_event1_first,
-        "Sub1 should receive event1_first before drop"
+    // Event1 is in both EG1 and EG2, but sub1 is a single subscription:
+    // each event on the wire must be delivered exactly once.
+    let count =
+        |events: &[Vec<u8>], payload: &[u8]| events.iter().filter(|e| *e == payload).count();
+    assert_eq!(
+        count(&sub1_events, b"event1_first"),
+        1,
+        "Sub1 should receive event1_first exactly once before drop. Got: {:?}",
+        *sub1_events
     );
     assert!(
-        has_event1_second,
+        sub1_events.iter().any(|e| e == b"event1_second"),
         "Sub1 should receive event1_second after re-subscribe"
     );
 
@@ -1621,17 +1623,20 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
         unsub_count,
     );
 
-    // Sub1 should have received tcp_event1_first at least once (before drop) and tcp_event1_second at least once (after re-subscribe)
-    let has_event1_first = sub1_events.iter().any(|e| e == b"tcp_event1_first");
-    let has_event1_second = sub1_events.iter().any(|e| e == b"tcp_event1_second");
-    assert!(
-        has_event1_first,
-        "TCP Sub1 should receive tcp_event1_first before drop. Got: {:?}",
+    // Sub1 should have received tcp_event1_first (before drop) and tcp_event1_second (after re-subscribe)
+    // exactly once each, even though Event1 is in both EG1 and EG2.
+    let count =
+        |events: &[Vec<u8>], payload: &[u8]| events.iter().filter(|e| *e == payload).count();
+    assert_eq!(
+        count(&sub1_events, b"tcp_event1_first"),
+        1,
+        "TCP Sub1 should receive tcp_event1_first exactly once before drop. Got: {:?}",
         *sub1_events
     );
-    assert!(
-        has_event1_second,
-        "TCP Sub1 should receive tcp_event1_second after re-subscribe. Got: {:?}",
+    assert_eq!(
+        count(&sub1_events, b"tcp_event1_second"),
+        1,
+        "TCP Sub1 should receive tcp_event1_second exactly once after re-subscribe. Got: {:?}",
         *sub1_events
     );
 
@@ -1649,31 +1654,23 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
             .collect::<Vec<_>>()
     );
 
-    // Sub2 should have received all three Event2 sends:
+    // Sub2 (EG3+EG4) should have received each of the three Event2 sends exactly once:
     // - tcp_event2_first (initial)
     // - tcp_event2_while_sub1_dropped (while sub1 was dropped)
     // - tcp_event2_after_resub (after re-subscribe)
-    let has_event2_first = sub2_events.iter().any(|e| e == b"tcp_event2_first");
-    let has_event2_while_dropped = sub2_events
-        .iter()
-        .any(|e| e == b"tcp_event2_while_sub1_dropped");
-    let has_event2_after_resub = sub2_events.iter().any(|e| e == b"tcp_event2_after_resub");
-
-    assert!(
-        has_event2_first,
-        "TCP Sub2 should receive tcp_event2_first. Got: {:?}",
-        *sub2_events
-    );
-    assert!(
-        has_event2_while_dropped,
-        "TCP Sub2 should receive tcp_event2_while_sub1_dropped (routing unaffected by sub1 drop). Got: {:?}",
-        *sub2_events
-    );
-    assert!(
-        has_event2_after_resub,
-        "TCP Sub2 should receive tcp_event2_after_resub. Got: {:?}",
-        *sub2_events
-    );
+    for payload in [
+        &b"tcp_event2_first"[..],
+        b"tcp_event2_while_sub1_dropped",
+        b"tcp_event2_after_resub",
+    ] {
+        assert_eq!(
+            count(&sub2_events, payload),
+            1,
+            "TCP Sub2 should receive {:?} exactly once. Got: {:?}",
+            String::from_utf8_lossy(payload),
+            *sub2_events
+        );
+    }
 }
 
 // ============================================================================
