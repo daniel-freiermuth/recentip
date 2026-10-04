@@ -1141,7 +1141,8 @@ fn multi_eventgroup_subscription_lifecycle() {
 
     // Event1 is in both EG1 and EG2, but sub1 is a single subscription:
     // each event on the wire must be delivered exactly once.
-    let count = |events: &[Vec<u8>], payload: &[u8]| events.iter().filter(|e| *e == payload).count();
+    let count =
+        |events: &[Vec<u8>], payload: &[u8]| events.iter().filter(|e| *e == payload).count();
     assert_eq!(
         count(&sub1_events, b"event1_first"),
         1,
@@ -1624,7 +1625,8 @@ fn multi_eventgroup_subscription_lifecycle_tcp() {
 
     // Sub1 should have received tcp_event1_first (before drop) and tcp_event1_second (after re-subscribe)
     // exactly once each, even though Event1 is in both EG1 and EG2.
-    let count = |events: &[Vec<u8>], payload: &[u8]| events.iter().filter(|e| *e == payload).count();
+    let count =
+        |events: &[Vec<u8>], payload: &[u8]| events.iter().filter(|e| *e == payload).count();
     assert_eq!(
         count(&sub1_events, b"tcp_event1_first"),
         1,
