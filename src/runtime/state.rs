@@ -1068,4 +1068,152 @@ mod tests {
         crate::runtime::sd::handle_subscribe_ack(&ack(0x0010), &mut state);
         assert_eq!(response_rx.try_recv().unwrap().unwrap(), 7);
     }
+
+    fn discover_udp_service(state: &RuntimeState, server: SocketAddrV4) {
+        state.discovered.insert(
+            SUB_KEY,
+            DiscoveredService {
+                offered_endpoints: OfferedEndpoints::UdpOnly(server),
+                sd_endpoint: server,
+                minor_version: 0,
+                ttl_expires: Instant::now() + std::time::Duration::from_secs(60),
+            },
+        );
+    }
+
+    fn notification_header(event_id: u16) -> crate::wire::Header {
+        crate::wire::Header {
+            service_id: SUB_KEY.service_id,
+            method_id: event_id,
+            length: 8,
+            client_id: 0,
+            session_id: 1,
+            protocol_version: crate::wire::PROTOCOL_VERSION,
+            interface_version: SUB_KEY.major_version,
+            message_type: crate::wire::MessageType::Notification,
+            return_code: 0,
+        }
+    }
+
+    fn drain(rx: &mut mpsc::Receiver<crate::Event>) -> usize {
+        let mut count = 0;
+        while rx.try_recv().is_ok() {
+            count += 1;
+        }
+        count
+    }
+
+    /// A multi-eventgroup subscription on the shared client RPC endpoint
+    /// (no dedicated socket, UDP events arrive with `subscription_id = 0`)
+    /// is stored as one `ClientSubscription` per eventgroup. One notification
+    /// on the wire must still reach the application exactly once.
+    #[test_log::test]
+    fn multi_eventgroup_udp_shared_endpoint_delivers_event_once() {
+        let mut state = test_state();
+        let server: SocketAddrV4 = "127.0.0.1:30509".parse().unwrap();
+        discover_udp_service(&state, server);
+
+        let (events_tx, mut events_rx) = mpsc::channel(16);
+        let (response_tx, _response_rx) = oneshot::channel();
+        state.record_subscription_state(
+            SUB_KEY,
+            7,
+            &[0x0001, 0x0002],
+            &events_tx,
+            response_tx,
+            state.client_rpc_endpoint,
+            false,
+            0,
+            Transport::Udp,
+        );
+
+        crate::runtime::client::handle_incoming_notification(
+            &notification_header(0x8001),
+            bytes::Bytes::from_static(b"payload"),
+            server,
+            &state,
+            0,
+        );
+
+        assert_eq!(drain(&mut events_rx), 1, "event must be delivered exactly once");
+    }
+
+    /// TCP multi-eventgroup subscriptions share one `tcp_conn_key`; one
+    /// notification on that connection must be delivered exactly once.
+    #[test_log::test]
+    fn multi_eventgroup_tcp_connection_delivers_event_once() {
+        let mut state = test_state();
+        let server: SocketAddrV4 = "127.0.0.1:30509".parse().unwrap();
+        state.discovered.insert(
+            SUB_KEY,
+            DiscoveredService {
+                offered_endpoints: OfferedEndpoints::TcpOnly(server),
+                sd_endpoint: server,
+                minor_version: 0,
+                ttl_expires: Instant::now() + std::time::Duration::from_secs(60),
+            },
+        );
+
+        let conn_key = 3;
+        let (events_tx, mut events_rx) = mpsc::channel(16);
+        let (response_tx, _response_rx) = oneshot::channel();
+        state.record_subscription_state(
+            SUB_KEY,
+            7,
+            &[0x0001, 0x0002, 0x0003],
+            &events_tx,
+            response_tx,
+            "127.0.0.1:40000".parse().unwrap(),
+            false,
+            conn_key,
+            Transport::Tcp,
+        );
+
+        crate::runtime::client::handle_incoming_notification(
+            &notification_header(0x8001),
+            bytes::Bytes::from_static(b"payload"),
+            server,
+            &state,
+            conn_key,
+        );
+
+        assert_eq!(drain(&mut events_rx), 1, "event must be delivered exactly once");
+    }
+
+    /// Deduplication is per subscription, not per endpoint: two distinct
+    /// subscriptions sharing the client RPC endpoint each get their own copy.
+    #[test_log::test]
+    fn distinct_subscriptions_on_shared_endpoint_each_receive_event() {
+        let mut state = test_state();
+        let server: SocketAddrV4 = "127.0.0.1:30509".parse().unwrap();
+        discover_udp_service(&state, server);
+
+        let (tx_a, mut rx_a) = mpsc::channel(16);
+        let (tx_b, mut rx_b) = mpsc::channel(16);
+        for (subscription_id, tx) in [(7, &tx_a), (8, &tx_b)] {
+            let (response_tx, _response_rx) = oneshot::channel();
+            state.record_subscription_state(
+                SUB_KEY,
+                subscription_id,
+                &[0x0001, 0x0002],
+                tx,
+                response_tx,
+                state.client_rpc_endpoint,
+                false,
+                0,
+                Transport::Udp,
+            );
+        }
+
+        crate::runtime::client::handle_incoming_notification(
+            &notification_header(0x8001),
+            bytes::Bytes::from_static(b"payload"),
+            server,
+            &state,
+            0,
+        );
+
+        assert_eq!(drain(&mut rx_a), 1, "subscription A receives exactly once");
+        assert_eq!(drain(&mut rx_b), 1, "subscription B receives exactly once");
+    }
 }

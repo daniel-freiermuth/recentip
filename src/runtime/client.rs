@@ -891,7 +891,12 @@ pub fn handle_incoming_notification(
     // Routing logic uses tcp_conn_key to match events to subscriptions:
     // - Events arrive with a connection's subscription_id (the conn_key used when connecting)
     // - Route to subscriptions with matching tcp_conn_key
+    //
+    // A multi-eventgroup subscription is stored as one `ClientSubscription` per
+    // eventgroup, all sharing `subscription_id` and `events_tx`. The event header
+    // carries no eventgroup, so deliver at most once per `subscription_id`.
     if let Some(subs) = state.subscriptions.get(&key) {
+        let mut delivered: Vec<u64> = Vec::new();
         for sub in subs {
             // UDP subscriptions have dedicated sockets and skip this path entirely
             if sub.has_dedicated_socket {
@@ -904,6 +909,11 @@ pub fn handle_incoming_notification(
             if sub.tcp_conn_key != subscription_id {
                 continue;
             }
+
+            if delivered.contains(&sub.subscription_id) {
+                continue;
+            }
+            delivered.push(sub.subscription_id);
 
             let _ = sub.events_tx.try_send(event.clone());
         }
