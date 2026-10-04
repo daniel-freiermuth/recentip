@@ -65,7 +65,36 @@ use crate::config::{DEFAULT_FIND_REPETITIONS, PortSpec, Transport};
 use crate::net::UdpSocket;
 use crate::wire::{Header, MessageType};
 use crate::{Event, EventId, OfferedEndpoints, Response, ReturnCode};
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, error::TrySendError};
+
+// ============================================================================
+// DROPPED EVENT TRACKING
+// ============================================================================
+
+/// Counts events dropped because a subscription's event channel was full.
+///
+/// Limits warn logging to one message when a backlog starts and one when
+/// delivery resumes, instead of one per dropped event.
+#[derive(Debug, Default)]
+struct DroppedEventTracker {
+    dropped: u64,
+}
+
+impl DroppedEventTracker {
+    /// Records a dropped event. Returns `true` if it starts a new backlog.
+    const fn record_drop(&mut self) -> bool {
+        let starts_backlog = self.dropped == 0;
+        self.dropped = self.dropped.saturating_add(1);
+        starts_backlog
+    }
+
+    /// Records a delivered event. Returns the number of events dropped since
+    /// the previous delivery, or `None` if there was no backlog.
+    fn record_delivery(&mut self) -> Option<u64> {
+        let dropped = std::mem::take(&mut self.dropped);
+        (dropped > 0).then_some(dropped)
+    }
+}
 
 // ============================================================================
 // PER-SUBSCRIPTION UDP SOCKET
@@ -129,6 +158,7 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
     // Spawn task to receive events on this dedicated socket
     tokio::spawn(async move {
         let mut buf = vec![0u8; 65535];
+        let mut drops = DroppedEventTracker::default();
         loop {
             match socket.recv_from(&mut buf).await {
                 Ok((len, from)) => {
@@ -185,13 +215,32 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
                     let event = Event { event_id, payload };
 
                     // Route event directly to this subscription's channel
-                    if events_tx.try_send(event).is_err() {
-                        // Subscription dropped - exit task
-                        tracing::debug!(
-                            "Subscription dropped for socket {}, shutting down receiver task",
-                            local_endpoint
-                        );
-                        break;
+                    match events_tx.try_send(event) {
+                        Ok(()) => {
+                            if let Some(dropped) = drops.record_delivery() {
+                                tracing::warn!(
+                                    "Subscription socket {} resumed event delivery after dropping {} events (channel full)",
+                                    local_endpoint,
+                                    dropped
+                                );
+                            }
+                        }
+                        Err(TrySendError::Full(_)) => {
+                            // Application is not keeping up: drop this event, keep receiving.
+                            if drops.record_drop() {
+                                tracing::warn!(
+                                    "Event channel full for subscription socket {}, dropping events until the application catches up",
+                                    local_endpoint
+                                );
+                            }
+                        }
+                        Err(TrySendError::Closed(_)) => {
+                            tracing::debug!(
+                                "Subscription dropped for socket {}, shutting down receiver task",
+                                local_endpoint
+                            );
+                            break;
+                        }
                     }
                 }
                 Err(e) => {
@@ -965,4 +1014,32 @@ pub fn build_fire_and_forget(
         0x00,
         payload,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DroppedEventTracker;
+
+    #[test]
+    fn dropped_event_tracker_reports_backlog_start_once() {
+        let mut drops = DroppedEventTracker::default();
+        assert!(drops.record_drop());
+        assert!(!drops.record_drop());
+        assert!(!drops.record_drop());
+    }
+
+    #[test]
+    fn dropped_event_tracker_reports_count_on_resume_and_resets() {
+        let mut drops = DroppedEventTracker::default();
+        assert_eq!(drops.record_delivery(), None);
+        drops.record_drop();
+        drops.record_drop();
+        assert_eq!(drops.record_delivery(), Some(2));
+        assert_eq!(drops.record_delivery(), None);
+        assert!(
+            drops.record_drop(),
+            "a new backlog starts after delivery resumed"
+        );
+        assert_eq!(drops.record_delivery(), Some(1));
+    }
 }
