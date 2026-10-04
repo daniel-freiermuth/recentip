@@ -65,7 +65,7 @@ use crate::config::{DEFAULT_FIND_REPETITIONS, PortSpec, Transport};
 use crate::net::UdpSocket;
 use crate::wire::{Header, MessageType};
 use crate::{Event, EventId, OfferedEndpoints, Response, ReturnCode};
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, error::TrySendError};
 
 // ============================================================================
 // PER-SUBSCRIPTION UDP SOCKET
@@ -129,6 +129,9 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
     // Spawn task to receive events on this dedicated socket
     tokio::spawn(async move {
         let mut buf = vec![0u8; 65535];
+        // Events dropped since the channel last accepted one; limits warn logging
+        // to one message when a backlog starts and one when delivery resumes.
+        let mut dropped_events: u64 = 0;
         loop {
             match socket.recv_from(&mut buf).await {
                 Ok((len, from)) => {
@@ -188,15 +191,27 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
                     // A full channel drops only this event (same as the shared-endpoint
                     // path); only a closed channel (Subscription dropped) ends the task.
                     match events_tx.try_send(event) {
-                        Ok(()) => {}
-                        Err(mpsc::error::TrySendError::Full(dropped)) => {
-                            tracing::warn!(
-                                "Event channel full on subscription socket {}, dropping event {:04x}",
-                                local_endpoint,
-                                dropped.event_id.value()
-                            );
+                        Ok(()) => {
+                            if dropped_events > 0 {
+                                tracing::warn!(
+                                    "Subscription socket {} resumed event delivery after dropping {} events (channel full)",
+                                    local_endpoint,
+                                    dropped_events
+                                );
+                                dropped_events = 0;
+                            }
                         }
-                        Err(mpsc::error::TrySendError::Closed(_)) => {
+                        Err(TrySendError::Full(_)) => {
+                            // Application is not keeping up: drop this event, keep receiving.
+                            if dropped_events == 0 {
+                                tracing::warn!(
+                                    "Event channel full for subscription socket {}, dropping events until the application catches up",
+                                    local_endpoint
+                                );
+                            }
+                            dropped_events = dropped_events.saturating_add(1);
+                        }
+                        Err(TrySendError::Closed(_)) => {
                             tracing::debug!(
                                 "Subscription dropped for socket {}, shutting down receiver task",
                                 local_endpoint

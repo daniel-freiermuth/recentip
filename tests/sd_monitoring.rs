@@ -868,3 +868,99 @@ fn monitor_sd_before_services_exist() {
         other => panic!("Expected got {:?}", other),
     }
 }
+
+/// Test that a monitor whose channel fills up is NOT evicted.
+///
+/// The `monitor_sd()` channel holds 100 events. When a burst exceeds that while
+/// the application is not polling, the overflowing events are dropped, but the
+/// monitor must stay registered and receive events emitted after it catches up.
+#[test_log::test]
+fn monitor_sd_survives_full_channel() {
+    const BURST_INSTANCES: u16 = 110;
+    const MONITOR_CAPACITY: usize = 100;
+
+    let buffered = Arc::new(Mutex::new(Vec::<SdEvent>::new()));
+    let after_burst = Arc::new(Mutex::new(None::<SdEvent>));
+    let buffered_clone = Arc::clone(&buffered);
+    let after_burst_clone = Arc::clone(&after_burst);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offerings = Vec::new();
+        for instance in 1..=BURST_INSTANCES {
+            offerings.push(
+                runtime
+                    .offer(TEST_SERVICE_ID, InstanceId::Id(instance))
+                    .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                    .udp()
+                    .start()
+                    .await
+                    .unwrap(),
+            );
+        }
+
+        // Monitor drains its backlog at t=3s; StopOffer is sent afterwards.
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        drop(offerings);
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        Ok(())
+    });
+
+    sim.client("monitor", async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
+            .start_turmoil()
+            .await
+            .unwrap();
+        let mut sd_events = runtime.monitor_sd().await.unwrap();
+
+        // Do not poll while the burst of ServiceAvailable events arrives.
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        while let Ok(event) = sd_events.try_recv() {
+            buffered_clone.lock().unwrap().push(event);
+        }
+
+        let event = tokio::time::timeout(Duration::from_secs(3), sd_events.recv())
+            .await
+            .expect("Timeout waiting for SD event after burst")
+            .expect("Monitor channel must stay open after it was full");
+        *after_burst_clone.lock().unwrap() = Some(event);
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let buffered = buffered.lock().unwrap();
+    assert_eq!(
+        buffered.len(),
+        MONITOR_CAPACITY,
+        "Precondition: burst must have filled the monitor channel"
+    );
+    assert!(
+        buffered
+            .iter()
+            .all(|e| matches!(e, SdEvent::ServiceAvailable { .. })),
+        "Buffered events should be the ServiceAvailable burst: {:?}",
+        *buffered
+    );
+
+    match after_burst.lock().unwrap().take() {
+        Some(SdEvent::ServiceUnavailable { service_id, .. }) => {
+            assert_eq!(service_id, TEST_SERVICE_ID);
+        }
+        other => panic!("Expected ServiceUnavailable after burst, got {:?}", other),
+    }
+}
