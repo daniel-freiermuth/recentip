@@ -103,7 +103,7 @@ Items not yet scheduled:
 
 | Category | Status |
 |----------|--------|
-| **Total tests** | 420 pass, 11 ignored |
+| **Total tests** | 522 pass, 11 skipped (nextest) |
 | **Ignored (stubs)** | 9 TP tests, needs implementation |
 | **Ignored (design choice)** | 1 test (`subscribe_to_unknown_eventgroup_should_nack`) |
 | **Ignored (network)** | 1 test (`udp_events_real_network`) |
