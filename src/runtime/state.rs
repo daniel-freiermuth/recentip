@@ -1253,7 +1253,11 @@ mod tests {
             0,
         );
 
-        assert_eq!(drain(&mut events_rx), 1, "event must be delivered exactly once");
+        assert_eq!(
+            drain(&mut events_rx),
+            1,
+            "event must be delivered exactly once"
+        );
     }
 
     /// TCP multi-eventgroup subscriptions share one `tcp_conn_key`; one
@@ -1295,7 +1299,11 @@ mod tests {
             conn_key,
         );
 
-        assert_eq!(drain(&mut events_rx), 1, "event must be delivered exactly once");
+        assert_eq!(
+            drain(&mut events_rx),
+            1,
+            "event must be delivered exactly once"
+        );
     }
 
     /// Deduplication is per subscription, not per endpoint: two distinct
