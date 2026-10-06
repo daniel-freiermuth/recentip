@@ -24,6 +24,10 @@
 //! └────────────────────────────────────────────────┘
 //! ```
 //!
+//! A Length field below 8 cannot cover the rest of the 16-byte header. TCP has
+//! no other message boundary, so the stream cannot be re-framed and the
+//! connection is closed.
+//!
 //! ## Magic Cookies
 //!
 //! When enabled, each TCP segment starts with a 16-byte Magic Cookie for
@@ -441,6 +445,57 @@ async fn tcp_connect<T: TcpStream>(
     }
 }
 
+/// Result of trying to take one SOME/IP message off the front of a TCP receive buffer.
+#[derive(Debug, PartialEq, Eq)]
+enum TcpFrame {
+    /// A complete SOME/IP message (header and payload), removed from the buffer.
+    Message(BytesMut),
+    /// The buffer holds only part of a message; read more bytes and retry.
+    Incomplete,
+    /// The Length field is smaller than the header bytes it must cover.
+    ///
+    /// TCP carries no other message boundary, so the stream cannot be
+    /// re-framed and the connection must be closed.
+    InvalidLength(u32),
+}
+
+/// Bytes of the SOME/IP header that precede (and include) the Length field.
+/// The Length field counts every byte after it.
+const LENGTH_FIELD_END: usize = 8;
+
+/// Smallest valid Length value: the remainder of the 16-byte header, no payload.
+const MIN_SOMEIP_LENGTH: u32 = (Header::SIZE - LENGTH_FIELD_END) as u32;
+
+/// Take the next complete SOME/IP message off the front of `buffer`.
+///
+/// Magic Cookies are consumed and skipped (`feat_req_someip_586`). Bytes that
+/// do not yet form a complete message stay in `buffer`.
+fn next_tcp_frame(buffer: &mut BytesMut) -> TcpFrame {
+    loop {
+        if buffer.len() < Header::SIZE {
+            return TcpFrame::Incomplete;
+        }
+        let Some(length) = parse_someip_length(buffer) else {
+            return TcpFrame::Incomplete;
+        };
+        if length < MIN_SOMEIP_LENGTH {
+            return TcpFrame::InvalidLength(length);
+        }
+        // Saturate rather than overflow where usize is 32 bits: such a frame
+        // can never be buffered completely, so it stays Incomplete.
+        let total_size = usize::try_from(length)
+            .map_or(usize::MAX, |length| length.saturating_add(LENGTH_FIELD_END));
+        if buffer.len() < total_size {
+            return TcpFrame::Incomplete;
+        }
+        if is_magic_cookie(buffer) {
+            buffer.advance(total_size);
+            continue;
+        }
+        return TcpFrame::Message(buffer.split_to(total_size));
+    }
+}
+
 /// - Magic Cookies in received data are skipped (`feat_req_someip_586`)
 ///
 /// On exit, sends a cleanup request to the event loop (via `cleanup_tx`) with the
@@ -459,7 +514,7 @@ async fn handle_client_tcp_connection<T: TcpStream>(
     let mut read_buffer = BytesMut::new();
     let mut read_buf = [0u8; 8192];
 
-    loop {
+    'connection: loop {
         tokio::select! {
             // Read from the stream
             result = stream.read(&mut read_buf) => {
@@ -475,42 +530,27 @@ async fn handle_client_tcp_connection<T: TcpStream>(
                         }
 
                         // Try to parse complete messages
-                        while read_buffer.len() >= Header::SIZE {
-                            // Skip Magic Cookies (feat_req_someip_586)
-                            if is_magic_cookie(&read_buffer) {
-                                let Some(length) = parse_someip_length(&read_buffer) else {
-                                    break;
-                                };
-                                let total_size = 8 + length as usize;
-                                if read_buffer.len() >= total_size {
-                                    read_buffer.advance(total_size);
-                                    continue;
+                        loop {
+                            match next_tcp_frame(&mut read_buffer) {
+                                TcpFrame::Message(message_data) => {
+                                    let msg = ClientTcpMessage {
+                                        data: message_data.freeze(),
+                                        from: peer_addr,
+                                        subscription_id,
+                                    };
+                                    if msg_tx.send(msg).await.is_err() {
+                                        tracing::debug!("SomeIp closed, stopping TCP client connection");
+                                        break;
+                                    }
                                 }
-                                break; // Need more data for magic cookie
-                            }
-
-                            // Parse length from header (offset 4-8, big-endian u32)
-                            let Some(length) = parse_someip_length(&read_buffer) else {
-                                break;
-                            };
-
-                            let total_size = 8 + length as usize;
-
-                            if read_buffer.len() >= total_size {
-                                // Extract complete message
-                                let message_data = read_buffer.split_to(total_size);
-                                let msg = ClientTcpMessage {
-                                    data: message_data.freeze(),
-                                    from: peer_addr,
-                                    subscription_id,
-                                };
-                                if msg_tx.send(msg).await.is_err() {
-                                    tracing::debug!("SomeIp closed, stopping TCP client connection");
-                                    break;
+                                TcpFrame::Incomplete => break,
+                                TcpFrame::InvalidLength(length) => {
+                                    tracing::warn!(
+                                        "Invalid SOME/IP length {} from {}, closing TCP connection",
+                                        length, peer_addr
+                                    );
+                                    break 'connection;
                                 }
-                            } else {
-                                // Need more data
-                                break;
                             }
                         }
                     }
@@ -813,7 +853,7 @@ async fn handle_tcp_connection<T: TcpStream>(
     let mut read_buffer = BytesMut::new();
     let mut read_buf = [0u8; 8192];
 
-    loop {
+    'connection: loop {
         tokio::select! {
             // Read from client
             result = stream.read(&mut read_buf) => {
@@ -830,43 +870,28 @@ async fn handle_tcp_connection<T: TcpStream>(
                         }
 
                         // Try to parse complete messages
-                        while read_buffer.len() >= Header::SIZE {
-                            // Skip Magic Cookies (feat_req_someip_586)
-                            if is_magic_cookie(&read_buffer) {
-                                let Some(length) = parse_someip_length(&read_buffer) else {
-                                    break;
-                                };
-                                let total_size = 8 + length as usize;
-                                if read_buffer.len() >= total_size {
-                                    read_buffer.advance(total_size);
-                                    continue;
+                        loop {
+                            match next_tcp_frame(&mut read_buffer) {
+                                TcpFrame::Message(message_data) => {
+                                    // TODO: Weird to put the ids here, since the socket can be reused
+                                    let msg = ServerTcpMessage {
+                                        data: message_data.freeze(),
+                                        from: peer_addr,
+                                        local_port,
+                                    };
+                                    if msg_tx.send(msg).await.is_err() {
+                                        tracing::debug!("SomeIp closed, stopping TCP connection handler");
+                                        break;
+                                    }
                                 }
-                                break; // Need more data for magic cookie
-                            }
-
-                            // Parse length from header (offset 4-8, big-endian u32)
-                            let Some(length) = parse_someip_length(&read_buffer) else {
-                                break;
-                            };
-
-                            let total_size = 8 + length as usize;
-
-                            if read_buffer.len() >= total_size {
-                                // Extract complete message
-                                let message_data = read_buffer.split_to(total_size);
-                                // TODO: Weird to put the ids here, since the socket can be reused
-                                let msg = ServerTcpMessage {
-                                    data: message_data.freeze(),
-                                    from: peer_addr,
-                                    local_port,
-                                };
-                                if msg_tx.send(msg).await.is_err() {
-                                    tracing::debug!("SomeIp closed, stopping TCP connection handler");
-                                    break;
+                                TcpFrame::Incomplete => break,
+                                TcpFrame::InvalidLength(length) => {
+                                    tracing::warn!(
+                                        "Invalid SOME/IP length {} from {} on server port {}, closing TCP connection",
+                                        length, peer_addr, local_port
+                                    );
+                                    break 'connection;
                                 }
-                            } else {
-                                // Need more data
-                                break;
                             }
                         }
                     }
@@ -911,35 +936,121 @@ async fn handle_tcp_connection<T: TcpStream>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bytes::BufMut;
+
+    /// Build a SOME/IP request header carrying `length` in its Length field.
+    fn header_with_length(length: u32) -> Vec<u8> {
+        let mut header = vec![0x12, 0x34, 0x00, 0x01];
+        header.extend_from_slice(&length.to_be_bytes());
+        header.extend_from_slice(&[0x00, 0x01, 0x00, 0x01, 0x01, 0x01, 0x00, 0x00]);
+        header
+    }
+
+    /// Build a well-formed SOME/IP message with `payload`.
+    fn message(payload: &[u8]) -> Vec<u8> {
+        let length = u32::try_from(payload.len())
+            .map_or(u32::MAX, |len| len.saturating_add(MIN_SOMEIP_LENGTH));
+        let mut message = header_with_length(length);
+        message.extend_from_slice(payload);
+        message
+    }
+
+    fn frame(bytes: &[u8]) -> TcpFrame {
+        TcpFrame::Message(BytesMut::from(bytes))
+    }
 
     #[test_log::test]
-    fn test_frame_parsing_logic() {
-        // Simulate a SOME/IP message: header (16 bytes) + 4 bytes payload
-        let mut msg = BytesMut::new();
-        // Service ID: 0x1234
-        msg.put_u16(0x1234);
-        // Method ID: 0x0001
-        msg.put_u16(0x0001);
-        // Length: 8 (rest of header) + 4 (payload) = 12
-        msg.put_u32(12);
-        // Client ID, Session ID
-        msg.put_u16(0x0001);
-        msg.put_u16(0x0001);
-        // Protocol version, interface version, message type, return code
-        msg.put_u8(0x01);
-        msg.put_u8(0x01);
-        msg.put_u8(0x00);
-        msg.put_u8(0x00);
-        // Payload
-        msg.put_slice(b"test");
+    fn back_to_back_messages_are_framed_individually() {
+        let first = message(b"first");
+        let second = message(b"");
+        let mut buffer = BytesMut::from([first.as_slice(), second.as_slice()].concat().as_slice());
 
-        // The total size should be 8 + 12 = 20 bytes
-        assert_eq!(msg.len(), 20);
+        assert_eq!(next_tcp_frame(&mut buffer), frame(&first));
+        assert_eq!(next_tcp_frame(&mut buffer), frame(&second));
+        assert_eq!(next_tcp_frame(&mut buffer), TcpFrame::Incomplete);
+        assert!(buffer.is_empty());
+    }
 
-        // Check length field parsing
-        let length = u32::from_be_bytes([msg[4], msg[5], msg[6], msg[7]]) as usize;
-        assert_eq!(length, 12);
-        assert_eq!(8 + length, 20);
+    #[test_log::test]
+    fn message_split_across_reads_waits_for_payload() {
+        let whole = message(b"payload");
+        let (header, payload) = whole.split_at(Header::SIZE);
+        let mut buffer = BytesMut::from(header);
+
+        assert_eq!(next_tcp_frame(&mut buffer), TcpFrame::Incomplete);
+        assert_eq!(
+            buffer.len(),
+            Header::SIZE,
+            "partial message must stay buffered"
+        );
+
+        buffer.extend_from_slice(payload);
+        assert_eq!(next_tcp_frame(&mut buffer), frame(&whole));
+    }
+
+    #[test_log::test]
+    fn partial_header_waits_for_more_bytes() {
+        let whole = message(b"");
+        let (head, tail) = whole.split_at(Header::SIZE - 1);
+        let mut buffer = BytesMut::from(head);
+
+        assert_eq!(next_tcp_frame(&mut buffer), TcpFrame::Incomplete);
+
+        buffer.extend_from_slice(tail);
+        assert_eq!(next_tcp_frame(&mut buffer), frame(&whole));
+    }
+
+    #[test_log::test]
+    fn length_eight_is_a_header_only_message() {
+        let header = header_with_length(8);
+        let mut buffer = BytesMut::from(header.as_slice());
+
+        assert_eq!(next_tcp_frame(&mut buffer), frame(&header));
+    }
+
+    #[test_log::test]
+    fn length_below_eight_is_rejected() {
+        for length in 0..MIN_SOMEIP_LENGTH {
+            let trailing = message(b"next");
+            let mut buffer =
+                BytesMut::from([header_with_length(length), trailing].concat().as_slice());
+
+            assert_eq!(
+                next_tcp_frame(&mut buffer),
+                TcpFrame::InvalidLength(length),
+                "Length {length} would cut the 16-byte header short"
+            );
+        }
+    }
+
+    #[test_log::test]
+    fn magic_cookie_with_length_below_eight_is_rejected() {
+        let mut cookie = magic_cookie_client();
+        cookie[4..8].copy_from_slice(&0u32.to_be_bytes());
+        let mut buffer = BytesMut::from(cookie.as_slice());
+
+        assert_eq!(next_tcp_frame(&mut buffer), TcpFrame::InvalidLength(0));
+    }
+
+    #[test_log::test]
+    fn magic_cookie_followed_by_partial_message_keeps_partial_bytes() {
+        let whole = message(b"after cookie");
+        let (head, tail) = whole.split_at(Header::SIZE + 3);
+        let mut buffer = BytesMut::from(magic_cookie_server().as_slice());
+        buffer.extend_from_slice(head);
+
+        assert_eq!(next_tcp_frame(&mut buffer), TcpFrame::Incomplete);
+        assert_eq!(buffer.as_ref(), head, "only the cookie is consumed");
+
+        buffer.extend_from_slice(tail);
+        assert_eq!(next_tcp_frame(&mut buffer), frame(&whole));
+    }
+
+    #[test_log::test]
+    fn maximum_length_waits_without_consuming() {
+        let header = header_with_length(u32::MAX);
+        let mut buffer = BytesMut::from(header.as_slice());
+
+        assert_eq!(next_tcp_frame(&mut buffer), TcpFrame::Incomplete);
+        assert_eq!(buffer.as_ref(), header.as_slice());
     }
 }
