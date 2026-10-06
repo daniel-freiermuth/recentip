@@ -65,9 +65,13 @@ const SOMEIP_LENGTH_PREFIX: usize = 8;
 /// incomplete data stays in `buf` for the next read.
 fn take_next_frame(buf: &mut BytesMut) -> Option<BytesMut> {
     while buf.len() >= Header::SIZE {
-        // Length from header (offset 4-8, big-endian u32)
+        // Length from header (offset 4-8, big-endian u32). Checked arithmetic:
+        // a size that does not fit `usize` can never be buffered, so the frame
+        // stays incomplete instead of wrapping into a bogus split.
         let length = parse_someip_length(buf)?;
-        let total_size = SOMEIP_LENGTH_PREFIX + length as usize;
+        let total_size = usize::try_from(length)
+            .ok()
+            .and_then(|len| SOMEIP_LENGTH_PREFIX.checked_add(len))?;
         if buf.len() < total_size {
             return None;
         }
