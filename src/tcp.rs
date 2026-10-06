@@ -54,6 +54,32 @@ use crate::wire::{
     Header, is_magic_cookie, magic_cookie_client, magic_cookie_server, parse_someip_length,
 };
 
+/// Bytes preceding the region covered by the SOME/IP Length field
+/// (Message ID: 4 bytes + Length: 4 bytes).
+const SOMEIP_LENGTH_PREFIX: usize = 8;
+
+/// Extract the next complete SOME/IP message from a TCP receive buffer.
+///
+/// Magic Cookies (`feat_req_someip_586`) are consumed and skipped. Returns
+/// `None` when `buf` does not yet hold a complete non-cookie message; any
+/// incomplete data stays in `buf` for the next read.
+fn take_next_frame(buf: &mut BytesMut) -> Option<BytesMut> {
+    while buf.len() >= Header::SIZE {
+        // Length from header (offset 4-8, big-endian u32)
+        let length = parse_someip_length(buf)?;
+        let total_size = SOMEIP_LENGTH_PREFIX + length as usize;
+        if buf.len() < total_size {
+            return None;
+        }
+        if is_magic_cookie(buf) {
+            buf.advance(total_size);
+            continue;
+        }
+        return Some(buf.split_to(total_size));
+    }
+    None
+}
+
 /// Message received from a client-side TCP connection (responses to our requests)
 #[derive(Debug)]
 pub struct ClientTcpMessage {
@@ -474,42 +500,15 @@ async fn handle_client_tcp_connection<T: TcpStream>(
                             read_buffer.extend_from_slice(received);
                         }
 
-                        // Try to parse complete messages
-                        while read_buffer.len() >= Header::SIZE {
-                            // Skip Magic Cookies (feat_req_someip_586)
-                            if is_magic_cookie(&read_buffer) {
-                                let Some(length) = parse_someip_length(&read_buffer) else {
-                                    break;
-                                };
-                                let total_size = 8 + length as usize;
-                                if read_buffer.len() >= total_size {
-                                    read_buffer.advance(total_size);
-                                    continue;
-                                }
-                                break; // Need more data for magic cookie
-                            }
-
-                            // Parse length from header (offset 4-8, big-endian u32)
-                            let Some(length) = parse_someip_length(&read_buffer) else {
-                                break;
+                        // Forward every complete message
+                        while let Some(frame) = take_next_frame(&mut read_buffer) {
+                            let msg = ClientTcpMessage {
+                                data: frame.freeze(),
+                                from: peer_addr,
+                                subscription_id,
                             };
-
-                            let total_size = 8 + length as usize;
-
-                            if read_buffer.len() >= total_size {
-                                // Extract complete message
-                                let message_data = read_buffer.split_to(total_size);
-                                let msg = ClientTcpMessage {
-                                    data: message_data.freeze(),
-                                    from: peer_addr,
-                                    subscription_id,
-                                };
-                                if msg_tx.send(msg).await.is_err() {
-                                    tracing::debug!("SomeIp closed, stopping TCP client connection");
-                                    break;
-                                }
-                            } else {
-                                // Need more data
+                            if msg_tx.send(msg).await.is_err() {
+                                tracing::debug!("SomeIp closed, stopping TCP client connection");
                                 break;
                             }
                         }
@@ -829,43 +828,16 @@ async fn handle_tcp_connection<T: TcpStream>(
                             read_buffer.extend_from_slice(received);
                         }
 
-                        // Try to parse complete messages
-                        while read_buffer.len() >= Header::SIZE {
-                            // Skip Magic Cookies (feat_req_someip_586)
-                            if is_magic_cookie(&read_buffer) {
-                                let Some(length) = parse_someip_length(&read_buffer) else {
-                                    break;
-                                };
-                                let total_size = 8 + length as usize;
-                                if read_buffer.len() >= total_size {
-                                    read_buffer.advance(total_size);
-                                    continue;
-                                }
-                                break; // Need more data for magic cookie
-                            }
-
-                            // Parse length from header (offset 4-8, big-endian u32)
-                            let Some(length) = parse_someip_length(&read_buffer) else {
-                                break;
+                        // Forward every complete message
+                        while let Some(frame) = take_next_frame(&mut read_buffer) {
+                            // TODO: Weird to put the ids here, since the socket can be reused
+                            let msg = ServerTcpMessage {
+                                data: frame.freeze(),
+                                from: peer_addr,
+                                local_port,
                             };
-
-                            let total_size = 8 + length as usize;
-
-                            if read_buffer.len() >= total_size {
-                                // Extract complete message
-                                let message_data = read_buffer.split_to(total_size);
-                                // TODO: Weird to put the ids here, since the socket can be reused
-                                let msg = ServerTcpMessage {
-                                    data: message_data.freeze(),
-                                    from: peer_addr,
-                                    local_port,
-                                };
-                                if msg_tx.send(msg).await.is_err() {
-                                    tracing::debug!("SomeIp closed, stopping TCP connection handler");
-                                    break;
-                                }
-                            } else {
-                                // Need more data
+                            if msg_tx.send(msg).await.is_err() {
+                                tracing::debug!("SomeIp closed, stopping TCP connection handler");
                                 break;
                             }
                         }
@@ -913,33 +885,76 @@ mod tests {
     use super::*;
     use bytes::BufMut;
 
-    #[test_log::test]
-    fn test_frame_parsing_logic() {
-        // Simulate a SOME/IP message: header (16 bytes) + 4 bytes payload
+    /// Build a SOME/IP message with the given service ID and payload.
+    fn someip_message(service_id: u16, payload: &[u8]) -> BytesMut {
         let mut msg = BytesMut::new();
-        // Service ID: 0x1234
-        msg.put_u16(0x1234);
-        // Method ID: 0x0001
-        msg.put_u16(0x0001);
-        // Length: 8 (rest of header) + 4 (payload) = 12
-        msg.put_u32(12);
-        // Client ID, Session ID
-        msg.put_u16(0x0001);
-        msg.put_u16(0x0001);
-        // Protocol version, interface version, message type, return code
-        msg.put_u8(0x01);
-        msg.put_u8(0x01);
-        msg.put_u8(0x00);
-        msg.put_u8(0x00);
-        // Payload
-        msg.put_slice(b"test");
+        msg.put_u16(service_id);
+        msg.put_u16(0x0001); // Method ID
+        msg.put_u32(8 + payload.len() as u32); // Length: rest of header + payload
+        msg.put_u16(0x0001); // Client ID
+        msg.put_u16(0x0001); // Session ID
+        msg.put_slice(&[0x01, 0x01, 0x00, 0x00]); // Proto ver, iface ver, type, rc
+        msg.put_slice(payload);
+        msg
+    }
 
-        // The total size should be 8 + 12 = 20 bytes
-        assert_eq!(msg.len(), 20);
+    #[test_log::test]
+    fn take_next_frame_waits_for_partial_message() {
+        let full = someip_message(0x1234, b"test");
+        let mut buf = BytesMut::from(&full[..full.len() - 1]);
 
-        // Check length field parsing
-        let length = u32::from_be_bytes([msg[4], msg[5], msg[6], msg[7]]) as usize;
-        assert_eq!(length, 12);
-        assert_eq!(8 + length, 20);
+        assert!(take_next_frame(&mut buf).is_none());
+        assert_eq!(buf.len(), full.len() - 1, "partial data must be retained");
+
+        buf.extend_from_slice(&full[full.len() - 1..]);
+        assert_eq!(take_next_frame(&mut buf).as_deref(), Some(&full[..]));
+        assert!(buf.is_empty());
+    }
+
+    #[test_log::test]
+    fn take_next_frame_waits_for_partial_header() {
+        let full = someip_message(0x1234, b"");
+        let mut buf = BytesMut::from(&full[..Header::SIZE - 1]);
+
+        assert!(take_next_frame(&mut buf).is_none());
+        assert_eq!(buf.len(), Header::SIZE - 1);
+    }
+
+    #[test_log::test]
+    fn take_next_frame_skips_magic_cookies() {
+        let msg = someip_message(0x1234, b"test");
+        let mut buf = BytesMut::new();
+        buf.extend_from_slice(&magic_cookie_client());
+        buf.extend_from_slice(&msg);
+        buf.extend_from_slice(&magic_cookie_server());
+
+        assert_eq!(take_next_frame(&mut buf).as_deref(), Some(&msg[..]));
+        assert!(take_next_frame(&mut buf).is_none());
+        assert!(buf.is_empty(), "trailing cookie must be consumed");
+    }
+
+    #[test_log::test]
+    fn take_next_frame_keeps_incomplete_message_after_cookie() {
+        let msg = someip_message(0x1234, b"test");
+        let mut buf = BytesMut::new();
+        buf.extend_from_slice(&magic_cookie_client());
+        buf.extend_from_slice(&msg[..msg.len() - 2]);
+
+        assert!(take_next_frame(&mut buf).is_none());
+        assert_eq!(&buf[..], &msg[..msg.len() - 2]);
+    }
+
+    #[test_log::test]
+    fn take_next_frame_splits_back_to_back_messages() {
+        let first = someip_message(0x1234, b"one");
+        let second = someip_message(0x5678, b"second");
+        let mut buf = BytesMut::new();
+        buf.extend_from_slice(&first);
+        buf.extend_from_slice(&second);
+
+        assert_eq!(take_next_frame(&mut buf).as_deref(), Some(&first[..]));
+        assert_eq!(take_next_frame(&mut buf).as_deref(), Some(&second[..]));
+        assert!(take_next_frame(&mut buf).is_none());
+        assert!(buf.is_empty());
     }
 }
