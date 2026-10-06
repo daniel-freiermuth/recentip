@@ -87,6 +87,8 @@ Items not yet scheduled:
 - Configuration validation tests
 - vsomeip interoperability testing
 - Conditional subscription acceptance (application-controlled ACK/NACK)
+- **TCP receive-buffer bound** - `next_tcp_frame` (`src/tcp.rs`) waits indefinitely for a frame whose Length field is huge (up to `u32::MAX`); a peer can grow a per-connection `BytesMut` without limit. Needs a decided max message size (config option, interplay with SOME/IP-TP) before rejecting oversized frames
+- **TCP handlers keep reading after `msg_tx` closes** - in `handle_client_tcp_connection` / `handle_tcp_connection`, a failed `msg_tx.send` only breaks the framing loop, not the connection loop, despite logging "stopping"
 - TTL expiry vs reboot-triggered cancellation test
 - FindService → OfferService session continuity test
 - Sort out hardcoded timings
