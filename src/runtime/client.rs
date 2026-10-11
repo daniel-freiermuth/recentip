@@ -902,14 +902,24 @@ pub fn handle_incoming_notification(
     // Find subscriptions for this service (dynamic via SD) registered on the socket
     // the event arrived on:
     // - UDP: the local port. A port shared by different services (or instances /
-    //   major versions) is disambiguated by `key`; eventgroups of the same service
-    //   never share a port (see `handle_subscribe_udp`).
+    //   major versions) is disambiguated by `key`; separate subscriptions of the
+    //   same service never share a port (see `handle_subscribe_udp`).
     // - TCP: the connection key (`tcp_conn_key`) used when connecting. Different
     //   services CAN share a connection; eventgroups of the same service use
     //   separate connections (slot-based conn_key).
+    //
+    // A multi-eventgroup subscription has one entry per eventgroup, all sharing
+    // the same `subscription_id` and `events_tx`: deliver once per subscription.
     if let Some(subs) = state.subscriptions.get(&key) {
-        for sub in subs.iter().filter(|sub| source.matches(sub)) {
-            let _ = sub.events_tx.try_send(event.clone());
+        for (i, sub) in subs.iter().enumerate() {
+            let already_delivered = || {
+                subs.iter()
+                    .take(i)
+                    .any(|prev| prev.subscription_id == sub.subscription_id && source.matches(prev))
+            };
+            if source.matches(sub) && !already_delivered() {
+                let _ = sub.events_tx.try_send(event.clone());
+            }
         }
     }
 
