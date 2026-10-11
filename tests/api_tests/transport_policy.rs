@@ -125,6 +125,9 @@ const SUB_TCP_DIFF_SVC_SHARES_CONN_A: u16 = 0x4033; // TCP sub port reuse: servi
 const SUB_TCP_DIFF_SVC_SHARES_CONN_B: u16 = 0x4034; // TCP sub port reuse: service B, same server TCP port as A, client conn shared
 const SUB_FIXED_DIFF_SVC_EVENTS_A: u16 = 0x4035; // sub fixed-port event routing: service A owns the dedicated socket
 const SUB_FIXED_DIFF_SVC_EVENTS_B: u16 = 0x4036; // sub fixed-port event routing: service B shares A's socket
+const SUB_FIXED_DIFF_MAJOR_EVENTS_SVC: u16 = 0x4037; // sub fixed-port event routing: major 2 shares major 1's socket
+const SUB_ANY_REUSED_DEDICATED_SVC_A: u16 = 0x4038; // sub any-port event routing: service A owns EG2's dedicated socket
+const SUB_ANY_REUSED_DEDICATED_SVC_B: u16 = 0x4039; // sub any-port event routing: service B's EG2 reuses A's dedicated socket
 const SVC_VERSION: (u8, u32) = (1, 0);
 
 // -----------------------------------------------------------------------
@@ -5317,8 +5320,11 @@ fn sub_fixed_port_one_server_diff_service_shares_socket() {
 }
 
 // -----------------------------------------------------------------------
-// sub_fixed_port_diff_service_shared_socket_routes_events_by_service
+// Event routing on shared subscription sockets
 // -----------------------------------------------------------------------
+
+/// How many times each server event is notified in the routing tests.
+const ROUTING_NOTIFY_ROUNDS: usize = 3;
 
 /// Drain every event a subscription receives within `window`, returning payloads.
 async fn collect_payloads(
@@ -5333,21 +5339,35 @@ async fn collect_payloads(
     payloads
 }
 
-/// One server offers **two different service IDs**; the client subscribes to
-/// both with the **same explicit source port**. Service A binds the dedicated
-/// socket, service B shares it (see
-/// `sub_fixed_port_one_server_diff_service_shares_socket`).
-///
-/// Sharing the port must not merge the event streams: each subscription must
-/// receive its own service's notifications and none of the other service's.
-#[test_log::test]
-fn sub_fixed_port_diff_service_shared_socket_routes_events_by_service() {
+/// Assert a subscription received exactly the `ROUTING_NOTIFY_ROUNDS` events
+/// carrying `expected`, and nothing else.
+fn assert_only_own_events(label: &str, received: &[Vec<u8>], expected: &[u8]) {
+    assert!(
+        received.iter().all(|p| p == expected),
+        "{label} subscription received foreign events: {:?}",
+        received
+            .iter()
+            .map(|p| String::from_utf8_lossy(p).into_owned())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        received.len(),
+        ROUTING_NOTIFY_ROUNDS,
+        "{label} subscription must receive every one of its events"
+    );
+}
+
+/// One server offers `a` and `b` (`(service_id, major_version)`, instance 1).
+/// The client subscribes to eventgroup 1 of both with the same explicit source
+/// port: `a` binds the dedicated socket, `b` shares it via the existing-port
+/// lookup. Each server offering notifies a payload unique to it; each
+/// subscription must receive exactly its own offering's events.
+fn assert_shared_fixed_port_routes_events(a: (u16, u8), b: (u16, u8), shared_port: u16) {
     use recentip::config::TransportPreference;
 
-    const SHARED_PORT: u16 = 49606;
-    const PAYLOAD_A: &[u8] = b"from_service_a";
-    const PAYLOAD_B: &[u8] = b"from_service_b";
-    const NOTIFY_ROUNDS: usize = 3;
+    fn payload((service_id, major): (u16, u8)) -> Vec<u8> {
+        format!("svc{service_id:04x}_v{major}").into_bytes()
+    }
 
     let received: Arc<Mutex<Option<(Vec<Vec<u8>>, Vec<Vec<u8>>)>>> = Arc::new(Mutex::new(None));
     let capture = Arc::clone(&received);
@@ -5356,57 +5376,43 @@ fn sub_fixed_port_diff_service_shared_socket_routes_events_by_service() {
         .simulation_duration(Duration::from_secs(30))
         .build();
 
-    sim.host("server", || async {
+    sim.host("server", move || async move {
         let runtime = recentip::configure()
             .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
             .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
             .start_turmoil()
             .await
             .unwrap();
-        let mut offering_a = runtime
-            .offer(SUB_FIXED_DIFF_SVC_EVENTS_A, InstanceId::Id(1))
-            .version(SVC_VERSION.0, SVC_VERSION.1)
-            .udp()
-            .start()
-            .await
-            .unwrap();
-        let mut offering_b = runtime
-            .offer(SUB_FIXED_DIFF_SVC_EVENTS_B, InstanceId::Id(1))
-            .version(SVC_VERSION.0, SVC_VERSION.1)
-            .udp()
-            .start()
-            .await
-            .unwrap();
-
-        let eventgroup = EventgroupId::new(1).unwrap();
-        let event_id = EventId::new(0x8001).unwrap();
-        let event_a = offering_a
-            .event(event_id)
-            .eventgroup(eventgroup)
-            .create()
-            .await
-            .unwrap();
-        let event_b = offering_b
-            .event(event_id)
-            .eventgroup(eventgroup)
-            .create()
-            .await
-            .unwrap();
-
-        assert!(matches!(
-            offering_a.next().await,
-            Some(ServiceEvent::Subscribe { .. })
-        ));
-        assert!(matches!(
-            offering_b.next().await,
-            Some(ServiceEvent::Subscribe { .. })
-        ));
+        let mut offerings = Vec::new();
+        for (service_id, major) in [a, b] {
+            let offering = runtime
+                .offer(service_id, InstanceId::Id(1))
+                .version(major, SVC_VERSION.1)
+                .udp()
+                .start()
+                .await
+                .unwrap();
+            let event = offering
+                .event(EventId::new(0x8001).unwrap())
+                .eventgroup(EventgroupId::new(1).unwrap())
+                .create()
+                .await
+                .unwrap();
+            offerings.push((offering, event, payload((service_id, major))));
+        }
+        for (offering, _, _) in &mut offerings {
+            assert!(matches!(
+                offering.next().await,
+                Some(ServiceEvent::Subscribe { .. })
+            ));
+        }
         // Let the SubscribeAcks reach the client before notifying.
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        for _ in 0..NOTIFY_ROUNDS {
-            event_a.notify(PAYLOAD_A).await.unwrap();
-            event_b.notify(PAYLOAD_B).await.unwrap();
+        for _ in 0..ROUTING_NOTIFY_ROUNDS {
+            for (_, event, payload) in &offerings {
+                event.notify(payload).await.unwrap();
+            }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -5422,52 +5428,38 @@ fn sub_fixed_port_diff_service_shared_socket_routes_events_by_service() {
             .await
             .unwrap();
 
-        let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(SHARED_PORT)]);
+        let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(shared_port)]);
 
-        let proxy_a = tokio::time::timeout(
-            Duration::from_secs(5),
-            runtime
-                .find(SUB_FIXED_DIFF_SVC_EVENTS_A)
-                .instance(InstanceId::Id(1)),
-        )
-        .await
-        .expect("discovery service-A timeout")
-        .expect("discovery service-A failed")
-        .with_transport_policy(policy.clone());
-
-        let proxy_b = tokio::time::timeout(
-            Duration::from_secs(5),
-            runtime
-                .find(SUB_FIXED_DIFF_SVC_EVENTS_B)
-                .instance(InstanceId::Id(1)),
-        )
-        .await
-        .expect("discovery service-B timeout")
-        .expect("discovery service-B failed")
-        .with_transport_policy(policy);
-
-        let mut sub_a = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy_a.subscribe(EventgroupId::new(1).unwrap()),
-        )
-        .await
-        .expect("subscribe service-A timeout")
-        .expect("subscribe service-A failed");
-
-        let mut sub_b = tokio::time::timeout(
-            Duration::from_secs(5),
-            proxy_b.subscribe(EventgroupId::new(1).unwrap()),
-        )
-        .await
-        .expect("subscribe service-B timeout")
-        .expect("subscribe service-B failed");
+        let mut subscriptions = Vec::new();
+        for (service_id, major) in [a, b] {
+            let proxy = tokio::time::timeout(
+                Duration::from_secs(5),
+                runtime
+                    .find(service_id)
+                    .instance(InstanceId::Id(1))
+                    .major_version(major),
+            )
+            .await
+            .expect("discovery timeout")
+            .expect("discovery failed")
+            .with_transport_policy(policy.clone());
+            let subscription = tokio::time::timeout(
+                Duration::from_secs(5),
+                proxy.subscribe(EventgroupId::new(1).unwrap()),
+            )
+            .await
+            .expect("subscribe timeout")
+            .expect("subscribe failed");
+            subscriptions.push(subscription);
+        }
+        let [mut sub_a, mut sub_b]: [_; 2] = subscriptions.try_into().ok().unwrap();
 
         let window = Duration::from_secs(3);
-        let (payloads_a, payloads_b) = tokio::join!(
+        let collected = tokio::join!(
             collect_payloads(&mut sub_a, window),
             collect_payloads(&mut sub_b, window)
         );
-        *capture.lock().unwrap() = Some((payloads_a, payloads_b));
+        *capture.lock().unwrap() = Some(collected);
         Ok(())
     });
 
@@ -5478,24 +5470,193 @@ fn sub_fixed_port_diff_service_shared_socket_routes_events_by_service() {
         .unwrap()
         .take()
         .expect("client must have collected events");
-    assert!(
-        payloads_a.iter().all(|p| p == PAYLOAD_A),
-        "service-A subscription received foreign events: {payloads_a:?}"
+    assert_only_own_events("first (socket owner)", &payloads_a, &payload(a));
+    assert_only_own_events("second (socket sharer)", &payloads_b, &payload(b));
+}
+
+/// Two different service IDs share one explicit subscription port (see
+/// `sub_fixed_port_one_server_diff_service_shares_socket`). Sharing the port
+/// must not merge the event streams.
+#[test_log::test]
+fn sub_fixed_port_diff_service_shared_socket_routes_events_by_service() {
+    assert_shared_fixed_port_routes_events(
+        (SUB_FIXED_DIFF_SVC_EVENTS_A, SVC_VERSION.0),
+        (SUB_FIXED_DIFF_SVC_EVENTS_B, SVC_VERSION.0),
+        49606,
     );
-    assert!(
-        payloads_b.iter().all(|p| p == PAYLOAD_B),
-        "service-B subscription received foreign events: {payloads_b:?}"
+}
+
+/// The same service and instance at two major versions share one explicit
+/// subscription port (see `sub_fixed_port_one_server_diff_major_shares_socket`).
+/// Each major's subscription must receive only that major's events.
+#[test_log::test]
+fn sub_fixed_port_diff_major_shared_socket_routes_events_by_major() {
+    assert_shared_fixed_port_routes_events(
+        (SUB_FIXED_DIFF_MAJOR_EVENTS_SVC, 1),
+        (SUB_FIXED_DIFF_MAJOR_EVENTS_SVC, 2),
+        49607,
     );
+}
+
+// -----------------------------------------------------------------------
+// sub_any_port_reused_dedicated_socket_routes_events_by_service
+// -----------------------------------------------------------------------
+
+/// Any-port policy. Service A subscribes EG1 (shared RPC port) then EG2, which
+/// needs a dedicated socket. Service B subscribes EG1 (RPC port) then EG2,
+/// which reuses A's dedicated EG2 port because B does not use it yet.
+///
+/// The server notifies a payload unique to each (service, eventgroup); every
+/// subscription must receive exactly its own events.
+#[test_log::test]
+fn sub_any_port_reused_dedicated_socket_routes_events_by_service() {
+    use std::net::SocketAddrV4;
+
+    const SERVICES: [u16; 2] = [SUB_ANY_REUSED_DEDICATED_SVC_A, SUB_ANY_REUSED_DEDICATED_SVC_B];
+    const EVENTGROUPS: [u16; 2] = [1, 2];
+
+    fn payload(service_id: u16, eventgroup: u16) -> Vec<u8> {
+        format!("svc{service_id:04x}_eg{eventgroup}").into_bytes()
+    }
+
+    type Subscribers = Vec<(u16, u16, SocketAddrV4)>;
+    let subscribers: Arc<Mutex<Subscribers>> = Arc::new(Mutex::new(Vec::new()));
+    let received: Arc<Mutex<Vec<(u16, u16, Vec<Vec<u8>>)>>> = Arc::new(Mutex::new(Vec::new()));
+    let server_capture = Arc::clone(&subscribers);
+    let client_capture = Arc::clone(&received);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let capture = Arc::clone(&server_capture);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+                .start_turmoil()
+                .await
+                .unwrap();
+            let mut offerings = Vec::new();
+            let mut events = Vec::new();
+            for service_id in SERVICES {
+                let offering = runtime
+                    .offer(service_id, InstanceId::Id(1))
+                    .version(SVC_VERSION.0, SVC_VERSION.1)
+                    .udp()
+                    .start()
+                    .await
+                    .unwrap();
+                for (eg, event_id) in EVENTGROUPS.into_iter().zip([0x8001, 0x8002]) {
+                    let event = offering
+                        .event(EventId::new(event_id).unwrap())
+                        .eventgroup(EventgroupId::new(eg).unwrap())
+                        .create()
+                        .await
+                        .unwrap();
+                    events.push((event, payload(service_id, eg)));
+                }
+                offerings.push((service_id, offering));
+            }
+            for (service_id, offering) in &mut offerings {
+                for _ in EVENTGROUPS {
+                    if let Some(ServiceEvent::Subscribe { eventgroup, client }) =
+                        offering.next().await
+                    {
+                        capture.lock().unwrap().push((
+                            *service_id,
+                            eventgroup.value(),
+                            client.address,
+                        ));
+                    }
+                }
+            }
+            // Let the SubscribeAcks reach the client before notifying.
+            tokio::time::sleep(Duration::from_millis(500)).await;
+
+            for _ in 0..ROUTING_NOTIFY_ROUNDS {
+                for (event, payload) in &events {
+                    event.notify(payload).await.unwrap();
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            Ok(())
+        }
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Order matters: A/EG1, A/EG2, B/EG1, B/EG2.
+        let mut subscriptions = Vec::new();
+        for service_id in SERVICES {
+            let proxy = tokio::time::timeout(
+                Duration::from_secs(5),
+                runtime.find(service_id).instance(InstanceId::Id(1)),
+            )
+            .await
+            .expect("discovery timeout")
+            .expect("discovery failed");
+            for eg in EVENTGROUPS {
+                let subscription = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    proxy.subscribe(EventgroupId::new(eg).unwrap()),
+                )
+                .await
+                .expect("subscribe timeout")
+                .expect("subscribe failed");
+                subscriptions.push((service_id, eg, subscription));
+            }
+        }
+
+        let window = Duration::from_secs(3);
+        let collected =
+            futures::future::join_all(subscriptions.iter_mut().map(|(svc, eg, sub)| async {
+                (*svc, *eg, collect_payloads(sub, window).await)
+            }))
+            .await;
+        *client_capture.lock().unwrap() = collected;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Precondition: the topology under test. B/EG2 reuses A/EG2's dedicated
+    // port, which is distinct from the shared RPC port used for EG1.
+    let subscribers = subscribers.lock().unwrap().clone();
+    let port_of = |service_id: u16, eg: u16| {
+        subscribers
+            .iter()
+            .find(|(svc, e, _)| *svc == service_id && *e == eg)
+            .unwrap_or_else(|| panic!("server must have seen Subscribe for {service_id:04x}/EG{eg}"))
+            .2
+            .port()
+    };
+    let [svc_a, svc_b] = SERVICES;
+    assert_ne!(port_of(svc_a, 2), port_of(svc_a, 1), "A/EG2 must get a dedicated port");
     assert_eq!(
-        payloads_a.len(),
-        NOTIFY_ROUNDS,
-        "service-A subscription must receive every service-A event"
+        port_of(svc_b, 2),
+        port_of(svc_a, 2),
+        "B/EG2 must reuse A/EG2's dedicated port"
     );
-    assert_eq!(
-        payloads_b.len(),
-        NOTIFY_ROUNDS,
-        "service-B subscription must receive every service-B event"
-    );
+
+    let received = received.lock().unwrap();
+    assert_eq!(received.len(), SERVICES.len() * EVENTGROUPS.len());
+    for (service_id, eg, payloads) in received.iter() {
+        assert_only_own_events(
+            &format!("{service_id:04x}/EG{eg}"),
+            payloads,
+            &payload(*service_id, *eg),
+        );
+    }
 }
 
 // -----------------------------------------------------------------------
