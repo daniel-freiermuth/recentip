@@ -2383,3 +2383,192 @@ fn tcp_rpc_first_then_subscription_shares_connection() {
 
     tracing::info!("✓ RPC-first, then subscription: single TCP connection reused");
 }
+
+// ============================================================================
+// EVENT CHANNEL OVERFLOW (BACKPRESSURE) TESTS
+// ============================================================================
+
+/// Service used by the burst test.
+const BURST_SERVICE_ID: u16 = 0x1234;
+/// Events per eventgroup in the burst; far beyond the client's event channel capacity.
+const BURST: u16 = 200;
+/// Event in EG1 (first subscription → shared client RPC endpoint).
+const SHARED_EVENT: u16 = 0x8001;
+/// Event in EG2 (second eventgroup of the same service → dedicated UDP socket).
+const DEDICATED_EVENT: u16 = 0x8002;
+/// Payload marking the last event the server sends after the burst.
+const TAIL_SEQUENCE: u16 = u16::MAX;
+
+/// Drain `subscription` until the tail event arrives or `deadline` elapses.
+///
+/// Returns the burst sequence numbers received (in arrival order) and whether
+/// the tail event was seen.
+async fn drain_until_tail(
+    subscription: &mut recentip::Subscription,
+    deadline: Duration,
+) -> (Vec<u16>, bool) {
+    let mut burst = Vec::new();
+    let collect = async {
+        while let Some(event) = subscription.next().await {
+            let sequence = u16::from_be_bytes(
+                event
+                    .payload
+                    .as_ref()
+                    .try_into()
+                    .expect("burst payload is a big-endian u16"),
+            );
+            if sequence == TAIL_SEQUENCE {
+                return true;
+            }
+            burst.push(sequence);
+        }
+        false
+    };
+    let tail_seen = tokio::time::timeout(deadline, collect)
+        .await
+        .unwrap_or(false);
+    (burst, tail_seen)
+}
+
+/// A burst larger than the subscription's event channel must only drop the
+/// overflow; the subscription must keep delivering afterwards.
+///
+/// The client subscribes to two eventgroups of the same service:
+/// - EG1 is the first subscription → shared client RPC endpoint
+/// - EG2 is the second subscription of the same service → dedicated UDP socket
+///
+/// The server sends a burst far beyond the channel capacity on both
+/// eventgroups while the application is not reading, then (after the app had
+/// time to drain) one tail event per eventgroup. Both subscription kinds must
+/// deliver the tail event: overflow drops events, it does not end the
+/// subscription.
+#[test_log::test]
+fn udp_event_burst_beyond_channel_capacity_keeps_subscription_alive() {
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        // Keep turmoil's per-socket buffer out of the way: the only bound under
+        // test is the library's subscription event channel.
+        .udp_capacity(4 * usize::from(BURST))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("server"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering = runtime
+            .offer(BURST_SERVICE_ID, recentip::InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        let shared_event = offering
+            .event(recentip::EventId::new(SHARED_EVENT).unwrap())
+            .eventgroup(recentip::EventgroupId::new(0x0001).unwrap())
+            .create()
+            .await
+            .unwrap();
+        let dedicated_event = offering
+            .event(recentip::EventId::new(DEDICATED_EVENT).unwrap())
+            .eventgroup(recentip::EventgroupId::new(0x0002).unwrap())
+            .create()
+            .await
+            .unwrap();
+
+        for _ in 0..2 {
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                crate::helpers::wait_for_subscription(&mut offering),
+            )
+            .await
+            .expect("timed out waiting for both eventgroup subscriptions")
+            .expect("offering closed before both subscriptions arrived");
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Burst far beyond the client's channel capacity while the app is not reading.
+        for sequence in 0..BURST {
+            let payload = sequence.to_be_bytes();
+            shared_event.notify(&payload).await.unwrap();
+            dedicated_event.notify(&payload).await.unwrap();
+        }
+
+        // Give the client time to drain, then prove both subscriptions still deliver.
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let tail = TAIL_SEQUENCE.to_be_bytes();
+        shared_event.notify(&tail).await.unwrap();
+        dedicated_event.notify(&tail).await.unwrap();
+
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        Ok(())
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(BURST_SERVICE_ID)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery timeout")
+        .expect("service available");
+
+        // First subscription of the service → shared client RPC endpoint.
+        let mut shared_sub = proxy
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
+            .await
+            .unwrap();
+        // Second eventgroup of the same service → dedicated UDP socket.
+        let mut dedicated_sub = proxy
+            .subscribe(recentip::EventgroupId::new(0x0002).unwrap())
+            .await
+            .unwrap();
+
+        // Do not read while the burst arrives, so the event channels overflow.
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        // Drain both concurrently: a subscription left unread while the tail
+        // arrives would legitimately drop the tail as overflow.
+        let (shared, dedicated) = tokio::join!(
+            drain_until_tail(&mut shared_sub, Duration::from_secs(5)),
+            drain_until_tail(&mut dedicated_sub, Duration::from_secs(5)),
+        );
+
+        for (label, (burst, tail_seen), expected_event) in [
+            ("shared-endpoint", shared, SHARED_EVENT),
+            ("dedicated-socket", dedicated, DEDICATED_EVENT),
+        ] {
+            assert!(
+                !burst.is_empty() && burst.len() < usize::from(BURST),
+                "{label}: burst of {BURST} must overflow the event channel \
+                 (received {} burst events)",
+                burst.len()
+            );
+            assert!(
+                tail_seen,
+                "{label}: subscription stopped delivering after the event channel overflowed \
+                 (event {expected_event:04x}, {} burst events drained, tail never arrived)",
+                burst.len()
+            );
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
