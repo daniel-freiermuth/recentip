@@ -60,7 +60,7 @@ use super::command::ServiceAvailability;
 use super::sd::{
     Action, build_find_message, build_subscribe_message_multi, build_unsubscribe_message,
 };
-use super::state::{CallKey, FindRequest, PendingCall, RuntimeState, ServiceKey};
+use super::state::{CallKey, FindRequest, PendingCall, RpcMessage, RuntimeState, ServiceKey};
 use crate::config::{DEFAULT_FIND_REPETITIONS, PortSpec, Transport};
 use crate::net::UdpSocket;
 use crate::wire::{Header, MessageType};
@@ -73,14 +73,22 @@ use tokio::sync::mpsc;
 
 /// Helper: Spawn a per-subscription UDP socket task
 ///
-/// Creates a dedicated UDP socket for a subscription, binds it to an ephemeral port,
-/// and spawns a task to receive events and route them directly to the subscription's
-/// `events_tx` channel.
+/// Creates a dedicated UDP socket for a subscription, binds it according to
+/// `local_port`, and spawns a task that forwards every received notification to
+/// the runtime (`notifications_tx`), tagged with the local port it arrived on.
 ///
-/// Returns the local endpoint (IP + ephemeral port) to use in the SD Subscribe message.
+/// The port may later be shared with subscriptions of other services (or other
+/// instances/major versions), so the task must not deliver events itself:
+/// [`handle_incoming_notification`] routes them by sender and local port.
+///
+/// `events_tx` is only held to detect that the owning subscription was dropped,
+/// at which point the task exits and the socket is closed.
+///
+/// Returns the local endpoint (IP + bound port) to use in the SD Subscribe message.
 async fn spawn_udp_subscription_socket<U: UdpSocket>(
     unicast_ip: Ipv4Addr,
     events_tx: mpsc::Sender<crate::Event>,
+    notifications_tx: mpsc::Sender<RpcMessage>,
     service_id: crate::ServiceId,
     instance_id: crate::InstanceId,
     eventgroup_id: u16,
@@ -126,18 +134,25 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
         eventgroup_id
     );
 
-    // Spawn task to receive events on this dedicated socket
+    // Spawn task to forward notifications received on this dedicated socket
     tokio::spawn(async move {
         let mut buf = vec![0u8; 65535];
         loop {
             match socket.recv_from(&mut buf).await {
                 Ok((len, from)) => {
+                    if events_tx.is_closed() {
+                        tracing::debug!(
+                            "Subscription dropped for socket {}, shutting down receiver task",
+                            local_endpoint
+                        );
+                        break;
+                    }
                     let Some(data) = buf.get(..len) else {
                         continue;
                     };
-                    let mut cursor = data;
 
                     // Parse SOME/IP header
+                    let mut cursor = data;
                     let Some(header) = Header::parse(&mut cursor) else {
                         tracing::warn!(
                             "Received invalid SOME/IP header on subscription socket {} from {}",
@@ -157,38 +172,14 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
                         continue;
                     }
 
-                    // Extract event
-                    let Some(event_id) = EventId::new(header.method_id) else {
-                        tracing::warn!(
-                            "Invalid event ID {:04x} on subscription socket {}",
-                            header.method_id,
-                            local_endpoint
-                        );
-                        continue;
+                    let msg = RpcMessage {
+                        local_port: local_endpoint.port(),
+                        data: Bytes::copy_from_slice(data),
+                        from,
                     };
-
-                    let payload_len = header.payload_length();
-                    if cursor.len() < payload_len {
-                        tracing::warn!(
-                            "Incomplete payload on subscription socket {}: expected {}, got {}",
-                            local_endpoint,
-                            payload_len,
-                            cursor.len()
-                        );
-                        continue;
-                    }
-
-                    let Some(payload_slice) = cursor.get(..payload_len) else {
-                        continue;
-                    };
-                    let payload = Bytes::copy_from_slice(payload_slice);
-                    let event = Event { event_id, payload };
-
-                    // Route event directly to this subscription's channel
-                    if events_tx.try_send(event).is_err() {
-                        // Subscription dropped - exit task
+                    if notifications_tx.send(msg).await.is_err() {
                         tracing::debug!(
-                            "Subscription dropped for socket {}, shutting down receiver task",
+                            "Runtime closed, shutting down receiver task for socket {}",
                             local_endpoint
                         );
                         break;
@@ -226,7 +217,6 @@ fn complete_udp_subscription(
     events_tx: &mpsc::Sender<Event>,
     response: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     endpoint: SocketAddrV4,
-    has_dedicated_socket: bool,
     sd_endpoint: SocketAddrV4,
 ) {
     let eventgroups_to_subscribe = state.record_subscription_state(
@@ -236,7 +226,6 @@ fn complete_udp_subscription(
         events_tx,
         response,
         endpoint,
-        has_dedicated_socket,
         0,
         Transport::Udp,
     );
@@ -433,6 +422,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     major_version: u8,
     eventgroup_ids: vec1::Vec1<u16>,
     incoming_events_channel: tokio::sync::mpsc::Sender<Event>,
+    notifications_tx: &mpsc::Sender<RpcMessage>,
     result_response_channel: tokio::sync::oneshot::Sender<crate::error::Result<u64>>,
     sd_endpoint: SocketAddrV4,
     local_port: PortSpec,
@@ -507,7 +497,6 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                 &incoming_events_channel,
                 result_response_channel,
                 reused_endpoint,
-                false,
                 sd_endpoint,
             );
             return;
@@ -517,6 +506,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         match spawn_udp_subscription_socket::<U>(
             endpoint_ip,
             incoming_events_channel.clone(),
+            notifications_tx.clone(),
             service_id,
             instance_id,
             *eventgroup_ids.first(),
@@ -548,7 +538,6 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                     &incoming_events_channel,
                     result_response_channel,
                     dedicated_endpoint,
-                    true,
                     sd_endpoint,
                 );
                 return;
@@ -579,6 +568,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             match spawn_udp_subscription_socket::<U>(
                 endpoint_ip,
                 incoming_events_channel.clone(),
+                notifications_tx.clone(),
                 service_id,
                 instance_id,
                 *eventgroup_ids.first(),
@@ -601,7 +591,6 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                         &incoming_events_channel,
                         result_response_channel,
                         dedicated_endpoint,
-                        true,
                         sd_endpoint,
                     );
                     return;
@@ -634,7 +623,6 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         &incoming_events_channel,
         result_response_channel,
         endpoint_for_subscribe,
-        false,
         sd_endpoint,
     );
 }
@@ -843,13 +831,41 @@ pub fn handle_incoming_response(header: &Header, payload: Bytes, state: &mut Run
     }
 }
 
+/// The client socket an incoming notification arrived on.
+///
+/// The SOME/IP header carries no eventgroup, and a UDP port may be shared by
+/// subscriptions of different services, instances or major versions. Events are
+/// therefore matched to the subscriptions registered on the socket they arrived on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotificationSource {
+    /// UDP datagram received on this local port (client RPC socket or a
+    /// subscription socket).
+    Udp { local_port: u16 },
+    /// Message received on the client TCP connection with this connection key.
+    Tcp { conn_key: u64 },
+}
+
+impl NotificationSource {
+    /// Whether `sub` is registered on the socket this notification arrived on.
+    fn matches(self, sub: &super::state::ClientSubscription) -> bool {
+        match self {
+            Self::Udp { local_port } => {
+                sub.transport == Transport::Udp && sub.local_endpoint.port() == local_port
+            }
+            Self::Tcp { conn_key } => {
+                sub.transport == Transport::Tcp && sub.tcp_conn_key == conn_key
+            }
+        }
+    }
+}
+
 /// Handle an incoming notification (event)
 pub fn handle_incoming_notification(
     header: &Header,
     payload: Bytes,
     from: SocketAddrV4,
     state: &RuntimeState,
-    subscription_id: u64,
+    source: NotificationSource,
 ) {
     // Method ID is the event ID for notifications
     let Some(event_id) = EventId::new(header.method_id) else {
@@ -883,28 +899,16 @@ pub fn handle_incoming_notification(
         return;
     };
 
-    // Find subscriptions for this service (dynamic via SD)
-    // TCP connection sharing strategy:
-    // - Different services CAN share connection (route by service_id in header)
-    // - Same service different eventgroups use separate connections (slot-based conn_key)
-    //
-    // Routing logic uses tcp_conn_key to match events to subscriptions:
-    // - Events arrive with a connection's subscription_id (the conn_key used when connecting)
-    // - Route to subscriptions with matching tcp_conn_key
+    // Find subscriptions for this service (dynamic via SD) registered on the socket
+    // the event arrived on:
+    // - UDP: the local port. A port shared by different services (or instances /
+    //   major versions) is disambiguated by `key`; eventgroups of the same service
+    //   never share a port (see `handle_subscribe_udp`).
+    // - TCP: the connection key (`tcp_conn_key`) used when connecting. Different
+    //   services CAN share a connection; eventgroups of the same service use
+    //   separate connections (slot-based conn_key).
     if let Some(subs) = state.subscriptions.get(&key) {
-        for sub in subs {
-            // UDP subscriptions have dedicated sockets and skip this path entirely
-            if sub.has_dedicated_socket {
-                continue; // This subscription receives events on its own dedicated socket
-            }
-
-            // TCP subscriptions: Route based on connection key matching
-            // The subscription_id in TcpMessage is the conn_key used when the connection was established.
-            // Route events to subscriptions with matching tcp_conn_key.
-            if sub.tcp_conn_key != subscription_id {
-                continue;
-            }
-
+        for sub in subs.iter().filter(|sub| source.matches(sub)) {
             let _ = sub.events_tx.try_send(event.clone());
         }
     }
