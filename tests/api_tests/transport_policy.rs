@@ -5512,7 +5512,10 @@ fn sub_fixed_port_diff_major_shared_socket_routes_events_by_major() {
 fn sub_any_port_reused_dedicated_socket_routes_events_by_service() {
     use std::net::SocketAddrV4;
 
-    const SERVICES: [u16; 2] = [SUB_ANY_REUSED_DEDICATED_SVC_A, SUB_ANY_REUSED_DEDICATED_SVC_B];
+    const SERVICES: [u16; 2] = [
+        SUB_ANY_REUSED_DEDICATED_SVC_A,
+        SUB_ANY_REUSED_DEDICATED_SVC_B,
+    ];
     const EVENTGROUPS: [u16; 2] = [1, 2];
 
     fn payload(service_id: u16, eventgroup: u16) -> Vec<u8> {
@@ -5618,11 +5621,12 @@ fn sub_any_port_reused_dedicated_socket_routes_events_by_service() {
         }
 
         let window = Duration::from_secs(3);
-        let collected =
-            futures::future::join_all(subscriptions.iter_mut().map(|(svc, eg, sub)| async {
-                (*svc, *eg, collect_payloads(sub, window).await)
-            }))
-            .await;
+        let collected = futures::future::join_all(
+            subscriptions
+                .iter_mut()
+                .map(|(svc, eg, sub)| async { (*svc, *eg, collect_payloads(sub, window).await) }),
+        )
+        .await;
         *client_capture.lock().unwrap() = collected;
         Ok(())
     });
@@ -5636,12 +5640,18 @@ fn sub_any_port_reused_dedicated_socket_routes_events_by_service() {
         subscribers
             .iter()
             .find(|(svc, e, _)| *svc == service_id && *e == eg)
-            .unwrap_or_else(|| panic!("server must have seen Subscribe for {service_id:04x}/EG{eg}"))
+            .unwrap_or_else(|| {
+                panic!("server must have seen Subscribe for {service_id:04x}/EG{eg}")
+            })
             .2
             .port()
     };
     let [svc_a, svc_b] = SERVICES;
-    assert_ne!(port_of(svc_a, 2), port_of(svc_a, 1), "A/EG2 must get a dedicated port");
+    assert_ne!(
+        port_of(svc_a, 2),
+        port_of(svc_a, 1),
+        "A/EG2 must get a dedicated port"
+    );
     assert_eq!(
         port_of(svc_b, 2),
         port_of(svc_a, 2),
