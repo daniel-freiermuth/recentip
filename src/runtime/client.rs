@@ -909,13 +909,14 @@ pub fn handle_incoming_notification(
     //   separate connections (slot-based conn_key).
     //
     // A multi-eventgroup subscription has one entry per eventgroup, all sharing
-    // the same `subscription_id` and `events_tx`: deliver once per subscription.
+    // the same `subscription_id`, `events_tx` and socket (`record_subscription_state`):
+    // deliver once per subscription.
     if let Some(subs) = state.subscriptions.get(&key) {
         for (i, sub) in subs.iter().enumerate() {
             let already_delivered = || {
                 subs.iter()
                     .take(i)
-                    .any(|prev| prev.subscription_id == sub.subscription_id && source.matches(prev))
+                    .any(|prev| prev.subscription_id == sub.subscription_id)
             };
             if source.matches(sub) && !already_delivered() {
                 let _ = sub.events_tx.try_send(event.clone());
