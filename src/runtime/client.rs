@@ -184,14 +184,25 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
                     let payload = Bytes::copy_from_slice(payload_slice);
                     let event = Event { event_id, payload };
 
-                    // Route event directly to this subscription's channel
-                    if events_tx.try_send(event).is_err() {
-                        // Subscription dropped - exit task
-                        tracing::debug!(
-                            "Subscription dropped for socket {}, shutting down receiver task",
-                            local_endpoint
-                        );
-                        break;
+                    // Route event directly to this subscription's channel.
+                    // A full channel drops only this event (same as the shared-endpoint
+                    // path); only a closed channel (Subscription dropped) ends the task.
+                    match events_tx.try_send(event) {
+                        Ok(()) => {}
+                        Err(mpsc::error::TrySendError::Full(dropped)) => {
+                            tracing::warn!(
+                                "Event channel full on subscription socket {}, dropping event {:04x}",
+                                local_endpoint,
+                                dropped.event_id.value()
+                            );
+                        }
+                        Err(mpsc::error::TrySendError::Closed(_)) => {
+                            tracing::debug!(
+                                "Subscription dropped for socket {}, shutting down receiver task",
+                                local_endpoint
+                            );
+                            break;
+                        }
                     }
                 }
                 Err(e) => {
