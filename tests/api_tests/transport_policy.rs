@@ -123,6 +123,8 @@ const SUB_MULTI_PORT_TWO_PROXIES_SVC: u16 = 0x4031; // sub multi-port policy: sa
 const SUB_MULTI_PORT_SAME_PROXY_SVC: u16 = 0x4032; // sub multi-port policy: same svc, same proxy, diff egs → uses port A then B, both succeed
 const SUB_TCP_DIFF_SVC_SHARES_CONN_A: u16 = 0x4033; // TCP sub port reuse: service A, same server TCP port as B, client conn shared
 const SUB_TCP_DIFF_SVC_SHARES_CONN_B: u16 = 0x4034; // TCP sub port reuse: service B, same server TCP port as A, client conn shared
+const SUB_FIXED_DIFF_SVC_EVENTS_A: u16 = 0x4035; // sub fixed-port event routing: service A owns the dedicated socket
+const SUB_FIXED_DIFF_SVC_EVENTS_B: u16 = 0x4036; // sub fixed-port event routing: service B shares A's socket
 const SVC_VERSION: (u8, u32) = (1, 0);
 
 // -----------------------------------------------------------------------
@@ -5311,6 +5313,188 @@ fn sub_fixed_port_one_server_diff_service_shares_socket() {
         a_b.port(),
         SHARED_PORT,
         "must see client port {SHARED_PORT} for svc-B, got {a_b}"
+    );
+}
+
+// -----------------------------------------------------------------------
+// sub_fixed_port_diff_service_shared_socket_routes_events_by_service
+// -----------------------------------------------------------------------
+
+/// Drain every event a subscription receives within `window`, returning payloads.
+async fn collect_payloads(
+    subscription: &mut recentip::handle::Subscription,
+    window: Duration,
+) -> Vec<Vec<u8>> {
+    let deadline = tokio::time::Instant::now() + window;
+    let mut payloads = Vec::new();
+    while let Ok(Some(event)) = tokio::time::timeout_at(deadline, subscription.next()).await {
+        payloads.push(event.payload.to_vec());
+    }
+    payloads
+}
+
+/// One server offers **two different service IDs**; the client subscribes to
+/// both with the **same explicit source port**. Service A binds the dedicated
+/// socket, service B shares it (see
+/// `sub_fixed_port_one_server_diff_service_shares_socket`).
+///
+/// Sharing the port must not merge the event streams: each subscription must
+/// receive its own service's notifications and none of the other service's.
+#[test_log::test]
+fn sub_fixed_port_diff_service_shared_socket_routes_events_by_service() {
+    use recentip::config::TransportPreference;
+
+    const SHARED_PORT: u16 = 49606;
+    const PAYLOAD_A: &[u8] = b"from_service_a";
+    const PAYLOAD_B: &[u8] = b"from_service_b";
+    const NOTIFY_ROUNDS: usize = 3;
+
+    let received: Arc<Mutex<Option<(Vec<Vec<u8>>, Vec<Vec<u8>>)>>> = Arc::new(Mutex::new(None));
+    let capture = Arc::clone(&received);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+        let mut offering_a = runtime
+            .offer(SUB_FIXED_DIFF_SVC_EVENTS_A, InstanceId::Id(1))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+        let mut offering_b = runtime
+            .offer(SUB_FIXED_DIFF_SVC_EVENTS_B, InstanceId::Id(1))
+            .version(SVC_VERSION.0, SVC_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        let eventgroup = EventgroupId::new(1).unwrap();
+        let event_id = EventId::new(0x8001).unwrap();
+        let event_a = offering_a
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+        let event_b = offering_b
+            .event(event_id)
+            .eventgroup(eventgroup)
+            .create()
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            offering_a.next().await,
+            Some(ServiceEvent::Subscribe { .. })
+        ));
+        assert!(matches!(
+            offering_b.next().await,
+            Some(ServiceEvent::Subscribe { .. })
+        ));
+        // Let the SubscribeAcks reach the client before notifying.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        for _ in 0..NOTIFY_ROUNDS {
+            event_a.notify(PAYLOAD_A).await.unwrap();
+            event_b.notify(PAYLOAD_B).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let runtime = recentip::configure()
+            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(SHARED_PORT)]);
+
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SUB_FIXED_DIFF_SVC_EVENTS_A)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery service-A timeout")
+        .expect("discovery service-A failed")
+        .with_transport_policy(policy.clone());
+
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SUB_FIXED_DIFF_SVC_EVENTS_B)
+                .instance(InstanceId::Id(1)),
+        )
+        .await
+        .expect("discovery service-B timeout")
+        .expect("discovery service-B failed")
+        .with_transport_policy(policy);
+
+        let mut sub_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_a.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe service-A timeout")
+        .expect("subscribe service-A failed");
+
+        let mut sub_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy_b.subscribe(EventgroupId::new(1).unwrap()),
+        )
+        .await
+        .expect("subscribe service-B timeout")
+        .expect("subscribe service-B failed");
+
+        let window = Duration::from_secs(3);
+        let (payloads_a, payloads_b) = tokio::join!(
+            collect_payloads(&mut sub_a, window),
+            collect_payloads(&mut sub_b, window)
+        );
+        *capture.lock().unwrap() = Some((payloads_a, payloads_b));
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let (payloads_a, payloads_b) = received
+        .lock()
+        .unwrap()
+        .take()
+        .expect("client must have collected events");
+    assert!(
+        payloads_a.iter().all(|p| p == PAYLOAD_A),
+        "service-A subscription received foreign events: {payloads_a:?}"
+    );
+    assert!(
+        payloads_b.iter().all(|p| p == PAYLOAD_B),
+        "service-B subscription received foreign events: {payloads_b:?}"
+    );
+    assert_eq!(
+        payloads_a.len(),
+        NOTIFY_ROUNDS,
+        "service-A subscription must receive every service-A event"
+    );
+    assert_eq!(
+        payloads_b.len(),
+        NOTIFY_ROUNDS,
+        "service-B subscription must receive every service-B event"
     );
 }
 
