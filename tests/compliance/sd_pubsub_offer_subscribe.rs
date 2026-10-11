@@ -37,13 +37,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-/// Coverage tracking macro
-macro_rules! covers {
-    ($req:ident) => {
-        // Marker for requirement traceability - see scripts/generate_compliance.py
-        let _ = stringify!($req);
-    };
-}
+use crate::covers;
 
 const SUBSCRIBE_TEST_SERVICE_ID: u16 = 0x2000;
 const SUBSCRIBE_TEST_SERVICE_VERSION: (u8, u32) = (1, 0);

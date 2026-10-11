@@ -6,13 +6,7 @@
 use bytes::Bytes;
 use recentip::wire::{Header, SD_METHOD_ID, SD_SERVICE_ID, SdMessage};
 
-/// Macro for documenting which spec requirements a test covers
-macro_rules! covers {
-    ($($req:ident),+ $(,)?) => {
-        let _ = ($(stringify!($req)),+);
-    };
-}
-pub(crate) use covers;
+pub(crate) use crate::covers;
 
 // Wire values for TestService
 pub const TEST_SERVICE_ID: u16 = 0x1234;
