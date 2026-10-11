@@ -15,6 +15,7 @@ use crate::client_behavior::helpers::{
 };
 
 use super::helpers::*;
+use crate::covers;
 use crate::helpers::DEFAULT_SD_MULTICAST;
 
 /// feat_req_someipsd_141: SD Service ID is 0xFFFF

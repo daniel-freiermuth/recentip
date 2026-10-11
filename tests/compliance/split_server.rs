@@ -30,12 +30,7 @@ use wire_format_helpers::{
     build_notification, build_response, build_sd_offer, build_sd_subscribe_ack, parse_header,
 };
 
-/// Macro for documenting which spec requirements a test covers
-macro_rules! covers {
-    ($($req:ident),+ $(,)?) => {
-        let _ = ($(stringify!($req)),+);
-    };
-}
+use crate::covers;
 
 const TEST_SERVICE_ID: u16 = 0x1234;
 const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
