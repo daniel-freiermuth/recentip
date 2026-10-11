@@ -1139,17 +1139,19 @@ fn multi_eventgroup_subscription_lifecycle() {
         unsub_count,
     );
 
-    // Sub1 should have received event1_first at least once (before drop) and event1_second at least once (after re-subscribe)
-    // Note: may receive duplicates because event is in multiple eventgroups
-    let has_event1_first = sub1_events.iter().any(|e| e == b"event1_first");
-    let has_event1_second = sub1_events.iter().any(|e| e == b"event1_second");
-    assert!(
-        has_event1_first,
-        "Sub1 should receive event1_first before drop"
+    // Sub1 should have received event1_first before drop and event1_second after
+    // re-subscribe, each exactly once: event1 is in both of sub1's eventgroups,
+    // but one subscription must get one copy.
+    let count = |payload: &[u8]| sub1_events.iter().filter(|e| *e == payload).count();
+    assert_eq!(
+        count(b"event1_first"),
+        1,
+        "Sub1 should receive event1_first once before drop"
     );
-    assert!(
-        has_event1_second,
-        "Sub1 should receive event1_second after re-subscribe"
+    assert_eq!(
+        count(b"event1_second"),
+        1,
+        "Sub1 should receive event1_second once after re-subscribe"
     );
 
     // Sub2 should have received event2 once

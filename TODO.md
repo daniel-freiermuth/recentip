@@ -96,6 +96,8 @@ Items not yet scheduled:
   - SD message slowdown in tests
   - Offer timing test (proptest and basic test)
   - Unsub timing test
+- Shared UDP subscription port lifetime: the dedicated socket's receiver task is tied to the first (owning) subscription and exits once that subscription's channel closes, even if another service/instance/major still shares the port (`spawn_udp_subscription_socket`, `src/runtime/client.rs`). Add a test (owner unsubscribes, sharer keeps receiving) and reference-count socket ownership.
+- `configure_tracing()` (`tests/helpers.rs`) panics when another test in the same process already installed a global subscriber; `test_multiple_versions_subscribe_both_data` fails under plain `cargo test` for that reason (passes under `cargo nextest run`). Use `try_init`-style setup.
 
 ---
 
