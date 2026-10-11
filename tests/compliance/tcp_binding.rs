@@ -30,12 +30,7 @@ use recentip::prelude::*;
 use recentip::Transport;
 use std::time::Duration;
 
-/// Macro for documenting which spec requirements a test covers
-macro_rules! covers {
-    ($($req:ident),+ $(,)?) => {
-        let _ = ($(stringify!($req)),+);
-    };
-}
+use crate::covers;
 
 /// Type alias for turmoil-based runtime (needs both UdpSocket and TcpStream)
 

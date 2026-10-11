@@ -15,6 +15,7 @@
 
 mod wire_format;
 
+use crate::covers;
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use bytes::Bytes;
 use recentip::handle::ServiceEvent;
@@ -27,13 +28,6 @@ use recentip::wire::{
 use std::net::SocketAddr;
 use std::time::Duration;
 use wire_format::helpers::SomeIpPacketBuilder;
-
-/// Macro for documenting which spec requirements a test covers
-macro_rules! covers {
-    ($($req:ident),+ $(,)?) => {
-        let _ = ($(stringify!($req)),+);
-    };
-}
 
 const TEST_SERVICE_ID: u16 = 0x1234;
 const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
