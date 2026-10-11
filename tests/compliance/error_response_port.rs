@@ -37,12 +37,7 @@ use crate::helpers::DEFAULT_SD_MULTICAST;
 const TEST_SERVICE_ID: u16 = 0x1234;
 const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
-/// Macro for documenting which spec requirements a test covers
-macro_rules! covers {
-    ($($req:ident),+ $(,)?) => {
-        let _ = ($(stringify!($req)),+);
-    };
-}
+use crate::covers;
 
 /// Helper to parse SOME/IP header from wire format
 fn parse_header_wire(data: &[u8]) -> Option<recentip::wire::Header> {

@@ -14,14 +14,6 @@ pub use recentip::prelude::*;
 pub use std::net::{Ipv4Addr, SocketAddr};
 pub use std::time::Duration;
 
-/// Macro for documenting which spec requirements a test covers
-macro_rules! covers {
-    ($($req:ident),+ $(,)?) => {
-        let _ = ($(stringify!($req)),+);
-    };
-}
-pub(crate) use covers;
-
 // Wire values for TestService
 pub const TEST_SERVICE_ID: u16 = 0x1234;
 pub const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);

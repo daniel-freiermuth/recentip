@@ -17,12 +17,7 @@ use crate::wire_format::helpers::{
     SdSubscribeAckBuilder, SomeIpPacketBuilder, parse_sd_packet,
 };
 
-/// Macro for documenting which spec requirements a test covers
-macro_rules! covers {
-    ($($req:ident),+ $(,)?) => {
-        let _ = ($(stringify!($req)),+);
-    };
-}
+use crate::covers;
 
 /// Type alias for turmoil-based runtime
 

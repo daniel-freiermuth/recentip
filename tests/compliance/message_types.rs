@@ -22,13 +22,7 @@ use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 
 #[cfg(feature = "turmoil")]
-
-/// Macro for documenting which spec requirements a test covers
-macro_rules! covers {
-    ($($req:ident),+ $(,)?) => {
-        let _ = ($(stringify!($req)),+);
-    };
-}
+use crate::covers;
 
 // ============================================================================
 // Test Service Definition

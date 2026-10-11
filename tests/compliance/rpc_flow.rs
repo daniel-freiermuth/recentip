@@ -10,6 +10,7 @@
 //! - feat_req_someip_348: Fire&Forget shall not return error
 //! - feat_req_someip_141: Request (0x00) answered by Response (0x80)
 
+use crate::covers;
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use bytes::Bytes;
 use recentip::handle::ServiceEvent;
@@ -18,13 +19,6 @@ use recentip::prelude::*;
 use recentip::wire::{Header, MessageType, SD_METHOD_ID, SD_SERVICE_ID, SdMessage};
 use std::net::SocketAddr;
 use std::time::Duration;
-
-/// Macro for documenting which spec requirements a test covers
-macro_rules! covers {
-    ($($req:ident),+ $(,)?) => {
-        let _ = ($(stringify!($req)),+);
-    };
-}
 
 const TEST_SERVICE_ID: u16 = 0x1234;
 const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
