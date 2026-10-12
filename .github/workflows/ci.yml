@@ -1,7 +1,7 @@
 # GitHub Actions CI — mirrors the pipeline in .gitlab-ci.yml
 #
 # Triggers: push to main, pull requests
-# Jobs: fmt, clippy, test (nextest + llvm-cov), doc-test, requirement-coverage, build-release
+# Jobs: fmt, clippy, test (nextest + llvm-cov), doc-test, requirement-coverage, qnx-check, build-release
 
 name: CI
 
@@ -91,6 +91,36 @@ jobs:
             COVERAGE_REPORT.md
             COMPLIANCE.md
             spec-data/coverage.json
+
+  # QNX 7.1 targets are tier 3 (no prebuilt std via rustup), so std is built
+  # from source with -Zbuild-std on a pinned nightly. `cargo check` does not
+  # link, so no QNX SDP is needed.
+  qnx-check:
+    name: QNX Check (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    env:
+      QNX_TOOLCHAIN: nightly-2026-08-14
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-nto-qnx710
+          - x86_64-pc-nto-qnx710
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.QNX_TOOLCHAIN }}
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Check (default features)
+        run: cargo +${QNX_TOOLCHAIN} check -Zbuild-std --target ${{ matrix.target }} --locked
+      - name: Check (no default features)
+        run: cargo +${QNX_TOOLCHAIN} check -Zbuild-std --target ${{ matrix.target }} --no-default-features --locked
 
   build-release:
     name: Release Build
