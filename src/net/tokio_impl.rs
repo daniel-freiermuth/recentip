@@ -164,3 +164,34 @@ impl TcpListener for tokio::net::TcpListener {
         Self::local_addr(self).map(|addr| expect_v4(addr, "tokio::net::TcpListener::local_addr"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::TcpKeepaliveConfig;
+    use std::time::Duration;
+
+    /// `set_keepalive` must actually apply every configured parameter to the
+    /// OS socket. Values differ from the Linux defaults (7200 s / 75 s / 9) so
+    /// a no-op or a dropped parameter is detected.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn set_keepalive_applies_all_parameters_to_os_socket() -> io::Result<()> {
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let stream = tokio::net::TcpStream::connect(listener.local_addr()?).await?;
+        let config = TcpKeepaliveConfig {
+            time: Duration::from_secs(61),
+            interval: Duration::from_secs(7),
+            retries: 3,
+        };
+
+        TcpStream::set_keepalive(&stream, &config)?;
+
+        let sock = socket2::SockRef::from(&stream);
+        assert!(sock.keepalive()?);
+        assert_eq!(sock.tcp_keepalive_time()?, config.time);
+        assert_eq!(sock.tcp_keepalive_interval()?, config.interval);
+        assert_eq!(sock.tcp_keepalive_retries()?, config.retries);
+        Ok(())
+    }
+}
