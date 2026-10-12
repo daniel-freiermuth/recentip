@@ -362,7 +362,12 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
 
         // Queue TCP cleanup if this service had a TCP endpoint
         // Per feat_req_someipsd_872: TCP connections should be reset when service stops
-        if let Some(tcp_endpoint) = offered_tcp_endpoint {
+        // A pooled connection is keyed by the remote endpoint, so it is shared with every
+        // other service offered on the same server TCP port (feat_req_someip_644). Only
+        // reset it once no remaining discovered service uses that endpoint.
+        if let Some(tcp_endpoint) = offered_tcp_endpoint
+            && !is_tcp_endpoint_in_use(state, tcp_endpoint)
+        {
             let peer_ip = tcp_endpoint.ip();
             let client_port = tcp_endpoint.port();
 
@@ -389,6 +394,17 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
             },
         });
     }
+}
+
+/// Whether any discovered service still offers `tcp_endpoint`, i.e. the pooled TCP
+/// connection to that endpoint is still shared with a live service.
+fn is_tcp_endpoint_in_use(state: &RuntimeState, tcp_endpoint: SocketAddrV4) -> bool {
+    state.discovered.iter().any(|service| {
+        matches!(
+            service.offered_endpoints,
+            OfferedEndpoints::TcpOnly(tcp) | OfferedEndpoints::Both { tcp, .. } if tcp == tcp_endpoint
+        )
+    })
 }
 
 /// Handle a `FindService` request (we may need to respond with an offer)
