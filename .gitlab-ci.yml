@@ -2,7 +2,7 @@
 #
 # Stages:
 # - test: Run test suite
-# - build: Build release artifacts and cross-compile
+# - build: Build release artifacts
 
 stages:
   - test
@@ -103,6 +103,28 @@ doc-build:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+# Cross-check for QNX 7.1 targets. They are tier 3 (no prebuilt std via
+# rustup), so std is built from source with -Zbuild-std on a pinned nightly.
+# `cargo check` does not link, so no QNX SDP is needed.
+qnx-check:
+  extends: .rust-base
+  stage: test
+  variables:
+    QNX_TOOLCHAIN: nightly-2026-08-14
+  parallel:
+    matrix:
+      - QNX_TARGET:
+          - aarch64-unknown-nto-qnx710
+          - x86_64-pc-nto-qnx710
+  before_script:
+    - rustup toolchain install ${QNX_TOOLCHAIN} --profile minimal --component rust-src
+  script:
+    - cargo +${QNX_TOOLCHAIN} check -Zbuild-std --target ${QNX_TARGET} --locked
+    - cargo +${QNX_TOOLCHAIN} check -Zbuild-std --target ${QNX_TARGET} --no-default-features --locked
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
 # =============================================================================
 # BUILD STAGE
 # =============================================================================
@@ -116,21 +138,6 @@ build-release:
     paths:
       - target/release/libsomeip_runtime.*
     expire_in: 1 week
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-# Cross-compile for QNX target
-build-qnx:
-  extends: .rust-base
-  stage: build
-  variables:
-    QNX_TARGET: aarch64-unknown-nto-qnx710
-  before_script:
-    - rustup target add ${QNX_TARGET} || true
-  script:
-    # Check only - actual build requires QNX SDK
-    - cargo check --target ${QNX_TARGET} --no-default-features 2>/dev/null || echo "QNX target not available (expected in CI without QNX SDK)"
-  allow_failure: true
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
