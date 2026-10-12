@@ -1268,11 +1268,11 @@ const TCP_SHARED_PORT_SERVICE_B: u16 = 0x2347;
 /// subscribed, so B's events must keep arriving on that connection.
 #[test_log::test]
 fn tcp_stop_offer_of_one_service_keeps_shared_connection_for_other() {
-    covers!(feat_req_someip_644, feat_req_someipsd_767);
-
     use recentip::handle::ServiceEvent;
 
     const SERVER_TCP_PORT: u16 = 30520;
+
+    covers!(feat_req_someip_644, feat_req_someipsd_767);
 
     let b_events_received = Arc::new(AtomicUsize::new(0));
     let b_events_clone = Arc::clone(&b_events_received);
