@@ -555,7 +555,10 @@ impl From<Transport> for TransportPolicy {
 /// # Platform notes
 ///
 /// `retries` maps to `TCP_KEEPCNT` and is ignored on platforms that do not
-/// expose that socket option (e.g. some QNX configurations).
+/// expose that socket option (e.g. QNX).
+///
+/// On QNX 7.x (`target_os = "nto"`) only `time` is applied; `interval` and
+/// `retries` are ignored and the OS defaults stay in effect.
 ///
 /// # Example
 ///
@@ -574,7 +577,7 @@ pub struct TcpKeepaliveConfig {
     /// Idle time before the first keepalive probe is sent (`TCP_KEEPIDLE`).
     pub time: Duration,
     /// Interval between consecutive probes when there is no response (`TCP_KEEPINTVL`)
-    /// and after the last probe.
+    /// and after the last probe.  Ignored on QNX 7.x.
     pub interval: Duration,
     /// Number of unacknowledged probes before the connection is considered dead
     /// (`TCP_KEEPCNT`).  Not supported on all platforms.

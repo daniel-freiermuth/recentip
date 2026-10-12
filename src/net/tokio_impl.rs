@@ -123,9 +123,11 @@ impl TcpStream for tokio::net::TcpStream {
 
     fn set_keepalive(&self, config: &crate::config::TcpKeepaliveConfig) -> io::Result<()> {
         use socket2::{SockRef, TcpKeepalive};
-        let keepalive = TcpKeepalive::new()
-            .with_time(config.time)
-            .with_interval(config.interval);
+        let keepalive = TcpKeepalive::new().with_time(config.time);
+        // socket2 does not expose TCP_KEEPINTVL on QNX 7.x (target_os = "nto");
+        // the probe interval keeps the OS default there.
+        #[cfg(not(target_os = "nto"))]
+        let keepalive = keepalive.with_interval(config.interval);
         // TCP_KEEPCNT is not available on all platforms; skip where unsupported.
         #[cfg(any(
             target_os = "android",
