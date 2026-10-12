@@ -96,6 +96,11 @@ Items not yet scheduled:
   - SD message slowdown in tests
   - Offer timing test (proptest and basic test)
   - Unsub timing test
+- QNX follow-ups (see `.notes-to-the-agent/qnx.md`):
+  - Add `*_qnx710_iosock` targets to `qnx-check` once socket2/libc/tokio compile for them
+  - Add QNX SDP 8.0 (`aarch64-unknown-qnx`) to `qnx-check` once mio/socket2 support `target_os = "qnx"`
+  - TCP keepalive `interval`/`retries` are ignored on QNX 7.x (socket2 only sets the idle time there)
+  - Keep the `QNX_TOOLCHAIN` nightly pin in CI moving (currently same date as `someip-lints/rust-toolchain`)
 
 ---
 

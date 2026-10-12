@@ -72,9 +72,12 @@ cargo nextest run -- --ignored
 ### Cross-Compilation
 
 ```bash
-# Check QNX target compatibility
-rustup target add aarch64-unknown-nto-qnx710
-cargo check --target aarch64-unknown-nto-qnx710 --no-default-features
+# Check QNX 7.1 compatibility (same as the `qnx-check` CI job).
+# QNX targets are tier 3: `rustup target add` does not work, std is built from
+# source instead. `check` does not link, so no QNX SDP is needed.
+rustup toolchain install nightly-2026-08-14 --profile minimal --component rust-src
+cargo +nightly-2026-08-14 check -Zbuild-std --target aarch64-unknown-nto-qnx710 --locked
+cargo +nightly-2026-08-14 check -Zbuild-std --target aarch64-unknown-nto-qnx710 --no-default-features --locked
 ```
 
 ## Architecture Overview
