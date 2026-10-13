@@ -2630,7 +2630,12 @@ fn udp_subscription_does_not_reuse_tcp_subscription_port() {
 
     sim.run().unwrap();
 
-    let tcp_ports: HashSet<u16> = tcp_peers.lock().unwrap().iter().map(|a| a.port()).collect();
+    let tcp_ports: HashSet<u16> = tcp_peers
+        .lock()
+        .unwrap()
+        .iter()
+        .map(SocketAddr::port)
+        .collect();
     let y_eg2_endpoint = y_eg2_endpoint
         .lock()
         .unwrap()
@@ -2641,14 +2646,11 @@ fn udp_subscription_does_not_reuse_tcp_subscription_port() {
     );
     assert!(
         !tcp_ports.contains(&y_eg2_endpoint.port()),
-        "Y EG2 UDP endpoint {} reuses the TCP subscription's local port (TCP ports: {:?})",
-        y_eg2_endpoint,
-        tcp_ports
+        "Y EG2 UDP endpoint {y_eg2_endpoint} reuses the TCP subscription's local port (TCP ports: {tcp_ports:?})"
     );
     assert_eq!(
         y_eg2_received.lock().unwrap().as_deref(),
         Some(&b"y-eg2"[..]),
-        "Y EG2 subscription did not receive the event sent to {}",
-        y_eg2_endpoint
+        "Y EG2 subscription did not receive the event sent to {y_eg2_endpoint}"
     );
 }
