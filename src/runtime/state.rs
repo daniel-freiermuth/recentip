@@ -1070,4 +1070,55 @@ mod tests {
         crate::runtime::sd::handle_subscribe_ack(&ack(0x0010), &mut state);
         assert_eq!(response_rx.try_recv().unwrap().unwrap(), 7);
     }
+
+    /// Port of the UDP subscription recorded by [`record`].
+    const SUB_PORT: u16 = 40000;
+
+    fn unsubscribe(state: &mut RuntimeState, eventgroup_id: u16) {
+        crate::runtime::client::handle_unsubscribe(
+            ServiceId::new(SUB_KEY.service_id).unwrap(),
+            InstanceId::new(SUB_KEY.instance_id).unwrap(),
+            SUB_KEY.major_version,
+            eventgroup_id,
+            7,
+            state,
+        );
+    }
+
+    /// Dropping the last UDP subscription on a port must release the port from
+    /// the endpoint registry; otherwise a later fixed-port UDP subscription
+    /// would "reuse" a socket that no longer exists.
+    #[test_log::test]
+    fn unsubscribing_last_udp_user_releases_endpoint() {
+        let mut state = test_state();
+        let _response_rx = record(&mut state, &[0x0010]);
+        state.register_subscription_endpoint(SUB_PORT, SUB_KEY.service_id, SUB_KEY.instance_id);
+
+        unsubscribe(&mut state, 0x0010);
+
+        assert_eq!(
+            state.find_existing_port_for_spec(PortSpec::Fixed(SUB_PORT)),
+            None,
+            "port must be released once no subscription of the service uses it"
+        );
+    }
+
+    /// Dropping one eventgroup of a multi-eventgroup UDP subscription must keep
+    /// the port registered while the remaining eventgroup still listens on it.
+    #[test_log::test]
+    fn unsubscribing_one_eventgroup_keeps_shared_endpoint() {
+        let mut state = test_state();
+        let _response_rx = record(&mut state, &[0x0010, 0x0020]);
+        state.register_subscription_endpoint(SUB_PORT, SUB_KEY.service_id, SUB_KEY.instance_id);
+
+        unsubscribe(&mut state, 0x0010);
+
+        assert!(
+            state
+                .subscription_endpoint_usage
+                .get(&SUB_PORT)
+                .is_some_and(|users| users.contains(&(SUB_KEY.service_id, SUB_KEY.instance_id))),
+            "port must stay registered while eventgroup 0x0020 still uses it"
+        );
+    }
 }
