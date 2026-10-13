@@ -800,6 +800,121 @@ fn monitor_sd_dropped_receiver_cleanup() {
     );
 }
 
+/// Test that a monitor whose channel is merely full (slow reader) stays registered.
+///
+/// A burst of more SD events than the monitor channel can buffer must not
+/// unregister the monitor: once the reader catches up, later events must still
+/// arrive and the channel must not report closure as if the runtime had shut down.
+#[test_log::test]
+fn monitor_sd_slow_receiver_stays_registered() {
+    const BURST_INSTANCES: u16 = 120;
+    const MARKER_INSTANCE: u16 = 0x0FFF;
+
+    let result = Arc::new(Mutex::new(None::<(usize, Option<SdEvent>)>));
+    let result_clone = Arc::clone(&result);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(60))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // Burst: more distinct instances than the monitor channel can buffer
+        let mut offerings = Vec::new();
+        for instance in 1..=BURST_INSTANCES {
+            offerings.push(
+                runtime
+                    .offer(TEST_SERVICE_ID, InstanceId::Id(instance))
+                    .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+                    .udp()
+                    .start()
+                    .await
+                    .unwrap(),
+            );
+        }
+
+        // Give the monitor time to fall behind, then offer one more service
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        let _marker = runtime
+            .offer(ANOTHER_SERVICE_ID, InstanceId::Id(MARKER_INSTANCE))
+            .version(ANOTHER_SERVICE_VERSION.0, ANOTHER_SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        drop(offerings);
+        Ok(())
+    });
+
+    sim.client("monitor", async move {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut sd_events = runtime.monitor_sd().await.unwrap();
+
+        // Do not read while the burst arrives
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        // Catch up on everything buffered so far
+        let mut drained = 0usize;
+        while sd_events.try_recv().is_ok() {
+            drained += 1;
+        }
+
+        // Later events must still be delivered to this monitor
+        let marker = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                match sd_events.recv().await {
+                    Some(
+                        event @ SdEvent::ServiceAvailable {
+                            service_id: ANOTHER_SERVICE_ID,
+                            ..
+                        },
+                    ) => return Some(event),
+                    Some(_) => {}
+                    None => return None,
+                }
+            }
+        })
+        .await
+        .expect("Timeout waiting for SD event after burst");
+
+        *result_clone.lock().unwrap() = Some((drained, marker));
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let (drained, marker) = result.lock().unwrap().take().expect("monitor finished");
+    assert!(
+        drained >= 100,
+        "Burst should have filled the monitor channel, drained only {drained}"
+    );
+    assert!(
+        matches!(
+            marker,
+            Some(SdEvent::ServiceAvailable {
+                service_id: ANOTHER_SERVICE_ID,
+                instance_id: MARKER_INSTANCE,
+                ..
+            })
+        ),
+        "Slow monitor was unregistered after its channel filled up; got {marker:?}"
+    );
+}
+
 /// Test that monitor_sd works even when called before any services exist.
 #[test_log::test]
 fn monitor_sd_before_services_exist() {
