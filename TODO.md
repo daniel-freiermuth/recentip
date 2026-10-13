@@ -89,6 +89,7 @@ Items not yet scheduled:
 - Conditional subscription acceptance (application-controlled ACK/NACK)
 - TTL expiry vs reboot-triggered cancellation test
 - FindService → OfferService session continuity test
+- `handle_unsubscribe`: `port_still_in_use` compares ports across transports; a UDP sub and a TCP sub of the same service on the same port number keep the UDP endpoint registration alive after the UDP sub is dropped. Filter by transport.
 - Sort out hardcoded timings
   - Set turmoils max_message_latency for all tests
   - Offer distance timing
