@@ -2497,6 +2497,8 @@ fn udp_subscription_does_not_reuse_tcp_subscription_port() {
                         );
                         mc_session += 1;
                         let _ = sd_socket.send_to(&offer_x, from).await;
+                        // Space SD sends so latency jitter cannot reorder sessions
+                        tokio::time::sleep(Duration::from_millis(50)).await;
 
                         let offer_y = build_sd_offer(
                             SVC_Y,
@@ -2513,6 +2515,7 @@ fn udp_subscription_does_not_reuse_tcp_subscription_port() {
                         );
                         mc_session += 1;
                         let _ = sd_socket.send_to(&offer_y, from).await;
+                        tokio::time::sleep(Duration::from_millis(50)).await;
                     }
                     0x06 => {
                         // SubscribeEventgroup
@@ -2540,6 +2543,7 @@ fn udp_subscription_does_not_reuse_tcp_subscription_port() {
                         );
                         uc_session += 1;
                         let _ = sd_socket.send_to(&ack, from).await;
+                        tokio::time::sleep(Duration::from_millis(50)).await;
 
                         if sub_svc == SVC_Y
                             && eventgroup_id == 0x0002
