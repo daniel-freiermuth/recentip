@@ -128,13 +128,6 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
             // The conn_key is now committed to `subscriptions` — release it from pending.
             state.release_pending_tcp_conn_key(key, conn_key);
 
-            // Register subscription endpoint
-            state.register_subscription_endpoint(
-                endpoint_for_subscribe.port(),
-                service_id.value(),
-                instance_id.value(),
-            );
-
             // Record subscription state (subscriptions + pending tracking).
             // Route by the key of the connection actually used: a reused RPC
             // connection tags its events with 0, not with the allocated conn_key.
