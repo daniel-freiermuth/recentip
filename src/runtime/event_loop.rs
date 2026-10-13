@@ -706,11 +706,19 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
             }
         }
         Action::EmitSdEvent { event } => {
-            // Send event to all SD monitors
-            // Remove monitors that have closed their receivers
+            // Send event to all SD monitors.
+            // Remove only monitors that have closed their receivers; a full channel
+            // means a slow reader, which loses this event but stays registered.
             state
                 .sd_monitors
-                .retain(|monitor| monitor.try_send(event.clone()).is_ok());
+                .retain(|monitor| match monitor.try_send(event.clone()) {
+                    Ok(()) => true,
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        tracing::warn!("SD monitor channel full; dropping SD event {:?}", event);
+                        true
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => false,
+                });
         }
     }
 }
