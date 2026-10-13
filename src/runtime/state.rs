@@ -527,7 +527,9 @@ pub struct RuntimeState {
     /// to `AddrInUse`), so re-offering after a stop and externally-occupied
     /// ports never cause a collision with a still-running service.
     pub(crate) next_server_rpc_port: u16,
-    /// Tracks which (`service_id`, `instance_id`) pairs are using each subscription endpoint (port).
+    /// Tracks which (`service_id`, `instance_id`) pairs are using each UDP subscription endpoint (port).
+    /// Every key is a bound UDP socket the UDP subscribe path may share; TCP subscriptions
+    /// must never register here, since their local port is not a UDP socket.
     /// This enables endpoint reuse across DIFFERENT services while maintaining isolation
     /// within the SAME service (events can be routed by `service_id` in header, but not by eventgroup).
     /// Key: port number, Value: set of (`service_id`, `instance_id`) using that port
