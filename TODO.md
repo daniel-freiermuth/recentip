@@ -89,6 +89,7 @@ Items not yet scheduled:
 - Conditional subscription acceptance (application-controlled ACK/NACK)
 - TTL expiry vs reboot-triggered cancellation test
 - FindService → OfferService session continuity test
+- TCP eventgroup isolation when an RPC connection exists first: every subsequent TCP subscription to that server reuses the RPC connection (conn_key 0), so events of different eventgroups of the same service are delivered to all of those subscribers (subscribe-first order keeps per-eventgroup connections)
 - Sort out hardcoded timings
   - Set turmoils max_message_latency for all tests
   - Offer distance timing
