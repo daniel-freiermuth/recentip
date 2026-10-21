@@ -826,6 +826,220 @@ fn only_one_magic_cookie_per_segment() {
 }
 
 // ============================================================================
+// TCP Stream Framing Robustness
+// ============================================================================
+
+/// Build a raw REQUEST whose Length field is overwritten with `length`.
+///
+/// Everything except the Length field is a well-formed 16-byte header, so the
+/// only defect a receiver can detect is the Length value itself.
+fn request_with_length_field(service_id: u16, length: u32) -> Vec<u8> {
+    use crate::wire_format::helpers::SomeIpPacketBuilder;
+
+    let mut packet = SomeIpPacketBuilder::request(service_id, 0x0001).build();
+    packet[4..8].copy_from_slice(&length.to_be_bytes());
+    packet
+}
+
+/// Wait until `stream` is closed by the peer (EOF or reset).
+///
+/// Returns `false` if the stream is still open when `timeout` expires.
+async fn peer_closes(stream: &mut turmoil::net::TcpStream, timeout: Duration) -> bool {
+    use tokio::io::AsyncReadExt;
+
+    let mut buf = [0u8; 1024];
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        match tokio::time::timeout_at(deadline, stream.read(&mut buf)).await {
+            Err(_elapsed) => return false,
+            Ok(Ok(0) | Err(_)) => return true,
+            Ok(Ok(n)) => tracing::debug!("peer sent {} bytes before closing", n),
+        }
+    }
+}
+
+/// A SOME/IP Length field covers the 8 header bytes after it, so any value
+/// below 8 describes a message shorter than its own header. TCP has no other
+/// message boundary, so such a stream cannot be re-framed: the server must
+/// close the connection instead of emitting a truncated header and
+/// misinterpreting every following byte. Other connections stay usable.
+#[test_log::test]
+fn server_closes_tcp_connection_on_length_below_header_size() {
+    use crate::wire_format::helpers::{ParsedHeader, SOMEIP_HEADER_SIZE, SomeIpPacketBuilder};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .tcp()
+            .start()
+            .await
+            .unwrap();
+
+        while let Some(event) = offering.next().await {
+            if let ServiceEvent::Call { responder, .. } = event {
+                responder.reply(b"pong").unwrap();
+            }
+        }
+        Ok(())
+    });
+
+    sim.client("wire_client", async {
+        let server_ip: std::net::Ipv4Addr = turmoil::lookup("server").to_string().parse().unwrap();
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        sd_socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut buf = [0u8; 1500];
+        let tcp_port = loop {
+            let (len, _from) = sd_socket.recv_from(&mut buf).await?;
+            let Some((_header, sd)) = parse_sd_packet(&buf[..len]) else {
+                continue;
+            };
+            let port = sd
+                .offer_entries()
+                .filter(|entry| entry.service_id == TEST_SERVICE_ID)
+                .filter_map(|entry| sd.option_at(entry.index_1st_option))
+                .find(|opt| opt.is_tcp())
+                .and_then(|opt| opt.port());
+            if let Some(port) = port {
+                break port;
+            }
+        };
+        let tcp_addr: std::net::SocketAddr = (server_ip, tcp_port).into();
+
+        let valid_request = SomeIpPacketBuilder::request(TEST_SERVICE_ID, 0x0001)
+            .session_id(0x0002)
+            .payload(b"ping")
+            .build();
+
+        // Length 0 and 7 bracket the invalid range; each is followed by a
+        // valid request that a desynchronized reader would misframe.
+        for invalid_length in [0u32, 7] {
+            let mut stream = turmoil::net::TcpStream::connect(tcp_addr).await?;
+            let mut segment = request_with_length_field(TEST_SERVICE_ID, invalid_length);
+            segment.extend_from_slice(&valid_request);
+            stream.write_all(&segment).await?;
+
+            assert!(
+                peer_closes(&mut stream, Duration::from_secs(2)).await,
+                "server must close a TCP connection whose Length field is {invalid_length} (< 8)"
+            );
+        }
+
+        // The server keeps accepting and serving well-formed connections.
+        let mut stream = turmoil::net::TcpStream::connect(tcp_addr).await?;
+        stream.write_all(&valid_request).await?;
+        let mut response = [0u8; SOMEIP_HEADER_SIZE + 4];
+        tokio::time::timeout(Duration::from_secs(2), stream.read_exact(&mut response))
+            .await
+            .expect("response on a fresh connection")?;
+        let header = ParsedHeader::parse(&response).expect("response header");
+        assert!(header.is_response());
+        assert_eq!(header.session_id, 0x0002);
+        assert_eq!(&response[SOMEIP_HEADER_SIZE..], b"pong");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Client-side counterpart of
+/// [`server_closes_tcp_connection_on_length_below_header_size`]: a response
+/// stream carrying a Length field below 8 cannot be re-framed, so the client
+/// must close the connection rather than desynchronize it.
+#[test_log::test]
+fn client_closes_tcp_connection_on_length_below_header_size() {
+    use crate::wire_format::helpers::SOMEIP_HEADER_SIZE;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const TCP_PORT: u16 = 30510;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("lib_client", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("lib_client")))
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = runtime
+            .find(TEST_SERVICE_ID)
+            .instance(InstanceId::Id(0x0001))
+            .await
+            .expect("Service available");
+
+        // The call only exists to make the client open the TCP connection;
+        // its outcome is irrelevant once the response stream is malformed.
+        let _ = proxy.call(MethodId::new(0x0001).unwrap(), b"ping").await;
+        std::future::pending::<()>().await;
+        Ok(())
+    });
+
+    sim.client("wire_server", async {
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("wire_server").to_string().parse().unwrap();
+        let sd_multicast: std::net::SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        let tcp_listener = turmoil::net::TcpListener::bind(format!("0.0.0.0:{TCP_PORT}")).await?;
+
+        let offer = SdOfferBuilder::new(TEST_SERVICE_ID, 0x0001, my_ip, TCP_PORT)
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .tcp()
+            .ttl(3600)
+            .reboot_flag(true)
+            .build();
+        let mut stream = loop {
+            sd_socket.send_to(&offer, sd_multicast).await?;
+            if let Ok(accepted) =
+                tokio::time::timeout(Duration::from_millis(200), tcp_listener.accept()).await
+            {
+                break accepted?.0;
+            }
+        };
+
+        // Wait for the request header so the client is actively reading.
+        let mut request = [0u8; SOMEIP_HEADER_SIZE];
+        tokio::time::timeout(Duration::from_secs(2), stream.read_exact(&mut request))
+            .await
+            .expect("client request")?;
+
+        // Length 4 → 12-byte "message" that would cut the header short.
+        stream
+            .write_all(&request_with_length_field(TEST_SERVICE_ID, 4))
+            .await?;
+
+        assert!(
+            peer_closes(&mut stream, Duration::from_secs(2)).await,
+            "client must close a TCP connection whose Length field is < 8"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+// ============================================================================
 // Wire Format Consistency (TCP vs UDP)
 // ============================================================================
 
