@@ -82,6 +82,7 @@ Implementation approach:
 Items not yet scheduled:
 
 - **Server-side static binding API** - Add `runtime.bind()` for server-side services without SD (parallel to client-side `OfferedService::new()`)
+- **TCP handlers keep reading after the runtime's message channel closes** - in `src/tcp.rs` (`handle_client_tcp_connection`, `handle_tcp_connection`) the `break` after `msg_tx.send(..).is_err()` only exits the frame loop, not the connection loop; decide whether to tear the connection down
 - Multi-homed host testing infrastructure (Vagrant/Docker/netns options)
 - Port rotation tests
 - Configuration validation tests
