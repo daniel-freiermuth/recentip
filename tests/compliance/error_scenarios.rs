@@ -222,7 +222,7 @@ fn all_return_codes_are_valid() {
 
     for code in codes {
         // Each code should have a distinct value
-        let value = code as u8;
+        let value = code.as_u8();
         assert!(
             value <= 0x0A,
             "Return code {:?} should be in valid range",
@@ -231,7 +231,7 @@ fn all_return_codes_are_valid() {
     }
 
     // Verify E_OK is 0x00
-    assert_eq!(ReturnCode::Ok as u8, 0x00);
+    assert_eq!(ReturnCode::Ok.as_u8(), 0x00);
 }
 
 /// feat_req_someip_727: Error message has return code != 0x00
@@ -383,7 +383,8 @@ fn server_returns_various_error_codes() {
                 );
                 // Verify return code is != 0x00 (feat_req_someip_727)
                 assert_ne!(
-                    response.return_code as u8, 0x00,
+                    response.return_code.as_u8(),
+                    0x00,
                     "Error code must be != 0x00"
                 );
             }
@@ -393,6 +394,84 @@ fn server_returns_various_error_codes() {
     });
 
     sim.run().unwrap()
+}
+
+/// feat_req_someip_683: Service-specific return codes (0x20-0x3F) reach the client
+///
+/// A server replying with a service-specific error must not have its code
+/// folded into a generic error on the client side.
+#[test_log::test]
+fn service_specific_error_code_reaches_client() {
+    covers!(feat_req_someip_683);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        if let Some(ServiceEvent::Call { responder, .. }) =
+            tokio::time::timeout(Duration::from_secs(10), offering.next())
+                .await
+                .ok()
+                .flatten()
+        {
+            responder
+                .reply_error(ApplicationError::service_specific(0x21).unwrap())
+                .unwrap();
+        }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(())
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = tokio::time::timeout(Duration::from_secs(5), runtime.find(TEST_SERVICE_ID))
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"data"),
+        )
+        .await
+        .expect("Timeout")
+        .expect("Error responses are delivered as Response");
+
+        assert_eq!(
+            response.return_code,
+            ReturnCode::ServiceSpecific(ServiceErrorCode::new(0x21).unwrap()),
+            "Service-specific return code must be preserved"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
 }
 
 // ============================================================================
@@ -568,7 +647,7 @@ fn error_response_copies_request_header() {
                 // Verify return code is not OK (feat_req_someip_727)
                 // This is what makes it an "error message" even with RESPONSE type
                 assert_ne!(
-                    error_header.return_code, 0x00,
+                    error_header.return_code, ReturnCode::Ok,
                     "Error message must have return code != 0x00 (feat_req_someip_727)"
                 );
 
@@ -742,7 +821,7 @@ fn exception_message_type_when_configured() {
                 );
 
                 assert_ne!(
-                    error_header.return_code, 0x00,
+                    error_header.return_code, ReturnCode::Ok,
                     "Error message must have return code != 0x00"
                 );
             } else {
@@ -917,7 +996,8 @@ fn mixed_exception_config_per_method() {
                     "Method 0x0002 should use RESPONSE (0x80) - not configured for EXCEPTION"
                 );
                 assert_ne!(
-                    header.return_code, 0x00,
+                    header.return_code,
+                    ReturnCode::Ok,
                     "Should still have error return code"
                 );
             } else {
@@ -1045,7 +1125,7 @@ fn internal_unknown_service_error_uses_response() {
                 );
                 assert_eq!(
                     header.return_code,
-                    ReturnCode::UnknownService as u8,
+                    ReturnCode::UnknownService,
                     "Should return UNKNOWN_SERVICE error code"
                 );
             } else {
@@ -1452,7 +1532,7 @@ fn wrong_protocol_version_returns_error() {
                 );
                 assert_eq!(
                     header.return_code,
-                    ReturnCode::WrongProtocolVersion as u8,
+                    ReturnCode::WrongProtocolVersion,
                     "Should return E_WRONG_PROTOCOL_VERSION (feat_req_someip_703)"
                 );
             }
@@ -1595,7 +1675,8 @@ fn service_id_mismatch_on_service_socket_rejected() {
                     "Response should be RESPONSE or ERROR"
                 );
                 assert_eq!(
-                    header.return_code, 0x02,
+                    header.return_code,
+                    ReturnCode::UnknownService,
                     "Should return E_UNKNOWN_SERVICE (0x02) for mismatched service_id"
                 );
                 // Verify header fields are echoed correctly
