@@ -2383,3 +2383,274 @@ fn tcp_rpc_first_then_subscription_shares_connection() {
 
     tracing::info!("✓ RPC-first, then subscription: single TCP connection reused");
 }
+
+/// Regression: a TCP subscription's local port must never be offered as a
+/// reusable UDP subscription endpoint.
+///
+/// Scenario:
+/// - Server offers X (0x6601) TCP-only and Y (0x6602) UDP-only.
+/// - Client subscribes X EG1 (TCP), then Y EG1 (shared RPC port), then Y EG2.
+/// - Y EG2 needs an endpoint other than the RPC port. The client must bind a
+///   real UDP socket for it, not advertise the TCP connection's local port
+///   where no UDP socket exists.
+/// - Server sends a notification for Y to the advertised Y EG2 endpoint; the
+///   client's Y EG2 subscription must receive it.
+#[test_log::test]
+fn udp_subscription_does_not_reuse_tcp_subscription_port() {
+    use tokio::io::AsyncReadExt;
+
+    const SVC_X: u16 = 0x6601;
+    const SVC_Y: u16 = 0x6602;
+    const INSTANCE_ID: u16 = 0x0001;
+    const MAJOR_VERSION: u8 = 1;
+    const EVENT_ID: u16 = 0x8001;
+    const X_TCP_PORT: u16 = 30502;
+    const Y_UDP_PORT: u16 = 30503;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(15))
+        .max_message_latency(Duration::from_millis(10))
+        .build();
+
+    let tcp_peers = Arc::new(Mutex::new(HashSet::new()));
+    let tcp_peers_server = Arc::clone(&tcp_peers);
+    let y_eg2_endpoint = Arc::new(Mutex::new(None::<SocketAddr>));
+    let y_eg2_endpoint_server = Arc::clone(&y_eg2_endpoint);
+    let y_eg2_received = Arc::new(Mutex::new(None::<Vec<u8>>));
+    let y_eg2_received_client = Arc::clone(&y_eg2_received);
+
+    sim.host("server", move || {
+        let tcp_peers = Arc::clone(&tcp_peers_server);
+        let y_eg2_endpoint = Arc::clone(&y_eg2_endpoint_server);
+        async move {
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490")
+                .await
+                .unwrap();
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+            let event_socket = turmoil::net::UdpSocket::bind(format!("0.0.0.0:{Y_UDP_PORT}"))
+                .await
+                .unwrap();
+
+            let tcp_listener = turmoil::net::TcpListener::bind(format!("0.0.0.0:{X_TCP_PORT}"))
+                .await
+                .unwrap();
+            let tcp_peers_task = Arc::clone(&tcp_peers);
+            tokio::spawn(async move {
+                while let Ok((mut stream, addr)) = tcp_listener.accept().await {
+                    tracing::info!("TCP connection from {}", addr);
+                    tcp_peers_task.lock().unwrap().insert(addr);
+                    tokio::spawn(async move {
+                        let mut buf = [0u8; 4096];
+                        while let Ok(n) = stream.read(&mut buf).await {
+                            if n == 0 {
+                                break;
+                            }
+                        }
+                    });
+                }
+            });
+
+            let server_ip = lookup_ipv4("server");
+            let mut buf = vec![0u8; 65535];
+            let mut mc_session = 1u16;
+            let mut uc_session = 1u16;
+            let mut event_sent = false;
+
+            loop {
+                let (len, from) = match tokio::time::timeout(
+                    Duration::from_secs(5),
+                    sd_socket.recv_from(&mut buf),
+                )
+                .await
+                {
+                    Ok(Ok(r)) => r,
+                    _ => break,
+                };
+
+                let data = &buf[..len];
+                if data.len() < 36 {
+                    continue;
+                }
+                let svc = u16::from_be_bytes([data[0], data[1]]);
+                let mth = u16::from_be_bytes([data[2], data[3]]);
+                if svc != 0xFFFF || mth != 0x8100 {
+                    continue;
+                }
+
+                match data[24] {
+                    0x00 => {
+                        // FindService — offer X via TCP and Y via UDP
+                        let offer_x = build_sd_offer(
+                            SVC_X,
+                            INSTANCE_ID,
+                            MAJOR_VERSION,
+                            0,
+                            server_ip,
+                            X_TCP_PORT,
+                            0x06, // TCP
+                            0xFFFFFF,
+                            mc_session,
+                            true,
+                            false,
+                        );
+                        mc_session += 1;
+                        let _ = sd_socket.send_to(&offer_x, from).await;
+                        // Space SD sends so latency jitter cannot reorder sessions
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+
+                        let offer_y = build_sd_offer(
+                            SVC_Y,
+                            INSTANCE_ID,
+                            MAJOR_VERSION,
+                            0,
+                            server_ip,
+                            Y_UDP_PORT,
+                            0x11, // UDP
+                            0xFFFFFF,
+                            mc_session,
+                            true,
+                            false,
+                        );
+                        mc_session += 1;
+                        let _ = sd_socket.send_to(&offer_y, from).await;
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                    }
+                    0x06 => {
+                        // SubscribeEventgroup
+                        let sub_svc = u16::from_be_bytes([data[28], data[29]]);
+                        let instance_id = u16::from_be_bytes([data[30], data[31]]);
+                        let major_version = data[32];
+                        let ttl = u32::from_be_bytes([0, data[33], data[34], data[35]]);
+                        let eventgroup_id = u16::from_be_bytes([data[38], data[39]]);
+                        let endpoint = extract_ipv4_endpoint(data);
+                        tracing::info!(
+                            "Subscribe {:04x} eg {:04x} from endpoint {:?}",
+                            sub_svc,
+                            eventgroup_id,
+                            endpoint
+                        );
+
+                        let ack = build_sd_subscribe_ack(
+                            sub_svc,
+                            instance_id,
+                            major_version,
+                            eventgroup_id,
+                            ttl,
+                            uc_session,
+                            true,
+                        );
+                        uc_session += 1;
+                        let _ = sd_socket.send_to(&ack, from).await;
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+
+                        if sub_svc == SVC_Y
+                            && eventgroup_id == 0x0002
+                            && !event_sent
+                            && let Some(endpoint) = endpoint
+                        {
+                            *y_eg2_endpoint.lock().unwrap() = Some(endpoint);
+                            tokio::time::sleep(Duration::from_millis(300)).await;
+
+                            // SOME/IP notification for Y, sent to the advertised endpoint
+                            let payload = b"y-eg2";
+                            let mut event = Vec::with_capacity(16 + payload.len());
+                            event.extend_from_slice(&SVC_Y.to_be_bytes());
+                            event.extend_from_slice(&EVENT_ID.to_be_bytes());
+                            event.extend_from_slice(&(8 + payload.len() as u32).to_be_bytes());
+                            event.extend_from_slice(&0x0000u16.to_be_bytes()); // Client ID
+                            event.extend_from_slice(&0x0001u16.to_be_bytes()); // Session ID
+                            event.push(0x01); // Protocol Version
+                            event.push(MAJOR_VERSION); // Interface Version
+                            event.push(0x02); // NOTIFICATION
+                            event.push(0x00); // E_OK
+                            event.extend_from_slice(payload);
+                            let _ = event_socket.send_to(&event, endpoint).await;
+                            event_sent = true;
+                        }
+                    }
+                    _ => {}
+                }
+
+                if event_sent {
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                    break;
+                }
+            }
+            Ok(())
+        }
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        // 1. TCP subscription to X — opens a TCP connection from some local port P.
+        let proxy_x = runtime
+            .find(SVC_X)
+            .instance(recentip::InstanceId::Id(INSTANCE_ID))
+            .await
+            .unwrap();
+        let _sub_x = proxy_x
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
+            .await
+            .unwrap();
+
+        // 2. First UDP subscription to Y — takes the shared RPC port.
+        let proxy_y = runtime
+            .find(SVC_Y)
+            .instance(recentip::InstanceId::Id(INSTANCE_ID))
+            .await
+            .unwrap();
+        let _sub_y_eg1 = proxy_y
+            .subscribe(recentip::EventgroupId::new(0x0001).unwrap())
+            .await
+            .unwrap();
+
+        // 3. Second UDP subscription to Y — needs a different UDP endpoint.
+        let mut sub_y_eg2 = proxy_y
+            .subscribe(recentip::EventgroupId::new(0x0002).unwrap())
+            .await
+            .unwrap();
+
+        if let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_secs(3), sub_y_eg2.next()).await
+        {
+            *y_eg2_received_client.lock().unwrap() = Some(event.payload.to_vec());
+        }
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let tcp_ports: HashSet<u16> = tcp_peers
+        .lock()
+        .unwrap()
+        .iter()
+        .map(SocketAddr::port)
+        .collect();
+    let y_eg2_endpoint = y_eg2_endpoint
+        .lock()
+        .unwrap()
+        .expect("server never saw Subscribe for Y EG2");
+    assert!(
+        !tcp_ports.is_empty(),
+        "server never saw the TCP connection for X"
+    );
+    assert!(
+        !tcp_ports.contains(&y_eg2_endpoint.port()),
+        "Y EG2 UDP endpoint {y_eg2_endpoint} reuses the TCP subscription's local port (TCP ports: {tcp_ports:?})"
+    );
+    assert_eq!(
+        y_eg2_received.lock().unwrap().as_deref(),
+        Some(&b"y-eg2"[..]),
+        "Y EG2 subscription did not receive the event sent to {y_eg2_endpoint}"
+    );
+}
