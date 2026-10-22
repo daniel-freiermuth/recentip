@@ -1255,3 +1255,152 @@ fn tcp_concurrent_subscriptions_isolated_event_delivery() {
         eg2_count
     );
 }
+
+const TCP_SHARED_PORT_SERVICE_A: u16 = 0x2346;
+const TCP_SHARED_PORT_SERVICE_B: u16 = 0x2347;
+
+/// StopOffer of one service must not break another service that shares the
+/// same server TCP port (and therefore the same pooled client connection).
+///
+/// The server offers A and B on one fixed TCP port; the client subscribes to
+/// both over TCP, so both subscriptions ride one client TCP connection
+/// (`feat_req_someip_644`). When A is stopped, B is still offered and still
+/// subscribed, so B's events must keep arriving on that connection.
+#[test_log::test]
+fn tcp_stop_offer_of_one_service_keeps_shared_connection_for_other() {
+    use recentip::handle::ServiceEvent;
+
+    const SERVER_TCP_PORT: u16 = 30520;
+
+    covers!(feat_req_someip_644, feat_req_someipsd_767);
+
+    let b_events_received = Arc::new(AtomicUsize::new(0));
+    let b_events_clone = Arc::clone(&b_events_received);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering_a = runtime
+            .offer(TCP_SHARED_PORT_SERVICE_A, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .tcp_port(SERVER_TCP_PORT)
+            .start()
+            .await
+            .unwrap();
+        let mut offering_b = runtime
+            .offer(TCP_SHARED_PORT_SERVICE_B, InstanceId::Id(0x0001))
+            .version(TCP_PUB_SUB_SERVICE_VERSION.0, TCP_PUB_SUB_SERVICE_VERSION.1)
+            .tcp_port(SERVER_TCP_PORT)
+            .start()
+            .await
+            .unwrap();
+
+        let mut a_subscribed = false;
+        let mut b_subscribed = false;
+        while !(a_subscribed && b_subscribed) {
+            tokio::select! {
+                Some(event) = offering_a.next(), if !a_subscribed => {
+                    a_subscribed = matches!(event, ServiceEvent::Subscribe { .. });
+                }
+                Some(event) = offering_b.next(), if !b_subscribed => {
+                    b_subscribed = matches!(event, ServiceEvent::Subscribe { .. });
+                }
+            }
+        }
+        tracing::info!("[server] Both services subscribed");
+
+        let event_handle_b = offering_b
+            .event(EventId::new(0x8001).unwrap())
+            .eventgroup(EventgroupId::new(0x0001).unwrap())
+            .create()
+            .await
+            .unwrap();
+
+        // Stop offering A only; B stays offered on the shared TCP port.
+        drop(offering_a);
+        tracing::info!("[server] Stopped offering A");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        for i in 0..5u8 {
+            event_handle_b.notify(&[i]).await.unwrap();
+            tracing::info!("[server] Sent B event #{}", i);
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .preferred_transport(Transport::Tcp)
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime.find(TCP_SHARED_PORT_SERVICE_A),
+        )
+        .await
+        .expect("Discovery A timeout")
+        .expect("Service A available");
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime.find(TCP_SHARED_PORT_SERVICE_B),
+        )
+        .await
+        .expect("Discovery B timeout")
+        .expect("Service B available");
+
+        let eventgroup = EventgroupId::new(0x0001).unwrap();
+        let mut sub_a = tokio::time::timeout(Duration::from_secs(5), proxy_a.subscribe(eventgroup))
+            .await
+            .expect("Subscribe A timeout")
+            .expect("Subscribe A success");
+        let mut sub_b = tokio::time::timeout(Duration::from_secs(5), proxy_b.subscribe(eventgroup))
+            .await
+            .expect("Subscribe B timeout")
+            .expect("Subscribe B success");
+
+        // A's subscription ends once the client has processed A's StopOffer.
+        let a_end = tokio::time::timeout(Duration::from_secs(5), sub_a.next())
+            .await
+            .expect("Subscription A must end after StopOffer of A");
+        assert!(a_end.is_none(), "A must not deliver events");
+        tracing::info!("[client] Subscription A ended (StopOffer processed)");
+
+        while let Some(event) = tokio::time::timeout(Duration::from_secs(3), sub_b.next())
+            .await
+            .ok()
+            .flatten()
+        {
+            tracing::info!("[client] B received {:?}", event.payload);
+            b_events_clone.fetch_add(1, Ordering::SeqCst);
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let count = b_events_received.load(Ordering::SeqCst);
+    assert!(
+        count >= 3,
+        "Service B must keep receiving TCP events after StopOffer of service A \
+         (shared server TCP port); got {count}"
+    );
+}
