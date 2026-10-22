@@ -101,6 +101,8 @@ Items not yet scheduled:
   - Add QNX SDP 8.0 (`aarch64-unknown-qnx`) to `qnx-check` once mio/socket2 support `target_os = "qnx"`
   - TCP keepalive `interval`/`retries` are ignored on QNX 7.x (socket2 only sets the idle time there)
   - Keep the `QNX_TOOLCHAIN` nightly pin in CI moving (currently same date as `someip-lints/rust-toolchain`)
+- Backpressure on shared/TCP event paths: `handle_incoming_notification` (`src/runtime/client.rs`, `let _ = sub.events_tx.try_send(..)` and static listeners) drops events on a full channel without any log; align with the dedicated UDP socket path (warn on drop, rate-limited)
+- `test_event_subscription` (`tests/api_tests.rs`) registers both nodes via `sim.host`, so `sim.run()` returns before either runs; client must be `sim.client`
 
 ---
 
