@@ -143,7 +143,6 @@ pub async fn handle_subscribe_tcp<T: TcpStream>(
                 &events,
                 response,
                 endpoint_for_subscribe,
-                false,
                 conn_key,
                 Transport::Tcp,
             );
