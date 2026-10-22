@@ -14,6 +14,7 @@
 
 use super::helpers::*;
 use crate::client_behavior::helpers::build_sd_offer_with_session;
+use crate::covers;
 use crate::helpers::DEFAULT_SD_MULTICAST;
 
 /// feat_req_someip_103: REQUEST (0x00) message type on wire

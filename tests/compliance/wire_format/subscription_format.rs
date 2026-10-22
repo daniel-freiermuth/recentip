@@ -14,6 +14,7 @@ use crate::client_behavior::helpers::{
 };
 
 use super::helpers::*;
+use crate::covers;
 use crate::helpers::DEFAULT_SD_MULTICAST;
 
 /// feat_req_someipsd_576: SubscribeEventgroup entry type is 0x06
