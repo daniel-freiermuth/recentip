@@ -830,3 +830,315 @@ fn fire_forget_with_wrong_interface_version_is_ignored() {
 
     sim.run().unwrap();
 }
+
+// ============================================================================
+// LIBRARY-TO-LIBRARY RPC WITH NON-1 MAJOR VERSION
+// ============================================================================
+
+/// Start a turmoil-backed library runtime on `host`.
+async fn start_runtime(
+    host: &str,
+) -> recentip::SomeIp<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> {
+    recentip::configure()
+        .sd_multicast_group(DEFAULT_SD_MULTICAST)
+        .sd_unicast(crate::helpers::unicast(turmoil::lookup(host)))
+        .start_turmoil()
+        .await
+        .unwrap()
+}
+
+/// [feat_req_someip_92, feat_req_someip_278] A library client calling a
+/// library server that offers major version 2 must put interface version 2
+/// into the request header, so the server accepts it and replies with
+/// `ReturnCode::Ok` instead of `E_WRONG_INTERFACE_VERSION`.
+#[test_log::test]
+fn call_to_major_version_2_service_succeeds() {
+    covers!(feat_req_someip_92, feat_req_someip_278);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = start_runtime("server").await;
+        let mut offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(2, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        while let Some(event) = offering.next().await {
+            if let ServiceEvent::Call { responder, .. } = event {
+                responder.reply(b"v2").unwrap();
+            }
+        }
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let runtime = start_runtime("client").await;
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(TEST_SERVICE_ID)
+                .instance(InstanceId::Id(0x0001))
+                .major_version(2),
+        )
+        .await
+        .expect("Discovery timeout")
+        .expect("Service available");
+
+        let response = tokio::time::timeout(
+            Duration::from_secs(3),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"ping"),
+        )
+        .await
+        .expect("Call timeout")
+        .expect("Call failed");
+
+        assert_eq!(response.return_code, ReturnCode::Ok);
+        assert_eq!(&response.payload[..], b"v2");
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// [feat_req_someip_92, feat_req_someip_654] Fire-and-forget from a library
+/// client to a major version 2 offering must reach the server (a mismatched
+/// interface version would make the server drop it silently).
+#[test_log::test]
+fn fire_and_forget_to_major_version_2_service_is_delivered() {
+    covers!(feat_req_someip_92, feat_req_someip_654);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.client("server", async {
+        let runtime = start_runtime("server").await;
+        let mut offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(2, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        let event = tokio::time::timeout(Duration::from_secs(5), offering.next())
+            .await
+            .expect("Fire-and-forget to v2 offering was not delivered")
+            .expect("Offering closed");
+        match event {
+            ServiceEvent::FireForget {
+                method, payload, ..
+            } => {
+                assert_eq!(method.value(), 0x0001);
+                assert_eq!(&payload[..], b"fnf");
+            }
+            other => panic!("Expected FireForget, got {other:?}"),
+        }
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let runtime = start_runtime("client").await;
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(TEST_SERVICE_ID)
+                .instance(InstanceId::Id(0x0001))
+                .major_version(2),
+        )
+        .await
+        .expect("Discovery timeout")
+        .expect("Service available");
+
+        proxy
+            .fire_and_forget(MethodId::new(0x0001).unwrap(), b"fnf")
+            .await
+            .unwrap();
+
+        // Keep the runtime alive until the server has received the message
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// [feat_req_someip_92] The outgoing request header carries the discovered
+/// major version (not a hardcoded 1) as interface version at offset 13.
+#[test_log::test]
+fn rpc_request_interface_version_matches_discovered_major_version() {
+    covers!(feat_req_someip_92, feat_req_someip_278);
+
+    const MAJOR: u8 = 7;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.client("raw_server", async {
+        let my_ip: std::net::Ipv4Addr = turmoil::lookup("raw_server").to_string().parse().unwrap();
+
+        let rpc_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30509").await?;
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+
+        let offer = build_sd_offer_with_version(0x1234, 0x0001, MAJOR, 0, my_ip, 30509, 3600);
+        let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+
+        let mut buf = [0u8; 1500];
+        let mut seen = Vec::new();
+
+        // Expect one request and one fire-and-forget
+        for _ in 0..40 {
+            sd_socket.send_to(&offer, sd_multicast).await?;
+
+            let result =
+                tokio::time::timeout(Duration::from_millis(200), rpc_socket.recv_from(&mut buf))
+                    .await;
+
+            if let Ok(Ok((len, from))) = result {
+                let data = &buf[..len];
+                let header = parse_header(data).expect("Valid header");
+                assert_eq!(data[INTERFACE_VERSION_OFFSET], MAJOR);
+                assert_eq!(header.interface_version, MAJOR);
+                seen.push(header.message_type);
+
+                if header.message_type == recentip::wire::MessageType::Request {
+                    let response = SomeIpPacketBuilder::response(0x1234, 0x0001)
+                        .client_id(header.client_id)
+                        .session_id(header.session_id)
+                        .interface_version(MAJOR)
+                        .payload(b"ok")
+                        .build();
+                    rpc_socket.send_to(&response, from).await?;
+                }
+                if seen.len() == 2 {
+                    break;
+                }
+            }
+        }
+
+        assert!(seen.contains(&recentip::wire::MessageType::Request));
+        assert!(seen.contains(&recentip::wire::MessageType::RequestNoReturn));
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let runtime = start_runtime("client").await;
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(TEST_SERVICE_ID)
+                .instance(InstanceId::Id(0x0001))
+                .major_version(MAJOR),
+        )
+        .await
+        .expect("Discovery timeout")
+        .expect("Service available");
+
+        tokio::time::timeout(
+            Duration::from_secs(3),
+            proxy.call(MethodId::new(0x0001).unwrap(), b"test"),
+        )
+        .await
+        .expect("Call timeout")
+        .expect("Call failed");
+        proxy
+            .fire_and_forget(MethodId::new(0x0002).unwrap(), b"fnf")
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// [feat_req_someip_92] v1 and v2 of the same service offered side by side:
+/// each proxy's call must reach the offering of its own major version.
+#[test_log::test]
+fn calls_reach_matching_major_version_side_by_side() {
+    covers!(feat_req_someip_92);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = start_runtime("server").await;
+        let mut v1 = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+        let mut v2 = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(2, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        loop {
+            tokio::select! {
+                Some(event) = v1.next() => {
+                    if let ServiceEvent::Call { responder, .. } = event {
+                        responder.reply(b"v1").unwrap();
+                    }
+                }
+                Some(event) = v2.next() => {
+                    if let ServiceEvent::Call { responder, .. } = event {
+                        responder.reply(b"v2").unwrap();
+                    }
+                }
+                else => break,
+            }
+        }
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let runtime = start_runtime("client").await;
+
+        for (major, expected) in [(1u8, b"v1"), (2u8, b"v2")] {
+            let proxy = tokio::time::timeout(
+                Duration::from_secs(5),
+                runtime
+                    .find(TEST_SERVICE_ID)
+                    .instance(InstanceId::Id(0x0001))
+                    .major_version(major),
+            )
+            .await
+            .expect("Discovery timeout")
+            .expect("Service available");
+
+            let response = tokio::time::timeout(
+                Duration::from_secs(3),
+                proxy.call(MethodId::new(0x0001).unwrap(), b"ping"),
+            )
+            .await
+            .expect("Call timeout")
+            .expect("Call failed");
+
+            assert_eq!(response.return_code, ReturnCode::Ok, "major {major}");
+            assert_eq!(&response.payload[..], expected, "major {major}");
+        }
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
