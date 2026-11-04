@@ -384,14 +384,13 @@ pub struct ClientSubscription {
     pub(crate) subscription_id: u64,
     pub(crate) eventgroup_id: u16,
     pub(crate) events_tx: mpsc::Sender<crate::Event>,
-    /// Local endpoint for this subscription (events are received on this port)
+    /// Local endpoint for this subscription. UDP events are routed to the
+    /// subscriptions registered on the local port they arrived on.
     pub(crate) local_endpoint: SocketAddrV4,
     pub(crate) transport: crate::config::Transport,
-    /// True if this subscription has a dedicated socket task (UDP subscriptions only)
-    /// TCP subscriptions receive events via the shared TCP connection handler
-    pub(crate) has_dedicated_socket: bool,
-    /// The connection key used for TCP subscriptions (0 = shared connection, >0 = dedicated)
-    /// Used for routing: events from `conn_key=0` only go to subscriptions with `conn_key=0`
+    /// The connection key used for TCP subscriptions (always >= 1, see
+    /// `allocate_tcp_conn_key`); 0 for UDP subscriptions. TCP events are routed to
+    /// the subscriptions whose key matches the connection they arrived on.
     pub(crate) tcp_conn_key: u64,
     // pub(crate) sd_endpoint: SocketAddr,
 }
@@ -829,7 +828,6 @@ impl RuntimeState {
         events_tx: &mpsc::Sender<crate::Event>,
         response: oneshot::Sender<crate::error::Result<u64>>,
         endpoint: SocketAddrV4,
-        has_dedicated_socket: bool,
         tcp_conn_key: u64,
         transport: Transport,
     ) -> Vec<u16> {
@@ -841,7 +839,6 @@ impl RuntimeState {
                 eventgroup_id,
                 events_tx: events_tx.clone(),
                 local_endpoint: endpoint,
-                has_dedicated_socket,
                 tcp_conn_key,
                 transport,
             });
@@ -1045,7 +1042,6 @@ mod tests {
             &events_tx,
             response_tx,
             "127.0.0.1:40000".parse().unwrap(),
-            false,
             0,
             Transport::Udp,
         );

@@ -24,7 +24,9 @@ use crate::config::{RuntimeConfig, Transport};
 use crate::error::{Error, Result};
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 use crate::runtime::ServiceAvailability;
-use crate::runtime::client::{handle_incoming_notification, handle_incoming_response};
+use crate::runtime::client::{
+    NotificationSource, handle_incoming_notification, handle_incoming_response,
+};
 use crate::runtime::server::{handle_incoming_fire_forget, handle_incoming_request};
 use crate::runtime::{
     Command, client,
@@ -202,7 +204,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                     },
                     MessageType::RequestNoReturn =>
                         handle_incoming_fire_forget(&header, payload, method_msg.from, &state, Transport::Udp, method_msg.local_port),
-                    MessageType::Notification => handle_incoming_notification(&header, payload, method_msg.from, &state, 0),
+                    MessageType::Notification => handle_incoming_notification(&header, payload, method_msg.from, &state, NotificationSource::Udp { local_port: method_msg.local_port }),
                     MessageType::Response |
                     MessageType::Error => handle_incoming_response(&header, payload, &mut state),
                     MessageType::TpRequest |
@@ -271,7 +273,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             (service_id=0x{:04X}) — dropping",
                             header.message_type, tcp_msg.from, header.service_id
                         ),
-                    MessageType::Notification => handle_incoming_notification(&header, payload, tcp_msg.from, &state, tcp_msg.subscription_id),
+                    MessageType::Notification => handle_incoming_notification(&header, payload, tcp_msg.from, &state, NotificationSource::Tcp { conn_key: tcp_msg.subscription_id }),
                     MessageType::Response |
                     MessageType::Error => handle_incoming_response(&header, payload, &mut state),
                 }
@@ -395,7 +397,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             // UDP path: Handle inline (binding is instant)
                             client::handle_subscribe_udp::<U>(
                                 service_id, instance_id, major_version, eventgroup_ids,
-                                events, response, sd_endpoint, local_port, &mut state
+                                events, &rpc_tx, response, sd_endpoint, local_port, &mut state
                             ).await;
                         }
                     }
