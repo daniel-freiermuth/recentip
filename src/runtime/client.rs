@@ -702,8 +702,13 @@ pub fn handle_unsubscribe(
     };
 
     // If this port is no longer used by any subscription for this service, unregister it
-    // This allows the port to be reused by future subscriptions
-    if !port_still_in_use && let Some(endpoint) = removed_endpoint {
+    // This allows the port to be reused by future subscriptions.
+    // Only UDP subscriptions are tracked in the endpoint registry (TCP local ports
+    // are not UDP sockets and must never be offered for UDP reuse).
+    if !port_still_in_use
+        && transport == Some(Transport::Udp)
+        && let Some(endpoint) = removed_endpoint
+    {
         state.unregister_subscription_endpoint(
             endpoint.port(),
             service_id.value(),
