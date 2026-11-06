@@ -637,6 +637,133 @@ fn test_event_subscription() {
     sim.run().unwrap();
 }
 
+/// Test that a dedicated-socket UDP subscription keeps delivering after its event
+/// channel was full.
+///
+/// The subscription channel holds 64 events. A burst larger than that while the
+/// application is not polling must only drop the overflowing events; events sent
+/// after the application catches up must still be delivered.
+#[test_log::test]
+fn udp_subscription_survives_full_event_channel() {
+    const BURST_EVENTS: usize = 100;
+    const SUBSCRIPTION_CAPACITY: usize = 64;
+    // A fixed client port makes the subscription bind its own dedicated socket.
+    const CLIENT_PORT: u16 = 49300;
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering = runtime
+            .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
+            .version(TEST_SERVICE_VERSION.0, TEST_SERVICE_VERSION.1)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        let event_handle = offering
+            .event(EventId::new(0x8001).unwrap())
+            .eventgroup(EventgroupId::new(0x0001).unwrap())
+            .create()
+            .await
+            .unwrap();
+
+        while let Some(event) = offering.next().await {
+            if matches!(event, ServiceEvent::Subscribe { .. }) {
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Burst while the client is not polling (client sleeps 2s after subscribing).
+        for i in 0..BURST_EVENTS {
+            event_handle
+                .notify(format!("burst{i}").as_bytes())
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+
+        // Sent after the client has drained its backlog.
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        event_handle.notify(b"after").await.unwrap();
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .transport_policy(recentip::TransportPolicy::new(vec![
+                recentip::TransportPreference::udp().with_port(CLIENT_PORT),
+            ]))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(TEST_SERVICE_ID)
+                .instance(InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("Timeout waiting for service")
+        .expect("Service available");
+
+        let mut subscription = tokio::time::timeout(
+            Duration::from_secs(5),
+            proxy.subscribe(EventgroupId::new(0x0001).unwrap()),
+        )
+        .await
+        .expect("Timeout subscribing")
+        .expect("Subscribe should succeed");
+
+        // Do not poll while the burst arrives.
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        let mut buffered = Vec::new();
+        while let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_millis(10), subscription.next()).await
+        {
+            buffered.push(event.payload);
+        }
+        assert_eq!(
+            buffered.len(),
+            SUBSCRIPTION_CAPACITY,
+            "Precondition: burst must have filled the subscription channel"
+        );
+        assert!(
+            buffered.iter().all(|p| p.starts_with(b"burst")),
+            "Buffered events should be from the burst: {buffered:?}"
+        );
+
+        // Overflowing burst events were dropped; the receiver must still be alive.
+        let event = tokio::time::timeout(Duration::from_secs(5), subscription.next())
+            .await
+            .expect("Timeout: no event delivered after the channel was full")
+            .expect("Subscription ended after the channel was full");
+        assert_eq!(&event.payload[..], b"after");
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
 /// Test that subscribe() returns an error when the server responds with SubscribeEventgroupNack.
 ///
 /// Per SOME/IP-SD specification, when a server rejects a subscription it sends a NACK
