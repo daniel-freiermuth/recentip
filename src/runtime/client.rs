@@ -52,19 +52,24 @@
 //! - Session IDs are allocated from `state.next_client_session_id()`
 
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::sync::Arc;
 
 use bytes::Bytes;
+use dashmap::DashMap;
 use tokio::time::Instant;
 
 use super::command::ServiceAvailability;
 use super::sd::{
     Action, build_find_message, build_subscribe_message_multi, build_unsubscribe_message,
 };
-use super::state::{CallKey, FindRequest, PendingCall, RuntimeState, ServiceKey};
+use super::state::{
+    CallKey, DiscoveredService, FindRequest, PendingCall, RuntimeState, ServiceKey, UdpRoute,
+    UdpSubscriptionRoutes, find_notification_source,
+};
 use crate::config::{DEFAULT_FIND_REPETITIONS, PortSpec, Transport};
 use crate::net::UdpSocket;
 use crate::wire::{Header, MessageType};
-use crate::{Event, EventId, OfferedEndpoints, Response, ReturnCode};
+use crate::{Event, EventId, Response, ReturnCode};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
 // ============================================================================
@@ -104,17 +109,19 @@ impl DroppedEventTracker {
 ///
 /// Creates a dedicated UDP socket for a subscription, binds it to an ephemeral port,
 /// and spawns a task to receive events and route them directly to the subscription's
-/// `events_tx` channel.
+/// `events_tx` channel. Subscriptions of other services that share the socket are
+/// added to the returned routes; their events are routed to them instead.
 ///
-/// Returns the local endpoint (IP + ephemeral port) to use in the SD Subscribe message.
+/// Returns the local endpoint (IP + ephemeral port) to use in the SD Subscribe message,
+/// and the socket's event routes.
 async fn spawn_udp_subscription_socket<U: UdpSocket>(
     unicast_ip: Ipv4Addr,
+    discovered: Arc<DashMap<ServiceKey, DiscoveredService>>,
+    key: ServiceKey,
     events_tx: mpsc::Sender<crate::Event>,
-    service_id: crate::ServiceId,
-    instance_id: crate::InstanceId,
     eventgroup_id: u16,
     local_port: PortSpec,
-) -> std::io::Result<SocketAddrV4> {
+) -> std::io::Result<(SocketAddrV4, UdpSubscriptionRoutes)> {
     let socket = match local_port {
         PortSpec::Any => U::bind(SocketAddrV4::new(unicast_ip, 0)).await?,
         PortSpec::Fixed(port) => U::bind(SocketAddrV4::new(unicast_ip, port)).await?,
@@ -150,10 +157,13 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
     tracing::debug!(
         "Created dedicated UDP socket {} for subscription to {:04x}:{:04x} eventgroup {:04x}",
         local_endpoint,
-        service_id.value(),
-        instance_id.value(),
+        key.service_id,
+        key.instance_id,
         eventgroup_id
     );
+
+    let routes = UdpSubscriptionRoutes::new(key, events_tx);
+    let task_routes = routes.clone();
 
     // Spawn task to receive events on this dedicated socket
     tokio::spawn(async move {
@@ -214,9 +224,31 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
                     let payload = Bytes::copy_from_slice(payload_slice);
                     let event = Event { event_id, payload };
 
-                    // Route event directly to this subscription's channel.
+                    // Route the event to the subscription of the service instance that
+                    // sent it: subscriptions of other services may share this socket.
+                    let events_tx = match task_routes.route(header.service_id, from, &discovered) {
+                        UdpRoute::Deliver(events_tx) => events_tx,
+                        UdpRoute::Unrouted => {
+                            tracing::debug!(
+                                "No subscription for service {:04x} from {} on subscription socket {}, dropping event {:04x}",
+                                header.service_id,
+                                from,
+                                local_endpoint,
+                                header.method_id
+                            );
+                            continue;
+                        }
+                        UdpRoute::Closed => {
+                            tracing::debug!(
+                                "All subscriptions dropped for socket {}, shutting down receiver task",
+                                local_endpoint
+                            );
+                            break;
+                        }
+                    };
+
                     // A full channel drops only this event (same as the shared-endpoint
-                    // path); only a closed channel (Subscription dropped) ends the task.
+                    // path). A subscription dropped meanwhile is pruned on the next event.
                     match events_tx.try_send(event) {
                         Ok(()) => {
                             if let Some(dropped) = drops.record_delivery() {
@@ -236,13 +268,7 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
                                 );
                             }
                         }
-                        Err(TrySendError::Closed(_)) => {
-                            tracing::debug!(
-                                "Subscription dropped for socket {}, shutting down receiver task",
-                                local_endpoint
-                            );
-                            break;
-                        }
+                        Err(TrySendError::Closed(_)) => {}
                     }
                 }
                 Err(e) => {
@@ -256,10 +282,11 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
             }
         }
 
+        task_routes.close();
         tracing::debug!("UDP subscription socket {} task exiting", local_endpoint);
     });
 
-    Ok(local_endpoint)
+    Ok((local_endpoint, routes))
 }
 
 /// Complete a UDP subscription: record state and queue the SD Subscribe message.
@@ -522,7 +549,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         return;
     }
 
-    let endpoint_for_subscribe = if service_already_has_subscription {
+    let (endpoint_for_subscribe, has_dedicated_socket) = if service_already_has_subscription {
         // This service already has a subscription using some endpoint.
         // Try to REUSE an existing endpoint from a DIFFERENT service first —
         // but only when no specific local port was requested (otherwise we must bind
@@ -534,7 +561,10 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             // local_port was selected above to not be already owned by this service.
             state.find_existing_port_for_spec(local_port)
         };
-        if let Some(reusable_port) = reuse_port {
+        if let Some(reusable_port) = reuse_port
+            && let Some(has_dedicated_socket) =
+                attach_to_subscription_endpoint(state, reusable_port, key, &incoming_events_channel)
+        {
             // Found an endpoint used by other services but not this one - reuse it!
             let reused_endpoint = SocketAddrV4::new(endpoint_ip, reusable_port);
             tracing::debug!(
@@ -560,7 +590,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                 &incoming_events_channel,
                 result_response_channel,
                 reused_endpoint,
-                false,
+                has_dedicated_socket,
                 sd_endpoint,
             );
             return;
@@ -569,15 +599,15 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         // No reusable/existing endpoint found — create a new dedicated socket
         match spawn_udp_subscription_socket::<U>(
             endpoint_ip,
+            Arc::clone(&state.discovered),
+            key,
             incoming_events_channel.clone(),
-            service_id,
-            instance_id,
             *eventgroup_ids.first(),
             local_port,
         )
         .await
         {
-            Ok(dedicated_endpoint) => {
+            Ok((dedicated_endpoint, routes)) => {
                 tracing::debug!(
                     "Created dedicated UDP socket {} for subscription to {:04x}:{:04x} eventgroups {:?} (no reusable endpoint)",
                     dedicated_endpoint,
@@ -592,6 +622,9 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                     service_id.value(),
                     instance_id.value(),
                 );
+                state
+                    .udp_subscription_routes
+                    .insert(dedicated_endpoint.port(), routes);
 
                 complete_udp_subscription(
                     state,
@@ -618,33 +651,42 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
     } else if local_port != PortSpec::Any {
         // First subscription for this service with a specific port.
         // If a socket is already bound to that port (by a previous subscription for a different
-        // service), reuse it rather than trying to bind again.
-        if let Some(existing_port) = state.find_existing_port_for_spec(local_port) {
+        // service), share it rather than trying to bind again.
+        if let Some(existing_port) = state.find_existing_port_for_spec(local_port)
+            && let Some(has_dedicated_socket) =
+                attach_to_subscription_endpoint(state, existing_port, key, &incoming_events_channel)
+        {
             state.register_subscription_endpoint(
                 existing_port,
                 service_id.value(),
                 instance_id.value(),
             );
-            // Fall through to the shared-endpoint path at the bottom of the function.
-            SocketAddrV4::new(endpoint_ip, existing_port)
+            // Fall through to the completion at the bottom of the function.
+            (
+                SocketAddrV4::new(endpoint_ip, existing_port),
+                has_dedicated_socket,
+            )
         } else {
             // No existing socket — bind a dedicated one on the requested port.
             match spawn_udp_subscription_socket::<U>(
                 endpoint_ip,
+                Arc::clone(&state.discovered),
+                key,
                 incoming_events_channel.clone(),
-                service_id,
-                instance_id,
                 *eventgroup_ids.first(),
                 local_port,
             )
             .await
             {
-                Ok(dedicated_endpoint) => {
+                Ok((dedicated_endpoint, routes)) => {
                     state.register_subscription_endpoint(
                         dedicated_endpoint.port(),
                         service_id.value(),
                         instance_id.value(),
                     );
+                    state
+                        .udp_subscription_routes
+                        .insert(dedicated_endpoint.port(), routes);
 
                     complete_udp_subscription(
                         state,
@@ -668,7 +710,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
                     return;
                 }
             }
-        } // close `else { match ... }` arm of `if let Some(existing_port)`
+        } // close `else { match ... }` arm of `if let Some(existing_port) ...`
     } else {
         // First subscription for this service - use the shared RPC endpoint
         state.register_subscription_endpoint(
@@ -676,7 +718,10 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             service_id.value(),
             instance_id.value(),
         );
-        SocketAddrV4::new(endpoint_ip, state.client_rpc_endpoint.port())
+        (
+            SocketAddrV4::new(endpoint_ip, state.client_rpc_endpoint.port()),
+            false,
+        )
     };
 
     complete_udp_subscription(
@@ -687,9 +732,28 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         &incoming_events_channel,
         result_response_channel,
         endpoint_for_subscribe,
-        false,
+        has_dedicated_socket,
         sd_endpoint,
     );
+}
+
+/// Attach a subscription of `key` to the subscription endpoint already open on `port`.
+///
+/// Returns whether the subscription then receives its events on a dedicated socket
+/// (`Some(true)`: added to that socket's routes) or on the shared client RPC endpoint
+/// (`Some(false)`: routed by the event loop), or `None` if no open UDP subscription
+/// socket on `port` can deliver its events.
+fn attach_to_subscription_endpoint(
+    state: &RuntimeState,
+    port: u16,
+    key: ServiceKey,
+    events_tx: &mpsc::Sender<Event>,
+) -> Option<bool> {
+    if port == state.client_rpc_endpoint.port() {
+        return Some(false);
+    }
+    let routes = state.udp_subscription_routes.get(&port)?;
+    routes.add(key, events_tx.clone()).then_some(true)
 }
 
 /// Handle `Command::Unsubscribe`
@@ -905,19 +969,7 @@ pub fn handle_incoming_notification(
     // Determine which service instance this event is from by looking up the 'from' address
     // in discovered services
     // TODO: we need to be more precise here
-    let Some(key): Option<ServiceKey> = state
-        .discovered
-        .iter()
-        .find(|entry| {
-            entry.key().service_id == header.service_id
-                && match entry.value().offered_endpoints {
-                    OfferedEndpoints::UdpOnly(socket_addr) => socket_addr == from,
-                    OfferedEndpoints::TcpOnly(socket_addr) => socket_addr == from,
-                    OfferedEndpoints::Both { udp, tcp } => udp == from || tcp == from,
-                }
-        })
-        .map(|entry| *entry.key())
-    else {
+    let Some(key) = find_notification_source(&state.discovered, header.service_id, from) else {
         tracing::warn!(
             "Received event {:04x} from unknown service {:04x} at {}",
             header.method_id,
