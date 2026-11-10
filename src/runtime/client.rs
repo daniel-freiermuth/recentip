@@ -1107,8 +1107,12 @@ pub fn build_fire_and_forget(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use super::DroppedEventTracker;
+    use super::*;
+    use std::future::{Future, ready};
+    use std::io;
+    use std::time::Duration;
 
     #[test]
     fn dropped_event_tracker_reports_backlog_start_once() {
@@ -1131,5 +1135,91 @@ mod tests {
             "a new backlog starts after delivery resumed"
         );
         assert_eq!(drops.record_delivery(), Some(1));
+    }
+
+    /// A UDP socket whose every receive fails.
+    struct ReceiveFailingSocket(SocketAddrV4);
+
+    impl UdpSocket for ReceiveFailingSocket {
+        fn bind(addr: SocketAddrV4) -> impl Future<Output = io::Result<Self>> + Send {
+            ready(Ok(Self(addr)))
+        }
+
+        fn send_to(
+            &self,
+            buf: &[u8],
+            _target: SocketAddrV4,
+        ) -> impl Future<Output = io::Result<usize>> + Send {
+            ready(Ok(buf.len()))
+        }
+
+        fn recv_from(
+            &self,
+            _buf: &mut [u8],
+        ) -> impl Future<Output = io::Result<(usize, SocketAddrV4)>> + Send {
+            ready(Err(io::Error::other("receive failed")))
+        }
+
+        fn join_multicast_v4(&self, _multiaddr: Ipv4Addr, _interface: Ipv4Addr) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn leave_multicast_v4(&self, _multiaddr: Ipv4Addr, _interface: Ipv4Addr) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn local_addr(&self) -> io::Result<SocketAddrV4> {
+            Ok(self.0)
+        }
+    }
+
+    /// A dedicated UDP subscription socket whose receive fails delivers no more
+    /// events, so it must take no more subscriptions: one that would share its
+    /// port then binds a socket of its own (`attach_to_subscription_endpoint`
+    /// returns `None`) instead of waiting on a dead socket forever.
+    #[test_log::test(tokio::test)]
+    async fn udp_subscription_socket_takes_no_subscriptions_after_receive_error() {
+        let owner = ServiceKey {
+            service_id: 0x1111,
+            instance_id: 1,
+            major_version: 1,
+        };
+        let sharer = ServiceKey {
+            service_id: 0x2222,
+            ..owner
+        };
+        let server: SocketAddrV4 = "10.0.0.1:30501".parse().unwrap();
+        let discovered = Arc::new(DashMap::new());
+        // The owner's subscription stays alive: only the receive error closes the socket.
+        let (owner_tx, _owner_rx) = mpsc::channel(1);
+
+        let (_, routes) = spawn_udp_subscription_socket::<ReceiveFailingSocket>(
+            Ipv4Addr::new(10, 0, 0, 2),
+            Arc::clone(&discovered),
+            owner,
+            server,
+            owner_tx,
+            1,
+            PortSpec::Any,
+        )
+        .await
+        .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !matches!(
+                routes.route(owner.service_id, 1, server, &discovered),
+                UdpRoute::Closed
+            ) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the socket must close once its receive fails");
+
+        let (sharer_tx, _sharer_rx) = mpsc::channel(1);
+        assert!(
+            !routes.add(sharer, server, sharer_tx),
+            "a socket that no longer receives must not take new subscriptions"
+        );
     }
 }
