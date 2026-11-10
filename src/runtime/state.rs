@@ -515,6 +515,15 @@ impl UdpSubscriptionRoutes {
         *self.lock() = None;
     }
 
+    /// Keep only the routes for which `keep(key, events_tx)` holds.
+    ///
+    /// Removed routes no longer hold their subscription's channel open.
+    fn retain(&self, mut keep: impl FnMut(&ServiceKey, &mpsc::Sender<crate::Event>) -> bool) {
+        if let Some(routes) = self.lock().as_mut() {
+            routes.retain(|route| keep(&route.key, &route.events_tx));
+        }
+    }
+
     fn lock(&self) -> MutexGuard<'_, Option<Vec<UdpSubscriptionRoute>>> {
         // No route update can panic halfway, so a poisoned lock still holds consistent routes.
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
@@ -940,6 +949,23 @@ impl RuntimeState {
                 self.subscription_endpoint_usage.remove(&port);
                 self.udp_subscription_routes.remove(&port);
             }
+        }
+    }
+
+    /// Drop the dedicated UDP subscription socket routes of subscriptions that
+    /// are no longer in [`Self::subscriptions`].
+    ///
+    /// Call after removing client subscriptions (service stopped offering,
+    /// expired, peer rebooted, NACK): a route holds a clone of the
+    /// subscription's channel, so the `Subscription` only ends (`next()`
+    /// returns `None`) once its route is gone too.
+    pub(crate) fn prune_udp_subscription_routes(&self) {
+        for routes in self.udp_subscription_routes.values() {
+            routes.retain(|key, events_tx| {
+                self.subscriptions.get(key).is_some_and(|subs| {
+                    subs.iter().any(|sub| sub.events_tx.same_channel(events_tx))
+                })
+            });
         }
     }
 

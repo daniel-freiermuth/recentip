@@ -961,6 +961,7 @@ fn expire_services_from_rebooted_peer(
 
                 state.find_requests.remove(&key);
                 state.subscriptions.remove(&key);
+                state.prune_udp_subscription_routes();
             }
         }
     }
@@ -1064,6 +1065,7 @@ fn expire_client_subscriptions_to_rebooted_peer(peer_ip: Ipv4Addr, state: &mut R
             );
         }
     }
+    state.prune_udp_subscription_routes();
 }
 
 /// Queue TCP connection reset action for a rebooted peer
@@ -1461,6 +1463,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         if state.discovered.remove(&key).is_some() {
             // Also clear any cached subscriptions to this service since it's no longer available
             state.subscriptions.remove(&key);
+            state.prune_udp_subscription_routes();
 
             // Emit SD event to monitors
             actions.push(Action::EmitSdEvent {

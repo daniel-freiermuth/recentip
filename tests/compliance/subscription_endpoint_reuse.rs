@@ -2881,8 +2881,13 @@ async fn next_subscriber(offering: &mut recentip::ServiceOffering) -> Option<(u1
 /// Offers both routing services over UDP with one event per eventgroup in
 /// `1..=eventgroups`, records every subscriber endpoint in `subscribers`, and
 /// once each eventgroup of both services has a subscriber, notifies every
-/// event once (see [`routing_event`]).
-async fn run_routing_server(eventgroups: u16, subscribers: SubscriberEndpoints) -> turmoil::Result {
+/// event once (see [`routing_event`]). With `stop_service_b`, service B stops
+/// offering first, and only service A's events are notified.
+async fn run_routing_server(
+    eventgroups: u16,
+    subscribers: SubscriberEndpoints,
+    stop_service_b: bool,
+) -> turmoil::Result {
     let runtime = recentip::configure()
         .sd_multicast_group(DEFAULT_SD_MULTICAST)
         .sd_unicast(lookup_unicast("server"))
@@ -2933,6 +2938,13 @@ async fn run_routing_server(eventgroups: u16, subscribers: SubscriberEndpoints) 
     }
     tokio::time::sleep(Duration::from_millis(200)).await;
 
+    if stop_service_b {
+        // Dropping the offering sends StopOfferService.
+        offerings.retain(|(service_id, _)| *service_id != ROUTING_SERVICE_B);
+        events.retain(|(service_id, _, _)| *service_id != ROUTING_SERVICE_B);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
     for (service_id, eventgroup, event) in &events {
         event
             .notify(&routing_event(*service_id, *eventgroup).1)
@@ -2949,14 +2961,117 @@ async fn collect_events(
     subscription: &mut recentip::Subscription,
     window: Duration,
 ) -> Vec<(u16, Vec<u8>)> {
+    collect_until_end(subscription, window).await.0
+}
+
+/// Collect the events `subscription` delivers within `window` as (event ID, payload),
+/// and whether it ended (`next()` returned `None`) within `window`.
+async fn collect_until_end(
+    subscription: &mut recentip::Subscription,
+    window: Duration,
+) -> (Vec<(u16, Vec<u8>)>, bool) {
     let mut received = Vec::new();
-    let _ = tokio::time::timeout(window, async {
+    let ended = tokio::time::timeout(window, async {
         while let Some(event) = subscription.next().await {
             received.push((event.event_id.value(), event.payload.to_vec()));
         }
     })
-    .await;
-    received
+    .await
+    .is_ok();
+    (received, ended)
+}
+
+/// A subscription sharing another service's dedicated UDP socket must end
+/// (`next()` returns `None`) when its service stops offering, like any other
+/// subscription; the socket keeps routing the owner's events.
+///
+/// Same layout as [`udp_reused_dedicated_socket_routes_events_by_service`]:
+/// B/EG2 shares A/EG2's dedicated socket. Then service B stops offering.
+#[test_log::test]
+fn udp_shared_dedicated_socket_subscription_ends_when_service_stops_offering() {
+    let subscribers = SubscriberEndpoints::default();
+    let server_subscribers = Arc::clone(&subscribers);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        run_routing_server(2, Arc::clone(&server_subscribers), true)
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let eventgroup = |id| recentip::EventgroupId::new(id).unwrap();
+
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(ROUTING_SERVICE_A)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery of service A timed out")
+        .expect("service A available");
+        let mut a_eg1 = proxy_a.subscribe(eventgroup(1)).await.unwrap();
+        // Second eventgroup of A → dedicated UDP socket.
+        let mut a_eg2 = proxy_a.subscribe(eventgroup(2)).await.unwrap();
+
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(ROUTING_SERVICE_B)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery of service B timed out")
+        .expect("service B available");
+        let mut b_eg1 = proxy_b.subscribe(eventgroup(1)).await.unwrap();
+        // Second eventgroup of B → shares A/EG2's dedicated socket.
+        let mut b_eg2 = proxy_b.subscribe(eventgroup(2)).await.unwrap();
+
+        let window = Duration::from_secs(4);
+        let (a1, a2, b1, b2) = tokio::join!(
+            collect_events(&mut a_eg1, window),
+            collect_events(&mut a_eg2, window),
+            collect_until_end(&mut b_eg1, window),
+            collect_until_end(&mut b_eg2, window),
+        );
+
+        assert_eq!(
+            [("B/EG1", b1), ("B/EG2", b2)],
+            [("B/EG1", (vec![], true)), ("B/EG2", (vec![], true))],
+            "(events, ended) per subscription of the service that stopped offering"
+        );
+        assert_eq!(
+            [("A/EG1", a1), ("A/EG2", a2)],
+            [
+                ("A/EG1", vec![routing_event(ROUTING_SERVICE_A, 1)]),
+                ("A/EG2", vec![routing_event(ROUTING_SERVICE_A, 2)]),
+            ],
+            "events per subscription of the service still offering"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Premise: B/EG2 shared A/EG2's dedicated socket.
+    let subscribers = subscribers.lock().unwrap();
+    assert_eq!(
+        subscribers[&(ROUTING_SERVICE_B, 2)],
+        subscribers[&(ROUTING_SERVICE_A, 2)],
+        "premise: B/EG2 must share A/EG2's dedicated socket"
+    );
 }
 
 /// A dedicated UDP subscription socket reused by another service must deliver
@@ -2978,7 +3093,7 @@ fn udp_reused_dedicated_socket_routes_events_by_service() {
         .build();
 
     sim.host("server", move || {
-        run_routing_server(2, Arc::clone(&server_subscribers))
+        run_routing_server(2, Arc::clone(&server_subscribers), false)
     });
 
     sim.client("client", async {
@@ -3076,7 +3191,7 @@ fn udp_fixed_port_shared_with_other_service_routes_events_by_service() {
         .build();
 
     sim.host("server", move || {
-        run_routing_server(1, Arc::clone(&server_subscribers))
+        run_routing_server(1, Arc::clone(&server_subscribers), false)
     });
 
     sim.client("client", async {
