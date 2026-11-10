@@ -1939,6 +1939,31 @@ mod tests {
         assert_eq!(resolved[&2], vec![&endpoint(2, 2000)]);
     }
 
+    /// The merged option array itself must stay addressable (<= 256 options), even when the
+    /// incoming entries only reference low indices that would still fit after rebasing.
+    #[test_log::test]
+    fn cluster_sd_actions_does_not_merge_past_256_options_with_unreferenced_options() {
+        let first = send_sd(
+            0,
+            vec![ack_entry(1, 0, 1, 0, 0)],
+            vec![endpoint(1, 1000)],
+            TARGET_A,
+        );
+        let second_options: Vec<SdOption> = (0..256u16).map(|port| endpoint(2, port)).collect();
+        let second = send_sd(0, vec![ack_entry(2, 7, 1, 0, 0)], second_options, TARGET_A);
+
+        let clustered = cluster_sd_actions(vec![first, second]);
+
+        assert_eq!(
+            clustered.len(),
+            2,
+            "257 options cannot share one SD message"
+        );
+        let resolved = resolved_entries_for(&clustered, TARGET_A);
+        assert_eq!(resolved[&1], vec![&endpoint(1, 1000)]);
+        assert_eq!(resolved[&2], vec![&endpoint(2, 7)]);
+    }
+
     #[allow(clippy::expect_used)]
     fn test_config() -> RuntimeConfig {
         RuntimeConfig {
