@@ -41,8 +41,8 @@ use crate::runtime::{
 };
 use crate::tcp::{ClientTcpMessage, ServerTcpMessage, TcpCleanupRequest, TcpConnectionPool};
 use crate::wire::{
-    Header, L4Protocol, MessageType, SD_METHOD_ID, SD_SERVICE_ID, SdEntry, SdEntryType, SdMessage,
-    SdOption, validate_protocol_version,
+    Header, MessageType, SD_METHOD_ID, SD_SERVICE_ID, SdEntry, SdEntryType, SdMessage,
+    validate_protocol_version,
 };
 use crate::{OfferedEndpoints, ReturnCode};
 
@@ -1157,43 +1157,40 @@ fn process_sd_entries(
 /// multiple Acks in ONE SD message instead of separate messages with different session IDs)
 ///
 /// **Important:** When merging messages, option indices in entries are recalculated to point
-/// to the correct positions in the merged option array.
+/// to the correct positions in the merged option array. Option indices are `u8` on the wire,
+/// so a message that cannot be merged without an index exceeding 255 starts a new SD message
+/// for the same target instead.
 pub fn cluster_sd_actions(actions: Vec<Action>) -> Vec<Action> {
     use std::collections::HashMap;
 
-    let mut sd_by_target: HashMap<SocketAddrV4, SdMessage> = HashMap::new();
+    let mut sd_by_target: HashMap<SocketAddrV4, Vec<SdMessage>> = HashMap::new();
     let mut other_actions = Vec::new();
 
     for action in actions {
         match action {
             Action::SendSd { message, target } => {
-                // Merge this SD message into the existing message for this target
-                let clustered = sd_by_target.entry(target).or_insert_with(|| {
-                    // Create new message with same flags as the first message to this target
-                    SdMessage::new(message.flags)
+                let clusters = sd_by_target.entry(target).or_default();
+
+                // Merge into the latest message for this target if every rebased index fits
+                let merge = clusters.last_mut().and_then(|clustered| {
+                    let entries = rebase_option_indices(
+                        &message.entries,
+                        clustered.options.len(),
+                        message.options.len(),
+                    )?;
+                    Some((clustered, entries))
                 });
 
-                // Calculate the option offset for this message's entries
-                // All options added so far determine the new base index
-                let option_offset = clustered.options.len() as u8;
-
-                // First, add all options from this message to the clustered message
-                for opt in &message.options {
-                    clustered.add_option(opt.clone());
-                }
-
-                // Then add all entries, adjusting their option indices to account for the offset
-                for mut sd_entry in message.entries.clone() {
-                    // Adjust option indices to account for previously added options
-                    if sd_entry.num_options_1 > 0 {
-                        sd_entry.index_1st_option =
-                            sd_entry.index_1st_option.saturating_add(option_offset);
+                match merge {
+                    Some((clustered, entries)) => {
+                        clustered.options.extend(message.options);
+                        for sd_entry in entries {
+                            clustered.add_entry(sd_entry);
+                        }
                     }
-                    if sd_entry.num_options_2 > 0 {
-                        sd_entry.index_2nd_option =
-                            sd_entry.index_2nd_option.saturating_add(option_offset);
-                    }
-                    clustered.add_entry(sd_entry);
+                    // First message for this target, or the merge would overflow the u8
+                    // option indices: keep it as its own message with its own indices
+                    None => clusters.push(message),
                 }
             }
             other => other_actions.push(other),
@@ -1201,13 +1198,44 @@ pub fn cluster_sd_actions(actions: Vec<Action>) -> Vec<Action> {
     }
 
     // Convert clustered SD messages back to actions
-    other_actions.extend(
-        sd_by_target
+    other_actions.extend(sd_by_target.into_iter().flat_map(|(target, messages)| {
+        messages
             .into_iter()
-            .map(|(target, message)| Action::SendSd { message, target }),
-    );
+            .map(move |message| Action::SendSd { message, target })
+    }));
 
     other_actions
+}
+
+/// Rebase the option indices of `entries` by `offset` (the number of options already in the
+/// target message), for a message contributing `num_options` options.
+///
+/// Returns `None` if the merged option array or any rebased index would not be addressable
+/// by the `u8` option index field.
+fn rebase_option_indices(
+    entries: &[SdEntry],
+    offset: usize,
+    num_options: usize,
+) -> Option<Vec<SdEntry>> {
+    const MAX_OPTIONS: usize = u8::MAX as usize + 1;
+    if offset + num_options > MAX_OPTIONS {
+        return None;
+    }
+    let rebase = |index: u8| u8::try_from(usize::from(index) + offset).ok();
+
+    entries
+        .iter()
+        .map(|entry| {
+            let mut sd_entry = entry.clone();
+            if sd_entry.num_options_1 > 0 {
+                sd_entry.index_1st_option = rebase(sd_entry.index_1st_option)?;
+            }
+            if sd_entry.num_options_2 > 0 {
+                sd_entry.index_2nd_option = rebase(sd_entry.index_2nd_option)?;
+            }
+            Some(sd_entry)
+        })
+        .collect()
 }
 
 /// Handle a command from a handle
@@ -1520,62 +1548,35 @@ fn flush_pending_initial_offers(
         return None;
     }
 
-    let mut msg = SdMessage::new(state.sd_flags(false)); // Multicast
+    let sd_flags = state.sd_flags(false); // Multicast
+    let target = config.sd_multicast_addr();
+    let mut actions = Vec::new();
 
-    // Build clustered offer message for all pending offers
+    // Build one offer message per pending offer; clustering merges them into as few SD
+    // messages as the u8 option indices allow
     for key in &state.pending_initial_offers {
         if let Some(offered) = state.offered.get_mut(key) {
             offered.last_offer = tokio::time::Instant::now();
-            let mut option_indices = Vec::new();
-
-            // Add UDP endpoint option if present
-            if let Some(ep) = offered.udp_endpoint {
-                let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-                    addr: config.unicast_ip(),
-                    port: ep.port(),
-                    protocol: L4Protocol::Udp,
-                });
-                option_indices.push(opt_idx);
-            }
-
-            // Add TCP endpoint option if present
-            if let Some(ep) = offered.tcp_endpoint {
-                let opt_idx = msg.add_option(SdOption::Ipv4Endpoint {
-                    addr: config.unicast_ip(),
-                    port: ep.port(),
-                    protocol: L4Protocol::Tcp,
-                });
-                option_indices.push(opt_idx);
-            }
-
-            let first_opt_idx = option_indices.first().copied().unwrap_or(0);
-            let num_options = option_indices.len() as u8;
-
-            let entry = SdEntry::offer_service(
-                key.service_id,
-                key.instance_id,
-                offered.major_version,
-                offered.minor_version,
+            let message = build_offer_message(
+                *key,
+                offered,
+                sd_flags,
                 config.offer_ttl,
-                first_opt_idx,
-                num_options,
+                config.unicast_ip(),
             );
-            msg.add_entry(entry);
+            actions.push(Action::SendSd { message, target });
         }
     }
 
     tracing::debug!(
-        "[OFFER] Flushing {} pending initial offers (clustered into one SD message)",
+        "[OFFER] Flushing {} pending initial offers (clustered SD message)",
         state.pending_initial_offers.len()
     );
 
     state.pending_initial_offers.clear();
     state.pending_offers_deadline = None;
 
-    Some(vec![Action::SendSd {
-        message: msg,
-        target: config.sd_multicast_addr(),
-    }])
+    Some(cluster_sd_actions(actions))
 }
 
 /// Send `StopOffer` for all offered services (on shutdown)
@@ -1611,6 +1612,8 @@ async fn send_stop_offers<U: UdpSocket>(
 #[allow(clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::runtime::state::OfferedService;
+    use crate::wire::{L4Protocol, SdOption};
 
     const TARGET_A: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 10), 30490);
     const TARGET_B: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 20), 30490);
@@ -1872,5 +1875,165 @@ mod tests {
             referenced_options(merged, &merged.entries[1]),
             vec![&endpoint(2, 2000)]
         );
+    }
+
+    /// Resolve every entry of every `SendSd` to `target` to the options it references,
+    /// keyed by eventgroup id. Asserts every message keeps its options addressable by u8.
+    fn resolved_entries_for(
+        actions: &[Action],
+        target: SocketAddrV4,
+    ) -> std::collections::HashMap<u16, Vec<&SdOption>> {
+        let mut resolved = std::collections::HashMap::new();
+        for action in actions {
+            if let Action::SendSd { message, target: t } = action {
+                if *t != target {
+                    continue;
+                }
+                assert!(
+                    message.options.len() <= 256,
+                    "option indices are u8: at most 256 options per SD message"
+                );
+                for entry in &message.entries {
+                    resolved.insert(entry.eventgroup_id, referenced_options(message, entry));
+                }
+            }
+        }
+        resolved
+    }
+
+    /// Merging past index 255 must not clamp the rebased index (saturating_add).
+    #[test_log::test]
+    fn cluster_sd_actions_does_not_clamp_option_index_beyond_255() {
+        let filler: Vec<SdOption> = (0..255u16).map(|port| endpoint(1, port)).collect();
+        let first = send_sd(0, vec![ack_entry(1, 0, 1, 0, 0)], filler, TARGET_A);
+        let second = send_sd(
+            0,
+            vec![ack_entry(2, 1, 1, 0, 0)],
+            vec![endpoint(2, 2000), endpoint(2, 2001)],
+            TARGET_A,
+        );
+
+        let clustered = cluster_sd_actions(vec![first, second]);
+
+        let resolved = resolved_entries_for(&clustered, TARGET_A);
+        assert_eq!(resolved[&1], vec![&endpoint(1, 0)]);
+        assert_eq!(resolved[&2], vec![&endpoint(2, 2001)]);
+    }
+
+    /// Merging after 256 options must not wrap the offset back to 0 (`len() as u8`).
+    #[test_log::test]
+    fn cluster_sd_actions_does_not_wrap_option_offset_at_256() {
+        let filler: Vec<SdOption> = (0..256u16).map(|port| endpoint(1, port)).collect();
+        let first = send_sd(0, vec![ack_entry(1, 0, 1, 0, 0)], filler, TARGET_A);
+        let second = send_sd(
+            0,
+            vec![ack_entry(2, 0, 1, 0, 0)],
+            vec![endpoint(2, 2000)],
+            TARGET_A,
+        );
+
+        let clustered = cluster_sd_actions(vec![first, second]);
+
+        let resolved = resolved_entries_for(&clustered, TARGET_A);
+        assert_eq!(resolved[&1], vec![&endpoint(1, 0)]);
+        assert_eq!(resolved[&2], vec![&endpoint(2, 2000)]);
+    }
+
+    #[allow(clippy::expect_used)]
+    fn test_config() -> RuntimeConfig {
+        RuntimeConfig {
+            sd_multicast: crate::config::MulticastAddress::try_from(Ipv4Addr::new(239, 255, 0, 1))
+                .expect("valid multicast"),
+            sd_unicast: crate::config::UnicastAddress::try_from(Ipv4Addr::LOCALHOST)
+                .expect("valid unicast"),
+            sd_port: crate::config::DEFAULT_SD_PORT,
+            single_socket: false,
+            offer_ttl: crate::config::DEFAULT_OFFER_TTL,
+            find_ttl: crate::config::DEFAULT_FIND_TTL,
+            subscribe_ttl: crate::config::DEFAULT_SUBSCRIBE_TTL,
+            cyclic_offer_delay: crate::config::DEFAULT_CYCLIC_OFFER_DELAY,
+            transport_policy: crate::config::TransportPolicy::default(),
+            magic_cookies: false,
+            tcp_keepalive_client: None,
+            tcp_keepalive_server: None,
+        }
+    }
+
+    /// 130 services offering UDP + TCP need 260 endpoint options: the initial-offer flush
+    /// must not let option indices wrap, so every Offer still advertises its own ports.
+    #[allow(clippy::expect_used)]
+    #[tokio::test]
+    async fn flush_pending_initial_offers_keeps_option_indices_beyond_255() {
+        const SERVICES: u16 = 130;
+        let config = test_config();
+        let (client_rpc_tx, _) = mpsc::channel(1);
+        let mut state = RuntimeState::new(
+            "127.0.0.1:30490".parse().expect("valid addr"),
+            "127.0.0.1:49152".parse().expect("valid addr"),
+            client_rpc_tx,
+            config.clone(),
+        );
+        let (requests_tx, _requests_rx) = mpsc::channel(1);
+        for service_id in 0..SERVICES {
+            let key = ServiceKey {
+                service_id,
+                instance_id: 1,
+                major_version: 1,
+            };
+            state.offered.insert(
+                key,
+                OfferedService {
+                    major_version: 1,
+                    minor_version: 0,
+                    requests_tx: requests_tx.clone(),
+                    last_offer: tokio::time::Instant::now(),
+                    udp_endpoint: Some(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 10_000 + service_id)),
+                    udp_transport: None,
+                    tcp_endpoint: Some(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 20_000 + service_id)),
+                    tcp_transport: None,
+                    tcp_close_peer_tx: None,
+                    method_config: crate::config::MethodConfig::default(),
+                    is_announcing: true,
+                },
+            );
+            state.pending_initial_offers.push(key);
+        }
+
+        let actions = flush_pending_initial_offers(&config, &mut state).expect("offers flushed");
+
+        let mut offered_ports = std::collections::HashMap::new();
+        for action in &actions {
+            assert!(
+                matches!(action, Action::SendSd { .. }),
+                "only SendSd expected"
+            );
+            let Action::SendSd { message, .. } = action else {
+                continue;
+            };
+            assert!(message.options.len() <= 256);
+            for entry in &message.entries {
+                offered_ports.insert(entry.service_id, referenced_options(message, entry));
+            }
+        }
+        assert_eq!(offered_ports.len(), usize::from(SERVICES));
+        for service_id in 0..SERVICES {
+            let unicast = config.unicast_ip();
+            assert_eq!(
+                offered_ports[&service_id],
+                vec![
+                    &SdOption::Ipv4Endpoint {
+                        addr: unicast,
+                        port: 10_000 + service_id,
+                        protocol: L4Protocol::Udp,
+                    },
+                    &SdOption::Ipv4Endpoint {
+                        addr: unicast,
+                        port: 20_000 + service_id,
+                        protocol: L4Protocol::Tcp,
+                    },
+                ],
+                "service {service_id} must advertise its own endpoints"
+            );
+        }
     }
 }
