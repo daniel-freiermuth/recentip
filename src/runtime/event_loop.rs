@@ -395,7 +395,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             // UDP path: Handle inline (binding is instant)
                             client::handle_subscribe_udp::<U>(
                                 service_id, instance_id, major_version, eventgroup_ids,
-                                events, response, sd_endpoint, local_port, &mut state
+                                events, response, sd_endpoint, remote_endpoint, local_port, &mut state
                             ).await;
                         }
                     }
