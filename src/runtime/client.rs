@@ -52,8 +52,10 @@
 //! - Session IDs are allocated from `state.next_client_session_id()`
 
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::sync::Arc;
 
 use bytes::Bytes;
+use dashmap::DashMap;
 use tokio::time::Instant;
 
 use super::command::ServiceAvailability;
@@ -61,12 +63,13 @@ use super::sd::{
     Action, build_find_message, build_subscribe_message_multi, build_unsubscribe_message,
 };
 use super::state::{
-    CallKey, FindRequest, PendingCall, RuntimeState, ServiceKey, UdpRoute, UdpSubscriptionRoutes,
+    CallKey, DiscoveredService, FindRequest, PendingCall, RuntimeState, ServiceKey, UdpRoute,
+    UdpSubscriptionRoutes,
 };
 use crate::config::{DEFAULT_FIND_REPETITIONS, PortSpec, Transport};
 use crate::net::UdpSocket;
 use crate::wire::{Header, MessageType};
-use crate::{Event, EventId, OfferedEndpoints, Response, ReturnCode};
+use crate::{Event, EventId, Response, ReturnCode};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
 // ============================================================================
@@ -115,6 +118,7 @@ impl DroppedEventTracker {
 /// and the socket's event routes.
 async fn spawn_udp_subscription_socket<U: UdpSocket>(
     unicast_ip: Ipv4Addr,
+    discovered: Arc<DashMap<ServiceKey, DiscoveredService>>,
     key: ServiceKey,
     remote: SocketAddrV4,
     events_tx: mpsc::Sender<crate::Event>,
@@ -229,6 +233,7 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
                         header.service_id,
                         header.interface_version,
                         from,
+                        &discovered,
                     ) {
                         UdpRoute::Deliver(events_tx) => events_tx,
                         UdpRoute::Unrouted => {
@@ -608,6 +613,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         // No reusable/existing endpoint found — create a new dedicated socket
         match spawn_udp_subscription_socket::<U>(
             endpoint_ip,
+            Arc::clone(&state.discovered),
             key,
             remote_endpoint,
             incoming_events_channel.clone(),
@@ -684,6 +690,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
             // No existing socket — bind a dedicated one on the requested port.
             match spawn_udp_subscription_socket::<U>(
                 endpoint_ip,
+                Arc::clone(&state.discovered),
                 key,
                 remote_endpoint,
                 incoming_events_channel.clone(),
@@ -987,14 +994,7 @@ pub fn handle_incoming_notification(
     let Some(key): Option<ServiceKey> = state
         .discovered
         .iter()
-        .find(|entry| {
-            entry.key().service_id == header.service_id
-                && match entry.value().offered_endpoints {
-                    OfferedEndpoints::UdpOnly(socket_addr) => socket_addr == from,
-                    OfferedEndpoints::TcpOnly(socket_addr) => socket_addr == from,
-                    OfferedEndpoints::Both { udp, tcp } => udp == from || tcp == from,
-                }
-        })
+        .find(|entry| entry.key().service_id == header.service_id && entry.value().sends_from(from))
         .map(|entry| *entry.key())
     else {
         tracing::warn!(

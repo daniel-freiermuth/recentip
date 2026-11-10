@@ -366,6 +366,16 @@ impl DiscoveredService {
     pub(crate) fn is_alive(&self) -> bool {
         Instant::now() < self.ttl_expires
     }
+
+    /// Whether a SOME/IP message from `from` was sent by this offer: one of its
+    /// offered endpoints.
+    pub(crate) fn sends_from(&self, from: SocketAddrV4) -> bool {
+        match self.offered_endpoints {
+            OfferedEndpoints::UdpOnly(udp) => udp == from,
+            OfferedEndpoints::TcpOnly(tcp) => tcp == from,
+            OfferedEndpoints::Both { udp, tcp } => udp == from || tcp == from,
+        }
+    }
 }
 
 // ============================================================================
@@ -463,19 +473,30 @@ impl UdpSubscriptionRoutes {
     /// Route a notification of `service_id` with `interface_version` sent from `from`.
     ///
     /// Dropped subscriptions are pruned first; once none is left, the socket is
-    /// closed. The notification goes to the subscription of `service_id` that was
-    /// sent to `from`: a server offers each instance and major version of a
-    /// service from its own endpoint. Notifications from any other sender, e.g.
-    /// an instance whose subscription already left the socket, are not delivered.
-    /// Should several major versions be offered from one endpoint, the interface
-    /// version picks the subscription.
+    /// closed. The notification goes to the subscription of `service_id` whose
+    /// server sent it: the current discovered offer of the subscription's service
+    /// instance, checked like on the shared client RPC endpoint (so it follows
+    /// an offer refresh that moves the endpoint), or the server endpoint the
+    /// subscription was sent to if that instance is not discovered. A server
+    /// offers each instance and major version of a service from its own
+    /// endpoint. Notifications from any other sender, e.g. an instance whose
+    /// subscription already left the socket, are not delivered. Should several
+    /// major versions be offered from one endpoint, the interface version picks
+    /// the subscription.
     pub(crate) fn route(
         &self,
         service_id: u16,
         interface_version: u8,
         from: SocketAddrV4,
+        discovered: &DashMap<ServiceKey, DiscoveredService>,
     ) -> UdpRoute {
-        Self::route_in(&mut self.lock(), service_id, interface_version, from)
+        Self::route_in(
+            &mut self.lock(),
+            service_id,
+            interface_version,
+            from,
+            discovered,
+        )
     }
 
     /// [`Self::route`] on the locked routes; `None` once the socket is closed.
@@ -484,6 +505,7 @@ impl UdpSubscriptionRoutes {
         service_id: u16,
         interface_version: u8,
         from: SocketAddrV4,
+        discovered: &DashMap<ServiceKey, DiscoveredService>,
     ) -> UdpRoute {
         let Some(routes) = slot.as_mut() else {
             return UdpRoute::Closed;
@@ -495,7 +517,10 @@ impl UdpSubscriptionRoutes {
         }
 
         let sent_from = |route: &&UdpSubscriptionRoute| {
-            route.key.service_id == service_id && route.remote == from
+            route.key.service_id == service_id
+                && discovered
+                    .get(&route.key)
+                    .map_or(route.remote == from, |offer| offer.sends_from(from))
         };
         let mut candidates = routes.iter().filter(sent_from);
         let target = match (candidates.next(), candidates.next()) {
@@ -1668,9 +1693,19 @@ mod tests {
         );
     }
 
+    fn udp_offer(endpoint: SocketAddrV4) -> DiscoveredService {
+        DiscoveredService {
+            offered_endpoints: OfferedEndpoints::UdpOnly(endpoint),
+            sd_endpoint: endpoint,
+            minor_version: 0,
+            ttl_expires: Instant::now(),
+        }
+    }
+
     /// Two instances of one service sharing a dedicated UDP subscription socket
     /// are told apart by the server endpoint each notification comes from; two
     /// major versions offered from one endpoint by the interface version.
+    /// (None discovered: the endpoints the subscriptions were sent to decide.)
     #[test_log::test]
     fn udp_subscription_routes_tell_instances_apart_by_sender() {
         let instance_1 = ServiceKey {
@@ -1688,6 +1723,7 @@ mod tests {
         };
         let server_1: SocketAddrV4 = "10.0.0.1:30501".parse().unwrap();
         let server_2: SocketAddrV4 = "10.0.0.2:30501".parse().unwrap();
+        let discovered = DashMap::new();
 
         let (tx_1, _rx_1) = mpsc::channel(1);
         let (tx_2, _rx_2) = mpsc::channel(1);
@@ -1703,7 +1739,7 @@ mod tests {
         ] {
             assert!(
                 matches!(
-                    routes.route(0x1234, interface_version, from),
+                    routes.route(0x1234, interface_version, from, &discovered),
                     UdpRoute::Deliver(tx) if tx.same_channel(expected)
                 ),
                 "a v{interface_version} notification from {from} must reach the subscription \
@@ -1712,13 +1748,16 @@ mod tests {
         }
         assert!(
             matches!(
-                routes.route(0x1234, 1, "10.0.0.3:30501".parse().unwrap()),
+                routes.route(0x1234, 1, "10.0.0.3:30501".parse().unwrap(), &discovered),
                 UdpRoute::Unrouted
             ),
             "a notification from no subscribed server must not be guessed"
         );
         assert!(
-            matches!(routes.route(0x5678, 1, server_1), UdpRoute::Unrouted),
+            matches!(
+                routes.route(0x5678, 1, server_1, &discovered),
+                UdpRoute::Unrouted
+            ),
             "a notification of another service must not be delivered"
         );
     }
@@ -1741,19 +1780,59 @@ mod tests {
         let departed_server: SocketAddrV4 = "10.0.0.1:30501".parse().unwrap();
         let remaining_server: SocketAddrV4 = "10.0.0.2:30501".parse().unwrap();
 
-        let (departed_tx, departed_rx) = mpsc::channel(1);
-        let (remaining_tx, _remaining_rx) = mpsc::channel(1);
-        let routes = UdpSubscriptionRoutes::new(departed, departed_server, departed_tx);
-        assert!(routes.add(remaining, remaining_server, remaining_tx.clone()));
-        drop(departed_rx);
+        // Departed instance still discovered (dropped subscription) or expired.
+        for departed_still_discovered in [true, false] {
+            let discovered = DashMap::new();
+            discovered.insert(remaining, udp_offer(remaining_server));
+            if departed_still_discovered {
+                discovered.insert(departed, udp_offer(departed_server));
+            }
 
-        assert!(
-            matches!(routes.route(0x1234, 1, departed_server), UdpRoute::Unrouted),
-            "departed instance's notification must not reach the remaining instance"
-        );
+            let (departed_tx, departed_rx) = mpsc::channel(1);
+            let (remaining_tx, _remaining_rx) = mpsc::channel(1);
+            let routes = UdpSubscriptionRoutes::new(departed, departed_server, departed_tx);
+            assert!(routes.add(remaining, remaining_server, remaining_tx.clone()));
+            drop(departed_rx);
+
+            assert!(
+                matches!(
+                    routes.route(0x1234, 1, departed_server, &discovered),
+                    UdpRoute::Unrouted
+                ),
+                "departed instance's notification must not reach the remaining instance \
+                 (departed still discovered: {departed_still_discovered})"
+            );
+            assert!(matches!(
+                routes.route(0x1234, 1, remaining_server, &discovered),
+                UdpRoute::Deliver(tx) if tx.same_channel(&remaining_tx)
+            ));
+        }
+    }
+
+    /// A discovered offer that moved to a new endpoint (offer refresh) decides the
+    /// sender over the endpoint the subscription was originally sent to.
+    #[test_log::test]
+    fn udp_subscription_routes_follow_discovered_offer_endpoint() {
+        let key = ServiceKey {
+            service_id: 0x1234,
+            instance_id: 1,
+            major_version: 1,
+        };
+        let old_endpoint: SocketAddrV4 = "10.0.0.1:30501".parse().unwrap();
+        let new_endpoint: SocketAddrV4 = "10.0.0.1:30502".parse().unwrap();
+        let discovered = DashMap::new();
+        discovered.insert(key, udp_offer(new_endpoint));
+
+        let (tx, _rx) = mpsc::channel(1);
+        let routes = UdpSubscriptionRoutes::new(key, old_endpoint, tx.clone());
+
         assert!(matches!(
-            routes.route(0x1234, 1, remaining_server),
-            UdpRoute::Deliver(tx) if tx.same_channel(&remaining_tx)
+            routes.route(0x1234, 1, new_endpoint, &discovered),
+            UdpRoute::Deliver(delivered) if delivered.same_channel(&tx)
+        ));
+        assert!(matches!(
+            routes.route(0x1234, 1, old_endpoint, &discovered),
+            UdpRoute::Unrouted
         ));
     }
 
@@ -1773,6 +1852,7 @@ mod tests {
         };
         // One server offers both services from one endpoint.
         let server: SocketAddrV4 = "10.0.0.1:30501".parse().unwrap();
+        let discovered = DashMap::new();
 
         let (owner_tx, owner_rx) = mpsc::channel(1);
         let (sharer_tx, sharer_rx) = mpsc::channel(1);
@@ -1782,19 +1862,19 @@ mod tests {
         drop(owner_rx);
         assert!(
             matches!(
-                routes.route(sharer.service_id, 1, server),
+                routes.route(sharer.service_id, 1, server, &discovered),
                 UdpRoute::Deliver(tx) if tx.same_channel(&sharer_tx)
             ),
             "the sharing subscription must outlive the socket owner"
         );
         assert!(matches!(
-            routes.route(owner.service_id, 1, server),
+            routes.route(owner.service_id, 1, server, &discovered),
             UdpRoute::Unrouted
         ));
 
         drop(sharer_rx);
         assert!(matches!(
-            routes.route(sharer.service_id, 1, server),
+            routes.route(sharer.service_id, 1, server, &discovered),
             UdpRoute::Closed
         ));
         let (late_tx, _late_rx) = mpsc::channel(1);

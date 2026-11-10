@@ -3387,3 +3387,157 @@ fn udp_fixed_port_major_version_subscription_ends_after_other_version_left() {
         "premise: v1 and v2 must share the fixed port"
     );
 }
+
+/// A server may announce a new UDP endpoint in an Offer refresh while the
+/// client's subscriptions stay alive (they are renewed, not ended). Events sent
+/// from the new endpoint must still reach the subscription on the dedicated
+/// UDP socket, as they reach the one on the shared client RPC endpoint.
+///
+/// Wire-level server: offers the service at `OLD_PORT`, ACKs EG1 (shared RPC
+/// endpoint) and EG2 (dedicated socket), then refreshes the Offer with
+/// `NEW_PORT` and notifies both eventgroups from `NEW_PORT`.
+#[test_log::test]
+fn udp_dedicated_socket_follows_offered_endpoint_change() {
+    const SERVICE_ID: u16 = 0x4444;
+    const OLD_PORT: u16 = 30491;
+    const NEW_PORT: u16 = 30492;
+
+    let subscribers: Arc<Mutex<HashMap<u16, SocketAddr>>> = Arc::default();
+    let server_subscribers = Arc::clone(&subscribers);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let subscribers = Arc::clone(&server_subscribers);
+        async move {
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+            let event_socket = turmoil::net::UdpSocket::bind(("0.0.0.0", NEW_PORT)).await?;
+            let server_ip = lookup_ipv4("server");
+
+            let mut session_id = 1u16;
+            let offer = |port: u16, session_id: u16| {
+                build_sd_offer(
+                    SERVICE_ID, 0x0001, 1, 0, server_ip, port, 0x11, 0xFFFFFF, session_id, true,
+                    false,
+                )
+            };
+            let mut moved = false;
+            let mut buf = vec![0u8; 65535];
+            loop {
+                let Ok(Ok((len, from))) =
+                    tokio::time::timeout(Duration::from_secs(3), sd_socket.recv_from(&mut buf))
+                        .await
+                else {
+                    break;
+                };
+                let data = &buf[..len];
+                if data.len() < 40 || data[..4] != [0xFF, 0xFF, 0x81, 0x00] {
+                    continue;
+                }
+                match data[24] {
+                    0x00 => {
+                        let port = if moved { NEW_PORT } else { OLD_PORT };
+                        sd_socket.send_to(&offer(port, session_id), from).await?;
+                        session_id += 1;
+                    }
+                    0x06 => {
+                        let eventgroup = u16::from_be_bytes([data[38], data[39]]);
+                        if let Some(endpoint) = extract_ipv4_endpoint(data) {
+                            subscribers
+                                .lock()
+                                .unwrap()
+                                .entry(eventgroup)
+                                .or_insert(endpoint);
+                        }
+                        let ack = build_sd_subscribe_ack(
+                            SERVICE_ID, 0x0001, 1, eventgroup, 0xFFFFFF, session_id, true,
+                        );
+                        sd_socket.send_to(&ack, from).await?;
+                        session_id += 1;
+                    }
+                    _ => {}
+                }
+
+                let endpoints = subscribers.lock().unwrap().clone();
+                if !moved && endpoints.len() == 2 {
+                    moved = true;
+                    // Offer refresh announcing the new UDP endpoint.
+                    sd_socket
+                        .send_to(&offer(NEW_PORT, session_id), from)
+                        .await?;
+                    session_id += 1;
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    for (eventgroup, endpoint) in endpoints {
+                        let notification = crate::helpers::SomeIpPacketBuilder::notification(
+                            SERVICE_ID,
+                            0x8000 | eventgroup,
+                        )
+                        .payload(&eventgroup.to_be_bytes())
+                        .build();
+                        event_socket.send_to(&notification, endpoint).await?;
+                    }
+                }
+            }
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SERVICE_ID)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery timed out")
+        .expect("service available");
+        // First subscription → shared client RPC endpoint.
+        let mut eg1 = proxy
+            .subscribe(recentip::EventgroupId::new(1).unwrap())
+            .await
+            .unwrap();
+        // Second eventgroup of the same service → dedicated UDP socket.
+        let mut eg2 = proxy
+            .subscribe(recentip::EventgroupId::new(2).unwrap())
+            .await
+            .unwrap();
+
+        let window = Duration::from_secs(3);
+        let (eg1_events, eg2_events) = tokio::join!(
+            collect_events(&mut eg1, window),
+            collect_events(&mut eg2, window),
+        );
+        assert_eq!(
+            [("EG1", eg1_events), ("EG2", eg2_events)],
+            [
+                ("EG1", vec![(0x8001, vec![0, 1])]),
+                ("EG2", vec![(0x8002, vec![0, 2])]),
+            ],
+            "events per subscription after the offered UDP endpoint changed"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let subscribers = subscribers.lock().unwrap();
+    assert_ne!(
+        subscribers[&1], subscribers[&2],
+        "premise: EG2 must use a dedicated socket, not the shared RPC endpoint"
+    );
+}
