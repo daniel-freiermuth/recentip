@@ -234,7 +234,10 @@ pub(crate) fn configure_tracing() {
     use std::sync::OnceLock;
     static TRACING_INIT: OnceLock<()> = OnceLock::new();
     TRACING_INIT.get_or_init(|| {
-        tracing::subscriber::set_global_default(
+        // `#[test_log::test]` tests in the same binary may have installed a global
+        // subscriber first. That is the only failure mode of `set_global_default`,
+        // and the existing subscriber captures test output too, so keep it.
+        let _already_set = tracing::subscriber::set_global_default(
             tracing_subscriber::fmt()
                 .with_env_filter(
                     tracing_subscriber::EnvFilter::builder()
@@ -244,8 +247,7 @@ pub(crate) fn configure_tracing() {
                 .with_test_writer()
                 .with_timer(SimElapsedTime)
                 .finish(),
-        )
-        .expect("Configure tracing");
+        );
     });
 }
 
@@ -258,4 +260,12 @@ impl tracing_subscriber::fmt::time::FormatTime for SimElapsedTime {
             .format_time(w)
             .and_then(|()| write!(w, " [{:?}]", turmoil::sim_elapsed().unwrap_or_default()))
     }
+}
+
+/// `configure_tracing` shares test binaries with `#[test_log::test]` tests, which
+/// install their own global subscriber. Whichever runs first must not make the
+/// other panic.
+#[test_log::test]
+fn configure_tracing_tolerates_existing_global_subscriber() {
+    configure_tracing();
 }
