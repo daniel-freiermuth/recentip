@@ -518,10 +518,15 @@ impl UdpSubscriptionRoutes {
     /// Keep only the routes for which `keep(key, events_tx)` holds.
     ///
     /// Removed routes no longer hold their subscription's channel open.
-    fn retain(&self, mut keep: impl FnMut(&ServiceKey, &mpsc::Sender<crate::Event>) -> bool) {
-        if let Some(routes) = self.lock().as_mut() {
-            routes.retain(|route| keep(&route.key, &route.events_tx));
-        }
+    /// Returns `false` once the socket is closed.
+    fn retain(
+        &self,
+        mut keep: impl FnMut(&ServiceKey, &mpsc::Sender<crate::Event>) -> bool,
+    ) -> bool {
+        self.lock()
+            .as_mut()
+            .map(|routes| routes.retain(|route| keep(&route.key, &route.events_tx)))
+            .is_some()
     }
 
     fn lock(&self) -> MutexGuard<'_, Option<Vec<UdpSubscriptionRoute>>> {
@@ -947,26 +952,30 @@ impl RuntimeState {
             // Clean up empty entries to avoid memory leak
             if services.is_empty() {
                 self.subscription_endpoint_usage.remove(&port);
-                self.udp_subscription_routes.remove(&port);
             }
         }
     }
 
     /// Drop the dedicated UDP subscription socket routes of subscriptions that
-    /// are no longer in [`Self::subscriptions`].
+    /// are no longer in [`Self::subscriptions`], and the routes of closed sockets.
     ///
     /// Call after removing client subscriptions (service stopped offering,
     /// expired, peer rebooted, NACK): a route holds a clone of the
     /// subscription's channel, so the `Subscription` only ends (`next()`
     /// returns `None`) once its route is gone too.
-    pub(crate) fn prune_udp_subscription_routes(&self) {
-        for routes in self.udp_subscription_routes.values() {
+    ///
+    /// A socket's routes are only removed here, once the socket is closed, and
+    /// not when its port is unregistered: port usage does not tell major
+    /// versions apart, so a live route may remain on an unregistered port.
+    pub(crate) fn prune_udp_subscription_routes(&mut self) {
+        let subscriptions = &self.subscriptions;
+        self.udp_subscription_routes.retain(|_, routes| {
             routes.retain(|key, events_tx| {
-                self.subscriptions.get(key).is_some_and(|subs| {
+                subscriptions.get(key).is_some_and(|subs| {
                     subs.iter().any(|sub| sub.events_tx.same_channel(events_tx))
                 })
-            });
-        }
+            })
+        });
     }
 
     /// Record client subscription state and track pending subscriptions.

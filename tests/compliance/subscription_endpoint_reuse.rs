@@ -3266,3 +3266,124 @@ fn udp_fixed_port_shared_with_other_service_routes_events_by_service() {
         );
     }
 }
+
+/// Two major versions of one service instance share a fixed-port dedicated UDP
+/// socket (subscription endpoint usage does not distinguish major versions).
+/// After the v1 subscription is dropped, the v2 subscription must still end
+/// (`next()` returns `None`) when v2 stops offering.
+#[test_log::test]
+fn udp_fixed_port_major_version_subscription_ends_after_other_version_left() {
+    const SERVICE_ID: u16 = 0x3333;
+    const SHARED_PORT: u16 = 49_651;
+
+    let subscriber_ports = Arc::new(Mutex::new(Vec::new()));
+    let server_subscriber_ports = Arc::clone(&subscriber_ports);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let subscriber_ports = Arc::clone(&server_subscriber_ports);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(lookup_unicast("server"))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offerings = Vec::new();
+            for major_version in [1, 2] {
+                offerings.push(
+                    runtime
+                        .offer(SERVICE_ID, recentip::InstanceId::Id(0x0001))
+                        .version(major_version, 0)
+                        .udp()
+                        .start()
+                        .await
+                        .unwrap(),
+                );
+            }
+            let [mut v1, mut v2] = <[_; 2]>::try_from(offerings).ok().unwrap();
+
+            for offering in [&mut v1, &mut v2] {
+                let (_, endpoint) =
+                    tokio::time::timeout(Duration::from_secs(5), next_subscriber(offering))
+                        .await
+                        .expect("timed out waiting for the subscription")
+                        .expect("offering closed before the subscription");
+                subscriber_ports.lock().unwrap().push(endpoint.port());
+            }
+
+            // Wait for the client to drop its v1 subscription.
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while !matches!(
+                    v1.next().await.expect("v1 offering closed"),
+                    recentip::handle::ServiceEvent::Unsubscribe { .. }
+                ) {}
+            })
+            .await
+            .expect("timed out waiting for the v1 unsubscribe");
+
+            // Dropping the offering sends StopOfferService for v2.
+            drop(v2);
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let policy = recentip::TransportPolicy::new(vec![
+            recentip::config::TransportPreference::udp().with_port(SHARED_PORT),
+        ]);
+        let mut subscriptions = Vec::new();
+        for major_version in [1u8, 2] {
+            let proxy = tokio::time::timeout(
+                Duration::from_secs(5),
+                runtime
+                    .find(SERVICE_ID)
+                    .instance(recentip::InstanceId::Id(0x0001))
+                    .major_version(major_version),
+            )
+            .await
+            .expect("discovery timed out")
+            .expect("service available")
+            .with_transport_policy(policy.clone());
+            subscriptions.push(
+                proxy
+                    .subscribe(recentip::EventgroupId::new(1).unwrap())
+                    .await
+                    .unwrap(),
+            );
+        }
+        let mut v2 = subscriptions.pop().unwrap();
+        // Drop the v1 subscription: unsubscribes and unregisters the shared port.
+        drop(subscriptions);
+
+        assert_eq!(
+            collect_until_end(&mut v2, Duration::from_secs(4)).await,
+            (vec![], true),
+            "v2 subscription (events, ended) after v2 stopped offering"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    assert_eq!(
+        *subscriber_ports.lock().unwrap(),
+        [SHARED_PORT, SHARED_PORT],
+        "premise: v1 and v2 must share the fixed port"
+    );
+}
