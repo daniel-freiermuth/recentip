@@ -581,7 +581,8 @@ impl RuntimeState {
             peer_sessions: HashMap::new(),
             sd_monitors: Vec::new(),
             next_subscription_id: 1,
-            next_server_rpc_port: local_endpoint.port() + 1,
+            // Same wrap rule as the auto-port scan in server.rs: MAX → 1, skip 0.
+            next_server_rpc_port: local_endpoint.port().checked_add(1).unwrap_or(1),
             subscription_endpoint_usage: HashMap::new(),
             pending_tcp_conn_keys: HashMap::new(),
         }
@@ -1009,6 +1010,19 @@ mod tests {
             let id = state.next_unicast_session_id();
             assert_ne!(id, 0, "Session ID must never be 0");
         }
+    }
+
+    /// The auto-port counter starts one above the SD port and must follow the
+    /// same wrap rule as the auto-port scan in `server.rs`: u16::MAX → 1,
+    /// never 0 (and never overflow).
+    #[test_log::test]
+    fn next_server_rpc_port_wraps_to_1_when_sd_port_is_max() {
+        let addr = SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, u16::MAX);
+        let client_rpc_addr = "127.0.0.1:49152".parse().unwrap();
+        let (client_rpc_tx, _) = mpsc::channel(1);
+        let state = RuntimeState::new(addr, client_rpc_addr, client_rpc_tx, test_config());
+
+        assert_eq!(state.next_server_rpc_port, 1);
     }
 
     const SUB_KEY: ServiceKey = ServiceKey {
