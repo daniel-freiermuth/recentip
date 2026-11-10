@@ -83,6 +83,7 @@ Items not yet scheduled:
 
 - Dedicated UDP subscription socket task (`spawn_udp_subscription_socket`, `src/runtime/client.rs`) only notices that every subscription on it was dropped on the next received datagram; it should also wait on its routes' senders closing so the socket is released promptly (needed for a lifecycle test: drop → task exits → fixed port rebindable)
 - `subscription_endpoint_usage` is keyed by (`service_id`, `instance_id`) without major version: unsubscribing v1 unregisters a port that v2 of the same service still shares
+- `expire_client_subscriptions_to_rebooted_peer` (`src/runtime/event_loop.rs`) never removes anything: `handle_peer_reboot` calls it after `expire_services_from_rebooted_peer`, which already removed every subscription it would select (same SD-source-IP and pending-ACK predicate), so replacing its body with `()` survives the full suite (cargo-mutants). Delete it, or merge it into `expire_services_from_rebooted_peer`; if it ever removes subscriptions, it must call `prune_udp_subscription_routes` afterwards
 - **Server-side static binding API** - Add `runtime.bind()` for server-side services without SD (parallel to client-side `OfferedService::new()`)
 - Multi-homed host testing infrastructure (Vagrant/Docker/netns options)
 - Port rotation tests

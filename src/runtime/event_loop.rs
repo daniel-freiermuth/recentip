@@ -1065,7 +1065,6 @@ fn expire_client_subscriptions_to_rebooted_peer(peer_ip: Ipv4Addr, state: &mut R
             );
         }
     }
-    state.prune_udp_subscription_routes();
 }
 
 /// Queue TCP connection reset action for a rebooted peer
