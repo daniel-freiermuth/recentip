@@ -93,9 +93,9 @@ Items not yet scheduled:
 - **TCP handlers keep reading after `msg_tx` closes** - in `handle_client_tcp_connection` / `handle_tcp_connection`, a failed `msg_tx.send` only breaks the framing loop, not the connection loop, despite logging "stopping"
 - TTL expiry vs reboot-triggered cancellation test
 - FindService → OfferService session continuity test
-- **`cluster_sd_actions` option-index overflow** (`src/runtime/event_loop.rs`): once a clustered message holds >255 options, `clustered.options.len() as u8` wraps (256 → 0) and `saturating_add` clamps at 255, so merged entries silently reference wrong options. Should split into a second SD message (or reject) instead. Index 255 boundary is covered by `cluster_sd_actions_rebases_to_highest_representable_option_index`.
 - TCP eventgroup isolation when an RPC connection exists first: every subsequent TCP subscription to that server reuses the RPC connection (conn_key 0), so events of different eventgroups of the same service are delivered to all of those subscribers (subscribe-first order keeps per-eventgroup connections)
 - `handle_unsubscribe`: `port_still_in_use` compares ports across transports; a UDP sub and a TCP sub of the same service on the same port number keep the UDP endpoint registration alive after the UDP sub is dropped. Filter by transport.
+- SD send path has no datagram-size check: a clustered SD message (e.g. many initial offers in one flush, `src/runtime/event_loop.rs`) may exceed the UDP payload/MTU. Option-index overflow (>256 options) is already handled by splitting in `cluster_sd_actions`
 - Sort out hardcoded timings
   - Set turmoils max_message_latency for all tests
   - Offer distance timing
