@@ -81,8 +81,8 @@ Implementation approach:
 
 Items not yet scheduled:
 
-- Dedicated UDP subscription socket task (`spawn_udp_subscription_socket`, `src/runtime/client.rs`) only notices a dropped `Subscription` on the next received datagram; it should also `select!` on `events_tx.closed()` so the socket is released promptly (needed for a lifecycle test: drop → task exits → fixed port rebindable)
-- Investigate: a dedicated UDP subscription socket reused by another service (`find_reusable_subscription_endpoint`) forwards every notification to the socket owner's `events_tx` without checking `service_id` — the reusing service's subscription may never receive its events
+- Dedicated UDP subscription socket task (`spawn_udp_subscription_socket`, `src/runtime/client.rs`) only notices that every subscription on it was dropped on the next received datagram; it should also wait on its routes' senders closing so the socket is released promptly (needed for a lifecycle test: drop → task exits → fixed port rebindable)
+- `subscription_endpoint_usage` is keyed by (`service_id`, `instance_id`) without major version: unsubscribing v1 unregisters a port that v2 of the same service still shares
 - **Server-side static binding API** - Add `runtime.bind()` for server-side services without SD (parallel to client-side `OfferedService::new()`)
 - Multi-homed host testing infrastructure (Vagrant/Docker/netns options)
 - Port rotation tests
