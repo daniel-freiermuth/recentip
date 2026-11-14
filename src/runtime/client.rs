@@ -51,6 +51,7 @@
 //! - No I/O is performed directly; actions are returned to the runtime
 //! - Session IDs are allocated from `state.next_client_session_id()`
 
+use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 
@@ -171,7 +172,9 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
     // Spawn task to receive events on this dedicated socket
     tokio::spawn(async move {
         let mut buf = vec![0u8; 65535];
-        let mut drops = DroppedEventTracker::default();
+        // Subscriptions of several services may share this socket, so a full channel is
+        // tracked per subscription. Only backlogged subscriptions have an entry.
+        let mut drops: HashMap<ServiceKey, DroppedEventTracker> = HashMap::new();
         loop {
             match socket.recv_from(&mut buf).await {
                 Ok((len, from)) => {
@@ -229,13 +232,13 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
 
                     // Route the event to the subscription of the service instance that
                     // sent it: subscriptions of other services may share this socket.
-                    let events_tx = match task_routes.route(
+                    let (route_key, events_tx) = match task_routes.route(
                         header.service_id,
                         header.interface_version,
                         from,
                         &discovered,
                     ) {
-                        UdpRoute::Deliver(events_tx) => events_tx,
+                        UdpRoute::Deliver(route_key, events_tx) => (route_key, events_tx),
                         UdpRoute::Unrouted => {
                             tracing::debug!(
                                 "No subscription for service {:04x} from {} on subscription socket {}, dropping event {:04x}",
@@ -259,19 +262,28 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
                     // path). A subscription dropped meanwhile is pruned on the next event.
                     match events_tx.try_send(event) {
                         Ok(()) => {
-                            if let Some(dropped) = drops.record_delivery() {
+                            if let Some(dropped) = drops
+                                .remove(&route_key)
+                                .and_then(|mut backlog| backlog.record_delivery())
+                            {
                                 tracing::warn!(
-                                    "Subscription socket {} resumed event delivery after dropping {} events (channel full)",
+                                    "Subscription socket {} resumed event delivery to {:04x}:{:04x} v{} after dropping {} events (channel full)",
                                     local_endpoint,
+                                    route_key.service_id,
+                                    route_key.instance_id,
+                                    route_key.major_version,
                                     dropped
                                 );
                             }
                         }
                         Err(TrySendError::Full(_)) => {
                             // Application is not keeping up: drop this event, keep receiving.
-                            if drops.record_drop() {
+                            if drops.entry(route_key).or_default().record_drop() {
                                 tracing::warn!(
-                                    "Event channel full for subscription socket {}, dropping events until the application catches up",
+                                    "Event channel full for {:04x}:{:04x} v{} on subscription socket {}, dropping its events until the application catches up",
+                                    route_key.service_id,
+                                    route_key.instance_id,
+                                    route_key.major_version,
                                     local_endpoint
                                 );
                             }

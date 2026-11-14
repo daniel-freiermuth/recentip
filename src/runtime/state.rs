@@ -416,8 +416,8 @@ struct UdpSubscriptionRoute {
 
 /// Where a notification received on a dedicated UDP subscription socket goes.
 pub enum UdpRoute {
-    /// Deliver it to this subscription's channel.
-    Deliver(mpsc::Sender<crate::Event>),
+    /// Deliver it to the channel of the subscription of this service instance.
+    Deliver(ServiceKey, mpsc::Sender<crate::Event>),
     /// No subscription on the socket belongs to the sending service instance.
     Unrouted,
     /// Every subscription on the socket was dropped; the socket is closed.
@@ -531,7 +531,7 @@ impl UdpSubscriptionRoutes {
                 .find(|route| route.key.major_version == interface_version),
         };
         target.map_or(UdpRoute::Unrouted, |route| {
-            UdpRoute::Deliver(route.events_tx.clone())
+            UdpRoute::Deliver(route.key, route.events_tx.clone())
         })
     }
 
@@ -1740,7 +1740,7 @@ mod tests {
             assert!(
                 matches!(
                     routes.route(0x1234, interface_version, from, &discovered),
-                    UdpRoute::Deliver(tx) if tx.same_channel(expected)
+                    UdpRoute::Deliver(_, tx) if tx.same_channel(expected)
                 ),
                 "a v{interface_version} notification from {from} must reach the subscription \
                  of that instance and major version"
@@ -1804,7 +1804,7 @@ mod tests {
             );
             assert!(matches!(
                 routes.route(0x1234, 1, remaining_server, &discovered),
-                UdpRoute::Deliver(tx) if tx.same_channel(&remaining_tx)
+                UdpRoute::Deliver(_, tx) if tx.same_channel(&remaining_tx)
             ));
         }
     }
@@ -1828,7 +1828,7 @@ mod tests {
 
         assert!(matches!(
             routes.route(0x1234, 1, new_endpoint, &discovered),
-            UdpRoute::Deliver(delivered) if delivered.same_channel(&tx)
+            UdpRoute::Deliver(_, delivered) if delivered.same_channel(&tx)
         ));
         assert!(matches!(
             routes.route(0x1234, 1, old_endpoint, &discovered),
@@ -1863,7 +1863,7 @@ mod tests {
         assert!(
             matches!(
                 routes.route(sharer.service_id, 1, server, &discovered),
-                UdpRoute::Deliver(tx) if tx.same_channel(&sharer_tx)
+                UdpRoute::Deliver(_, tx) if tx.same_channel(&sharer_tx)
             ),
             "the sharing subscription must outlive the socket owner"
         );
