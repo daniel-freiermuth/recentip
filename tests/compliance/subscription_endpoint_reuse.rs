@@ -9,8 +9,8 @@
 
 use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::config::UnicastAddress;
-use std::collections::HashSet;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::collections::{HashMap, HashSet};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -2841,5 +2841,703 @@ fn udp_subscription_does_not_reuse_tcp_subscription_port() {
         y_eg2_received.lock().unwrap().as_deref(),
         Some(&b"y-eg2"[..]),
         "Y EG2 subscription did not receive the event sent to {y_eg2_endpoint}"
+    );
+}
+
+// ============================================================================
+// EVENT ROUTING ON SHARED SUBSCRIPTION ENDPOINTS
+// ============================================================================
+
+/// First service of the event routing tests.
+const ROUTING_SERVICE_A: u16 = 0x1111;
+/// Second service of the event routing tests.
+const ROUTING_SERVICE_B: u16 = 0x2222;
+
+/// Subscriber endpoint the server saw per (service ID, eventgroup ID).
+type SubscriberEndpoints = Arc<Mutex<HashMap<(u16, u16), SocketAddrV4>>>;
+
+/// The single event a routing service notifies for `eventgroup`, as a
+/// subscription receives it: (event ID, payload naming service and eventgroup).
+fn routing_event(service_id: u16, eventgroup: u16) -> (u16, Vec<u8>) {
+    (
+        0x8000 | eventgroup,
+        [service_id.to_be_bytes(), eventgroup.to_be_bytes()].concat(),
+    )
+}
+
+/// Wait for the next Subscribe on `offering`: (eventgroup ID, subscriber endpoint).
+async fn next_subscriber(offering: &mut recentip::ServiceOffering) -> Option<(u16, SocketAddrV4)> {
+    loop {
+        if let recentip::handle::ServiceEvent::Subscribe { eventgroup, client } =
+            offering.next().await?
+        {
+            return Some((eventgroup.value(), client.address));
+        }
+    }
+}
+
+/// Server of the event routing tests.
+///
+/// Offers both routing services over UDP with one event per eventgroup in
+/// `1..=eventgroups`, records every subscriber endpoint in `subscribers`, and
+/// once each eventgroup of both services has a subscriber, notifies every
+/// event once (see [`routing_event`]). With `stop_service_b`, service B stops
+/// offering first, and only service A's events are notified.
+async fn run_routing_server(
+    eventgroups: u16,
+    subscribers: SubscriberEndpoints,
+    stop_service_b: bool,
+) -> turmoil::Result {
+    let runtime = recentip::configure()
+        .sd_multicast_group(DEFAULT_SD_MULTICAST)
+        .sd_unicast(lookup_unicast("server"))
+        .start_turmoil()
+        .await
+        .unwrap();
+
+    let mut offerings = Vec::new();
+    let mut events = Vec::new();
+    for service_id in [ROUTING_SERVICE_A, ROUTING_SERVICE_B] {
+        let offering = runtime
+            .offer(service_id, recentip::InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+        for eventgroup in 1..=eventgroups {
+            let event = offering
+                .event(recentip::EventId::new(routing_event(service_id, eventgroup).0).unwrap())
+                .eventgroup(recentip::EventgroupId::new(eventgroup).unwrap())
+                .create()
+                .await
+                .unwrap();
+            events.push((service_id, eventgroup, event));
+        }
+        offerings.push((service_id, offering));
+    }
+
+    for (service_id, offering) in &mut offerings {
+        let service_id = *service_id;
+        while (1..=eventgroups).any(|eventgroup| {
+            !subscribers
+                .lock()
+                .unwrap()
+                .contains_key(&(service_id, eventgroup))
+        }) {
+            let (eventgroup, endpoint) =
+                tokio::time::timeout(Duration::from_secs(5), next_subscriber(offering))
+                    .await
+                    .expect("timed out waiting for every eventgroup subscription")
+                    .expect("offering closed before every eventgroup was subscribed");
+            subscribers
+                .lock()
+                .unwrap()
+                .insert((service_id, eventgroup), endpoint);
+        }
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    if stop_service_b {
+        // Dropping the offering sends StopOfferService.
+        offerings.retain(|(service_id, _)| *service_id != ROUTING_SERVICE_B);
+        events.retain(|(service_id, _, _)| *service_id != ROUTING_SERVICE_B);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
+    for (service_id, eventgroup, event) in &events {
+        event
+            .notify(&routing_event(*service_id, *eventgroup).1)
+            .await
+            .unwrap();
+    }
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    Ok(())
+}
+
+/// Collect every event `subscription` delivers within `window` as (event ID, payload).
+async fn collect_events(
+    subscription: &mut recentip::Subscription,
+    window: Duration,
+) -> Vec<(u16, Vec<u8>)> {
+    collect_until_end(subscription, window).await.0
+}
+
+/// Collect the events `subscription` delivers within `window` as (event ID, payload),
+/// and whether it ended (`next()` returned `None`) within `window`.
+async fn collect_until_end(
+    subscription: &mut recentip::Subscription,
+    window: Duration,
+) -> (Vec<(u16, Vec<u8>)>, bool) {
+    let mut received = Vec::new();
+    let ended = tokio::time::timeout(window, async {
+        while let Some(event) = subscription.next().await {
+            received.push((event.event_id.value(), event.payload.to_vec()));
+        }
+    })
+    .await
+    .is_ok();
+    (received, ended)
+}
+
+/// A subscription sharing another service's dedicated UDP socket must end
+/// (`next()` returns `None`) when its service stops offering, like any other
+/// subscription; the socket keeps routing the owner's events.
+///
+/// Same layout as [`udp_reused_dedicated_socket_routes_events_by_service`]:
+/// B/EG2 shares A/EG2's dedicated socket. Then service B stops offering.
+#[test_log::test]
+fn udp_shared_dedicated_socket_subscription_ends_when_service_stops_offering() {
+    let subscribers = SubscriberEndpoints::default();
+    let server_subscribers = Arc::clone(&subscribers);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        run_routing_server(2, Arc::clone(&server_subscribers), true)
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let eventgroup = |id| recentip::EventgroupId::new(id).unwrap();
+
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(ROUTING_SERVICE_A)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery of service A timed out")
+        .expect("service A available");
+        let mut a_eg1 = proxy_a.subscribe(eventgroup(1)).await.unwrap();
+        // Second eventgroup of A → dedicated UDP socket.
+        let mut a_eg2 = proxy_a.subscribe(eventgroup(2)).await.unwrap();
+
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(ROUTING_SERVICE_B)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery of service B timed out")
+        .expect("service B available");
+        let mut b_eg1 = proxy_b.subscribe(eventgroup(1)).await.unwrap();
+        // Second eventgroup of B → shares A/EG2's dedicated socket.
+        let mut b_eg2 = proxy_b.subscribe(eventgroup(2)).await.unwrap();
+
+        let window = Duration::from_secs(4);
+        let (a1, a2, b1, b2) = tokio::join!(
+            collect_events(&mut a_eg1, window),
+            collect_events(&mut a_eg2, window),
+            collect_until_end(&mut b_eg1, window),
+            collect_until_end(&mut b_eg2, window),
+        );
+
+        assert_eq!(
+            [("B/EG1", b1), ("B/EG2", b2)],
+            [("B/EG1", (vec![], true)), ("B/EG2", (vec![], true))],
+            "(events, ended) per subscription of the service that stopped offering"
+        );
+        assert_eq!(
+            [("A/EG1", a1), ("A/EG2", a2)],
+            [
+                ("A/EG1", vec![routing_event(ROUTING_SERVICE_A, 1)]),
+                ("A/EG2", vec![routing_event(ROUTING_SERVICE_A, 2)]),
+            ],
+            "events per subscription of the service still offering"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Premise: B/EG2 shared A/EG2's dedicated socket.
+    let subscribers = subscribers.lock().unwrap();
+    assert_eq!(
+        subscribers[&(ROUTING_SERVICE_B, 2)],
+        subscribers[&(ROUTING_SERVICE_A, 2)],
+        "premise: B/EG2 must share A/EG2's dedicated socket"
+    );
+}
+
+/// A dedicated UDP subscription socket reused by another service must deliver
+/// that service's events to the reusing subscription, not to the socket owner.
+///
+/// - A/EG1, B/EG1: first subscription of each service → shared client RPC endpoint
+/// - A/EG2: second eventgroup of service A → dedicated UDP socket
+/// - B/EG2: second eventgroup of service B → reuses A/EG2's dedicated socket
+///
+/// The server notifies one event per (service, eventgroup); every subscription
+/// must receive exactly the event of its own service and eventgroup.
+#[test_log::test]
+fn udp_reused_dedicated_socket_routes_events_by_service() {
+    let subscribers = SubscriberEndpoints::default();
+    let server_subscribers = Arc::clone(&subscribers);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        run_routing_server(2, Arc::clone(&server_subscribers), false)
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let eventgroup = |id| recentip::EventgroupId::new(id).unwrap();
+
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(ROUTING_SERVICE_A)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery of service A timed out")
+        .expect("service A available");
+        // First subscription of A → shared client RPC endpoint.
+        let mut a_eg1 = proxy_a.subscribe(eventgroup(1)).await.unwrap();
+        // Second eventgroup of A → dedicated UDP socket.
+        let mut a_eg2 = proxy_a.subscribe(eventgroup(2)).await.unwrap();
+
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(ROUTING_SERVICE_B)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery of service B timed out")
+        .expect("service B available");
+        // First subscription of B → shared client RPC endpoint.
+        let mut b_eg1 = proxy_b.subscribe(eventgroup(1)).await.unwrap();
+        // Second eventgroup of B → reuses A/EG2's dedicated socket.
+        let mut b_eg2 = proxy_b.subscribe(eventgroup(2)).await.unwrap();
+
+        let window = Duration::from_secs(3);
+        let (a1, a2, b1, b2) = tokio::join!(
+            collect_events(&mut a_eg1, window),
+            collect_events(&mut a_eg2, window),
+            collect_events(&mut b_eg1, window),
+            collect_events(&mut b_eg2, window),
+        );
+
+        // Every subscription receives exactly the event of its own service and eventgroup.
+        assert_eq!(
+            [("A/EG1", a1), ("A/EG2", a2), ("B/EG1", b1), ("B/EG2", b2)],
+            [
+                ("A/EG1", vec![routing_event(ROUTING_SERVICE_A, 1)]),
+                ("A/EG2", vec![routing_event(ROUTING_SERVICE_A, 2)]),
+                ("B/EG1", vec![routing_event(ROUTING_SERVICE_B, 1)]),
+                ("B/EG2", vec![routing_event(ROUTING_SERVICE_B, 2)]),
+            ],
+            "events per subscription (event ID, payload = service ID ++ eventgroup ID)"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Premise: B/EG2 shared A/EG2's dedicated socket, apart from the RPC endpoint.
+    let subscribers = subscribers.lock().unwrap();
+    let a_eg2 = subscribers[&(ROUTING_SERVICE_A, 2)];
+    assert_eq!(
+        subscribers[&(ROUTING_SERVICE_B, 2)],
+        a_eg2,
+        "premise: B/EG2 must reuse A/EG2's dedicated socket"
+    );
+    assert_ne!(
+        subscribers[&(ROUTING_SERVICE_A, 1)],
+        a_eg2,
+        "premise: A/EG2 must use a dedicated socket, not the shared RPC endpoint"
+    );
+}
+
+/// A first subscription whose fixed local port is already bound by another
+/// service's dedicated UDP socket shares that socket; its events must reach
+/// its own subscription, not the socket owner.
+#[test_log::test]
+fn udp_fixed_port_shared_with_other_service_routes_events_by_service() {
+    const SHARED_PORT: u16 = 49_650;
+
+    let subscribers = SubscriberEndpoints::default();
+    let server_subscribers = Arc::clone(&subscribers);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        run_routing_server(1, Arc::clone(&server_subscribers), false)
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let policy = recentip::TransportPolicy::new(vec![
+            recentip::config::TransportPreference::udp().with_port(SHARED_PORT),
+        ]);
+        let eventgroup = recentip::EventgroupId::new(1).unwrap();
+
+        let proxy_a = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(ROUTING_SERVICE_A)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery of service A timed out")
+        .expect("service A available")
+        .with_transport_policy(policy.clone());
+        // Binds the dedicated UDP socket on SHARED_PORT.
+        let mut sub_a = proxy_a.subscribe(eventgroup).await.unwrap();
+
+        let proxy_b = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(ROUTING_SERVICE_B)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery of service B timed out")
+        .expect("service B available")
+        .with_transport_policy(policy);
+        // SHARED_PORT is already bound by A's socket → shares it.
+        let mut sub_b = proxy_b.subscribe(eventgroup).await.unwrap();
+
+        let window = Duration::from_secs(3);
+        let (a, b) = tokio::join!(
+            collect_events(&mut sub_a, window),
+            collect_events(&mut sub_b, window),
+        );
+
+        // Each subscription receives exactly its own service's event.
+        assert_eq!(
+            [("A", a), ("B", b)],
+            [
+                ("A", vec![routing_event(ROUTING_SERVICE_A, 1)]),
+                ("B", vec![routing_event(ROUTING_SERVICE_B, 1)]),
+            ],
+            "events per subscription (event ID, payload = service ID ++ eventgroup ID)"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    // Premise: both subscriptions used the requested fixed port.
+    let subscribers = subscribers.lock().unwrap();
+    for service_id in [ROUTING_SERVICE_A, ROUTING_SERVICE_B] {
+        assert_eq!(
+            subscribers[&(service_id, 1)].port(),
+            SHARED_PORT,
+            "premise: service {service_id:04x} must subscribe from port {SHARED_PORT}"
+        );
+    }
+}
+
+/// Two major versions of one service instance share a fixed-port dedicated UDP
+/// socket (subscription endpoint usage does not distinguish major versions).
+/// After the v1 subscription is dropped, the v2 subscription must still end
+/// (`next()` returns `None`) when v2 stops offering.
+#[test_log::test]
+fn udp_fixed_port_major_version_subscription_ends_after_other_version_left() {
+    const SERVICE_ID: u16 = 0x3333;
+    const SHARED_PORT: u16 = 49_651;
+
+    let subscriber_ports = Arc::new(Mutex::new(Vec::new()));
+    let server_subscriber_ports = Arc::clone(&subscriber_ports);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let subscriber_ports = Arc::clone(&server_subscriber_ports);
+        async move {
+            let runtime = recentip::configure()
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(lookup_unicast("server"))
+                .start_turmoil()
+                .await
+                .unwrap();
+
+            let mut offerings = Vec::new();
+            for major_version in [1, 2] {
+                offerings.push(
+                    runtime
+                        .offer(SERVICE_ID, recentip::InstanceId::Id(0x0001))
+                        .version(major_version, 0)
+                        .udp()
+                        .start()
+                        .await
+                        .unwrap(),
+                );
+            }
+            let [mut v1, mut v2] = <[_; 2]>::try_from(offerings).ok().unwrap();
+
+            for offering in [&mut v1, &mut v2] {
+                let (_, endpoint) =
+                    tokio::time::timeout(Duration::from_secs(5), next_subscriber(offering))
+                        .await
+                        .expect("timed out waiting for the subscription")
+                        .expect("offering closed before the subscription");
+                subscriber_ports.lock().unwrap().push(endpoint.port());
+            }
+
+            // Wait for the client to drop its v1 subscription.
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while !matches!(
+                    v1.next().await.expect("v1 offering closed"),
+                    recentip::handle::ServiceEvent::Unsubscribe { .. }
+                ) {}
+            })
+            .await
+            .expect("timed out waiting for the v1 unsubscribe");
+
+            // Dropping the offering sends StopOfferService for v2.
+            drop(v2);
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let policy = recentip::TransportPolicy::new(vec![
+            recentip::config::TransportPreference::udp().with_port(SHARED_PORT),
+        ]);
+        let mut subscriptions = Vec::new();
+        for major_version in [1u8, 2] {
+            let proxy = tokio::time::timeout(
+                Duration::from_secs(5),
+                runtime
+                    .find(SERVICE_ID)
+                    .instance(recentip::InstanceId::Id(0x0001))
+                    .major_version(major_version),
+            )
+            .await
+            .expect("discovery timed out")
+            .expect("service available")
+            .with_transport_policy(policy.clone());
+            subscriptions.push(
+                proxy
+                    .subscribe(recentip::EventgroupId::new(1).unwrap())
+                    .await
+                    .unwrap(),
+            );
+        }
+        let mut v2 = subscriptions.pop().unwrap();
+        // Drop the v1 subscription: unsubscribes and unregisters the shared port.
+        drop(subscriptions);
+
+        assert_eq!(
+            collect_until_end(&mut v2, Duration::from_secs(4)).await,
+            (vec![], true),
+            "v2 subscription (events, ended) after v2 stopped offering"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    assert_eq!(
+        *subscriber_ports.lock().unwrap(),
+        [SHARED_PORT, SHARED_PORT],
+        "premise: v1 and v2 must share the fixed port"
+    );
+}
+
+/// A server may announce a new UDP endpoint in an Offer refresh while the
+/// client's subscriptions stay alive (they are renewed, not ended). Events sent
+/// from the new endpoint must still reach the subscription on the dedicated
+/// UDP socket, as they reach the one on the shared client RPC endpoint.
+///
+/// Wire-level server: offers the service at `OLD_PORT`, ACKs EG1 (shared RPC
+/// endpoint) and EG2 (dedicated socket), then refreshes the Offer with
+/// `NEW_PORT` and notifies both eventgroups from `NEW_PORT`.
+#[test_log::test]
+fn udp_dedicated_socket_follows_offered_endpoint_change() {
+    const SERVICE_ID: u16 = 0x4444;
+    const OLD_PORT: u16 = 30491;
+    const NEW_PORT: u16 = 30492;
+
+    let subscribers: Arc<Mutex<HashMap<u16, SocketAddr>>> = Arc::default();
+    let server_subscribers = Arc::clone(&subscribers);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", move || {
+        let subscribers = Arc::clone(&server_subscribers);
+        async move {
+            let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+            sd_socket
+                .join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+            let event_socket = turmoil::net::UdpSocket::bind(("0.0.0.0", NEW_PORT)).await?;
+            let server_ip = lookup_ipv4("server");
+
+            let mut session_id = 1u16;
+            let offer = |port: u16, session_id: u16| {
+                build_sd_offer(
+                    SERVICE_ID, 0x0001, 1, 0, server_ip, port, 0x11, 0xFFFFFF, session_id, true,
+                    false,
+                )
+            };
+            let mut moved = false;
+            let mut buf = vec![0u8; 65535];
+            loop {
+                let Ok(Ok((len, from))) =
+                    tokio::time::timeout(Duration::from_secs(3), sd_socket.recv_from(&mut buf))
+                        .await
+                else {
+                    break;
+                };
+                let data = &buf[..len];
+                if data.len() < 40 || data[..4] != [0xFF, 0xFF, 0x81, 0x00] {
+                    continue;
+                }
+                match data[24] {
+                    0x00 => {
+                        let port = if moved { NEW_PORT } else { OLD_PORT };
+                        sd_socket.send_to(&offer(port, session_id), from).await?;
+                        session_id += 1;
+                    }
+                    0x06 => {
+                        let eventgroup = u16::from_be_bytes([data[38], data[39]]);
+                        if let Some(endpoint) = extract_ipv4_endpoint(data) {
+                            subscribers
+                                .lock()
+                                .unwrap()
+                                .entry(eventgroup)
+                                .or_insert(endpoint);
+                        }
+                        let ack = build_sd_subscribe_ack(
+                            SERVICE_ID, 0x0001, 1, eventgroup, 0xFFFFFF, session_id, true,
+                        );
+                        sd_socket.send_to(&ack, from).await?;
+                        session_id += 1;
+                    }
+                    _ => {}
+                }
+
+                let endpoints = subscribers.lock().unwrap().clone();
+                if !moved && endpoints.len() == 2 {
+                    moved = true;
+                    // Offer refresh announcing the new UDP endpoint.
+                    sd_socket
+                        .send_to(&offer(NEW_PORT, session_id), from)
+                        .await?;
+                    session_id += 1;
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    for (eventgroup, endpoint) in endpoints {
+                        let notification = crate::helpers::SomeIpPacketBuilder::notification(
+                            SERVICE_ID,
+                            0x8000 | eventgroup,
+                        )
+                        .payload(&eventgroup.to_be_bytes())
+                        .build();
+                        event_socket.send_to(&notification, endpoint).await?;
+                    }
+                }
+            }
+            Ok(())
+        }
+    });
+
+    sim.client("client", async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(SERVICE_ID)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery timed out")
+        .expect("service available");
+        // First subscription → shared client RPC endpoint.
+        let mut eg1 = proxy
+            .subscribe(recentip::EventgroupId::new(1).unwrap())
+            .await
+            .unwrap();
+        // Second eventgroup of the same service → dedicated UDP socket.
+        let mut eg2 = proxy
+            .subscribe(recentip::EventgroupId::new(2).unwrap())
+            .await
+            .unwrap();
+
+        let window = Duration::from_secs(3);
+        let (eg1_events, eg2_events) = tokio::join!(
+            collect_events(&mut eg1, window),
+            collect_events(&mut eg2, window),
+        );
+        assert_eq!(
+            [("EG1", eg1_events), ("EG2", eg2_events)],
+            [
+                ("EG1", vec![(0x8001, vec![0, 1])]),
+                ("EG2", vec![(0x8002, vec![0, 2])]),
+            ],
+            "events per subscription after the offered UDP endpoint changed"
+        );
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+
+    let subscribers = subscribers.lock().unwrap();
+    assert_ne!(
+        subscribers[&1], subscribers[&2],
+        "premise: EG2 must use a dedicated socket, not the shared RPC endpoint"
     );
 }

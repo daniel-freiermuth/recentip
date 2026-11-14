@@ -353,6 +353,7 @@ pub fn handle_stop_offer(entry: &SdEntry, state: &mut RuntimeState, actions: &mu
         // When the service goes away, subscription channels should close
         // so that subscription.next() returns None
         state.subscriptions.remove(&key);
+        state.prune_udp_subscription_routes();
 
         let offered_tcp_endpoint = match service.offered_endpoints {
             OfferedEndpoints::TcpOnly(tcp) => Some(tcp),
@@ -891,6 +892,7 @@ pub fn handle_subscribe_nack(entry: &SdEntry, state: &mut RuntimeState) {
     if let Some(subs) = state.subscriptions.get_mut(&key) {
         subs.retain(|s| s.eventgroup_id != entry.eventgroup_id);
     }
+    state.prune_udp_subscription_routes();
 }
 
 // ============================================================================

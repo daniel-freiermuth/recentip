@@ -42,7 +42,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::{Ipv4Addr, SocketAddrV4};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use bytes::Bytes;
 use dashmap::DashMap;
@@ -366,6 +366,16 @@ impl DiscoveredService {
     pub(crate) fn is_alive(&self) -> bool {
         Instant::now() < self.ttl_expires
     }
+
+    /// Whether a SOME/IP message from `from` was sent by this offer: one of its
+    /// offered endpoints.
+    pub(crate) fn sends_from(&self, from: SocketAddrV4) -> bool {
+        match self.offered_endpoints {
+            OfferedEndpoints::UdpOnly(udp) => udp == from,
+            OfferedEndpoints::TcpOnly(tcp) => tcp == from,
+            OfferedEndpoints::Both { udp, tcp } => udp == from || tcp == from,
+        }
+    }
 }
 
 // ============================================================================
@@ -394,6 +404,160 @@ pub struct ClientSubscription {
     /// Used for routing: events from `conn_key=0` only go to subscriptions with `conn_key=0`
     pub(crate) tcp_conn_key: u64,
     // pub(crate) sd_endpoint: SocketAddr,
+}
+
+/// A subscription receiving its events on a dedicated UDP subscription socket.
+struct UdpSubscriptionRoute {
+    key: ServiceKey,
+    /// Server endpoint the subscription was sent to; its events come from there.
+    remote: SocketAddrV4,
+    events_tx: mpsc::Sender<crate::Event>,
+}
+
+/// Where a notification received on a dedicated UDP subscription socket goes.
+pub enum UdpRoute {
+    /// Deliver it to the channel of the subscription of this service instance.
+    Deliver(ServiceKey, mpsc::Sender<crate::Event>),
+    /// No subscription on the socket belongs to the sending service instance.
+    Unrouted,
+    /// Every subscription on the socket was dropped; the socket is closed.
+    Closed,
+}
+
+/// Event routes of one dedicated UDP subscription socket.
+///
+/// Subscriptions of other services, service instances or major versions may
+/// share the socket (see [`RuntimeState::find_reusable_subscription_endpoint`]),
+/// so its receiver task routes every notification to the subscription of the
+/// service instance that sent it. Shared between the event loop, which adds
+/// routes, and the receiver task, which routes and closes the socket once every
+/// route is gone.
+#[derive(Clone)]
+pub struct UdpSubscriptionRoutes(Arc<Mutex<Option<Vec<UdpSubscriptionRoute>>>>);
+
+impl UdpSubscriptionRoutes {
+    /// Routes of a new socket opened for the subscription of `key` sent to `remote`.
+    pub(crate) fn new(
+        key: ServiceKey,
+        remote: SocketAddrV4,
+        events_tx: mpsc::Sender<crate::Event>,
+    ) -> Self {
+        Self(Arc::new(Mutex::new(Some(vec![UdpSubscriptionRoute {
+            key,
+            remote,
+            events_tx,
+        }]))))
+    }
+
+    /// Route the events of `key` sent from `remote` arriving on this socket to `events_tx`.
+    ///
+    /// Returns `false` if the socket is closed and cannot receive them.
+    pub(crate) fn add(
+        &self,
+        key: ServiceKey,
+        remote: SocketAddrV4,
+        events_tx: mpsc::Sender<crate::Event>,
+    ) -> bool {
+        self.lock()
+            .as_mut()
+            .map(|routes| {
+                routes.push(UdpSubscriptionRoute {
+                    key,
+                    remote,
+                    events_tx,
+                });
+            })
+            .is_some()
+    }
+
+    /// Route a notification of `service_id` with `interface_version` sent from `from`.
+    ///
+    /// Dropped subscriptions are pruned first; once none is left, the socket is
+    /// closed. The notification goes to the subscription of `service_id` whose
+    /// server sent it: the current discovered offer of the subscription's service
+    /// instance, checked like on the shared client RPC endpoint (so it follows
+    /// an offer refresh that moves the endpoint), or the server endpoint the
+    /// subscription was sent to if that instance is not discovered. A server
+    /// offers each instance and major version of a service from its own
+    /// endpoint. Notifications from any other sender, e.g. an instance whose
+    /// subscription already left the socket, are not delivered. Should several
+    /// major versions be offered from one endpoint, the interface version picks
+    /// the subscription.
+    pub(crate) fn route(
+        &self,
+        service_id: u16,
+        interface_version: u8,
+        from: SocketAddrV4,
+        discovered: &DashMap<ServiceKey, DiscoveredService>,
+    ) -> UdpRoute {
+        Self::route_in(
+            &mut self.lock(),
+            service_id,
+            interface_version,
+            from,
+            discovered,
+        )
+    }
+
+    /// [`Self::route`] on the locked routes; `None` once the socket is closed.
+    fn route_in(
+        slot: &mut Option<Vec<UdpSubscriptionRoute>>,
+        service_id: u16,
+        interface_version: u8,
+        from: SocketAddrV4,
+        discovered: &DashMap<ServiceKey, DiscoveredService>,
+    ) -> UdpRoute {
+        let Some(routes) = slot.as_mut() else {
+            return UdpRoute::Closed;
+        };
+        routes.retain(|route| !route.events_tx.is_closed());
+        if routes.is_empty() {
+            *slot = None;
+            return UdpRoute::Closed;
+        }
+
+        let sent_from = |route: &&UdpSubscriptionRoute| {
+            route.key.service_id == service_id
+                && discovered
+                    .get(&route.key)
+                    .map_or(route.remote == from, |offer| offer.sends_from(from))
+        };
+        let mut candidates = routes.iter().filter(sent_from);
+        let target = match (candidates.next(), candidates.next()) {
+            (only, None) => only,
+            (_, Some(_)) => routes
+                .iter()
+                .filter(sent_from)
+                .find(|route| route.key.major_version == interface_version),
+        };
+        target.map_or(UdpRoute::Unrouted, |route| {
+            UdpRoute::Deliver(route.key, route.events_tx.clone())
+        })
+    }
+
+    /// Close the socket: it takes no more routes.
+    pub(crate) fn close(&self) {
+        *self.lock() = None;
+    }
+
+    /// Keep only the routes for which `keep(key, events_tx)` holds.
+    ///
+    /// Removed routes no longer hold their subscription's channel open.
+    /// Returns `false` once the socket is closed.
+    fn retain(
+        &self,
+        mut keep: impl FnMut(&ServiceKey, &mpsc::Sender<crate::Event>) -> bool,
+    ) -> bool {
+        self.lock()
+            .as_mut()
+            .map(|routes| routes.retain(|route| keep(&route.key, &route.events_tx)))
+            .is_some()
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Option<Vec<UdpSubscriptionRoute>>> {
+        // No route update can panic halfway, so a poisoned lock still holds consistent routes.
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
 }
 
 /// Pending RPC call (client-side)
@@ -534,6 +698,10 @@ pub struct RuntimeState {
     /// within the SAME service (events can be routed by `service_id` in header, but not by eventgroup).
     /// Key: port number, Value: set of (`service_id`, `instance_id`) using that port
     pub(crate) subscription_endpoint_usage: HashMap<u16, HashSet<(u16, u16)>>,
+    /// Event routes of each dedicated UDP subscription socket, by local port.
+    /// A subscription sharing an open socket is added to its routes, so the
+    /// socket delivers that subscription's events to it.
+    pub(crate) udp_subscription_routes: HashMap<u16, UdpSubscriptionRoutes>,
     payload_session_id: u16,
     /// TCP connection keys that are in-flight (allocated but not yet committed to `subscriptions`).
     ///
@@ -586,6 +754,7 @@ impl RuntimeState {
             // Same wrap rule as the auto-port scan in server.rs: MAX → 1, skip 0.
             next_server_rpc_port: local_endpoint.port().checked_add(1).unwrap_or(1),
             subscription_endpoint_usage: HashMap::new(),
+            udp_subscription_routes: HashMap::new(),
             pending_tcp_conn_keys: HashMap::new(),
         }
     }
@@ -810,6 +979,28 @@ impl RuntimeState {
                 self.subscription_endpoint_usage.remove(&port);
             }
         }
+    }
+
+    /// Drop the dedicated UDP subscription socket routes of subscriptions that
+    /// are no longer in [`Self::subscriptions`], and the routes of closed sockets.
+    ///
+    /// Call after removing client subscriptions (service stopped offering,
+    /// expired, peer rebooted, NACK): a route holds a clone of the
+    /// subscription's channel, so the `Subscription` only ends (`next()`
+    /// returns `None`) once its route is gone too.
+    ///
+    /// A socket's routes are only removed here, once the socket is closed, and
+    /// not when its port is unregistered: port usage does not tell major
+    /// versions apart, so a live route may remain on an unregistered port.
+    pub(crate) fn prune_udp_subscription_routes(&mut self) {
+        let subscriptions = &self.subscriptions;
+        self.udp_subscription_routes.retain(|_, routes| {
+            routes.retain(|key, events_tx| {
+                subscriptions.get(key).is_some_and(|subs| {
+                    subs.iter().any(|sub| sub.events_tx.same_channel(events_tx))
+                })
+            })
+        });
     }
 
     /// Record client subscription state and track pending subscriptions.
@@ -1499,6 +1690,197 @@ mod tests {
         assert!(
             tcp_rx.try_recv().is_err(),
             "TCP subscriber must not receive UDP event"
+        );
+    }
+
+    fn udp_offer(endpoint: SocketAddrV4) -> DiscoveredService {
+        DiscoveredService {
+            offered_endpoints: OfferedEndpoints::UdpOnly(endpoint),
+            sd_endpoint: endpoint,
+            minor_version: 0,
+            ttl_expires: Instant::now(),
+        }
+    }
+
+    /// Two instances of one service sharing a dedicated UDP subscription socket
+    /// are told apart by the server endpoint each notification comes from; two
+    /// major versions offered from one endpoint by the interface version.
+    /// (None discovered: the endpoints the subscriptions were sent to decide.)
+    #[test_log::test]
+    fn udp_subscription_routes_tell_instances_apart_by_sender() {
+        let instance_1 = ServiceKey {
+            service_id: 0x1234,
+            instance_id: 1,
+            major_version: 1,
+        };
+        let instance_2 = ServiceKey {
+            instance_id: 2,
+            ..instance_1
+        };
+        let instance_2_v2 = ServiceKey {
+            major_version: 2,
+            ..instance_2
+        };
+        let server_1: SocketAddrV4 = "10.0.0.1:30501".parse().unwrap();
+        let server_2: SocketAddrV4 = "10.0.0.2:30501".parse().unwrap();
+        let discovered = DashMap::new();
+
+        let (tx_1, _rx_1) = mpsc::channel(1);
+        let (tx_2, _rx_2) = mpsc::channel(1);
+        let (tx_2_v2, _rx_2_v2) = mpsc::channel(1);
+        let routes = UdpSubscriptionRoutes::new(instance_1, server_1, tx_1.clone());
+        assert!(routes.add(instance_2, server_2, tx_2.clone()));
+        assert!(routes.add(instance_2_v2, server_2, tx_2_v2.clone()));
+
+        for (from, interface_version, expected) in [
+            (server_1, 1, &tx_1),
+            (server_2, 1, &tx_2),
+            (server_2, 2, &tx_2_v2),
+        ] {
+            assert!(
+                matches!(
+                    routes.route(0x1234, interface_version, from, &discovered),
+                    UdpRoute::Deliver(_, tx) if tx.same_channel(expected)
+                ),
+                "a v{interface_version} notification from {from} must reach the subscription \
+                 of that instance and major version"
+            );
+        }
+        assert!(
+            matches!(
+                routes.route(0x1234, 1, "10.0.0.3:30501".parse().unwrap(), &discovered),
+                UdpRoute::Unrouted
+            ),
+            "a notification from no subscribed server must not be guessed"
+        );
+        assert!(
+            matches!(
+                routes.route(0x5678, 1, server_1, &discovered),
+                UdpRoute::Unrouted
+            ),
+            "a notification of another service must not be delivered"
+        );
+    }
+
+    /// An instance that left a shared dedicated UDP subscription socket may still
+    /// send there (its StopSubscribe is pending or lost, or only its offer expired
+    /// on the client). The remaining instance of the same service must not
+    /// receive those notifications.
+    #[test_log::test]
+    fn udp_subscription_routes_ignore_departed_instance() {
+        let departed = ServiceKey {
+            service_id: 0x1234,
+            instance_id: 1,
+            major_version: 1,
+        };
+        let remaining = ServiceKey {
+            instance_id: 2,
+            ..departed
+        };
+        let departed_server: SocketAddrV4 = "10.0.0.1:30501".parse().unwrap();
+        let remaining_server: SocketAddrV4 = "10.0.0.2:30501".parse().unwrap();
+
+        // Departed instance still discovered (dropped subscription) or expired.
+        for departed_still_discovered in [true, false] {
+            let discovered = DashMap::new();
+            discovered.insert(remaining, udp_offer(remaining_server));
+            if departed_still_discovered {
+                discovered.insert(departed, udp_offer(departed_server));
+            }
+
+            let (departed_tx, departed_rx) = mpsc::channel(1);
+            let (remaining_tx, _remaining_rx) = mpsc::channel(1);
+            let routes = UdpSubscriptionRoutes::new(departed, departed_server, departed_tx);
+            assert!(routes.add(remaining, remaining_server, remaining_tx.clone()));
+            drop(departed_rx);
+
+            assert!(
+                matches!(
+                    routes.route(0x1234, 1, departed_server, &discovered),
+                    UdpRoute::Unrouted
+                ),
+                "departed instance's notification must not reach the remaining instance \
+                 (departed still discovered: {departed_still_discovered})"
+            );
+            assert!(matches!(
+                routes.route(0x1234, 1, remaining_server, &discovered),
+                UdpRoute::Deliver(_, tx) if tx.same_channel(&remaining_tx)
+            ));
+        }
+    }
+
+    /// A discovered offer that moved to a new endpoint (offer refresh) decides the
+    /// sender over the endpoint the subscription was originally sent to.
+    #[test_log::test]
+    fn udp_subscription_routes_follow_discovered_offer_endpoint() {
+        let key = ServiceKey {
+            service_id: 0x1234,
+            instance_id: 1,
+            major_version: 1,
+        };
+        let old_endpoint: SocketAddrV4 = "10.0.0.1:30501".parse().unwrap();
+        let new_endpoint: SocketAddrV4 = "10.0.0.1:30502".parse().unwrap();
+        let discovered = DashMap::new();
+        discovered.insert(key, udp_offer(new_endpoint));
+
+        let (tx, _rx) = mpsc::channel(1);
+        let routes = UdpSubscriptionRoutes::new(key, old_endpoint, tx.clone());
+
+        assert!(matches!(
+            routes.route(0x1234, 1, new_endpoint, &discovered),
+            UdpRoute::Deliver(_, delivered) if delivered.same_channel(&tx)
+        ));
+        assert!(matches!(
+            routes.route(0x1234, 1, old_endpoint, &discovered),
+            UdpRoute::Unrouted
+        ));
+    }
+
+    /// A subscription sharing a dedicated UDP subscription socket keeps receiving
+    /// after the socket owner is dropped; the socket closes once every subscription
+    /// is dropped, and then takes no more subscriptions.
+    #[test_log::test]
+    fn udp_subscription_routes_close_when_every_subscription_dropped() {
+        let owner = ServiceKey {
+            service_id: 0x1111,
+            instance_id: 1,
+            major_version: 1,
+        };
+        let sharer = ServiceKey {
+            service_id: 0x2222,
+            ..owner
+        };
+        // One server offers both services from one endpoint.
+        let server: SocketAddrV4 = "10.0.0.1:30501".parse().unwrap();
+        let discovered = DashMap::new();
+
+        let (owner_tx, owner_rx) = mpsc::channel(1);
+        let (sharer_tx, sharer_rx) = mpsc::channel(1);
+        let routes = UdpSubscriptionRoutes::new(owner, server, owner_tx);
+        assert!(routes.add(sharer, server, sharer_tx.clone()));
+
+        drop(owner_rx);
+        assert!(
+            matches!(
+                routes.route(sharer.service_id, 1, server, &discovered),
+                UdpRoute::Deliver(_, tx) if tx.same_channel(&sharer_tx)
+            ),
+            "the sharing subscription must outlive the socket owner"
+        );
+        assert!(matches!(
+            routes.route(owner.service_id, 1, server, &discovered),
+            UdpRoute::Unrouted
+        ));
+
+        drop(sharer_rx);
+        assert!(matches!(
+            routes.route(sharer.service_id, 1, server, &discovered),
+            UdpRoute::Closed
+        ));
+        let (late_tx, _late_rx) = mpsc::channel(1);
+        assert!(
+            !routes.add(owner, server, late_tx),
+            "a closed socket must not take new subscriptions"
         );
     }
 }

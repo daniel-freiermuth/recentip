@@ -395,7 +395,7 @@ pub async fn runtime_task<U: UdpSocket, T: TcpStream, L: TcpListener<Stream = T>
                             // UDP path: Handle inline (binding is instant)
                             client::handle_subscribe_udp::<U>(
                                 service_id, instance_id, major_version, eventgroup_ids,
-                                events, response, sd_endpoint, local_port, &mut state
+                                events, response, sd_endpoint, remote_endpoint, local_port, &mut state
                             ).await;
                         }
                     }
@@ -961,6 +961,7 @@ fn expire_services_from_rebooted_peer(
 
                 state.find_requests.remove(&key);
                 state.subscriptions.remove(&key);
+                state.prune_udp_subscription_routes();
             }
         }
     }
@@ -1461,6 +1462,7 @@ fn handle_periodic(state: &mut RuntimeState) -> Option<Vec<Action>> {
         if state.discovered.remove(&key).is_some() {
             // Also clear any cached subscriptions to this service since it's no longer available
             state.subscriptions.remove(&key);
+            state.prune_udp_subscription_routes();
 
             // Emit SD event to monitors
             actions.push(Action::EmitSdEvent {
