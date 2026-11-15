@@ -2858,6 +2858,8 @@ const RELEASE_CLIENT_PORT: u16 = 49633;
 enum AfterDrop {
     /// Stay idle for 500 ms, then bind the port directly (bypassing the runtime).
     BindPortAfterIdle,
+    /// Subscribe again on the same port without yielding in between.
+    ResubscribeImmediately,
 }
 
 /// Subscribe on [`RELEASE_CLIENT_PORT`], drop the subscription, then run
@@ -2940,6 +2942,18 @@ fn run_fixed_port_release_scenario(after_drop: AfterDrop) {
                     );
                 }
             }
+            AfterDrop::ResubscribeImmediately => {
+                let second =
+                    tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+                        .await
+                        .expect("second subscribe timeout");
+                if let Err(e) = second {
+                    panic!(
+                        "re-subscribing on fixed port {RELEASE_CLIENT_PORT} right after dropping \
+                         the previous subscription must succeed, got: {e}"
+                    );
+                }
+            }
         }
 
         Ok(())
@@ -2953,4 +2967,12 @@ fn run_fixed_port_release_scenario(after_drop: AfterDrop) {
 #[test_log::test]
 fn udp_dropped_subscription_releases_fixed_port_without_traffic() {
     run_fixed_port_release_scenario(AfterDrop::BindPortAfterIdle);
+}
+
+/// `drop(sub); proxy.subscribe(eg).await` on the same fixed port must succeed:
+/// the runtime must not bind the port again while the dropped subscription's
+/// socket task has not yet run.
+#[test_log::test]
+fn udp_resubscribe_on_fixed_port_right_after_drop_succeeds() {
+    run_fixed_port_release_scenario(AfterDrop::ResubscribeImmediately);
 }

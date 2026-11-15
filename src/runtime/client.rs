@@ -60,7 +60,9 @@ use super::command::ServiceAvailability;
 use super::sd::{
     Action, build_find_message, build_subscribe_message_multi, build_unsubscribe_message,
 };
-use super::state::{CallKey, FindRequest, PendingCall, RuntimeState, ServiceKey};
+use super::state::{
+    CallKey, DedicatedSubscriptionSocket, FindRequest, PendingCall, RuntimeState, ServiceKey,
+};
 use crate::config::{DEFAULT_FIND_REPETITIONS, PortSpec, Transport};
 use crate::net::UdpSocket;
 use crate::wire::{Header, MessageType};
@@ -100,6 +102,35 @@ impl DroppedEventTracker {
 // PER-SUBSCRIPTION UDP SOCKET
 // ============================================================================
 
+/// Wait until a dedicated subscription socket left on `port` by a dropped subscription
+/// is closed, so that `port` can be bound again.
+///
+/// The dropped `Subscription` closes its event channel before the runtime handles its
+/// `Unsubscribe`, but the socket task only releases the socket once it gets polled.
+/// A task whose channel is still open serves a live subscription; it is left alone
+/// (the following bind then reports `AddrInUse`, as the port really is in use).
+async fn await_released_subscription_socket(state: &mut RuntimeState, port: u16) {
+    let Some(previous) = state.dedicated_subscription_sockets.remove(&port) else {
+        return;
+    };
+    let receiver_dropped = previous
+        .events_tx
+        .upgrade()
+        .is_none_or(|events_tx| events_tx.is_closed());
+    if !receiver_dropped {
+        state.dedicated_subscription_sockets.insert(port, previous);
+        return;
+    }
+    // The task selects on `events_tx.closed()`, so it exits on its next poll.
+    if let Err(e) = previous.task.await {
+        tracing::warn!(
+            "UDP subscription socket task on port {} failed: {}",
+            port,
+            e
+        );
+    }
+}
+
 /// Helper: Spawn a per-subscription UDP socket task
 ///
 /// Creates a dedicated UDP socket for a subscription, binds it to an ephemeral port,
@@ -107,9 +138,12 @@ impl DroppedEventTracker {
 /// `events_tx` channel.
 /// The task (and with it the socket) ends as soon as the `Subscription` holding the
 /// receiving side of `events_tx` is dropped, without waiting for another datagram.
+/// The task is tracked in `RuntimeState::dedicated_subscription_sockets`; a fixed port
+/// still held by the task of a dropped subscription is awaited before binding it again.
 ///
 /// Returns the local endpoint (IP + ephemeral port) to use in the SD Subscribe message.
 async fn spawn_udp_subscription_socket<U: UdpSocket>(
+    state: &mut RuntimeState,
     unicast_ip: Ipv4Addr,
     events_tx: mpsc::Sender<crate::Event>,
     service_id: crate::ServiceId,
@@ -117,6 +151,9 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
     eventgroup_id: u16,
     local_port: PortSpec,
 ) -> std::io::Result<SocketAddrV4> {
+    if let PortSpec::Fixed(port) = local_port {
+        await_released_subscription_socket(state, port).await;
+    }
     let socket = match local_port {
         PortSpec::Any => U::bind(SocketAddrV4::new(unicast_ip, 0)).await?,
         PortSpec::Fixed(port) => U::bind(SocketAddrV4::new(unicast_ip, port)).await?,
@@ -158,7 +195,8 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
     );
 
     // Spawn task to receive events on this dedicated socket
-    tokio::spawn(async move {
+    let weak_events_tx = events_tx.downgrade();
+    let task = tokio::spawn(async move {
         let mut buf = vec![0u8; 65535];
         let mut drops = DroppedEventTracker::default();
         loop {
@@ -273,6 +311,18 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
 
         tracing::debug!("UDP subscription socket {} task exiting", local_endpoint);
     });
+
+    // Forget tasks that have ended, so ports bound with `PortSpec::Any` do not accumulate.
+    state
+        .dedicated_subscription_sockets
+        .retain(|_, socket| !socket.task.is_finished());
+    state.dedicated_subscription_sockets.insert(
+        local_endpoint.port(),
+        DedicatedSubscriptionSocket {
+            task,
+            events_tx: weak_events_tx,
+        },
+    );
 
     Ok(local_endpoint)
 }
@@ -583,6 +633,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
 
         // No reusable/existing endpoint found — create a new dedicated socket
         match spawn_udp_subscription_socket::<U>(
+            state,
             endpoint_ip,
             incoming_events_channel.clone(),
             service_id,
@@ -645,6 +696,7 @@ pub async fn handle_subscribe_udp<U: UdpSocket>(
         } else {
             // No existing socket — bind a dedicated one on the requested port.
             match spawn_udp_subscription_socket::<U>(
+                state,
                 endpoint_ip,
                 incoming_events_channel.clone(),
                 service_id,
