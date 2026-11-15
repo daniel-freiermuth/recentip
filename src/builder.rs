@@ -55,7 +55,7 @@ use crate::config::{
     DEFAULT_SUBSCRIBE_TTL, MulticastAddress, RuntimeConfig, TcpKeepaliveConfig, Transport,
     TransportPolicy, UnicastAddress, clamp_ttl_to_24bit,
 };
-use crate::error::Result;
+use crate::error::{ConfigError, Error, Result};
 use crate::handles::SomeIp;
 use crate::net::{TcpListener, TcpStream, UdpSocket};
 
@@ -261,6 +261,9 @@ impl<A, MC> SomeIpBuilder<A, MC> {
     /// clamped to `SD_TTL_INFINITE` to prevent silent truncation during
     /// serialization.
     ///
+    /// Must be non-zero: a TTL of 0 encodes `StopOfferService` on the wire.
+    /// [`start`](SomeIpBuilder::start) returns [`Error::Config`] otherwise.
+    ///
     /// Default: 3600 seconds
     pub fn offer_ttl(mut self, ttl: u32) -> Self {
         self.offer_ttl = clamp_ttl_to_24bit(ttl, "offer_ttl");
@@ -316,6 +319,10 @@ impl<A, MC> SomeIpBuilder<A, MC> {
     /// participant reliability. For events delivered via TCP, there is no
     /// point in setting a finite subscription TTL.
     ///
+    /// Must be non-zero: a TTL of 0 encodes `StopSubscribeEventgroup` on the
+    /// wire. [`start`](SomeIpBuilder::start) returns [`Error::Config`]
+    /// otherwise.
+    ///
     /// Default: 3600 seconds
     pub fn subscribe_ttl(mut self, ttl: u32) -> Self {
         self.subscribe_ttl = clamp_ttl_to_24bit(ttl, "subscribe_ttl");
@@ -324,7 +331,8 @@ impl<A, MC> SomeIpBuilder<A, MC> {
 
     /// Set interval between cyclic offers (in milliseconds).
     ///
-    /// This must be strictly less than `offer_ttl`.
+    /// This must be strictly less than `offer_ttl` and non-zero.
+    /// [`start`](SomeIpBuilder::start) returns [`Error::Config`] for 0.
     ///
     /// Default: 1000 ms
     pub const fn cyclic_offer_delay(mut self, delay_ms: u64) -> Self {
@@ -525,6 +533,10 @@ impl SomeIpBuilder<UnicastAddress, MulticastAddress> {
         T: TcpStream,
         L: TcpListener<Stream = T>,
     {
+        reject_zero(u64::from(self.offer_ttl), "offer_ttl")?;
+        reject_zero(u64::from(self.subscribe_ttl), "subscribe_ttl")?;
+        reject_zero(self.cyclic_offer_delay, "cyclic_offer_delay")?;
+
         let config = RuntimeConfig {
             sd_multicast: self.sd_multicast,
             sd_unicast: self.sd_unicast,
@@ -541,6 +553,16 @@ impl SomeIpBuilder<UnicastAddress, MulticastAddress> {
         };
         SomeIp::new(config).await
     }
+}
+
+/// Reject a configuration value of 0 where 0 has stop/flood semantics.
+fn reject_zero(value: u64, field_name: &str) -> Result<()> {
+    if value == 0 {
+        return Err(Error::Config(ConfigError::new(format!(
+            "{field_name} must be greater than 0"
+        ))));
+    }
+    Ok(())
 }
 
 // Feature-gated turmoil helper

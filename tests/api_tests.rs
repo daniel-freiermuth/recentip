@@ -2576,3 +2576,45 @@ fn test_discovered_services() {
 
     sim.run().unwrap();
 }
+
+/// A TTL of 0 means "stop" on the wire (StopOffer / StopSubscribe), and a
+/// cyclic offer delay of 0 floods the SD multicast group. The builder must
+/// reject these values instead of starting a runtime that can never be
+/// discovered / subscribed to.
+#[test_log::test]
+fn test_start_rejects_zero_ttls_and_cyclic_delay() {
+    use recentip::config::{MulticastAddress, UnicastAddress};
+    type Builder = recentip::SomeIpBuilder<UnicastAddress, MulticastAddress>;
+    type Configure = fn(Builder) -> Builder;
+    let cases: [(&str, Configure); 3] = [
+        ("offer_ttl", |b| b.offer_ttl(0)),
+        ("subscribe_ttl", |b| b.subscribe_ttl(0)),
+        ("cyclic_offer_delay", |b| b.cyclic_offer_delay(0)),
+    ];
+
+    for (field, configure) in cases {
+        let mut sim = turmoil::Builder::new()
+            .simulation_duration(Duration::from_secs(5))
+            .build();
+
+        sim.client("node", async move {
+            let builder = recentip::configure()
+                .sd_multicast_group(DEFAULT_SD_MULTICAST)
+                .sd_unicast(crate::helpers::unicast(turmoil::lookup("node")));
+            let result = configure(builder).start_turmoil().await;
+
+            match result {
+                Err(recentip::Error::Config(e)) => assert!(
+                    e.message.contains(field),
+                    "Config error should name {field}, got: {}",
+                    e.message
+                ),
+                Err(e) => panic!("{field}=0: expected Config error, got: {e:?}"),
+                Ok(_) => panic!("{field}=0: start() must reject the value, but succeeded"),
+            }
+            Ok(())
+        });
+
+        sim.run().unwrap();
+    }
+}
