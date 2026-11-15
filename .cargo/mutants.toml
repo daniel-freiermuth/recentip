@@ -28,6 +28,9 @@ test_workspace = true
 # Features: turmoil is required for the integration test suite
 additional_cargo_args = ["--features", "turmoil"]
 
+# nextest profile that terminates hung tests (see .config/nextest.toml)
+additional_cargo_test_args = ["--profile", "mutants"]
+
 # --- Filters ---
 
 # Exclude files that contain no meaningful logic to mutate:

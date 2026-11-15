@@ -438,7 +438,7 @@ pub enum UdpRoute {
 struct UdpSubscriptionRoutesInner {
     /// Routes of the socket; `None` once the socket is closed.
     routes: Mutex<Option<Vec<UdpSubscriptionRoute>>>,
-    /// Wakes the receiver task when routes were removed or the socket was
+    /// Wakes the receiver task when routes were pruned or the socket was
     /// closed, so it stops waiting on the removed routes' channels.
     removed: Notify,
 }
@@ -574,7 +574,7 @@ impl UdpSubscriptionRoutes {
             .map(|routes| routes.iter().map(|route| route.events_tx.clone()).collect())
     }
 
-    /// Wait until routes are removed from the socket or the socket is closed.
+    /// Wait until routes are pruned from the socket or the socket is closed.
     pub(crate) async fn removed(&self) {
         self.0.removed.notified().await;
     }
@@ -593,18 +593,15 @@ impl UdpSubscriptionRoutes {
         self.0.removed.notify_one();
     }
 
-    /// Keep only the routes for which `keep(key, events_tx)` holds.
+    /// Keep only the routes for which `keep(key, events_tx)` holds, and wake the
+    /// receiver task to refresh the channels it waits on.
     ///
     /// Removed routes no longer hold their subscription's channel open.
     fn retain(&self, mut keep: impl FnMut(&ServiceKey, &mpsc::Sender<crate::Event>) -> bool) {
-        let removed = self.lock().as_mut().is_some_and(|routes| {
-            let before = routes.len();
+        if let Some(routes) = self.lock().as_mut() {
             routes.retain(|route| keep(&route.key, &route.events_tx));
-            routes.len() < before
-        });
-        if removed {
-            self.0.removed.notify_one();
         }
+        self.0.removed.notify_one();
     }
 
     fn lock(&self) -> MutexGuard<'_, Option<Vec<UdpSubscriptionRoute>>> {

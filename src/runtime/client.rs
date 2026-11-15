@@ -1410,6 +1410,37 @@ mod tests {
             .unwrap();
     }
 
+    /// A subscription asking for the fixed port of a dedicated UDP subscription
+    /// socket whose subscription is still alive must not take the socket away
+    /// from it: only the socket of dropped subscriptions is released for rebinding.
+    #[test_log::test(tokio::test)]
+    async fn live_udp_subscription_socket_is_kept_when_its_fixed_port_is_requested() {
+        let owner = ServiceKey {
+            service_id: 0x1111,
+            instance_id: 1,
+            major_version: 1,
+        };
+        let other = ServiceKey {
+            service_id: 0x2222,
+            ..owner
+        };
+        let port = 40003;
+        let mut state = test_state();
+        let (owner_tx, mut owner_rx) = mpsc::channel(1);
+        spawn_silent_socket(&mut state, port, owner, owner_tx).await;
+        // Let the receiver task start waiting on the subscription's channel.
+        tokio::task::yield_now().await;
+
+        let (other_tx, _other_rx) = mpsc::channel(1);
+        spawn_silent_socket(&mut state, port, other, other_tx).await;
+        tokio::task::yield_now().await;
+
+        assert!(
+            matches!(owner_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
+            "the live subscription must keep its socket"
+        );
+    }
+
     /// A subscription removed from the runtime (e.g. its service stopped offering)
     /// ends even though no datagram arrives on its dedicated UDP subscription
     /// socket: the receiver task must not keep its channel open.

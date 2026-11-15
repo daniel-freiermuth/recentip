@@ -5,3 +5,12 @@ max-threads = 1
 [[profile.default.overrides]]
 filter = 'test(real_network::)'
 test-group = 'real-network'
+
+# Used by cargo-mutants (see .cargo/mutants.toml). A mutant that turns a wait
+# into a busy loop hangs the single-threaded test runtime, so no assertion can
+# fail. Terminating hung tests counts the mutant as caught instead of running
+# into cargo-mutants' own timeout (60 s), and the first failure ends the run.
+# The slowest test takes about 15 s.
+[profile.mutants]
+slow-timeout = { period = "20s", terminate-after = 2 }
+fail-fast = { max-fail = 1, terminate = "immediate" }
