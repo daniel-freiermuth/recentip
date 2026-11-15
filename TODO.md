@@ -110,6 +110,7 @@ Items not yet scheduled:
 - `cargo test` (shared test process) fails ~26 tests at `tests/helpers.rs:248` `.expect("Configure tracing")` — global tracing subscriber init races between tests; `cargo nextest run` (process-per-test) is unaffected. Make init idempotent (`try_init`/`Once`)
 - Backpressure on shared/TCP event paths: `handle_incoming_notification` (`src/runtime/client.rs`, `let _ = sub.events_tx.try_send(..)` and static listeners) drops events on a full channel without any log; align with the dedicated UDP socket path (warn on drop, rate-limited)
 - `test_event_subscription` (`tests/api_tests.rs`) registers both nodes via `sim.host`, so `sim.run()` returns before either runs; client must be `sim.client`
+- Flaky (1 failure in 56 local stress iterations): `tcp_binding::server_detects_client_reboot_clears_subscriptions_port_reuse` — turmoil can deliver the wire client's post-reboot SD Subscribes (session 1, then 2) out of order; the server sees session 2 → 1, detects a reboot after the fresh connections exist and closes SERVICE3's new TCP connection ("SERVICE3 TCP connection closed unexpectedly!"). Fix ordering in the test (await SERVICE2's ACK before subscribing SERVICE3, or one SD message with both entries)
 
 ---
 
