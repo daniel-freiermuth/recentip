@@ -105,6 +105,8 @@ impl DroppedEventTracker {
 /// Creates a dedicated UDP socket for a subscription, binds it to an ephemeral port,
 /// and spawns a task to receive events and route them directly to the subscription's
 /// `events_tx` channel.
+/// The task (and with it the socket) ends as soon as the `Subscription` holding the
+/// receiving side of `events_tx` is dropped, without waiting for another datagram.
 ///
 /// Returns the local endpoint (IP + ephemeral port) to use in the SD Subscribe message.
 async fn spawn_udp_subscription_socket<U: UdpSocket>(
@@ -160,7 +162,20 @@ async fn spawn_udp_subscription_socket<U: UdpSocket>(
         let mut buf = vec![0u8; 65535];
         let mut drops = DroppedEventTracker::default();
         loop {
-            match socket.recv_from(&mut buf).await {
+            // Wait for a datagram, or for the Subscription (receiver) to be dropped:
+            // the server stops sending after StopSubscribe, so waiting for the next
+            // datagram alone would keep the socket (and its port) bound indefinitely.
+            let received = tokio::select! {
+                result = socket.recv_from(&mut buf) => result,
+                () = events_tx.closed() => {
+                    tracing::debug!(
+                        "Subscription dropped for socket {}, shutting down receiver task",
+                        local_endpoint
+                    );
+                    break;
+                }
+            };
+            match received {
                 Ok((len, from)) => {
                     let Some(data) = buf.get(..len) else {
                         continue;
