@@ -2852,6 +2852,8 @@ fn udp_subscription_does_not_reuse_tcp_subscription_port() {
 const RELEASE_SERVICE_ID: u16 = 0x6633;
 /// Fixed local port the client binds its dedicated subscription socket to.
 const RELEASE_CLIENT_PORT: u16 = 49633;
+/// Fixed local port of a second, long-lived dedicated subscription socket.
+const RELEASE_OTHER_CLIENT_PORT: u16 = 49634;
 
 /// What the client does right after dropping its fixed-port subscription.
 #[derive(Clone, Copy)]
@@ -2860,6 +2862,10 @@ enum AfterDrop {
     BindPortAfterIdle,
     /// Subscribe again on the same port without yielding in between.
     ResubscribeImmediately,
+    /// Like `ResubscribeImmediately`, but another eventgroup of the service was
+    /// subscribed on its own dedicated socket ([`RELEASE_OTHER_CLIENT_PORT`])
+    /// before the drop, and that subscription stays alive throughout.
+    ResubscribeImmediatelyWhileOtherSocketOpen,
 }
 
 /// Subscribe on [`RELEASE_CLIENT_PORT`], drop the subscription, then run
@@ -2925,6 +2931,28 @@ fn run_fixed_port_release_scenario(after_drop: AfterDrop) {
             .await
             .expect("first subscribe timeout")
             .expect("first subscribe binds the fixed port");
+
+        // Binding another dedicated socket must not make the runtime forget the
+        // socket task of `first`, which is still alive at this point.
+        let other = match after_drop {
+            AfterDrop::ResubscribeImmediatelyWhileOtherSocketOpen => {
+                let other_proxy = proxy
+                    .clone()
+                    .with_transport_policy(TransportPolicy::new(vec![
+                        TransportPreference::udp().with_port(RELEASE_OTHER_CLIENT_PORT),
+                    ]));
+                let other_eventgroup = recentip::EventgroupId::new(0x0002).unwrap();
+                let other = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    other_proxy.subscribe(other_eventgroup),
+                )
+                .await
+                .expect("other subscribe timeout")
+                .expect("other subscribe binds its own fixed port");
+                Some(other)
+            }
+            AfterDrop::BindPortAfterIdle | AfterDrop::ResubscribeImmediately => None,
+        };
         drop(first);
 
         match after_drop {
@@ -2942,7 +2970,8 @@ fn run_fixed_port_release_scenario(after_drop: AfterDrop) {
                     );
                 }
             }
-            AfterDrop::ResubscribeImmediately => {
+            AfterDrop::ResubscribeImmediately
+            | AfterDrop::ResubscribeImmediatelyWhileOtherSocketOpen => {
                 let second =
                     tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
                         .await
@@ -2955,6 +2984,7 @@ fn run_fixed_port_release_scenario(after_drop: AfterDrop) {
                 }
             }
         }
+        drop(other);
 
         Ok(())
     });
@@ -2975,4 +3005,13 @@ fn udp_dropped_subscription_releases_fixed_port_without_traffic() {
 #[test_log::test]
 fn udp_resubscribe_on_fixed_port_right_after_drop_succeeds() {
     run_fixed_port_release_scenario(AfterDrop::ResubscribeImmediately);
+}
+
+/// Same as [`udp_resubscribe_on_fixed_port_right_after_drop_succeeds`], with
+/// another subscription of the service bound to its own dedicated socket in
+/// between: opening that socket must not lose track of the dropped
+/// subscription's socket task, which still holds the fixed port.
+#[test_log::test]
+fn udp_resubscribe_on_fixed_port_right_after_drop_succeeds_while_other_socket_open() {
+    run_fixed_port_release_scenario(AfterDrop::ResubscribeImmediatelyWhileOtherSocketOpen);
 }
