@@ -396,6 +396,16 @@ pub struct ClientSubscription {
     // pub(crate) sd_endpoint: SocketAddr,
 }
 
+/// Receiver task of a dedicated UDP subscription socket (client-side).
+///
+/// The task owns the socket, so its port stays bound until the task has ended.
+pub struct DedicatedSubscriptionSocket {
+    pub(crate) task: tokio::task::JoinHandle<()>,
+    /// Weak handle to the channel the task forwards events into; does not keep it open.
+    /// Once its receiver (the `Subscription`) is dropped, the task exits on its next poll.
+    pub(crate) events_tx: mpsc::WeakSender<crate::Event>,
+}
+
 /// Pending RPC call (client-side)
 pub struct PendingCall {
     pub(crate) response: oneshot::Sender<Result<crate::Response>>,
@@ -534,6 +544,12 @@ pub struct RuntimeState {
     /// within the SAME service (events can be routed by `service_id` in header, but not by eventgroup).
     /// Key: port number, Value: set of (`service_id`, `instance_id`) using that port
     pub(crate) subscription_endpoint_usage: HashMap<u16, HashSet<(u16, u16)>>,
+    /// Receiver task of every dedicated UDP subscription socket, keyed by its bound port.
+    /// A task may still hold its socket after the runtime processed the `Unsubscribe` and
+    /// removed the port from `subscription_endpoint_usage` (it has not been scheduled yet).
+    /// Before binding a fixed port again, the subscribe path awaits such a task here
+    /// instead of racing it.
+    pub(crate) dedicated_subscription_sockets: HashMap<u16, DedicatedSubscriptionSocket>,
     payload_session_id: u16,
     /// TCP connection keys that are in-flight (allocated but not yet committed to `subscriptions`).
     ///
@@ -586,6 +602,7 @@ impl RuntimeState {
             // Same wrap rule as the auto-port scan in server.rs: MAX → 1, skip 0.
             next_server_rpc_port: local_endpoint.port().checked_add(1).unwrap_or(1),
             subscription_endpoint_usage: HashMap::new(),
+            dedicated_subscription_sockets: HashMap::new(),
             pending_tcp_conn_keys: HashMap::new(),
         }
     }
