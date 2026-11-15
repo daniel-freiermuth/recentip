@@ -2843,3 +2843,114 @@ fn udp_subscription_does_not_reuse_tcp_subscription_port() {
         "Y EG2 subscription did not receive the event sent to {y_eg2_endpoint}"
     );
 }
+
+// ============================================================================
+// DEDICATED SOCKET LIFECYCLE TESTS
+// ============================================================================
+
+/// Service used by the dedicated-socket release tests.
+const RELEASE_SERVICE_ID: u16 = 0x6633;
+/// Fixed local port the client binds its dedicated subscription socket to.
+const RELEASE_CLIENT_PORT: u16 = 49633;
+
+/// What the client does right after dropping its fixed-port subscription.
+#[derive(Clone, Copy)]
+enum AfterDrop {
+    /// Stay idle for 500 ms, then bind the port directly (bypassing the runtime).
+    BindPortAfterIdle,
+}
+
+/// Subscribe on [`RELEASE_CLIENT_PORT`], drop the subscription, then run
+/// `after_drop`. The server never sends an event, so no datagram ever wakes
+/// the dropped subscription's receiver task.
+fn run_fixed_port_release_scenario(after_drop: AfterDrop) {
+    use recentip::config::{TransportPolicy, TransportPreference};
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("server"))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offering = runtime
+            .offer(RELEASE_SERVICE_ID, recentip::InstanceId::Id(0x0001))
+            .version(1, 0)
+            .udp()
+            .start()
+            .await
+            .unwrap();
+
+        // Serve every subscribe attempt without ever sending an event.
+        let _ = tokio::time::timeout(Duration::from_secs(10), async {
+            while offering.next().await.is_some() {}
+        })
+        .await;
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(lookup_unicast("client"))
+            .transport_policy(TransportPolicy::new(vec![
+                TransportPreference::udp().with_port(RELEASE_CLIENT_PORT),
+            ]))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let proxy = tokio::time::timeout(
+            Duration::from_secs(5),
+            runtime
+                .find(RELEASE_SERVICE_ID)
+                .instance(recentip::InstanceId::Id(0x0001)),
+        )
+        .await
+        .expect("discovery timeout")
+        .expect("service available");
+
+        let eventgroup = recentip::EventgroupId::new(0x0001).unwrap();
+
+        let first = tokio::time::timeout(Duration::from_secs(5), proxy.subscribe(eventgroup))
+            .await
+            .expect("first subscribe timeout")
+            .expect("first subscribe binds the fixed port");
+        drop(first);
+
+        match after_drop {
+            AfterDrop::BindPortAfterIdle => {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                if let Err(e) = turmoil::net::UdpSocket::bind((
+                    std::net::Ipv4Addr::UNSPECIFIED,
+                    RELEASE_CLIENT_PORT,
+                ))
+                .await
+                {
+                    panic!(
+                        "dropped subscription still holds fixed port {RELEASE_CLIENT_PORT} \
+                         after 500 ms without traffic: {e}"
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Dropping a subscription must close its dedicated UDP socket even when no
+/// datagram ever arrives on it again: the port must become bindable.
+#[test_log::test]
+fn udp_dropped_subscription_releases_fixed_port_without_traffic() {
+    run_fixed_port_release_scenario(AfterDrop::BindPortAfterIdle);
+}
