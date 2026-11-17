@@ -36,6 +36,27 @@ pub(crate) fn unicast(addr: IpAddr) -> UnicastAddress {
     UnicastAddress::try_from(ipv4(addr)).expect("expected a valid unicast IPv4 address")
 }
 
+/// Builder preconfigured with [`DEFAULT_SD_MULTICAST`] and the turmoil host's unicast address.
+#[cfg(feature = "turmoil")]
+pub(crate) fn turmoil_builder(
+    host: &str,
+) -> recentip::SomeIpBuilder<UnicastAddress, MulticastAddress> {
+    recentip::configure()
+        .sd_multicast_group(DEFAULT_SD_MULTICAST)
+        .sd_unicast(unicast(turmoil::lookup(host)))
+}
+
+/// Start a turmoil runtime on `host` with default SD settings.
+///
+/// # Panics
+/// Panics if the runtime fails to start.
+#[cfg(feature = "turmoil")]
+pub(crate) async fn start_turmoil_runtime(
+    host: &str,
+) -> recentip::SomeIp<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> {
+    turmoil_builder(host).start_turmoil().await.unwrap()
+}
+
 // Import builders from compliance test's wire_format helpers
 #[path = "compliance/wire_format/helpers.rs"]
 mod wire_format_helpers;
