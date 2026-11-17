@@ -3,7 +3,6 @@ use std::{
     time::Duration,
 };
 
-use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::{EventId, EventgroupId, InstanceId, OfferedService};
 use tracing::Instrument;
 
@@ -25,12 +24,7 @@ fn test_subscribe_drop_unsubscribes_in_time() {
     sim.host("server", move || {
         let received_unsub = unsub_receive_time_clone.clone();
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             // Offer instance 1
             let mut offering = runtime
@@ -73,12 +67,7 @@ fn test_subscribe_drop_unsubscribes_in_time() {
 
     let unsub_send_time_clone = unsub_send_time.clone();
     sim.client("client", async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let service = runtime
             .find(SERVICE_A_ID)
@@ -129,12 +118,7 @@ fn test_two_subscribers_one_drops() {
 
     sim.host("server", move || {
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             // Offer instance 1
             let mut offering = runtime
@@ -171,12 +155,7 @@ fn test_two_subscribers_one_drops() {
     });
 
     sim.client("client", async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let service = runtime
             .find(SERVICE_A_ID)
@@ -236,12 +215,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
 
     sim.host("server", move || {
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             // Offer instance 1
             let mut offering = runtime
@@ -314,10 +288,7 @@ fn test_dangling_subscription_cannot_unsubscribe() {
     });
 
     sim.client("client", async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil().await.unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let service = runtime
             .find(SERVICE_A_ID).instance(InstanceId::Id(1))
@@ -380,12 +351,7 @@ fn test_two_subscribers_get_events() {
 
     sim.host("server", move || {
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             // Offer instance 1
             let mut offering = runtime
@@ -443,12 +409,7 @@ fn test_two_subscribers_get_events() {
             );
         }
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let service = runtime
             .find(SERVICE_A_ID)

@@ -32,8 +32,6 @@ use recentip::prelude::*;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use crate::helpers::DEFAULT_SD_MULTICAST;
-
 const TEST_SERVICE_ID: u16 = 0x1234;
 const TEST_SERVICE_VERSION: (u8, u32) = (1, 0);
 
@@ -77,12 +75,7 @@ fn unknown_service_error_uses_server_port_udp() {
 
     // Server offers service 0x1234 on a specific port
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -254,12 +247,7 @@ fn misrouted_service_error_uses_receiving_port_udp() {
 
     // Server offers TWO different services on TWO different ports
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Service A on explicit port 30491
         let _offering_a = runtime
@@ -456,12 +444,7 @@ fn unknown_service_error_uses_server_port_tcp() {
 
     // Server offers service on TCP
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))

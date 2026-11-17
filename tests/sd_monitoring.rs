@@ -39,12 +39,7 @@ fn monitor_sd_receives_service_available() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -62,12 +57,7 @@ fn monitor_sd_receives_service_available() {
     sim.client("monitor", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor").await;
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Wait for an event with timeout
@@ -113,12 +103,7 @@ fn monitor_sd_receives_service_unavailable() {
         // Wait for monitor to be ready
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -140,12 +125,7 @@ fn monitor_sd_receives_service_unavailable() {
     });
 
     sim.client("monitor", async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor").await;
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Collect events for a while
@@ -198,12 +178,7 @@ fn monitor_sd_event_metadata_accuracy() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Offer with specific instance ID
         let _offering = runtime
@@ -221,12 +196,7 @@ fn monitor_sd_event_metadata_accuracy() {
     sim.client("monitor", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor").await;
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         let event = tokio::time::timeout(Duration::from_secs(5), sd_events.recv())
@@ -298,12 +268,7 @@ fn monitor_sd_multiple_monitors_receive_events() {
         // Server starts after monitors are ready
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -319,12 +284,7 @@ fn monitor_sd_multiple_monitors_receive_events() {
 
     sim.client("monitor1", async move {
         // Start monitors first so they don't miss events
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor1")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor1").await;
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Collect events
@@ -340,12 +300,7 @@ fn monitor_sd_multiple_monitors_receive_events() {
     });
 
     sim.client("monitor2", async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor2")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor2").await;
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Collect events
@@ -424,12 +379,7 @@ fn monitor_sd_multiple_monitors_same_runtime() {
     sim.client("monitor_host", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor_host")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor_host").await;
 
         // Create two monitors on the same runtime
         let mut sd_events1 = runtime.monitor_sd().await.unwrap();
@@ -510,12 +460,7 @@ fn monitor_sd_multiple_services() {
         .build();
 
     sim.host("server1", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server1")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server1").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -530,12 +475,7 @@ fn monitor_sd_multiple_services() {
     });
 
     sim.host("server2", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server2")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server2").await;
 
         let _offering = runtime
             .offer(ANOTHER_SERVICE_ID, InstanceId::Id(0x0002))
@@ -552,12 +492,7 @@ fn monitor_sd_multiple_services() {
     sim.client("monitor", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor").await;
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Collect events for a while
@@ -631,12 +566,7 @@ fn monitor_sd_receives_service_expired() {
         // Wait for monitor to be ready
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -659,12 +589,7 @@ fn monitor_sd_receives_service_expired() {
 
     sim.client("monitor", async move {
         // Monitor starts first
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor").await;
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Collect events for longer to catch the full lifecycle
@@ -736,12 +661,7 @@ fn monitor_sd_dropped_receiver_cleanup() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -758,12 +678,7 @@ fn monitor_sd_dropped_receiver_cleanup() {
     sim.client("monitor", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor").await;
 
         // Create first monitor and immediately drop it
         {
@@ -812,12 +727,7 @@ fn monitor_sd_before_services_exist() {
 
     sim.client("monitor", async move {
         // Start monitoring FIRST, before any server exists
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor").await;
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Wait for event (server will start later)
@@ -834,12 +744,7 @@ fn monitor_sd_before_services_exist() {
     sim.host("server", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -889,12 +794,7 @@ fn monitor_sd_survives_full_channel() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offerings = Vec::new();
         for instance in 1..=BURST_INSTANCES {
@@ -918,12 +818,7 @@ fn monitor_sd_survives_full_channel() {
     });
 
     sim.client("monitor", async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("monitor")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("monitor").await;
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
         // Do not poll while the burst of ServiceAvailable events arrives.

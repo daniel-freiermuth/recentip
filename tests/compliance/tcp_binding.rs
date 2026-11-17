@@ -2060,12 +2060,7 @@ fn reboot_clears_old_services_offers_new() {
     sim.client("lib_client", async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("lib_client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("lib_client").await;
 
         // Phase 1: Wait for SERVICE1 to be discovered
         tracing::info!("[lib_client] Phase 1: Looking for SERVICE1");

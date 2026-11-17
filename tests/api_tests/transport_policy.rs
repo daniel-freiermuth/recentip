@@ -139,12 +139,7 @@ fn prefer_tcp_uses_tcp_for_tcp_only_server() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TCP_ONLY_SVC, InstanceId::Id(1))
@@ -214,12 +209,7 @@ fn prefer_udp_uses_udp_for_udp_only_server() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(UDP_ONLY_SVC, InstanceId::Id(1))
@@ -289,12 +279,7 @@ fn prefer_tcp_uses_tcp_when_both_offered() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(DUAL_SVC, InstanceId::Id(1))
@@ -365,12 +350,7 @@ fn prefer_udp_uses_udp_when_both_offered() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(DUAL_SVC, InstanceId::Id(2))
@@ -442,12 +422,7 @@ fn prefer_tcp_falls_back_to_udp_for_udp_only_server() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(UDP_ONLY_SVC, InstanceId::Id(2))
@@ -518,12 +493,7 @@ fn prefer_udp_falls_back_to_tcp_for_tcp_only_server() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TCP_ONLY_SVC, InstanceId::Id(2))
@@ -605,12 +575,7 @@ fn per_proxy_policy_overrides_global_policy() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(OVERRIDE_SVC, InstanceId::Id(1))
@@ -715,12 +680,7 @@ fn server_call_event_reflects_client_transport() {
     sim.host("server", move || {
         let capture = Arc::clone(&server_capture);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(TRANSPORT_REPORT_SVC, InstanceId::Id(1))
@@ -862,12 +822,7 @@ fn server_fire_forget_event_reflects_client_transport() {
     sim.host("server", move || {
         let capture = Arc::clone(&server_capture);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(FF_TRANSPORT_REPORT_SVC, InstanceId::Id(1))
@@ -997,12 +952,7 @@ fn tcp_only_policy_fails_with_udp_only_server() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Offer UDP only — no TCP endpoint
         let _offering = runtime
@@ -1073,12 +1023,7 @@ fn udp_only_policy_fails_with_tcp_only_server() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Offer TCP only — no UDP endpoint
         let _offering = runtime
@@ -1149,12 +1094,7 @@ fn tcp_only_policy_fire_and_forget_fails_with_udp_only_server() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(NO_MATCH_FF_TCP_SVC, InstanceId::Id(1))
@@ -1224,12 +1164,7 @@ fn udp_only_policy_fire_and_forget_fails_with_tcp_only_server() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(NO_MATCH_FF_UDP_SVC, InstanceId::Id(1))
@@ -1299,12 +1234,7 @@ fn tcp_only_policy_subscribe_fails_with_udp_only_server() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(NO_MATCH_SUB_TCP_SVC, InstanceId::Id(1))
@@ -1373,12 +1303,7 @@ fn udp_only_policy_subscribe_fails_with_tcp_only_server() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(NO_MATCH_SUB_UDP_SVC, InstanceId::Id(1))
@@ -1457,12 +1382,7 @@ fn fixed_port_policy_subscribe_uses_specified_source_port() {
     sim.host("server", move || {
         let capture = Arc::clone(&capture);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(FIXED_PORT_SVC, InstanceId::Id(1))
@@ -1554,12 +1474,7 @@ fn port_range_policy_subscribe_uses_port_in_range() {
     sim.host("server", move || {
         let capture = Arc::clone(&capture);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(PORT_RANGE_SVC, InstanceId::Id(1))
@@ -1656,12 +1571,7 @@ fn fixed_port_two_services_two_servers_different_ports() {
     sim.host("server-a", move || {
         let capture = Arc::clone(&capture_a);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-a")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-a").await;
 
             let mut offering = runtime
                 .offer(FIXED_DUAL_SVC_A, InstanceId::Id(1))
@@ -1682,12 +1592,7 @@ fn fixed_port_two_services_two_servers_different_ports() {
     sim.host("server-b", move || {
         let capture = Arc::clone(&capture_b);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-b")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-b").await;
 
             let mut offering = runtime
                 .offer(FIXED_DUAL_SVC_B, InstanceId::Id(1))
@@ -1709,12 +1614,7 @@ fn fixed_port_two_services_two_servers_different_ports() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         // No global fixed port — use per-proxy overrides below
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Each proxy gets its own fixed port via with_transport_policy()
         let proxy_a = tokio::time::timeout(
@@ -1811,12 +1711,7 @@ fn fixed_port_two_instances_different_ports() {
     sim.host("server-1", move || {
         let capture = Arc::clone(&capture1);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-1")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-1").await;
 
             let mut offering = runtime
                 .offer(FIXED_INST_SVC, InstanceId::Id(1))
@@ -1837,12 +1732,7 @@ fn fixed_port_two_instances_different_ports() {
     sim.host("server-2", move || {
         let capture = Arc::clone(&capture2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-2")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-2").await;
 
             let mut offering = runtime
                 .offer(FIXED_INST_SVC, InstanceId::Id(2))
@@ -1863,12 +1753,7 @@ fn fixed_port_two_instances_different_ports() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy1 = tokio::time::timeout(
             Duration::from_secs(5),
@@ -1972,12 +1857,7 @@ fn any_port_two_instances_same_host_share_one_udp_port() {
         let c1 = Arc::clone(&cap1);
         let c2 = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering1 = runtime
                 .offer(ANY_PORT_SHARED_SVC, InstanceId::Id(1))
@@ -2011,12 +1891,7 @@ fn any_port_two_instances_same_host_share_one_udp_port() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         // No explicit port policy — PortSpec::Any, relies on socket sharing
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy1 = tokio::time::timeout(
             Duration::from_secs(5),
@@ -2145,12 +2020,7 @@ fn any_port_two_service_ids_same_host_share_one_port() {
         let spa = Arc::clone(&spc_a);
         let spb = Arc::clone(&spc_b);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering_a = runtime
                 .offer(ANY_PORT_SVC_A, InstanceId::Id(1))
@@ -2189,12 +2059,7 @@ fn any_port_two_service_ids_same_host_share_one_port() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy_a = tokio::time::timeout(
             Duration::from_secs(5),
@@ -2317,12 +2182,7 @@ fn any_port_same_instance_different_major_use_separate_ports() {
         let c1 = Arc::clone(&cap_v1);
         let c2 = Arc::clone(&cap_v2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering_v1 = runtime
                 .offer(ANY_PORT_DIFF_MAJOR_SVC, InstanceId::Id(1))
@@ -2356,12 +2216,7 @@ fn any_port_same_instance_different_major_use_separate_ports() {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         // No explicit port policy — PortSpec::Any, relies on socket sharing
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy_v1 = tokio::time::timeout(
             Duration::from_secs(5),
@@ -2475,12 +2330,7 @@ fn stop_offer_then_reoffer_new_instance_does_not_collide() {
     let mut sim = turmoil::Builder::new().build();
 
     sim.client("server", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Step 1: offer instance 1 (len=0 → port SD+1)
         let offering1 = runtime
@@ -2568,12 +2418,7 @@ fn offer_succeeds_when_auto_port_is_preoccupied() {
         }
 
         // Now start the SOME/IP runtime on the same host.
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // All ports 30491..65535 are now occupied (pre-binds + client-RPC socket);
         // the runtime wraps around and succeeds on port 1.
@@ -2625,12 +2470,7 @@ fn server_fixed_port_two_servers_same_port() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering_a = runtime
             .offer(SERVER_FIXED_PORT_SVC_A, InstanceId::Id(1))
@@ -2656,12 +2496,7 @@ fn server_fixed_port_two_servers_same_port() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy_a = tokio::time::timeout(
             Duration::from_secs(5),
@@ -2731,12 +2566,7 @@ fn server_fixed_port_same_service_id_different_instance_fails() {
         .build();
 
     sim.client("server", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering1 = runtime
             .offer(SERVER_FIXED_PORT_SAME_ID_SVC, InstanceId::Id(1))
@@ -2788,12 +2618,7 @@ fn server_fixed_port_same_service_id_different_major_fails() {
         .build();
 
     sim.client("server", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering_v1 = runtime
             .offer(SERVER_FIXED_PORT_SAME_ID_DIFF_MAJOR_SVC, InstanceId::Id(1))
@@ -2847,12 +2672,7 @@ fn server_fixed_tcp_port_two_services_same_host_share_socket() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering_a = runtime
             .offer(SERVER_FIXED_TCP_PORT_SVC_A, InstanceId::Id(1))
@@ -2968,12 +2788,7 @@ fn server_fixed_tcp_port_two_services_rpc_calls() {
         let cb = Arc::clone(&calls_b_server);
 
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering_a = runtime
                 .offer(SERVER_FIXED_TCP_PORT_SVC_A, InstanceId::Id(1))
@@ -3202,12 +3017,7 @@ fn server_fixed_tcp_port_four_services_two_ports_rpc_calls() {
         let cb2 = Arc::clone(&calls_b2_server);
 
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             // Port 1: Service A instance 1, Service B instance 1
             let mut offering_a1 = runtime
@@ -3556,12 +3366,7 @@ fn server_wrong_tcp_port_error_response() {
         let cb = Arc::clone(&calls_b_server);
 
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             // Service A on TCP port 40000
             let mut offering_a = runtime
@@ -3765,12 +3570,7 @@ fn server_fixed_tcp_port_same_service_id_different_instance_fails() {
         .build();
 
     sim.client("server", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering1 = runtime
             .offer(SERVER_FIXED_TCP_PORT_SAME_ID_SVC, InstanceId::Id(1))
@@ -3822,12 +3622,7 @@ fn server_fixed_tcp_port_same_service_id_different_major_fails() {
         .build();
 
     sim.client("server", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering_v1 = runtime
             .offer(
@@ -3889,12 +3684,7 @@ fn sub_any_port_two_servers_diff_major_shares_source_port() {
     sim.host("server-a", move || {
         let cap = Arc::clone(&cap1);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-a")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-a").await;
             let mut offering = runtime
                 .offer(SUB_ANY_TWO_SVRS_DIFF_MAJOR_SVC, InstanceId::Id(1))
                 .version(1, 0)
@@ -3913,12 +3703,7 @@ fn sub_any_port_two_servers_diff_major_shares_source_port() {
     sim.host("server-b", move || {
         let cap = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-b")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-b").await;
             let mut offering = runtime
                 .offer(SUB_ANY_TWO_SVRS_DIFF_MAJOR_SVC, InstanceId::Id(1))
                 .version(2, 0)
@@ -3936,12 +3721,7 @@ fn sub_any_port_two_servers_diff_major_shares_source_port() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy_v1 = tokio::time::timeout(
             Duration::from_secs(5),
@@ -4028,12 +3808,7 @@ fn sub_any_port_two_servers_diff_instance_shares_source_port() {
     sim.host("server-a", move || {
         let cap = Arc::clone(&cap1);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-a")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-a").await;
             let mut offering = runtime
                 .offer(SUB_ANY_TWO_SVRS_DIFF_INST_SVC, InstanceId::Id(1))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -4052,12 +3827,7 @@ fn sub_any_port_two_servers_diff_instance_shares_source_port() {
     sim.host("server-b", move || {
         let cap = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-b")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-b").await;
             let mut offering = runtime
                 .offer(SUB_ANY_TWO_SVRS_DIFF_INST_SVC, InstanceId::Id(2))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -4075,12 +3845,7 @@ fn sub_any_port_two_servers_diff_instance_shares_source_port() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy1 = tokio::time::timeout(
             Duration::from_secs(5),
@@ -4166,12 +3931,7 @@ fn sub_any_port_one_server_diff_major_shares_source_port() {
         let c1 = Arc::clone(&cap1);
         let c2 = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
             let mut offering_v1 = runtime
                 .offer(SUB_ANY_ONE_SVR_DIFF_MAJOR_SVC, InstanceId::Id(1))
                 .version(1, 0)
@@ -4199,12 +3959,7 @@ fn sub_any_port_one_server_diff_major_shares_source_port() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy_v1 = tokio::time::timeout(
             Duration::from_secs(5),
@@ -4292,12 +4047,7 @@ fn sub_any_port_one_server_diff_instance_shares_source_port() {
         let c1 = Arc::clone(&cap1);
         let c2 = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
             let mut offering1 = runtime
                 .offer(SUB_ANY_ONE_SVR_DIFF_INST_SVC, InstanceId::Id(1))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -4325,12 +4075,7 @@ fn sub_any_port_one_server_diff_instance_shares_source_port() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy1 = tokio::time::timeout(
             Duration::from_secs(5),
@@ -4416,12 +4161,7 @@ fn sub_any_port_one_server_diff_service_shares_source_port() {
         let ca = Arc::clone(&cap_a);
         let cb = Arc::clone(&cap_b);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
             let mut offering_a = runtime
                 .offer(SUB_ANY_ONE_SVR_DIFF_SVC_A, InstanceId::Id(1))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -4449,12 +4189,7 @@ fn sub_any_port_one_server_diff_service_shares_source_port() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy_a = tokio::time::timeout(
             Duration::from_secs(5),
@@ -4544,12 +4279,7 @@ fn sub_any_port_same_service_diff_eventgroup_two_proxies() {
         let c1 = Arc::clone(&cap1);
         let c2 = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
             let mut offering = runtime
                 .offer(SUB_ANY_SAME_SVC_DIFF_EG_TWO_PROXIES_SVC, InstanceId::Id(1))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -4571,12 +4301,7 @@ fn sub_any_port_same_service_diff_eventgroup_two_proxies() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy1 = tokio::time::timeout(
             Duration::from_secs(5),
@@ -4666,12 +4391,7 @@ fn sub_any_port_same_service_diff_eventgroup_same_proxy() {
         let c1 = Arc::clone(&cap1);
         let c2 = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
             let mut offering = runtime
                 .offer(SUB_ANY_SAME_SVC_DIFF_EG_SAME_PROXY_SVC, InstanceId::Id(1))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -4693,12 +4413,7 @@ fn sub_any_port_same_service_diff_eventgroup_same_proxy() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = tokio::time::timeout(
             Duration::from_secs(5),
@@ -4779,12 +4494,7 @@ fn sub_fixed_port_two_servers_diff_major_shares_socket() {
     sim.host("server-a", move || {
         let cap = Arc::clone(&cap1);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-a")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-a").await;
             let mut offering = runtime
                 .offer(SUB_FIXED_TWO_SVRS_DIFF_MAJOR_SVC, InstanceId::Id(1))
                 .version(1, 0)
@@ -4803,12 +4513,7 @@ fn sub_fixed_port_two_servers_diff_major_shares_socket() {
     sim.host("server-b", move || {
         let cap = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-b")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-b").await;
             let mut offering = runtime
                 .offer(SUB_FIXED_TWO_SVRS_DIFF_MAJOR_SVC, InstanceId::Id(1))
                 .version(2, 0)
@@ -4826,12 +4531,7 @@ fn sub_fixed_port_two_servers_diff_major_shares_socket() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(SHARED_PORT)]);
 
@@ -4929,12 +4629,7 @@ fn sub_fixed_port_two_servers_diff_instance_shares_socket() {
     sim.host("server-a", move || {
         let cap = Arc::clone(&cap1);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-a")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-a").await;
             let mut offering = runtime
                 .offer(SUB_FIXED_TWO_SVRS_DIFF_INST_SVC, InstanceId::Id(1))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -4953,12 +4648,7 @@ fn sub_fixed_port_two_servers_diff_instance_shares_socket() {
     sim.host("server-b", move || {
         let cap = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server-b")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server-b").await;
             let mut offering = runtime
                 .offer(SUB_FIXED_TWO_SVRS_DIFF_INST_SVC, InstanceId::Id(2))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -4976,12 +4666,7 @@ fn sub_fixed_port_two_servers_diff_instance_shares_socket() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(SHARED_PORT)]);
 
@@ -5080,12 +4765,7 @@ fn sub_fixed_port_one_server_diff_major_shares_socket() {
         let c1 = Arc::clone(&cap1);
         let c2 = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
             let mut offering_v1 = runtime
                 .offer(SUB_FIXED_ONE_SVR_DIFF_MAJOR_SVC, InstanceId::Id(1))
                 .version(1, 0)
@@ -5113,12 +4793,7 @@ fn sub_fixed_port_one_server_diff_major_shares_socket() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(SHARED_PORT)]);
 
@@ -5217,12 +4892,7 @@ fn sub_fixed_port_one_server_diff_instance_shares_socket() {
         let c1 = Arc::clone(&cap1);
         let c2 = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
             let mut offering1 = runtime
                 .offer(SUB_FIXED_ONE_SVR_DIFF_INST_SVC, InstanceId::Id(1))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -5250,12 +4920,7 @@ fn sub_fixed_port_one_server_diff_instance_shares_socket() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(SHARED_PORT)]);
 
@@ -5351,12 +5016,7 @@ fn sub_fixed_port_one_server_diff_service_shares_socket() {
         let ca = Arc::clone(&cap_a);
         let cb = Arc::clone(&cap_b);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
             let mut offering_a = runtime
                 .offer(SUB_FIXED_ONE_SVR_DIFF_SVC_A, InstanceId::Id(1))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -5384,12 +5044,7 @@ fn sub_fixed_port_one_server_diff_service_shares_socket() {
 
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(SHARED_PORT)]);
 
@@ -5481,12 +5136,7 @@ fn sub_fixed_port_same_service_two_proxies_fails() {
         .build();
 
     sim.host("server", move || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
         let mut offering = runtime
             .offer(SUB_FIXED_SAME_SVC_TWO_PROXIES_SVC, InstanceId::Id(1))
             .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -5505,12 +5155,7 @@ fn sub_fixed_port_same_service_two_proxies_fails() {
 
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(PORT)]);
 
@@ -5592,12 +5237,7 @@ fn sub_fixed_port_same_service_same_proxy_second_eg_fails() {
         .build();
 
     sim.host("server", move || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
         let mut offering = runtime
             .offer(SUB_FIXED_SAME_SVC_SAME_PROXY_SVC, InstanceId::Id(1))
             .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -5616,12 +5256,7 @@ fn sub_fixed_port_same_service_same_proxy_second_eg_fails() {
 
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let policy = TransportPolicy::new(vec![TransportPreference::udp().with_port(PORT)]);
 
@@ -5705,12 +5340,7 @@ fn sub_multi_port_policy_two_proxies_uses_second_port() {
         let c1 = Arc::clone(&cap1);
         let c2 = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
             let mut offering = runtime
                 .offer(SUB_MULTI_PORT_TWO_PROXIES_SVC, InstanceId::Id(1))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -5733,12 +5363,7 @@ fn sub_multi_port_policy_two_proxies_uses_second_port() {
 
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let policy = TransportPolicy::new(vec![
             TransportPreference::udp().with_port(PORT_A),
@@ -5845,12 +5470,7 @@ fn sub_multi_port_policy_same_proxy_uses_second_port() {
         let c1 = Arc::clone(&cap1);
         let c2 = Arc::clone(&cap2);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
             let mut offering = runtime
                 .offer(SUB_MULTI_PORT_SAME_PROXY_SVC, InstanceId::Id(1))
                 .version(SVC_VERSION.0, SVC_VERSION.1)
@@ -5873,12 +5493,7 @@ fn sub_multi_port_policy_same_proxy_uses_second_port() {
 
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let policy = TransportPolicy::new(vec![
             TransportPreference::udp().with_port(PORT_A),
@@ -5975,12 +5590,7 @@ fn sub_tcp_diff_services_same_server_port_share_connection() {
         let ca = Arc::clone(&cap_a);
         let cb = Arc::clone(&cap_b);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering_a = runtime
                 .offer(SUB_TCP_DIFF_SVC_SHARES_CONN_A, InstanceId::Id(1))
@@ -6012,12 +5622,7 @@ fn sub_tcp_diff_services_same_server_port_share_connection() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(crate::helpers::DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Use a TCP-only policy so both subscriptions go via TCP regardless of
         // any global default.

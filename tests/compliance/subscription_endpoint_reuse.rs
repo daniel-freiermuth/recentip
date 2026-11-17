@@ -7,25 +7,10 @@
 //! These are wire-level tests where we implement a mock SOME/IP server
 //! and observe what endpoints the client library uses for subscriptions.
 
-use crate::helpers::DEFAULT_SD_MULTICAST;
-use recentip::config::UnicastAddress;
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-/// Helper to get Ipv4Addr from turmoil host lookup
-fn lookup_ipv4(host: &str) -> Ipv4Addr {
-    match turmoil::lookup(host) {
-        std::net::IpAddr::V4(addr) => addr,
-        _ => panic!("Expected IPv4 address"),
-    }
-}
-
-/// Helper to get a validated UnicastAddress from turmoil host lookup
-fn lookup_unicast(host: &str) -> UnicastAddress {
-    UnicastAddress::try_from(lookup_ipv4(host)).expect("expected a valid unicast IPv4 address")
-}
 
 // ============================================================================
 // HELPER FUNCTIONS: Build raw SD messages
@@ -287,7 +272,7 @@ fn udp_different_services_reuse_endpoint() {
                             0x0001,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30491,
                             0x11, // UDP
                             0xFFFFFF,
@@ -304,7 +289,7 @@ fn udp_different_services_reuse_endpoint() {
                             0x0002,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30492,
                             0x11, // UDP
                             0xFFFFFF,
@@ -374,12 +359,7 @@ fn udp_different_services_reuse_endpoint() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Subscribe to service 1
         let proxy1 = runtime
@@ -493,7 +473,7 @@ fn udp_different_instances_reuse_endpoint() {
                             0x0001,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30491,
                             0x11,
                             0xFFFFFF,
@@ -510,7 +490,7 @@ fn udp_different_instances_reuse_endpoint() {
                             0x0002,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30492,
                             0x11,
                             0xFFFFFF,
@@ -571,12 +551,7 @@ fn udp_different_instances_reuse_endpoint() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy1 = runtime
             .find(0x4444)
@@ -684,7 +659,7 @@ fn udp_different_major_versions_reuse_endpoint() {
                             0x0001,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30491,
                             0x11,
                             0xFFFFFF,
@@ -701,7 +676,7 @@ fn udp_different_major_versions_reuse_endpoint() {
                             0x0001,
                             2,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30491, // Same port as v1
                             0x11,
                             0xFFFFFF,
@@ -767,12 +742,7 @@ fn udp_different_major_versions_reuse_endpoint() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy1 = runtime
             .find(0x5555)
@@ -906,7 +876,7 @@ fn tcp_different_services_reuse_connection() {
                             0x0001,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30500,
                             0x06,
                             0xFFFFFF,
@@ -923,7 +893,7 @@ fn tcp_different_services_reuse_connection() {
                             0x0002,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30500,
                             0x06,
                             0xFFFFFF,
@@ -985,9 +955,7 @@ fn tcp_different_services_reuse_connection() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
+        let runtime = crate::helpers::turmoil_builder("client")
             .preferred_transport(recentip::config::Transport::Tcp)
             .start_turmoil()
             .await
@@ -1120,7 +1088,7 @@ fn tcp_different_instances_reuse_connection() {
                             0x0001,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30500,
                             0x06,
                             0xFFFFFF,
@@ -1137,7 +1105,7 @@ fn tcp_different_instances_reuse_connection() {
                             0x0002,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30500,
                             0x06,
                             0xFFFFFF,
@@ -1194,9 +1162,7 @@ fn tcp_different_instances_reuse_connection() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
+        let runtime = crate::helpers::turmoil_builder("client")
             .preferred_transport(recentip::config::Transport::Tcp)
             .start_turmoil()
             .await
@@ -1331,7 +1297,7 @@ fn tcp_different_major_versions_reuse_connection() {
                             0x0001,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30500,
                             0x06,
                             0xFFFFFF,
@@ -1348,7 +1314,7 @@ fn tcp_different_major_versions_reuse_connection() {
                             0x0001,
                             2,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30500, // Same port as v1
                             0x06,
                             0xFFFFFF,
@@ -1405,9 +1371,7 @@ fn tcp_different_major_versions_reuse_connection() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
+        let runtime = crate::helpers::turmoil_builder("client")
             .preferred_transport(recentip::config::Transport::Tcp)
             .start_turmoil()
             .await
@@ -1547,7 +1511,7 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
                             0x0001,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30491,
                             0x11, // UDP
                             0xFFFFFF,
@@ -1564,7 +1528,7 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
                             0x0001,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30492,
                             0x11, // UDP
                             0xFFFFFF,
@@ -1636,12 +1600,7 @@ fn udp_multiple_eventgroups_per_service_share_endpoint() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Discover S1
         let proxy_s1 = runtime
@@ -1831,7 +1790,7 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
                             0x0001,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30500,
                             0x06, // TCP
                             0xFFFFFF,
@@ -1848,7 +1807,7 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
                             0x0001,
                             1,
                             0,
-                            lookup_ipv4("server"),
+                            crate::helpers::ipv4(turmoil::lookup("server")),
                             30500,
                             0x06, // TCP
                             0xFFFFFF,
@@ -1916,9 +1875,7 @@ fn tcp_multiple_eventgroups_per_service_share_connection() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
+        let runtime = crate::helpers::turmoil_builder("client")
             .preferred_transport(recentip::config::Transport::Tcp)
             .start_turmoil()
             .await
@@ -2068,7 +2025,7 @@ fn tcp_subscription_and_rpc_share_single_connection() {
                 }
             });
 
-            let server_ip = lookup_ipv4("server");
+            let server_ip = crate::helpers::ipv4(turmoil::lookup("server"));
             let mut buf = vec![0u8; 65535];
             let mut mc_session = 1u16;
             let mut uc_session = 1u16;
@@ -2153,9 +2110,7 @@ fn tcp_subscription_and_rpc_share_single_connection() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
+        let runtime = crate::helpers::turmoil_builder("client")
             .preferred_transport(recentip::config::Transport::Tcp)
             .start_turmoil()
             .await
@@ -2258,7 +2213,7 @@ fn tcp_rpc_first_then_subscription_shares_connection() {
                 }
             });
 
-            let server_ip = lookup_ipv4("server");
+            let server_ip = crate::helpers::ipv4(turmoil::lookup("server"));
             let mut buf = vec![0u8; 65535];
             let mut mc_session = 1u16;
             let mut uc_session = 1u16;
@@ -2341,9 +2296,7 @@ fn tcp_rpc_first_then_subscription_shares_connection() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
+        let runtime = crate::helpers::turmoil_builder("client")
             .preferred_transport(recentip::config::Transport::Tcp)
             .start_turmoil()
             .await
@@ -2452,12 +2405,7 @@ fn udp_event_burst_beyond_channel_capacity_keeps_subscription_alive() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("server"))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(BURST_SERVICE_ID, recentip::InstanceId::Id(0x0001))
@@ -2511,12 +2459,7 @@ fn udp_event_burst_beyond_channel_capacity_keeps_subscription_alive() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = tokio::time::timeout(
             Duration::from_secs(5),
@@ -2641,7 +2584,7 @@ fn udp_subscription_does_not_reuse_tcp_subscription_port() {
                 }
             });
 
-            let server_ip = lookup_ipv4("server");
+            let server_ip = crate::helpers::ipv4(turmoil::lookup("server"));
             let mut buf = vec![0u8; 65535];
             let mut mc_session = 1u16;
             let mut uc_session = 1u16;
@@ -2774,12 +2717,7 @@ fn udp_subscription_does_not_reuse_tcp_subscription_port() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // 1. TCP subscription to X — opens a TCP connection from some local port P.
         let proxy_x = runtime
@@ -2879,12 +2817,7 @@ fn run_fixed_port_release_scenario(after_drop: AfterDrop) {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("server"))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(RELEASE_SERVICE_ID, recentip::InstanceId::Id(0x0001))
@@ -2905,9 +2838,7 @@ fn run_fixed_port_release_scenario(after_drop: AfterDrop) {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(lookup_unicast("client"))
+        let runtime = crate::helpers::turmoil_builder("client")
             .transport_policy(TransportPolicy::new(vec![
                 TransportPreference::udp().with_port(RELEASE_CLIENT_PORT),
             ]))
