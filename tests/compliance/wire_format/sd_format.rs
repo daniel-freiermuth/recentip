@@ -208,6 +208,82 @@ fn sd_entries_are_sent_sorted() {
     sim.run().unwrap();
 }
 
+/// feat_req_someipsd_210: StopOffer entries sent on runtime shutdown are sorted
+///
+/// The server keeps four offerings alive and shuts the runtime down, so a single
+/// SD message withdraws all of them. Its StopOffer entries (OfferService, TTL 0)
+/// must be ordered by Type, Service-ID, Instance-ID, Major-Ver, Minor-Ver.
+#[test_log::test]
+fn sd_shutdown_stop_offers_are_sent_sorted() {
+    covers!(feat_req_someipsd_210);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offerings = Vec::new();
+        for (service_id, instance_id) in [(0x3000, 1), (0x2000, 2), (0x2000, 1), (0x1000, 1)] {
+            offerings.push(
+                runtime
+                    .offer(service_id, InstanceId::Id(instance_id))
+                    .version(1, 0)
+                    .udp()
+                    .start()
+                    .await
+                    .unwrap(),
+            );
+        }
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        // Offerings are still alive: the StopOffers come from the runtime shutdown
+        runtime.shutdown().await;
+        drop(offerings);
+        Ok(())
+    });
+
+    sim.client("raw_observer", async move {
+        let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut buf = [0u8; 1500];
+        let mut stop_offer_entries = None;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(4);
+        while let Ok(Ok((len, _from))) =
+            tokio::time::timeout_at(deadline, socket.recv_from(&mut buf)).await
+        {
+            let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) else {
+                continue;
+            };
+            if !sd_msg.entries.is_empty() && sd_msg.entries.iter().all(|e| e.is_offer() && e.ttl == 0) {
+                stop_offer_entries = Some(sd_msg.entries);
+            }
+        }
+
+        let entries = stop_offer_entries.expect("no StopOffer message seen on runtime shutdown");
+        assert_eq!(
+            entries.len(),
+            4,
+            "shutdown must withdraw all four offers in one message, got {entries:?}"
+        );
+        let keys: Vec<_> = entries.iter().map(spec_sort_key).collect();
+        assert!(
+            keys.is_sorted(),
+            "shutdown StopOffer entries must be sent sorted (feat_req_someipsd_210), got {entries:?}"
+        );
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
 const UNSORTED_HIGH_SERVICE_ID: u16 = 0x2000;
 const UNSORTED_LOW_SERVICE_ID: u16 = 0x1000;
 
