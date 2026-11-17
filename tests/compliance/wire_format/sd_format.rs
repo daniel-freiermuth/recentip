@@ -17,6 +17,7 @@ use crate::client_behavior::helpers::{
 use super::helpers::*;
 use crate::covers;
 use crate::helpers::DEFAULT_SD_MULTICAST;
+use recentip::wire::{L4Protocol, SdEntry, SdMessage, SdOption};
 
 /// feat_req_someipsd_141: SD Service ID is 0xFFFF
 /// feat_req_someipsd_26: SD Method ID is 0x8100
@@ -108,6 +109,179 @@ fn sd_offer_wire_format() {
             );
         }
 
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+/// Sort key of feat_req_someipsd_210, computed independently from the library:
+/// Type, Service-ID, Instance-ID, Eventgroup-ID (if present), Major-Ver, Minor-Ver (if present).
+fn spec_sort_key(entry: &ParsedSdEntry) -> (u8, u16, u16, u16, u8, u32) {
+    let is_service_entry = entry.is_find() || entry.is_offer();
+    (
+        entry.entry_type as u8,
+        entry.service_id,
+        entry.instance_id,
+        if is_service_entry {
+            0
+        } else {
+            entry.eventgroup_id
+        },
+        entry.major_version,
+        if is_service_entry {
+            entry.minor_version
+        } else {
+            0
+        },
+    )
+}
+
+/// feat_req_someipsd_210: SD entries are sent sorted
+///
+/// The server offers four instances in descending ID order, so the clustered
+/// offer messages carry several entries. Every captured SD message must have its
+/// entries ordered by Type, Service-ID, Instance-ID, Eventgroup-ID, Major-Ver, Minor-Ver.
+#[test_log::test]
+fn sd_entries_are_sent_sorted() {
+    covers!(feat_req_someipsd_210);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(30))
+        .build();
+
+    sim.host("server", || async {
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        let mut offerings = Vec::new();
+        for (service_id, instance_id) in [(0x3000, 1), (0x2000, 2), (0x2000, 1), (0x1000, 1)] {
+            offerings.push(
+                runtime
+                    .offer(service_id, InstanceId::Id(instance_id))
+                    .version(1, 0)
+                    .udp()
+                    .start()
+                    .await
+                    .unwrap(),
+            );
+        }
+
+        // Initial-wait, repetition and several cyclic offer phases
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        Ok(())
+    });
+
+    sim.client("raw_observer", async move {
+        let socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        socket.join_multicast_v4("239.255.0.1".parse().unwrap(), "0.0.0.0".parse().unwrap())?;
+
+        let mut buf = [0u8; 1500];
+        let mut max_entries = 0;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(4);
+        while let Ok(Ok((len, _from))) =
+            tokio::time::timeout_at(deadline, socket.recv_from(&mut buf)).await
+        {
+            let Some((_header, sd_msg)) = parse_sd_message(&buf[..len]) else {
+                continue;
+            };
+            let keys: Vec<_> = sd_msg.entries.iter().map(spec_sort_key).collect();
+            assert!(
+                keys.is_sorted(),
+                "SD entries must be sent sorted (feat_req_someipsd_210), got {:?}",
+                sd_msg.entries
+            );
+            max_entries = max_entries.max(keys.len());
+        }
+
+        assert!(
+            max_entries >= 4,
+            "expected a clustered SD message carrying all four offers, max entries seen: {max_entries}"
+        );
+        Ok(())
+    });
+
+    sim.run().unwrap();
+}
+
+const UNSORTED_HIGH_SERVICE_ID: u16 = 0x2000;
+const UNSORTED_LOW_SERVICE_ID: u16 = 0x1000;
+
+/// feat_req_someipsd_210: Unsorted SD entries are still accepted
+///
+/// A wire server sends one SD message whose OfferService entries are in
+/// descending Service-ID order. The library client must discover both services.
+#[test_log::test]
+fn sd_unsorted_entries_are_accepted() {
+    covers!(feat_req_someipsd_210);
+
+    let mut sim = turmoil::Builder::new()
+        .simulation_duration(Duration::from_secs(15))
+        .build();
+
+    sim.host("wire_server", || async {
+        let sd_socket = turmoil::net::UdpSocket::bind("0.0.0.0:30490").await?;
+        let sd_multicast: SocketAddr = "239.255.0.1:30490".parse().unwrap();
+        let my_ip: Ipv4Addr = turmoil::lookup("wire_server").to_string().parse().unwrap();
+
+        let mut message = SdMessage::initial();
+        let endpoint = message.add_option(SdOption::Ipv4Endpoint {
+            addr: my_ip,
+            port: 30509,
+            protocol: L4Protocol::Udp,
+        });
+        message.add_entry(SdEntry::offer_service(
+            UNSORTED_HIGH_SERVICE_ID,
+            1,
+            1,
+            0,
+            3600,
+            endpoint,
+            1,
+        ));
+        message.add_entry(SdEntry::offer_service(
+            UNSORTED_LOW_SERVICE_ID,
+            1,
+            1,
+            0,
+            3600,
+            endpoint,
+            1,
+        ));
+
+        for session_id in 1..=10u16 {
+            sd_socket
+                .send_to(&message.serialize(session_id), sd_multicast)
+                .await?;
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let runtime = recentip::configure()
+            .sd_multicast_group(DEFAULT_SD_MULTICAST)
+            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
+            .start_turmoil()
+            .await
+            .unwrap();
+
+        for service_id in [UNSORTED_LOW_SERVICE_ID, UNSORTED_HIGH_SERVICE_ID] {
+            tokio::time::timeout(
+                Duration::from_secs(4),
+                runtime.find(service_id).instance(InstanceId::Id(1)),
+            )
+            .await
+            .unwrap_or_else(|_| {
+                panic!("service {service_id:#06x} from unsorted SD message not discovered")
+            })
+            .unwrap();
+        }
         Ok(())
     });
 

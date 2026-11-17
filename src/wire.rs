@@ -711,6 +711,26 @@ impl SdEntry {
         }
     }
 
+    /// Sort key per `feat_req_someipsd_210`: Type, Service-ID, Instance-ID, Eventgroup-ID (if
+    /// present), Major-Ver, Minor-Ver (if present). Fields the entry type does not encode on the
+    /// wire are excluded, so they cannot affect the order.
+    const fn sort_key(&self) -> (u8, u16, u16, u16, u8, u32) {
+        let (eventgroup_id, minor_version) = match self.entry_type {
+            SdEntryType::FindService | SdEntryType::OfferService => (0, self.minor_version),
+            SdEntryType::SubscribeEventgroup | SdEntryType::SubscribeEventgroupAck => {
+                (self.eventgroup_id, 0)
+            }
+        };
+        (
+            self.entry_type as u8,
+            self.service_id,
+            self.instance_id,
+            eventgroup_id,
+            self.major_version,
+            minor_version,
+        )
+    }
+
     /// Create a `FindService` entry
     pub const fn find_service(
         service_id: u16,
@@ -1117,6 +1137,15 @@ impl SdMessage {
         let idx = self.options.len() as u8;
         self.options.push(option);
         idx
+    }
+
+    /// Sort entries per `feat_req_someipsd_210` before sending.
+    ///
+    /// The sort is stable: entries with equal keys (e.g. a `StopSubscribe` followed by the
+    /// `Subscribe` renewing the same eventgroup) keep their relative order. Option indices
+    /// travel with their entry; the options array is unchanged.
+    pub fn sort_entries(&mut self) {
+        self.entries.sort_by_key(SdEntry::sort_key);
     }
 
     /// Get the UDP endpoint from options for an entry.
@@ -1899,6 +1928,134 @@ mod tests {
 
         assert_eq!(protocol_v, 0x01);
         assert_eq!(interface_v, 0x05);
+    }
+
+    fn find(service_id: u16, major_version: u8) -> SdEntry {
+        SdEntry::find_service(service_id, 0xFFFF, major_version, 0xFFFF_FFFF, 3)
+    }
+
+    fn offer(service_id: u16, instance_id: u16, major_version: u8, minor_version: u32) -> SdEntry {
+        SdEntry::offer_service(
+            service_id,
+            instance_id,
+            major_version,
+            minor_version,
+            3,
+            0,
+            0,
+        )
+    }
+
+    fn subscribe(service_id: u16, eventgroup_id: u16, ttl: u32) -> SdEntry {
+        SdEntry::subscribe_eventgroup(service_id, 0x0001, 1, eventgroup_id, ttl, 0)
+    }
+
+    fn message_with(entries: Vec<SdEntry>) -> SdMessage {
+        SdMessage {
+            flags: 0,
+            entries,
+            options: Vec::new(),
+        }
+    }
+
+    /// [feat_req_someipsd_210] Entries sorted by Type, Service-ID, Instance-ID,
+    /// Eventgroup-ID, Major-Ver, Minor-Ver (spec example plus eventgroup entries)
+    #[test_log::test]
+    fn sort_entries_orders_by_type_ids_and_versions() {
+        let sorted = vec![
+            find(0x0005, 0x01),
+            find(0x0005, 0x02),
+            find(0x0042, 0x01),
+            offer(0x0001, 0x0001, 0x01, 0),
+            offer(0x0001, 0x0002, 0x01, 0),
+            offer(0x0001, 0x0002, 0x02, 0),
+            offer(0x0001, 0x0002, 0x02, 7),
+            subscribe(0x0001, 0x0001, 3),
+            subscribe(0x0001, 0x0002, 3),
+            SdEntry::subscribe_eventgroup_ack(0x0001, 0x0001, 1, 0x0001, 3, 0),
+        ];
+        let mut message = message_with(sorted.iter().rev().cloned().collect());
+
+        message.sort_entries();
+
+        assert_eq!(message.entries, sorted);
+    }
+
+    /// [feat_req_someipsd_210] Fields not on the wire for an entry type do not affect the order
+    #[test_log::test]
+    fn sort_entries_ignores_fields_not_encoded_for_the_entry_type() {
+        let mut offer_v1 = offer(0x0001, 0x0001, 0x01, 0);
+        offer_v1.eventgroup_id = 0x0009; // not encoded for service entries
+        let offer_v2 = offer(0x0001, 0x0001, 0x02, 0);
+        let mut subscribe_eg1 = subscribe(0x0001, 0x0001, 3);
+        subscribe_eg1.minor_version = 9; // not encoded for eventgroup entries
+        let subscribe_eg2 = subscribe(0x0001, 0x0002, 3);
+        let mut message = message_with(vec![
+            subscribe_eg2.clone(),
+            subscribe_eg1.clone(),
+            offer_v2.clone(),
+            offer_v1.clone(),
+        ]);
+
+        message.sort_entries();
+
+        assert_eq!(
+            message.entries,
+            vec![offer_v1, offer_v2, subscribe_eg1, subscribe_eg2]
+        );
+    }
+
+    /// [feat_req_someipsd_210] Entries with equal keys keep their relative order, so a
+    /// StopSubscribe stays ahead of the Subscribe that renews the same eventgroup
+    #[test_log::test]
+    fn sort_entries_keeps_equal_keys_in_original_order() {
+        let stop_subscribe = subscribe(0x0001, 0x0001, 0);
+        let renew_subscribe = subscribe(0x0001, 0x0001, 3);
+        let mut message = message_with(vec![
+            stop_subscribe.clone(),
+            renew_subscribe.clone(),
+            find(0x0001, 0x01),
+        ]);
+
+        message.sort_entries();
+
+        assert_eq!(
+            message.entries,
+            vec![find(0x0001, 0x01), stop_subscribe, renew_subscribe]
+        );
+    }
+
+    /// [feat_req_someipsd_210] Sorting moves entries together with their option references
+    #[test_log::test]
+    fn sort_entries_keeps_option_references() {
+        let mut message = SdMessage::new(0);
+        let high_option = message.add_option(SdOption::Ipv4Endpoint {
+            addr: Ipv4Addr::new(10, 0, 0, 2),
+            port: 30502,
+            protocol: L4Protocol::Udp,
+        });
+        let low_option = message.add_option(SdOption::Ipv4Endpoint {
+            addr: Ipv4Addr::new(10, 0, 0, 1),
+            port: 30501,
+            protocol: L4Protocol::Udp,
+        });
+        message.add_entry(SdEntry::offer_service(0x0002, 1, 1, 0, 3, high_option, 1));
+        message.add_entry(SdEntry::offer_service(0x0001, 1, 1, 0, 3, low_option, 1));
+
+        message.sort_entries();
+
+        let endpoints: Vec<_> = message
+            .entries
+            .iter()
+            .map(|entry| (entry.service_id, message.get_udp_endpoint(entry)))
+            .collect();
+        assert_eq!(
+            endpoints,
+            vec![
+                (0x0001, Some("10.0.0.1:30501".parse().unwrap())),
+                (0x0002, Some("10.0.0.2:30502".parse().unwrap())),
+            ]
+        );
     }
 }
 

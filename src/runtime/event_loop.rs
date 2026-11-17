@@ -545,7 +545,12 @@ async fn execute_action<U: UdpSocket, T: TcpStream>(
     tcp_pool: &Arc<TcpConnectionPool<T>>,
 ) {
     match action {
-        Action::SendSd { message, target } => {
+        Action::SendSd {
+            mut message,
+            target,
+        } => {
+            // feat_req_someipsd_210: send entries sorted
+            message.sort_entries();
             // Determine if this is multicast or unicast based on the FLAG_UNICAST bit in the message
             // Per feat_req_someipsd_41, use separate session counters
             let is_unicast = (message.flags & SdMessage::FLAG_UNICAST) != 0;
@@ -1599,6 +1604,8 @@ async fn send_stop_offers<U: UdpSocket>(
         ));
     }
 
+    // feat_req_someipsd_210: send entries sorted
+    msg.sort_entries();
     let session_id = state.next_multicast_session_id();
     let data = msg.serialize(session_id);
     let _ = sd_socket.send_to(&data, config.sd_multicast_addr()).await;
