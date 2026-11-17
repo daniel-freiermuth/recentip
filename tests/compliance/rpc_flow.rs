@@ -11,7 +11,6 @@
 //! - feat_req_someip_141: Request (0x00) answered by Response (0x80)
 
 use crate::covers;
-use crate::helpers::DEFAULT_SD_MULTICAST;
 use bytes::Bytes;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
@@ -91,12 +90,7 @@ fn fire_and_forget_no_response_or_error() {
 
     // Library server receives F&F but sends no response
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -228,12 +222,7 @@ fn concurrent_requests_matched_by_request_id() {
 
     // Server responds to requests in REVERSE order
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -278,12 +267,7 @@ fn concurrent_requests_matched_by_request_id() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -329,12 +313,7 @@ fn request_triggers_response() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -367,12 +346,7 @@ fn request_triggers_response() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)
@@ -411,12 +385,7 @@ fn request_can_receive_error_response() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -447,12 +416,7 @@ fn request_can_receive_error_response() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = runtime
             .find(TEST_SERVICE_ID)

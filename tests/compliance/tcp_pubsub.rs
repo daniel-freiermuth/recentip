@@ -59,12 +59,7 @@ fn tcp_basic_subscribe_and_receive_events() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Offer service via TCP only
         let offering = runtime
@@ -170,12 +165,7 @@ fn tcp_multiple_subscribers_receive_events() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
@@ -317,12 +307,7 @@ fn tcp_large_payload_events() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
@@ -432,12 +417,7 @@ fn tcp_different_eventgroups() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
@@ -598,12 +578,7 @@ fn dual_stack_service_client_prefers_tcp() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Offer service via both TCP and UDP
         let offering = runtime
@@ -694,12 +669,7 @@ fn dual_stack_service_client_prefers_udp() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Offer service via both TCP and UDP
         let offering = runtime
@@ -796,12 +766,7 @@ fn tcp_only_server_udp_preferring_client() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Offer service via TCP only
         let offering = runtime
@@ -913,12 +878,7 @@ fn tcp_slow_service_doesnt_block_other_services() {
 
     // Service A - healthy, accepts connections and sends events
     sim.host("service_a", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("service_a")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("service_a").await;
 
         let offering = runtime
             .offer(0x1111u16, InstanceId::Id(0x0001))
@@ -956,12 +916,7 @@ fn tcp_slow_service_doesnt_block_other_services() {
 
     // Service B - will be partitioned after discovery to simulate hanging TCP connection
     sim.host("service_b", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("service_b")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("service_b").await;
 
         let _offering = runtime
             .offer(0x2222u16, InstanceId::Id(0x0001))
@@ -1116,12 +1071,7 @@ fn tcp_concurrent_subscriptions_isolated_event_delivery() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
@@ -1275,12 +1225,7 @@ fn tcp_subscription_reusing_rpc_connection_receives_events() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))
@@ -1384,12 +1329,7 @@ fn tcp_stop_offer_of_one_service_keeps_shared_connection_for_other() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering_a = runtime
             .offer(TCP_SHARED_PORT_SERVICE_A, InstanceId::Id(0x0001))
@@ -1535,12 +1475,7 @@ fn tcp_concurrent_subscriptions_same_eventgroup_both_receive_events() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TCP_PUB_SUB_SERVICE_ID, InstanceId::Id(0x0001))

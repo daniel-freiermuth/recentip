@@ -9,7 +9,6 @@
 //! - feat_req_someip_634: Setter is request/response with value as request payload
 //! - feat_req_someip_635: Notifier sends notification event with updated value
 
-use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 
@@ -48,12 +47,7 @@ fn field_getter_empty_request_payload() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -99,12 +93,7 @@ fn field_getter_empty_request_payload() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
             let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -161,12 +150,7 @@ fn field_getter_returns_current_value() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -197,12 +181,7 @@ fn field_getter_returns_current_value() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
             let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -268,12 +247,7 @@ fn field_setter_sends_value_in_request() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -322,12 +296,7 @@ fn field_setter_sends_value_in_request() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
             let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -384,12 +353,7 @@ fn field_setter_gets_response() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -418,12 +382,7 @@ fn field_setter_gets_response() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
             let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -488,12 +447,7 @@ fn field_notifier_sends_updated_value() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -529,12 +483,7 @@ fn field_notifier_sends_updated_value() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
             let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -612,12 +561,7 @@ fn field_combines_getter_setter_notifier() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -698,12 +642,7 @@ fn field_combines_getter_setter_notifier() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
             let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -785,12 +724,7 @@ fn field_setter_can_reject_invalid_value() {
     sim.host("server", move || {
         let flag = Arc::clone(&server_flag);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -828,12 +762,7 @@ fn field_setter_can_reject_invalid_value() {
         async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
             let proxy = runtime.find(TEST_SERVICE_ID);
             let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)

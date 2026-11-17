@@ -133,12 +133,7 @@ fn sd_reboot_flag_set_after_startup() {
 
     // Library side - offers a service
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -227,12 +222,7 @@ fn sd_session_starts_at_one() {
         // Extra delay to ensure observer's multicast join has propagated
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -311,12 +301,7 @@ fn sd_session_zero_rejected() {
         .build();
 
     sim.client("client", async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Try to discover service - should fail because server sends invalid session_id=0
         let proxy_result =
@@ -386,12 +371,7 @@ fn sd_reboot_flag_clears_after_wraparound() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -461,12 +441,7 @@ fn sd_separate_multicast_unicast_sessions() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -483,12 +458,7 @@ fn sd_separate_multicast_unicast_sessions() {
     sim.host("client", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Subscribe to trigger unicast SD responses
         let proxy = runtime.find(TEST_SERVICE_ID);
@@ -576,12 +546,7 @@ fn server_session_ids_start_at_one_and_increment_independently() {
         // Small delay to let observer join multicast
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -732,12 +697,7 @@ fn server_unicast_session_ids_start_at_one_and_increment() {
     sim.host("server", || async {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -906,12 +866,7 @@ fn detect_peer_reboot_flag_transition_0_to_1() {
 
     // Client (library under test) discovers services from both servers
     sim.host("client", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Monitor SD events to detect service expiration
         let mut sd_events = runtime.monitor_sd().await.unwrap();
@@ -1060,12 +1015,7 @@ fn no_false_positive_on_normal_1_to_0_transition() {
         .build();
 
     sim.host("client", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = runtime.find(TEST_SERVICE_ID);
         let available = tokio::time::timeout(Duration::from_secs(5), proxy).await;
@@ -1167,12 +1117,7 @@ fn no_false_positive_on_session_wraparound_reboot_0() {
         // Give server a moment to start
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Find and subscribe to service
         let proxy = tokio::time::timeout(Duration::from_secs(10), runtime.find(TEST_SERVICE_ID))
@@ -1467,12 +1412,7 @@ fn detect_peer_reboot_session_regression() {
         .build();
 
     sim.host("client", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = runtime.find(TEST_SERVICE_ID);
         let _ = tokio::time::timeout(Duration::from_secs(5), proxy).await;
@@ -1574,12 +1514,7 @@ fn detect_peer_reboot_session_equal() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = tokio::time::timeout(Duration::from_secs(10), runtime.find(TEST_SERVICE_ID))
             .await
@@ -1820,12 +1755,7 @@ fn detect_peer_reboot_session_regression_multi_peer() {
 
     // Client (library under test) discovers services from both servers
     sim.host("client", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let mut sd_events = runtime.monitor_sd().await.unwrap();
 
@@ -2120,12 +2050,7 @@ fn server_expires_subscriptions_on_client_reboot() {
 
     // Server (library under test) - offers service, sends events
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -2353,12 +2278,7 @@ fn server_expires_subscriptions_on_client_session_regression() {
 
     // Server (library under test) - offers service, sends events
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -2588,12 +2508,7 @@ fn subscription_survives_low_session_find_service() {
 
     // Server (library under test) - offers service with eventgroup
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -2787,12 +2702,7 @@ fn subscription_valid_after_high_session_finds() {
 
     // Server (library under test) - offers service with eventgroup
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -2974,12 +2884,7 @@ fn normal_session_wraparound_does_not_trigger_reboot() {
 
     // Server (library under test) - offers service and publishes events
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -3162,12 +3067,7 @@ fn multicast_session_wraparound_does_not_affect_subscriptions() {
         .build();
 
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -3361,12 +3261,7 @@ fn unicast_subscribe_with_low_session_cancels_subscription() {
         .build();
 
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -3573,12 +3468,7 @@ fn multicast_find_to_find_session_regression() {
 
     // Server (library under test) - should detect multicast session regression
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -3686,12 +3576,7 @@ fn multicast_offer_to_offer_session_regression() {
 
     // Server (library under test) - should detect multicast session regression
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Offer a service so the runtime is active and processing SD messages
         // When the peer "reboots" (session regression), its discovered services
@@ -3765,12 +3650,7 @@ fn multicast_find_to_offer_session_regression() {
         .build();
 
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -3863,12 +3743,7 @@ fn multicast_offer_to_find_session_regression() {
         .build();
 
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Offer a service so the runtime is active and processing SD messages
         let _offering = runtime
@@ -4057,12 +3932,7 @@ fn client_closes_subscription_on_server_offer_regression() {
 
     // Client (library under test) - discovers, subscribes, should detect reboot
     sim.client("client", async move {
-        let _runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let _runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Wait for service to be discovered
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -4264,12 +4134,7 @@ fn client_closes_subscription_on_server_ack_regression() {
     });
 
     sim.client("client", async move {
-        let _runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let _runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // TODO: Subscribe and observe subscription handle state
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -4341,12 +4206,7 @@ fn client_invalidates_service_on_offer_regression() {
     });
 
     sim.client("client", async move {
-        let _runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let _runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // TODO: Watch for service discovery events
         // After first Offer: service should be discovered
@@ -4480,12 +4340,7 @@ fn client_subscription_survives_low_session_offer() {
     });
 
     sim.client("client", async move {
-        let _runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let _runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // TODO: Subscribe and count events
         // Should receive events both before and after the low-session Offer
@@ -4628,12 +4483,7 @@ fn client_all_subscriptions_invalidated_on_server_reboot() {
 
     // Client (library under test) - subscribes to 3 eventgroups
     sim.client("client", async move {
-        let _runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let _runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // TODO: Subscribe to eventgroups 1, 2, and 3
         // Monitor for reboot detection
@@ -4835,12 +4685,7 @@ fn client_other_server_subscriptions_survive_one_server_reboot() {
 
     // Client (library under test) - subscribes to both servers
     sim.client("client", async move {
-        let _runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let _runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // TODO: Subscribe to service 0x1111 on server1 and 0x2222 on server2
         // After server1 reboots:
@@ -5878,12 +5723,7 @@ fn client_tracks_session_ids_per_server_independently() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Discover both services
         let proxy1 = tokio::time::timeout(Duration::from_secs(10), runtime.find(SERVER1_SERVICE))
@@ -6285,12 +6125,7 @@ fn client_does_not_confuse_session_wraparound_between_servers() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy1 = tokio::time::timeout(Duration::from_secs(10), runtime.find(SERVER1_SERVICE))
             .await
@@ -6617,12 +6452,7 @@ fn client_tracks_reboot_flags_per_server_independently() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy1 = tokio::time::timeout(Duration::from_secs(10), runtime.find(SERVER1_SERVICE))
             .await

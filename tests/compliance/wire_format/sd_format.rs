@@ -37,12 +37,7 @@ fn sd_offer_wire_format() {
 
     // Library side - offers a service
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Offer a service - this sends SD Offer messages
         let _offering = runtime
@@ -125,12 +120,7 @@ fn sd_uses_port_30490() {
 
     // Library offers a service - verify SD is sent to port 30490
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -189,12 +179,7 @@ fn sd_offer_entry_type_wire_format() {
 
     // Library side - offers a service
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -524,12 +509,7 @@ fn subscribe_ack_echoes_client_ttl_123() {
 
     // Server with default offer_ttl (3600) - we verify the Ack uses client's TTL, not this
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -644,12 +624,7 @@ fn subscribe_ack_echoes_client_ttl_1000_000() {
 
     // Server with default offer_ttl (3600) - we verify the Ack uses client's TTL, not this
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -764,12 +739,7 @@ fn subscribe_ack_echoes_client_ttl_1() {
 
     // Server with default offer_ttl (3600) - we verify the Ack uses client's TTL, not this
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))

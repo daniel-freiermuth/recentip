@@ -16,7 +16,6 @@
 mod wire_format;
 
 use crate::covers;
-use crate::helpers::DEFAULT_SD_MULTICAST;
 use bytes::Bytes;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
@@ -179,12 +178,7 @@ fn rpc_request_has_protocol_version_0x01() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
         let proxy = runtime
             .find(TEST_SERVICE_ID)
             .instance(InstanceId::Id(0x0001));
@@ -220,12 +214,7 @@ fn server_ignores_wrong_protocol_version() {
 
     // Library server
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -379,12 +368,7 @@ fn rpc_request_has_interface_version_at_offset_13() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
         let proxy = runtime
             .find(TEST_SERVICE_ID)
             .instance(InstanceId::Id(0x0001));
@@ -416,12 +400,7 @@ fn sd_offer_contains_major_version() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let _offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -484,12 +463,7 @@ fn response_preserves_interface_version() {
         .build();
 
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -599,12 +573,7 @@ fn server_returns_wrong_interface_version_error() {
 
     // Library server with major version 1
     sim.client("server", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -729,12 +698,7 @@ fn fire_forget_with_wrong_interface_version_is_ignored() {
 
     // Library server with major version 1
     sim.client("server", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -828,18 +792,6 @@ fn fire_forget_with_wrong_interface_version_is_ignored() {
 // LIBRARY-TO-LIBRARY RPC WITH NON-1 MAJOR VERSION
 // ============================================================================
 
-/// Start a turmoil-backed library runtime on `host`.
-async fn start_runtime(
-    host: &str,
-) -> recentip::SomeIp<turmoil::net::UdpSocket, turmoil::net::TcpStream, turmoil::net::TcpListener> {
-    recentip::configure()
-        .sd_multicast_group(DEFAULT_SD_MULTICAST)
-        .sd_unicast(crate::helpers::unicast(turmoil::lookup(host)))
-        .start_turmoil()
-        .await
-        .unwrap()
-}
-
 /// [feat_req_someip_92, feat_req_someip_278] A library client calling a
 /// library server that offers major version 2 must put interface version 2
 /// into the request header, so the server accepts it and replies with
@@ -853,7 +805,7 @@ fn call_to_major_version_2_service_succeeds() {
         .build();
 
     sim.host("server", || async {
-        let runtime = start_runtime("server").await;
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(2, 0)
@@ -872,7 +824,7 @@ fn call_to_major_version_2_service_succeeds() {
 
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
-        let runtime = start_runtime("client").await;
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = tokio::time::timeout(
             Duration::from_secs(5),
@@ -913,7 +865,7 @@ fn fire_and_forget_to_major_version_2_service_is_delivered() {
         .build();
 
     sim.client("server", async {
-        let runtime = start_runtime("server").await;
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(2, 0)
@@ -940,7 +892,7 @@ fn fire_and_forget_to_major_version_2_service_is_delivered() {
 
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
-        let runtime = start_runtime("client").await;
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = tokio::time::timeout(
             Duration::from_secs(5),
@@ -1027,7 +979,7 @@ fn rpc_request_interface_version_matches_discovered_major_version() {
 
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
-        let runtime = start_runtime("client").await;
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = tokio::time::timeout(
             Duration::from_secs(5),
@@ -1069,7 +1021,7 @@ fn calls_reach_matching_major_version_side_by_side() {
         .build();
 
     sim.host("server", || async {
-        let runtime = start_runtime("server").await;
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
         let mut v1 = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
             .version(1, 0)
@@ -1105,7 +1057,7 @@ fn calls_reach_matching_major_version_side_by_side() {
 
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
-        let runtime = start_runtime("client").await;
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         for (major, expected) in [(1u8, b"v1"), (2u8, b"v2")] {
             let proxy = tokio::time::timeout(

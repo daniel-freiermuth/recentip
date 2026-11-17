@@ -8,7 +8,6 @@
 //! - feat_req_someip_804: Event delivery to multiple subscribers
 //! - feat_req_someipsd_109: SD multicast reaches all participants
 
-use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::handle::ServiceEvent;
 use recentip::prelude::*;
 
@@ -50,12 +49,7 @@ fn multiple_clients_call_same_server() {
     // Server handles requests from multiple clients
     let flag = Arc::clone(&exec_flag);
     sim.client("server", async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -94,12 +88,7 @@ fn multiple_clients_call_same_server() {
     sim.client("client1", async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client1")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client1").await;
 
         let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -123,12 +112,7 @@ fn multiple_clients_call_same_server() {
     sim.client("client2", async {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client2")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client2").await;
 
         let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -152,12 +136,7 @@ fn multiple_clients_call_same_server() {
     sim.client("client3", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client3")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client3").await;
 
         let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -204,12 +183,7 @@ fn multiple_clients_subscribe_to_events() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -245,12 +219,7 @@ fn multiple_clients_subscribe_to_events() {
     sim.host("subscriber1", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("subscriber1")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("subscriber1").await;
 
         let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -279,12 +248,7 @@ fn multiple_clients_subscribe_to_events() {
     sim.host("subscriber2", || async {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("subscriber2")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("subscriber2").await;
 
         let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -312,12 +276,7 @@ fn multiple_clients_subscribe_to_events() {
     sim.host("subscriber3", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("subscriber3")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("subscriber3").await;
 
         let proxy = runtime.find(TEST_SERVICE_ID);
         let proxy = tokio::time::timeout(Duration::from_secs(5), proxy)
@@ -373,12 +332,7 @@ fn sd_reaches_all_participants() {
     sim.host("server", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let _offering = runtime
                 .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -398,12 +352,7 @@ fn sd_reaches_all_participants() {
     // 5 clients try to discover (using macro to generate inline)
     sim.host("client1", || async {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client1")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client1").await;
         let proxy = runtime.find(TEST_SERVICE_ID);
         tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -414,12 +363,7 @@ fn sd_reaches_all_participants() {
 
     sim.host("client2", || async {
         tokio::time::sleep(Duration::from_millis(150)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client2")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client2").await;
         let proxy = runtime.find(TEST_SERVICE_ID);
         tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -430,12 +374,7 @@ fn sd_reaches_all_participants() {
 
     sim.host("client3", || async {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client3")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client3").await;
         let proxy = runtime.find(TEST_SERVICE_ID);
         tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -446,12 +385,7 @@ fn sd_reaches_all_participants() {
 
     sim.host("client4", || async {
         tokio::time::sleep(Duration::from_millis(250)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client4")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client4").await;
         let proxy = runtime.find(TEST_SERVICE_ID);
         tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -462,12 +396,7 @@ fn sd_reaches_all_participants() {
 
     sim.host("client5", || async {
         tokio::time::sleep(Duration::from_millis(300)).await;
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client5")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client5").await;
         let proxy = runtime.find(TEST_SERVICE_ID);
         tokio::time::timeout(Duration::from_secs(5), proxy)
             .await
@@ -509,12 +438,7 @@ fn nodes_with_mixed_client_server_roles() {
     sim.host("nodeA", move || {
         let flag = Arc::clone(&exec_flag);
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("nodeA")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("nodeA").await;
 
             // Offer ServiceA
             let mut offering = runtime
@@ -562,12 +486,7 @@ fn nodes_with_mixed_client_server_roles() {
 
     // Node B: offers ServiceB, requires ServiceA
     sim.host("nodeB", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("nodeB")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("nodeB").await;
 
         // Offer ServiceB
         let mut offering = runtime
@@ -641,12 +560,7 @@ fn multiple_servers_different_instances() {
     // Server 1 - Instance 0x0001
     let flag = Arc::clone(&exec_flag);
     sim.client("server1", async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server1")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server1").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -674,12 +588,7 @@ fn multiple_servers_different_instances() {
 
     // Server 2 - Instance 0x0002
     sim.client("server2", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server2")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server2").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002))
@@ -708,12 +617,7 @@ fn multiple_servers_different_instances() {
     sim.client("client", async {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Find instance 1
         let proxy1 = runtime

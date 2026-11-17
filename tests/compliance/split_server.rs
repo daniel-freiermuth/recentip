@@ -143,12 +143,7 @@ fn split_server_udp_rpc() {
 
     // Client: Uses library to discover and call the service
     sim.client("client", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Find the service (discovers via SD Host)
         tracing::info!("Client: Starting service discovery");
@@ -348,12 +343,7 @@ fn split_server_udp_pubsub() {
 
     // Client: Subscribes and receives events
     sim.client("client", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         tracing::info!("Client: Finding service");
         let proxy = runtime.find(TEST_SERVICE_ID);

@@ -3,7 +3,6 @@
 //! Tests event delivery when subscribing to multiple instances of the same service.
 //! This is a critical scenario that exposes bugs in event routing logic.
 
-use crate::helpers::DEFAULT_SD_MULTICAST;
 use core::panic;
 use recentip::prelude::*;
 
@@ -44,12 +43,7 @@ fn subscribe_to_multiple_instances() {
 
     // Server 1 - Instance 0x0001
     sim.host("server1", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server1")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server1").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0001))
@@ -88,12 +82,7 @@ fn subscribe_to_multiple_instances() {
 
     // Server 2 - Instance 0x0002
     sim.host("server2", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server2")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server2").await;
 
         let mut offering = runtime
             .offer(TEST_SERVICE_ID, InstanceId::Id(0x0002))
@@ -134,12 +123,7 @@ fn subscribe_to_multiple_instances() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Find and subscribe to instance 1
         let proxy1 = runtime

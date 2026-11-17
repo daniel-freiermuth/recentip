@@ -376,12 +376,7 @@ fn mixed_transport_event_delivery() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Discover and subscribe to TCP service
         let tcp_proxy = runtime
@@ -713,12 +708,7 @@ fn concurrent_calls_different_transports() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // Discover both services
         let tcp_proxy = runtime
@@ -843,12 +833,7 @@ fn udp_client_calls_tcp_server() {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         // Client uses default UDP config
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("udp_client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("udp_client").await;
         eprintln!("[client] Starting with default config (UDP preferred)");
 
         // Discover TCP service
@@ -1017,12 +1002,7 @@ fn client_prefers_udp_but_connects_to_tcp_only_service() {
 
     // Server offers TCP-only service
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
@@ -1133,12 +1113,7 @@ fn client_prefers_tcp_but_connects_to_udp_only_service() {
 
     // Server offers UDP-only service
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001))
@@ -1248,12 +1223,7 @@ fn client_prefers_udp_subscribes_to_udp_only_service_pubsub() {
 
     // Server offers UDP-only service with events
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001))
@@ -1396,12 +1366,7 @@ fn client_prefers_tcp_subscribes_to_udp_only_service_pubsub() {
 
     // Server offers UDP-only service with events
     sim.client("server", async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(UDP_SERVICE_ID, InstanceId::Id(0x0001))
@@ -1548,12 +1513,7 @@ fn client_prefers_udp_subscribes_to_tcp_only_service_pubsub() {
 
     // Server offers TCP-only service with events
     sim.host("server", || async {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         let mut offering = runtime
             .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
@@ -1708,12 +1668,7 @@ fn preferred_transport_respected_when_both_available() {
         let udp_calls = Arc::clone(&udp_calls_server);
 
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
@@ -1907,12 +1862,7 @@ fn preferred_transport_respected_for_pubsub_when_both_available() {
         let udp_events = Arc::clone(&udp_events_server);
 
         async move {
-            let runtime = recentip::configure()
-                .sd_multicast_group(DEFAULT_SD_MULTICAST)
-                .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-                .start_turmoil()
-                .await
-                .unwrap();
+            let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
             let mut offering = runtime
                 .offer(TCP_SERVICE_ID, InstanceId::Id(0x0001))
@@ -2084,12 +2034,7 @@ fn handle_call_ignores_preferred_transport_for_dual_stack() {
 
     // Server offers service with BOTH TCP and UDP (dual-stack)
     sim.host("server", || async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("server")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("server").await;
 
         // Dual-stack offer - advertises BOTH TCP and UDP endpoints
         let mut offering = runtime

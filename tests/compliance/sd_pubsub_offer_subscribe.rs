@@ -764,12 +764,7 @@ fn no_subscribe_without_offer() {
     // Client attempts to subscribe immediately
     sim.client("client", async move {
         // Start immediately - try to find and subscribe
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         let proxy = runtime
             .find(SUBSCRIBE_TEST_SERVICE_ID)
@@ -865,12 +860,7 @@ fn available_returns_error_when_service_not_found() {
 
     // Client tries to find a service that doesn't exist
     sim.client("client", async move {
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         eprintln!("[client] Looking for service that doesn't exist...");
 

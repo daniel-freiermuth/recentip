@@ -11,7 +11,6 @@
 //! - feat_req_someipsd_1135: Ignore entries with topologically incorrect endpoint IPs
 
 use super::helpers::{TEST_SERVICE_ID, build_sd_offer_with_session, covers, parse_sd_message};
-use crate::helpers::DEFAULT_SD_MULTICAST;
 use recentip::prelude::*;
 
 use std::net::SocketAddr;
@@ -118,12 +117,7 @@ fn client_ignores_offer_with_unspecified_endpoint_ip() {
     sim.client("client", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let runtime = recentip::configure()
-            .sd_multicast_group(DEFAULT_SD_MULTICAST)
-            .sd_unicast(crate::helpers::unicast(turmoil::lookup("client")))
-            .start_turmoil()
-            .await
-            .unwrap();
+        let runtime = crate::helpers::start_turmoil_runtime("client").await;
 
         // find() must not succeed: the offer with 0.0.0.0 should be ignored.
         // Acceptable outcomes:
