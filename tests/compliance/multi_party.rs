@@ -5,6 +5,7 @@
 //! Key requirements tested:
 //! - feat_req_someip_354: Multiple subscribers on same ECU
 //! - feat_req_someip_636: Multiple instances of same service
+//! - feat_req_someip_1079: Service-Instances on different ECUs
 //! - feat_req_someip_804: Event delivery to multiple subscribers
 //! - feat_req_someipsd_109: SD multicast reaches all participants
 
@@ -623,13 +624,13 @@ fn nodes_with_mixed_client_server_roles() {
 // MULTIPLE SERVERS WITH DIFFERENT INSTANCES
 // ============================================================================
 
-/// [feat_req_someip_636] Multiple servers offering different instances
+/// [feat_req_someip_636, feat_req_someip_1079] Multiple servers offering different instances
 ///
 /// Two servers offer the same service with different instance IDs.
 /// Client should be able to discover and call both instances.
 #[test_log::test]
 fn multiple_servers_different_instances() {
-    covers!(feat_req_someip_636);
+    covers!(feat_req_someip_636, feat_req_someip_1079);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

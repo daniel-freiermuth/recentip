@@ -41,6 +41,9 @@ Implementation approach:
 - Client responses: use `Arc<DashMap>` for `pending_calls` lookup from reader task
 - Events already have direct channels to subscription handles
 
+### 6. IPv6 SD Options (spec Release 26-11_v12)
+Release 26-11_v12 made 27 IPv6 SD-option items normative (IPv6 Endpoint 0x06, IPv6 Multicast 0x16, IPv6 SD Endpoint 0x26). The stack is IPv4-only end to end (`SdOption`, `net` traits, config, runtime state). Plan, affected APIs and alternatives (incl. documented non-goal): `docs/MODERNIZATION-ipv6-sd-options.md`. Needs a scope decision; full migration is a breaking 0.5 release.
+
 ---
 
 ## Tasks
@@ -63,17 +66,25 @@ Implementation approach:
 - [ ] Investigate `feat_req_someip_700` - do we support disabled session handling?
 - [ ] Test: StopSubscribe session regression triggers reboot detection
 
+### IPv6 SD Options (Epic 6)
+- [ ] Decide: full IPv6 migration vs. documented non-goal (`not_tested!` for the 27 IDs)
+- [ ] Step 1: parse/serialize `SdOption` IPv6 Endpoint/Multicast/SD Endpoint (+ IPv4 SD Endpoint 0x24), round-trip + proptests
+- [ ] Step 2: `net` traits to `SocketAddr`, v6 multicast join; re-run QNX check
+- [ ] Step 3: config/public handles to `IpAddr`/`SocketAddr`
+- [ ] Step 4: runtime state and SD logic per family; step 5: turmoil `IpVersion::V6` test runs
+
 ---
 
 ## Next Steps
 
-1. **Fix `subscribe_to_unknown_eventgroup_should_nack`** - Server should NACK subscriptions to non-offered eventgroups
-2. **Fix `udp_events_real_network`** - Debug real network UDP event delivery
-3. **Start TP segmentation** - Begin with outgoing message segmentation logic
-4. **Create fast session wraparound test** - Mock-based test for 0xFFFF→1 wrap (current takes 256s)
-5. **Test: StopSubscribe session regression triggers reboot detection** - complete coverage
-6. **Add test for event session ID handling** - `feat_req_someip_667`
-7. **Investigate `feat_req_someip_700`** - does the implementation support disabled session handling?
+1. **Decide IPv6 scope (Epic 6)** - full migration or documented non-goal; then implement `SdOption` IPv6 parsing (step 1)
+2. **Fix `subscribe_to_unknown_eventgroup_should_nack`** - Server should NACK subscriptions to non-offered eventgroups
+3. **Fix `udp_events_real_network`** - Debug real network UDP event delivery
+4. **Start TP segmentation** - Begin with outgoing message segmentation logic
+5. **Create fast session wraparound test** - Mock-based test for 0xFFFF→1 wrap (current takes 256s)
+6. **Test: StopSubscribe session regression triggers reboot detection** - complete coverage
+7. **Add test for event session ID handling** - `feat_req_someip_667`
+8. **Investigate `feat_req_someip_700`** - does the implementation support disabled session handling?
 
 ---
 
@@ -110,6 +121,9 @@ Items not yet scheduled:
 - `cargo test` (shared test process) fails ~26 tests at `tests/helpers.rs:248` `.expect("Configure tracing")` — global tracing subscriber init races between tests; `cargo nextest run` (process-per-test) is unaffected. Make init idempotent (`try_init`/`Once`)
 - Backpressure on shared/TCP event paths: `handle_incoming_notification` (`src/runtime/client.rs`, `let _ = sub.events_tx.try_send(..)` and static listeners) drops events on a full channel without any log; align with the dedicated UDP socket path (warn on drop, rate-limited)
 - `test_event_subscription` (`tests/api_tests.rs`) registers both nodes via `sim.host`, so `sim.run()` returns before either runs; client must be `sim.client`
+- Requirement-citation audit: SD header tests (`sd_offer_wire_format`, `sd_offer_discovery_works`, `service_discovery_finds_offered_service`) cite `feat_req_someipsd_141` (IPv4 Endpoint Option figure) for "Service ID 0xFFFF" and `feat_req_someipsd_144` (Configuration Option figure) for Client ID / versions; both belong to `feat_req_someipsd_26`. Same pattern (pre-open-spec numbering) likely elsewhere
+- IPv4 SD Endpoint Option (0x24) is not modelled in `SdOption` either; fold into Epic 6 step 1
+- `tools/extract_requirements.py` truncates requirement text to 500 chars; e.g. `feat_req_someipsd_210` loses its "shall allow receiving unsorted entries" sentence in the traceability report
 - Flaky (1 failure in 56 local stress iterations): `tcp_binding::server_detects_client_reboot_clears_subscriptions_port_reuse` — turmoil can deliver the wire client's post-reboot SD Subscribes (session 1, then 2) out of order; the server sees session 2 → 1, detects a reboot after the fresh connections exist and closes SERVICE3's new TCP connection ("SERVICE3 TCP connection closed unexpectedly!"). Fix ordering in the test (await SERVICE2's ACK before subscribing SERVICE3, or one SD message with both entries)
 
 ---

@@ -17,7 +17,7 @@ Right now, this lib only implements these core parts of the SOME/IP protocol:
 - **RPC** — Request/response and fire-and-forget method calls
 - **Pub/Sub** — Event subscriptions with eventgroup management
 
-[Compliance report](https://docs.rs/recentip/0.1.0-alpha.4/recentip/compliance/traceability/index.html)
+[Compliance report](https://docs.rs/recentip/latest/recentip/compliance/traceability/index.html)
 
 ## Installation
 
@@ -76,7 +76,7 @@ cargo dylint --all
 
 ## Specification Compliance
 
-This implementation targets full compliance with the [open SOME/IP 2025-12 specification](https://github.com/some-ip-com/open-someip-spec/commit/dcdfbd8f772ebfa973317e3cd4580874d848ae7e). Support per requirement can be verified using the [traceability report](https://docs.rs/recentip/0.1.0-alpha.4/recentip/compliance/traceability/index.html). 
+This implementation targets full compliance with the [open SOME/IP Release 26-11_v12 specification](https://github.com/some-ip-com/open-someip-spec/commit/5acd22e5901d3f751ea2ba4b97451bc1970ddd29). Support per requirement can be verified using the [traceability report](https://docs.rs/recentip/latest/recentip/compliance/traceability/index.html). The stack is currently IPv4-only: the IPv6 Endpoint, IPv6 Multicast and IPv6 SD Endpoint Options, normative since Release 26-11_v12, are not implemented yet.
 
 ## License
 
