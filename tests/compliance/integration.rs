@@ -183,10 +183,10 @@ fn multiple_calls_succeed() {
 // SERVICE DISCOVERY INTEGRATION TESTS
 // ============================================================================
 
-/// feat_req_someipsd_141, feat_req_someipsd_142: SD discovery works
+/// feat_req_someipsd_141: SD discovery works
 #[test_log::test]
 fn service_discovery_finds_offered_service() {
-    covers!(feat_req_someipsd_141, feat_req_someipsd_142);
+    covers!(feat_req_someipsd_141);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

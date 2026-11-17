@@ -29,7 +29,6 @@ const VERSIONED_SERVICE_VERSION: (u8, u32) = (2, 3);
 /// feat_req_someipsd_26: SD messages must be NOTIFICATION type
 /// feat_req_someipsd_27: SD uses UDP only (never TCP)
 /// feat_req_someipsd_141: Service ID must be 0xFFFF
-/// feat_req_someipsd_142: Method ID must be 0x8100
 /// feat_req_someipsd_144: Protocol and Interface Version must be 0x01
 ///
 /// This test verifies that when a service is offered, it can be discovered,
@@ -40,7 +39,6 @@ fn sd_offer_discovery_works() {
         feat_req_someipsd_26,
         feat_req_someipsd_27,
         feat_req_someipsd_141,
-        feat_req_someipsd_142,
         feat_req_someipsd_144
     );
 

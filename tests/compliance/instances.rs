@@ -6,6 +6,7 @@
 //! - feat_req_someip_541: Different services have different Service IDs
 //! - feat_req_someip_544: Different instances have different Service ID + Instance ID
 //! - feat_req_someip_636: Instances identified by different Instance IDs
+//! - feat_req_someip_1079: Multiple Service-Instances on one single ECU
 //! - feat_req_someip_648: Messages dispatched to correct instance
 //! - feat_req_someip_967: Different instances on same server offered on different ports
 //! - feat_req_someip_445: Different services can share same port
@@ -32,12 +33,13 @@ const SERVICE_B_VERSION: (u8, u32) = (1, 0);
 // ============================================================================
 
 /// feat_req_someip_636: Service instances identified by different Instance IDs
+/// feat_req_someip_1079: Multiple Service-Instances reside on one single ECU
 ///
 /// Service-Instances of the same Service are identified through different
 /// Instance IDs.
 #[test_log::test]
 fn multiple_instances_have_different_ids() {
-    covers!(feat_req_someip_636);
+    covers!(feat_req_someip_636, feat_req_someip_1079);
 
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(30))

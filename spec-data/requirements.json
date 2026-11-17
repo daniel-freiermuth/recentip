@@ -544,7 +544,7 @@
     "reqtype": "Requirement",
     "source_file": "someip-rpc.rst",
     "line_number": 581,
-    "text": "The Message ID is a 32 bit identifier that is used to dispatch the RPC call to a method of an application and to identify an event. The Message ID has to uniquely identify a method or event of a service.",
+    "text": "The Message ID is a 32 bit identifier composed of a 16-bit Service ID and a 16-bit Method ID, that is used to dispatch the RPC call to a method of an application and to identify an event. The Message ID has to uniquely identify a method or event of a service.",
     "section": "Message ID [32 bit]",
     "status": "valid"
   },
@@ -634,7 +634,7 @@
     "reqtype": "Requirement",
     "source_file": "someip-rpc.rst",
     "line_number": 732,
-    "text": "The Request ID shall be constructed of the Client ID and Session ID:",
+    "text": "The Request ID shall be constructed of a 16-bit Client ID and a 16-bit Session ID:",
     "section": "Structure of the Request ID",
     "status": "valid"
   },
@@ -1894,7 +1894,7 @@
     "reqtype": "Requirement",
     "source_file": "someip-rpc.rst",
     "line_number": 2687,
-    "text": "Service-Instances of the same Service are identified through different Instance IDs. It shall be supported that multiple Service-Instances reside on different ECUs as well as multiple Service-Instances of one or more Services reside on one single ECU.",
+    "text": "Service-Instances of the same Service are identified through different Instance IDs.",
     "section": "Multiple Service-Instances",
     "status": "valid"
   },
@@ -2821,7 +2821,16 @@
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
     "line_number": 653,
-    "text": "Figure: SOME/IP-SD Service Entry Type",
+    "text": "Figure: SOME/IP-SD Eventgroup Entry Type",
+    "section": "Entry Format",
+    "status": "valid"
+  },
+  {
+    "id": "feat_req_someipsd_210",
+    "reqtype": "Requirement",
+    "source_file": "someip-sd.rst",
+    "line_number": 667,
+    "text": "The SOME/IP-SD implementation shall allow for sending only sorted SOME/IP-SD entries. Entries shall be sorted by the following fields (from highest to lowest priority in increasing order): * Type * Service-ID * Instance-ID * Eventgroup-ID, if present * Major-Ver * Minor-Ver, if present Note: Example of ordered entries: * Find (0x00), Service-ID: 0x0005, Instance-ID: 0xFFFF, Major-Ver: 0x01, Minor-Ver: 0xFFFFFFFF * Find (0x00), Service-ID: 0x0005, Instance-ID: 0xFFFF, Major-Ver: 0x02, Minor-Ver: ",
     "section": "Entry Format",
     "status": "valid"
   },
@@ -2829,7 +2838,7 @@
     "id": "feat_req_someipsd_772",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 675,
+    "line_number": 706,
     "text": "Options are used to transport additional information to the entries. This includes for instance the information how a service instance is reachable (IP-Address, Transport Protocol, Port Number).",
     "section": "Options Format",
     "status": "valid"
@@ -2838,7 +2847,7 @@
     "id": "feat_req_someipsd_122",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 686,
+    "line_number": 717,
     "text": "In order to identify the option type every option shall start with: * Length [uint16]: Specifies the length of the option in bytes. * Type [uint8]: Specifying the type of the option.",
     "section": "Options Format",
     "status": "valid"
@@ -2847,7 +2856,7 @@
     "id": "feat_req_someipsd_133",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 702,
+    "line_number": 733,
     "text": "The length field shall cover all bytes of the option except the length field and type field.",
     "section": "Options Format",
     "status": "valid"
@@ -2856,7 +2865,7 @@
     "id": "feat_req_someipsd_755",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 721,
+    "line_number": 752,
     "text": "The configuration option shall be used to transport arbitrary configuration strings. This allows to encode additional information like the name of a service or its configuration.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2865,7 +2874,7 @@
     "id": "feat_req_someipsd_152",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 732,
+    "line_number": 763,
     "text": "The format of the Configuration Option shall be as follows: * Length [uint16]: Shall be set to the total number of bytes occupied by the configuration option, excluding the 16 bit length field and the 8 bit type flag. * Type [uint8]: Shall be set to 0x01. * Reserved [uint8]: Shall be set to 0x00. * ConfigurationString [dynamic length]: Shall carry the configuration string.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2874,7 +2883,7 @@
     "id": "feat_req_someipsd_149",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 750,
+    "line_number": 781,
     "text": "The Configuration Option shall specify a set of name-value-pairs based on the DNS TXT and DNS-SD (https://www.ietf.org/rfc/rfc6763.txt) format.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2883,7 +2892,7 @@
     "id": "feat_req_someipsd_150",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 761,
+    "line_number": 792,
     "text": "The format of the configuration string shall start with a single byte length field that describes the number of bytes following this length field.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2892,7 +2901,7 @@
     "id": "feat_req_someipsd_151",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 772,
+    "line_number": 803,
     "text": "After each character sequence another length field and a following character sequence are expected until a length field set to 0x00.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2901,7 +2910,7 @@
     "id": "feat_req_someipsd_158",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 783,
+    "line_number": 814,
     "text": "After a length field set to 0x00 no characters follow.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2910,7 +2919,7 @@
     "id": "feat_req_someipsd_159",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 794,
+    "line_number": 825,
     "text": "A character sequence shall encode a key and an optionally a value.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2919,7 +2928,7 @@
     "id": "feat_req_someipsd_157",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 805,
+    "line_number": 836,
     "text": "The character sequences shall contain an equal character (\"=\", 0x03D) to divide key and value.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2928,7 +2937,7 @@
     "id": "feat_req_someipsd_162",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 816,
+    "line_number": 847,
     "text": "The key shall not include an equal character and shall be at least one non-whitespace character. The characters of \"Key\" shall be printable US-ASCII values (0x20-0x7E), excluding '=' (0x3D).",
     "section": "Configuration Option",
     "status": "valid"
@@ -2937,7 +2946,7 @@
     "id": "feat_req_someipsd_161",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 827,
+    "line_number": 858,
     "text": "The \"=\" shall not be the first character of the sequence.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2946,7 +2955,7 @@
     "id": "feat_req_someipsd_160",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 838,
+    "line_number": 869,
     "text": "For a character sequence without an '=' that key shall be interpreted as present.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2955,7 +2964,7 @@
     "id": "feat_req_someipsd_217",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 849,
+    "line_number": 880,
     "text": "For a character sequence ending on an '=' that key shall be interpreted as present with empty value.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2964,7 +2973,7 @@
     "id": "feat_req_someipsd_684",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 860,
+    "line_number": 891,
     "text": "Multiple entries with the same key in a single Configuration Option shall be supported.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2973,7 +2982,7 @@
     "id": "feat_req_someipsd_218",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 871,
+    "line_number": 902,
     "text": "The configuration option shall be also used to encode hostname, servicename, and instancename (if needed).",
     "section": "Configuration Option",
     "status": "valid"
@@ -2982,7 +2991,7 @@
     "id": "feat_req_someipsd_201",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 882,
+    "line_number": 913,
     "text": "Figure :need:`feat_req_someipsd_144` shows the format of the Configuration Option and Figure :need:`feat_req_someipsd_147` an example for the Configuration Option.",
     "section": "Configuration Option",
     "status": "valid"
@@ -2991,7 +3000,7 @@
     "id": "feat_req_someipsd_144",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 893,
+    "line_number": 924,
     "text": "Figure: SOME/IP-SD Configuration Option",
     "section": "Configuration Option",
     "status": "valid"
@@ -3000,7 +3009,7 @@
     "id": "feat_req_someipsd_147",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 907,
+    "line_number": 938,
     "text": "Figure: SOME/IP-SD Configuration Option Example",
     "section": "Configuration Option",
     "status": "valid"
@@ -3009,7 +3018,7 @@
     "id": "feat_req_someipsd_754",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 929,
+    "line_number": 960,
     "text": "This option shall be used to prioritize different instances of a service, so that a client chooses the service instance based on these settings. This option will be attached to OfferService entries.",
     "section": "Load Balancing Option (informational)",
     "status": "valid"
@@ -3018,7 +3027,7 @@
     "id": "feat_req_someipsd_146",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 940,
+    "line_number": 971,
     "text": "The Load Balancing Option shall use the Type 0x02.",
     "section": "Load Balancing Option (informational)",
     "status": "valid"
@@ -3027,7 +3036,7 @@
     "id": "feat_req_someipsd_174",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 951,
+    "line_number": 982,
     "text": "The Load Balancing Option shall carry a Priority and Weight like the DNS-SRV records, which shall be used to load balancing different service instances.",
     "section": "Load Balancing Option (informational)",
     "status": "valid"
@@ -3036,7 +3045,7 @@
     "id": "feat_req_someipsd_770",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 962,
+    "line_number": 993,
     "text": "This means when looking for all service instances of a service (Service Instance set to 0xFFFF), the client shall choose the service instance with highest priority. When having more than one service instance with highest priority (lowest value in Priority field) the service instance shall be chosen randomly based on the weights of the service instances.",
     "section": "Load Balancing Option (informational)",
     "status": "valid"
@@ -3045,7 +3054,7 @@
     "id": "feat_req_someipsd_175",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 973,
+    "line_number": 1004,
     "text": "The Format of the Load Balancing Option shall be as follows: * Length [uint16]: Shall be set to 0x0005. * Type [uint8]: Shall be set to 0x02. * Reserved [uint8]: Shall be set to 0x00. * Priority [uint16]: Carries the Priority of this instance. Lower value means higher priority. * Weight [uint16]: Carries the Weight of this instance. Large value means higher probability to be chosen.",
     "section": "Load Balancing Option (informational)",
     "status": "valid"
@@ -3054,7 +3063,7 @@
     "id": "feat_req_someipsd_200",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 992,
+    "line_number": 1023,
     "text": "Figure :need:`feat_req_someipsd_148` shows the format of the Load Balancing Option.",
     "section": "Load Balancing Option (informational)",
     "status": "valid"
@@ -3063,16 +3072,16 @@
     "id": "feat_req_someipsd_148",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 1003,
+    "line_number": 1034,
     "text": "Figure: SOME/IP-SD Load Balancing Option",
     "section": "Load Balancing Option (informational)",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_752",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1025,
+    "line_number": 1056,
     "text": "The IPv4 Endpoint Option shall be used by a SOME/IP-SD instance to signal the relevant endpoint(s). Endpoints include the local IP address, the transport layer protocol (e.g. UDP or TCP), and the port number of the sender. These ports shall be used for the events and notification events as well. When using UDP the server uses the announced port as source port. With TCP the client needs to open a connection to this port before subscription, because this is the TCP connection the server uses for s",
     "section": "IPv4 Endpoint Option",
     "status": "valid"
@@ -3081,7 +3090,7 @@
     "id": "feat_req_someipsd_127",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1038,
+    "line_number": 1069,
     "text": "The IPv4 Endpoint Option shall use the Type 0x04.",
     "section": "IPv4 Endpoint Option",
     "status": "valid"
@@ -3090,7 +3099,7 @@
     "id": "feat_req_someipsd_128",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1049,
+    "line_number": 1080,
     "text": "The IPv4 Endpoint Option shall specify the IPv4-Address, the transport layer protocol (ISO/OSI layer 4) used, and its Port Number.",
     "section": "IPv4 Endpoint Option",
     "status": "valid"
@@ -3099,7 +3108,7 @@
     "id": "feat_req_someipsd_129",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1060,
+    "line_number": 1091,
     "text": "The Format of the IPv4 Endpoint Option shall be as follows: * Length [uint16]: Shall be set to 0x0009. * Type [uint8]: Shall be set to 0x04. * Reserved [uint8]: Shall be set to 0x00. * IPv4-Address [uint32]: Shall transport the IP-Address as four bytes. * Reserved [uint8]: Shall be set to 0x00. * Transport Protocol (L4-Proto) [uint8]: Shall be set to the transport layer protocol (ISO/OSI layer 4) based on the IANA/IETF types (0x06: TCP, 0x11: UDP). * Transport Protocol Port Number (L4-Port) [uin",
     "section": "IPv4 Endpoint Option",
     "status": "valid"
@@ -3108,7 +3117,7 @@
     "id": "feat_req_someipsd_199",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1081,
+    "line_number": 1112,
     "text": "Figure :need:`feat_req_someipsd_141` shows the format of the IPv4 Endpoint Option.",
     "section": "IPv4 Endpoint Option",
     "status": "valid"
@@ -3117,7 +3126,7 @@
     "id": "feat_req_someipsd_141",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1092,
+    "line_number": 1123,
     "text": "Figure: SOME/IP-SD IPv4 Endpoint Option",
     "section": "IPv4 Endpoint Option",
     "status": "valid"
@@ -3126,7 +3135,7 @@
     "id": "feat_req_someipsd_849",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1106,
+    "line_number": 1137,
     "text": "The server shall use the IPv4 Endpoint Option with OfferService entries to signal the endpoints it serves the service on. That is up to one UDP endpoint and up to one TCP endpoint.",
     "section": "IPv4 Endpoint Option",
     "status": "valid"
@@ -3135,8 +3144,8 @@
     "id": "feat_req_someipsd_850",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1117,
-    "text": "The endpoints the server referenced by an OfferService entry shall also be used as source of events. That is source IP address and source port numbers for the transport protocols in the endpoint option.",
+    "line_number": 1148,
+    "text": "The endpoints the server referenced by an OfferService entry shall also be used as source of events. That is source IPv4 address and source port numbers for the transport protocols in the endpoint option.",
     "section": "IPv4 Endpoint Option",
     "status": "valid"
   },
@@ -3144,88 +3153,88 @@
     "id": "feat_req_someipsd_848",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1128,
+    "line_number": 1159,
     "text": "The client shall use the IPv4 Endpoint Option with SubscribeEventgroup entries to signal its IP address and its UDP and/or TCP port numbers, on which it is ready to receive the events.",
     "section": "IPv4 Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_751",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1147,
+    "line_number": 1178,
     "text": "The IPv6 Endpoint Option shall be used by a SOME/IP-SD instance to signal the relevant endpoint(s). Endpoints include the local IP address, the transport layer protocol (e.g. UDP or TCP), and the port number of the sender. These ports shall be used for the events and notification events as well. When using UDP the server uses the announced port as source port. With TCP the client needs to open a connection to this port before subscription, because this is the TCP connection the server uses for s",
     "section": "IPv6 Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_140",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1160,
+    "line_number": 1191,
     "text": "The IPv6 Endpoint Option shall use the Type 0x06.",
     "section": "IPv6 Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_163",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1171,
+    "line_number": 1202,
     "text": "The IPv6 Endpoint Option shall specify the IPv6-Address, the Layer 4 Protocol used, and the Layer 4 Port Number.",
     "section": "IPv6 Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_164",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1182,
+    "line_number": 1213,
     "text": "The Format of the IPv6 Endpoint Option shall be as follows: * Length [uint16]: Shall be set to 0x0015. * Type [uint8]: Shall be set to 0x06. * Reserved [uint8]: Shall be set to 0x00. * IPv6-Address [uint128]: Shall transport the IP-Address as 16 bytes. * Reserved [uint8]: Shall be set to 0x00. * L4-Proto [uint8]: Shall be set to the transport layer protocol (ISO/OSI layer 4) based on the IANA/IETF types (0x06: TCP, 0x11: UDP). * L4-Port [uint16]: Shall be set to the port of the transport layer p",
     "section": "IPv6 Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_197",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1203,
+    "line_number": 1234,
     "text": "Figure :need:`feat_req_someipsd_142` shows the format of the IPv6 Endpoint Option.",
     "section": "IPv6 Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_142",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1214,
+    "line_number": 1245,
     "text": "Figure: SOME/IP-SD IPv6 Endpoint Option",
     "section": "IPv6 Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_851",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1228,
+    "line_number": 1259,
     "text": "The server shall use the IPv6 Endpoint Option with OfferService entries to signal the endpoints the services is available on. That is up to one UDP endpoint and up to one TCP endpoint.",
     "section": "IPv6 Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_852",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1239,
-    "text": "The endpoints the server referenced by an OfferService entry shall also be used as source of events. That is source IP address and source port numbers for the transport protocols in the endpoint option.",
+    "line_number": 1270,
+    "text": "The endpoints the server referenced by an OfferService entry shall also be used as source of events. That is source IPv6 address and source port numbers for the transport protocols in the endpoint option.",
     "section": "IPv6 Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_853",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1250,
+    "line_number": 1281,
     "text": "The client shall use the IPv6 Endpoint Option with SubscribeEventgroup entries to signal the IP address and the UDP and/or TCP port numbers, on which it is ready to receive the events.",
     "section": "IPv6 Endpoint Option",
     "status": "valid"
@@ -3234,7 +3243,7 @@
     "id": "feat_req_someipsd_749",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 1269,
+    "line_number": 1300,
     "text": "The IPv4 Multicast Option is used by the server to announce the IPv4 multicast address, the transport layer protocol (ISO/OSI layer 4), and the port number the multicast events and multicast notification events are sent to. As transport layer protocol currently only UDP is supported.",
     "section": "IPv4 Multicast Option",
     "status": "valid"
@@ -3243,7 +3252,7 @@
     "id": "feat_req_someipsd_854",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1280,
+    "line_number": 1311,
     "text": "The IPv4 Multicast Option and not the IPv4 Endpoint Option shall be referenced by SubscribeEventgroupAck entries.",
     "section": "IPv4 Multicast Option",
     "status": "valid"
@@ -3252,7 +3261,7 @@
     "id": "feat_req_someipsd_723",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1291,
+    "line_number": 1322,
     "text": "The IPv4 Multicast Option shall use the Type 0x14.",
     "section": "IPv4 Multicast Option",
     "status": "valid"
@@ -3261,7 +3270,7 @@
     "id": "feat_req_someipsd_724",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1302,
+    "line_number": 1333,
     "text": "The IPv4 Multicast Option shall specify the IPv4-Address, the transport layer protocol (ISO/OSI layer 4) used, and its Port Number.",
     "section": "IPv4 Multicast Option",
     "status": "valid"
@@ -3270,7 +3279,7 @@
     "id": "feat_req_someipsd_725",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1313,
+    "line_number": 1344,
     "text": "The Format of the IPv4 Endpoint Option shall be as follows: * Length [uint16]: Shall be set to 0x0009. * Type [uint8]: Shall be set to 0x14. * Reserved [uint8]: Shall be set to 0x00. * IPv4-Address [uint32]: Shall transport the multicast IP-Address as four bytes. * Reserved [uint8]: Shall be set to 0x00. * Transport Protocol (L4-Proto) [uint8]: Shall be set to the transport layer protocol (ISO/OSI layer 4) based on the IANA/IETF types (0x11: UDP). * Transport Protocol Port Number (L4-Port) [uint",
     "section": "IPv4 Multicast Option",
     "status": "valid"
@@ -3279,7 +3288,7 @@
     "id": "feat_req_someipsd_733",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1334,
+    "line_number": 1365,
     "text": "Figure :need:`feat_req_someipsd_734` shows the format of the IPv4 Multicast Option.",
     "section": "IPv4 Multicast Option",
     "status": "valid"
@@ -3288,7 +3297,7 @@
     "id": "feat_req_someipsd_734",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1345,
+    "line_number": 1376,
     "text": "Figure: SOME/IP-SD IPv4 Multicast Option",
     "section": "IPv4 Multicast Option",
     "status": "valid"
@@ -3297,7 +3306,7 @@
     "id": "feat_req_someipsd_855",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1359,
+    "line_number": 1390,
     "text": "If a service supports IPv4 Multicast, the offer entry shall reference the IPv4 Multicast Option, which encodes the IPv4 Multicast Address and Port Number the server will send multicast events and notification events to.",
     "section": "IPv4 Multicast Option",
     "status": "valid"
@@ -3306,70 +3315,70 @@
     "id": "feat_req_someipsd_750",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 1378,
+    "line_number": 1409,
     "text": "The IPv6 Multicast Option is used by the server to announce the IPv6 multicast address, the layer 4 protocol, and the port number the multicast events and multicast notifications events are sent to. For the transport layer protocol (ISO/OSI layer 4) currently only UDP is supported.",
     "section": "IPv6 Multicast Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1083",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1389,
+    "line_number": 1420,
     "text": "The IPv6 Multicast Option and not the IPv6 Endpoint Option shall be referenced by SubscribeEventgroupAck messages.",
     "section": "IPv6 Multicast Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_737",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1400,
+    "line_number": 1431,
     "text": "The IPv6 Multicast Option shall use the Type 0x16.",
     "section": "IPv6 Multicast Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_738",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1411,
+    "line_number": 1442,
     "text": "The IPv6 Multicast Option shall specify the IPv6-Address, the transport layer protocol (ISO/OSI layer 4) used, and its Port Number.",
     "section": "IPv6 Multicast Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_739",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1422,
+    "line_number": 1453,
     "text": "The Format of the IPv6 Multicast Option shall be as follows: * Length [uint16]: Shall be set to 0x0015. * Type [uint8]: Shall be set to 0x16. * Reserved [uint8]: Shall be set to 0x00. * IPv6-Address [uint128]: Shall transport the multicast IP-Address as 16 bytes. * Reserved [uint8]: Shall be set to 0x00. * Transport Protocol (L4-Proto) [uint8]: Shall be set to the transport layer protocol (ISO/OSI layer 4) based on the IANA/IETF types (0x11: UDP). * Transport Protocol Port Number (L4-Port) [uint",
     "section": "IPv6 Multicast Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_747",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1443,
+    "line_number": 1474,
     "text": "Figure :need:`feat_req_someipsd_748` shows the format of the IPv6 Multicast Option.",
     "section": "IPv6 Multicast Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_748",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1454,
+    "line_number": 1485,
     "text": "Figure: SOME/IP-SD IPv6 Multicast Option",
     "section": "IPv6 Multicast Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_856",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1468,
+    "line_number": 1499,
     "text": "If a service supports IPv6 Multicast, the Offer Service Entry shall reference the IPv6 Multicast Option, which encodes the IPv6 Multicast Address and Port Number the server will send multicast events and notification events to.",
     "section": "IPv6 Multicast Option",
     "status": "valid"
@@ -3378,7 +3387,7 @@
     "id": "feat_req_someipsd_1081",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 1487,
+    "line_number": 1518,
     "text": "The IPv4 SD Endpoint Option is used to transport the endpoint (i.e. IP-Address and Port) of the senders SD implementation.",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3387,7 +3396,7 @@
     "id": "feat_req_someipsd_1082",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1498,
+    "line_number": 1529,
     "text": "The IPv4 SD Endpoint Option shall be included in any SD Options Array up to 1 time.",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3396,7 +3405,7 @@
     "id": "feat_req_someipsd_1156",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1509,
+    "line_number": 1540,
     "text": "The IPv4 SD Endpoint Option shall only be included if the SOME/IP-SD message is transported over IPv4.",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3405,7 +3414,7 @@
     "id": "feat_req_someipsd_1151",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1520,
+    "line_number": 1551,
     "text": "The IPv4 SD Endpoint Option shall be the first option in the options array, if existing.",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3414,7 +3423,7 @@
     "id": "feat_req_someipsd_1152",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1531,
+    "line_number": 1562,
     "text": "If more than one IPv4 SD Endpoint Option is received, only the first one shall be processed and all further IPv4 SD Endpoint Options shall be ignored.",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3423,7 +3432,7 @@
     "id": "feat_req_someipsd_1114",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1542,
+    "line_number": 1573,
     "text": "The IPv4 SD Endpoint Option shall be not referenced by any SD Entry.",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3432,7 +3441,7 @@
     "id": "feat_req_someipsd_1084",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1553,
+    "line_number": 1584,
     "text": "If the IPv4 SD Endpoint Option is included in the SD message, the receiving SD implementation shall use the content of this option instead of the Source IP Address and Source Port. This is important for responding to the received SD message (e.g. OfferService after FindService or SubscribeEventgroup after OfferService or SubscribeEventgroupAck after SubscribeEventgroup) as well as the reboot detection (channel based on SD Endpoint Option and not out addresses).",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3441,7 +3450,7 @@
     "id": "feat_req_someipsd_1085",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1565,
+    "line_number": 1596,
     "text": "The IPv4 SD Endpoint Option shall use the Type 0x24.",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3450,7 +3459,7 @@
     "id": "feat_req_someipsd_1086",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1576,
+    "line_number": 1607,
     "text": "The IPv4 SD Endpoint Option shall specify the IPv4-Address, the transport layer protocol (ISO/OSI layer 4) used, and its Port Number.",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3459,7 +3468,7 @@
     "id": "feat_req_someipsd_1087",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1587,
+    "line_number": 1618,
     "text": "The Format of the IPv4 SD Endpoint Option shall be as follows: * Length [uint16]: Shall be set to 0x0009. * Type [uint8]: Shall be set to 0x24. * Reserved [uint8]: Shall be set to 0x00. * IPv4-Address [uint32]: Shall transport the unicast IP-Address of SOME/IP-SD as four bytes. * Reserved [uint8]: Shall be set to 0x00. * Transport Protocol (L4-Proto) [uint8]: Shall be set to the transport layer protocol of SOME/IP-SD (currently: 0x11 UDP). * Transport Protocol Port Number (L4-Port) [uint16]: Sha",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3468,7 +3477,7 @@
     "id": "feat_req_someipsd_1095",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1608,
+    "line_number": 1639,
     "text": "Figure :need:`feat_req_someipsd_1096` shows the format of the IPv4 SD Endpoint Option.",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3477,7 +3486,7 @@
     "id": "feat_req_someipsd_1096",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1619,
+    "line_number": 1650,
     "text": "Figure: SOME/IP-SD IPv4 SD Endpoint Option",
     "section": "IPv4 SD Endpoint Option",
     "status": "valid"
@@ -3486,106 +3495,106 @@
     "id": "feat_req_someipsd_1098",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 1641,
+    "line_number": 1672,
     "text": "The IPv6 SD Endpoint Option is used to transport the endpoint (i.e. IP-Address and Port) of the senders SD implementation.",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1099",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1652,
+    "line_number": 1683,
     "text": "The IPv6 SD Endpoint Option shall be included in any SD message up to 1 time.",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1155",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1663,
+    "line_number": 1694,
     "text": "The IPv6 SD Endpoint Option shall only be included if the SOME/IP-SD message is transported over IPv6.",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1153",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1674,
+    "line_number": 1705,
     "text": "The IPv6 SD Endpoint Option shall be the first option in the options array, if existing.",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1154",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1685,
+    "line_number": 1716,
     "text": "If more than one IPv6 SD Endpoint Option is received, only the first one shall be processed and all further IPv6 SD Endpoint Options shall be ignored.",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1113",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1696,
+    "line_number": 1727,
     "text": "The IPv6 SD Endpoint Option shall be not referenced by any SD Entry.",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1100",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1707,
+    "line_number": 1738,
     "text": "If the IPv6 SD Endpoint Option is included in the SD message, the receiving SD implementation shall use the content of this option instead of the Source IP Address and Source Port for responding to these SD messages. This is important for responding to the received SD messages (e.g. OfferService after FindService or SubscribeEventgroup after OfferService or SubscribeEventgroupAck after SubscribeEventgroup) as well as the reboot detection (channel based on SD Endpoint Option and not out addresses",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1101",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1719,
+    "line_number": 1750,
     "text": "The IPv6 SD Endpoint Option shall use the Type 0x26.",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1102",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1730,
+    "line_number": 1761,
     "text": "The IPv6 SD Endpoint Option shall specify the IPv4-Address, the transport layer protocol (ISO/OSI layer 4) used, and its Port Number.",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1103",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1741,
+    "line_number": 1772,
     "text": "The Format of the IPv6 SD Endpoint Option shall be as follows: * Length [uint16]: Shall be set to 0x0015. * Type [uint8]: Shall be set to 0x26. * Reserved [uint8]: Shall be set to 0x00. * IPv6-Address [uint128]: Shall transport the unicast IP-Address of SOME/IP-SD as 16 bytes. * Reserved [uint8]: Shall be set to 0x00. * Transport Protocol (L4-Proto) [uint8]: Shall be set to the transport layer protocol of SOME/IP-SD (currently: 0x11 UDP). * Transport Protocol Port Number (L4-Port) [uint16]: Shal",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1111",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1762,
+    "line_number": 1793,
     "text": "Figure :need:`feat_req_someipsd_1112` shows the format of the IPv6 SD Endpoint Option.",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
   },
   {
     "id": "feat_req_someipsd_1112",
-    "reqtype": "Information",
+    "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1773,
+    "line_number": 1804,
     "text": "Figure: SOME/IP-SD IPv6 SD Endpoint Option Type",
     "section": "IPv6 SD Endpoint Option",
     "status": "valid"
@@ -3594,7 +3603,7 @@
     "id": "feat_req_someipsd_1249",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 1795,
+    "line_number": 1826,
     "text": "The MAC-Groupcast Endpoint Option is used to announce the MAC-groupcast address layer 2 groupcast traffic is sent to, the data link layer protocol and a protocol-specific identifier.",
     "section": "MAC-Groupcast Endpoint Option",
     "status": "valid"
@@ -3603,7 +3612,7 @@
     "id": "feat_req_someipsd_1250",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1807,
+    "line_number": 1838,
     "text": "As the MAC-Groupcast Endpoint Option announces non-SOME/IP service instances, it shall only be used together with a Configuration Option containing an otherserv-string.",
     "section": "MAC-Groupcast Endpoint Option",
     "status": "valid"
@@ -3612,7 +3621,7 @@
     "id": "feat_req_someipsd_1251",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1818,
+    "line_number": 1849,
     "text": "The MAC-Groupcast Endpoint Option shall use the Type 0x15.",
     "section": "MAC-Groupcast Endpoint Option",
     "status": "valid"
@@ -3621,7 +3630,7 @@
     "id": "feat_req_someipsd_1252",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1829,
+    "line_number": 1860,
     "text": "The MAC-Groupcast Endpoint Option shall specify the MAC-groupcast address, the data link layer protocol (L2-Proto) used and a variable length protocol-specific identifier (ProtoSpecific) related to the used link layer protocol.",
     "section": "MAC-Groupcast Endpoint Option",
     "status": "valid"
@@ -3630,7 +3639,7 @@
     "id": "feat_req_someipsd_1253",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1840,
+    "line_number": 1871,
     "text": "The Format of the MAC-Groupcast Endpoint Option shall be as follows: * Length [uint16]: Dynamic, depending on the content of the ProtoSpecific field which in turn depends on the L2-Proto field. * Example: For IEEE1722 the ProtoSpecific field contains the 6+2 Byte long Stream-ID, so the Length is to be set to 0x11. * Type [uint8]: Shall be set to 0x15. * Reserved [uint8]: Shall be set to 0x00 on transmission. * GroupMAC-Address [uint48]: Shall transport the 6 byte MAC-Groupcast Address. * Data Li",
     "section": "MAC-Groupcast Endpoint Option",
     "status": "valid"
@@ -3639,7 +3648,7 @@
     "id": "feat_req_someipsd_1262",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1868,
+    "line_number": 1899,
     "text": "Figure: Format of the MAC-Groupcast Endpoint Option",
     "section": "MAC-Groupcast Endpoint Option",
     "status": "valid"
@@ -3648,7 +3657,7 @@
     "id": "feat_req_someipsd_336",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1890,
+    "line_number": 1921,
     "text": "Using the following fields of the entries, options are referenced by the entries: * Index First Option Run: Index into array of options for first option run. Index 0 means first of SOME/IP-SD packet. * Index Second Option Run: Index into array of options for second option run. Index 0 means first of SOME/IP-SD packet. * Number of Options 1: Length of first option run. Length 0 means no option in option run. * Number of Options 2: Length of second option run. Length 0 means no option in option ru",
     "section": "Referencing Options from Entries",
     "status": "valid"
@@ -3657,7 +3666,7 @@
     "id": "feat_req_someipsd_341",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 1908,
+    "line_number": 1939,
     "text": "Two different option runs exist: First Option Run and Second Option Run.",
     "section": "Referencing Options from Entries",
     "status": "valid"
@@ -3666,7 +3675,7 @@
     "id": "feat_req_someipsd_346",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 1919,
+    "line_number": 1950,
     "text": "Rationale for the support of two option runs: Two different types of options are expected: options common between multiple SOME/IP-SD entries and options different for each SOME/IP-SD entry. Supporting two different options runs is the most efficient way to support these two types of options, while keeping the wire format highly efficient.",
     "section": "Referencing Options from Entries",
     "status": "valid"
@@ -3675,7 +3684,7 @@
     "id": "feat_req_someipsd_342",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1930,
+    "line_number": 1961,
     "text": "Each option run shall reference the first option and the number of options for this run.",
     "section": "Referencing Options from Entries",
     "status": "valid"
@@ -3684,7 +3693,7 @@
     "id": "feat_req_someipsd_343",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1941,
+    "line_number": 1972,
     "text": "If the number of options is set to zero, the option run is considered empty.",
     "section": "Referencing Options from Entries",
     "status": "valid"
@@ -3693,7 +3702,7 @@
     "id": "feat_req_someipsd_348",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1952,
+    "line_number": 1983,
     "text": "For empty runs the Index (i.e. Index First Option Run and/or Index Second Option Run) shall be set to zero.",
     "section": "Referencing Options from Entries",
     "status": "valid"
@@ -3702,7 +3711,7 @@
     "id": "feat_req_someipsd_347",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1963,
+    "line_number": 1994,
     "text": "Implementations shall accept and process incoming SD messages with option run length set to zero and option index not set to zero.",
     "section": "Referencing Options from Entries",
     "status": "valid"
@@ -3711,7 +3720,7 @@
     "id": "feat_req_someipsd_900",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1974,
+    "line_number": 2005,
     "text": "Implementations shall minimize the size of the SD messages by not duplicating Options without need.",
     "section": "Referencing Options from Entries",
     "status": "valid"
@@ -3720,7 +3729,7 @@
     "id": "feat_req_someipsd_1142",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 1993,
+    "line_number": 2024,
     "text": "If an entry references an unknown option, this option shall be ignored.",
     "section": "Handling missing, redundant and conflicting Options",
     "status": "valid"
@@ -3729,7 +3738,7 @@
     "id": "feat_req_someipsd_1141",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2004,
+    "line_number": 2035,
     "text": "If an entry references a redundant option (option that is not needed by this specific entry), this option shall be ignored.",
     "section": "Handling missing, redundant and conflicting Options",
     "status": "valid"
@@ -3738,7 +3747,7 @@
     "id": "feat_req_someipsd_1143",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 2015,
+    "line_number": 2046,
     "text": "Example: A Service needs only a TCP Endpoint but Endpoint Options for UDP and TCP are referenced by the OfferService entry. UDP endpoint shall be ignored.",
     "section": "Handling missing, redundant and conflicting Options",
     "status": "valid"
@@ -3747,7 +3756,7 @@
     "id": "feat_req_someipsd_1144",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2026,
+    "line_number": 2057,
     "text": "If an entry references two or more options that are in conflict, this entry shall be responded negatively, if possible(e.g. Subscribe Eventgroup). If no answer is expected, ignore the entry and its options.",
     "section": "Handling missing, redundant and conflicting Options",
     "status": "valid"
@@ -3756,7 +3765,7 @@
     "id": "feat_req_someipsd_1145",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 2037,
+    "line_number": 2068,
     "text": "Example: An OfferService entry referencing two Endpoint Options stating two different UDP Ports shall be ignored. Example: A SubscribeEventgroup entry referencing two Endpoint Options stating two different UDP Ports shall be responded with a SubscribeEventgroupNack.",
     "section": "Handling missing, redundant and conflicting Options",
     "status": "valid"
@@ -3765,7 +3774,7 @@
     "id": "feat_req_someipsd_1146",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2049,
+    "line_number": 2080,
     "text": "When two different Configuration Options are referenced by an entry, the configuration sets shall be merged.",
     "section": "Handling missing, redundant and conflicting Options",
     "status": "valid"
@@ -3774,7 +3783,7 @@
     "id": "feat_req_someipsd_1147",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2060,
+    "line_number": 2091,
     "text": "If the two Configuration Options have conflicting items (same name), all items shall be handled. There shall be no attempt been made to merge duplicate items.",
     "section": "Handling missing, redundant and conflicting Options",
     "status": "valid"
@@ -3783,7 +3792,7 @@
     "id": "feat_req_someipsd_214",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 2079,
+    "line_number": 2110,
     "text": "Figure :need:`feat_req_someipsd_213` shows an example SOME/IP-SD PDU.",
     "section": "Example",
     "status": "valid"
@@ -3792,7 +3801,7 @@
     "id": "feat_req_someipsd_213",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 2090,
+    "line_number": 2121,
     "text": "Figure: SOME/IP-SD Example PDU",
     "section": "Example",
     "status": "valid"
@@ -3801,7 +3810,7 @@
     "id": "feat_req_someipsd_235",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 2112,
+    "line_number": 2143,
     "text": "Using the previously specified header format, different entries and messages consisting of one or more entries can be built. The specific entries and their header layouts are explained in the following sections.",
     "section": "Service Discovery Messages",
     "status": "valid"
@@ -3810,7 +3819,7 @@
     "id": "feat_req_someipsd_256",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2123,
+    "line_number": 2154,
     "text": "For all entries the following shall be true: * Index First Option Run, Index Second Option Run, Number of Options 1, and Number of Options 2 shall be set according to the chained options.",
     "section": "Service Discovery Messages",
     "status": "valid"
@@ -3819,7 +3828,7 @@
     "id": "feat_req_someipsd_236",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 2146,
+    "line_number": 2177,
     "text": "Entries concerned with services shall be based on the Service Entry Type Format as specified in :need:`feat_req_someipsd_47`.",
     "section": "Service Entries",
     "status": "valid"
@@ -3828,7 +3837,7 @@
     "id": "feat_req_someipsd_238",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2165,
+    "line_number": 2196,
     "text": "The FindService entry type shall be used for finding service instances and shall only be sent, if the current state of a service is unknown (no current OfferService was received and is still valid).",
     "section": "FindService Entry",
     "status": "valid"
@@ -3837,7 +3846,7 @@
     "id": "feat_req_someipsd_239",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2176,
+    "line_number": 2207,
     "text": "FindService entries shall set the entry fields in the following way: * Type shall be set to 0x00 (FindService). * Service ID shall be set to the Service ID of the service that shall be found. * Instance ID shall be set to 0xFFFF (=ANY), if all service instances shall be returned. It shall be set to the Instance ID of a specific service instance, if just a single service instance shall be returned. * If an ECU uses Instance ID 0xFFFF (=ANY) for a Find Entry to find previously unknown number of Se",
     "section": "FindService Entry",
     "status": "valid"
@@ -3846,7 +3855,7 @@
     "id": "feat_req_someipsd_252",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2210,
+    "line_number": 2241,
     "text": "The OfferService entry type shall be used to offer a service to other communication partners.",
     "section": "OfferService Entry",
     "status": "valid"
@@ -3855,7 +3864,7 @@
     "id": "feat_req_someipsd_253",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2221,
+    "line_number": 2252,
     "text": "OfferService entries shall set the entry fields in the following way: * Type shall be set to 0x01 (OfferService). * Service ID shall be set to the Service ID of the service instance that is offered. * Instance ID shall be set to the Instance ID of the service instance that is offered. * Major Version shall be set to the Major Version of the service instance that is offered. * Minor Version shall be set to the Minor Version of the service instance that is offered. * TTL shall be set to the lifeti",
     "section": "OfferService Entry",
     "status": "valid"
@@ -3864,7 +3873,7 @@
     "id": "feat_req_someipsd_681",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2243,
+    "line_number": 2274,
     "text": "OfferService entries shall always reference at least an IPv4 or IPv6 Endpoint Option to signal how the service is reachable.",
     "section": "OfferService Entry",
     "status": "valid"
@@ -3873,7 +3882,7 @@
     "id": "feat_req_someipsd_756",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2254,
+    "line_number": 2285,
     "text": "For each Transport Layer Protocol needed for the service (i.e. UDP and/or TCP) an IPv4 Endpoint option shall be added, if IPv4 is supported.",
     "section": "OfferService Entry",
     "status": "valid"
@@ -3882,7 +3891,7 @@
     "id": "feat_req_someipsd_757",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2265,
+    "line_number": 2296,
     "text": "For each Transport Layer Protocol needed for the service (i.e. UDP and/or TCP) an IPv6 Endpoint option shall be added, if IPv6 is supported.",
     "section": "OfferService Entry",
     "status": "valid"
@@ -3891,7 +3900,7 @@
     "id": "feat_req_someipsd_858",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2276,
+    "line_number": 2307,
     "text": "The IP addresses and port numbers of the Endpoint Options shall also be used for transporting events and notification events:",
     "section": "OfferService Entry",
     "status": "valid"
@@ -3900,7 +3909,7 @@
     "id": "feat_req_someipsd_758",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2287,
+    "line_number": 2318,
     "text": "In the case of UDP, the endpoint option is used for the source address and the source port of the events and notification events.",
     "section": "OfferService Entry",
     "status": "valid"
@@ -3909,7 +3918,7 @@
     "id": "feat_req_someipsd_762",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2298,
+    "line_number": 2329,
     "text": "In the case of TCP, the endpoint option contains the IP address and port the client needs to open a TCP connection to in order to receive events using TCP.",
     "section": "OfferService Entry",
     "status": "valid"
@@ -3918,7 +3927,7 @@
     "id": "feat_req_someipsd_261",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2317,
+    "line_number": 2348,
     "text": "The StopOfferService entry type shall be used to stop offering service instances.",
     "section": "StopOfferService Entry",
     "status": "valid"
@@ -3927,7 +3936,7 @@
     "id": "feat_req_someipsd_262",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2328,
+    "line_number": 2359,
     "text": "StopOfferService entries shall set the entry fields exactly like the OfferService entry they are stopping, except: * TTL shall be set to 0x000000.",
     "section": "StopOfferService Entry",
     "status": "valid"
@@ -3936,7 +3945,7 @@
     "id": "feat_req_someipsd_237",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2351,
+    "line_number": 2382,
     "text": "Entries concerned with services follow the Eventgroup Entry Type Format as specified in :need:`feat_req_someipsd_109`.",
     "section": "Eventgroup Entries",
     "status": "valid"
@@ -3945,7 +3954,7 @@
     "id": "feat_req_someipsd_321",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2370,
+    "line_number": 2401,
     "text": "The SubscribeEventgroup entry type shall be used to subscribe to an eventgroup.",
     "section": "SubscribeEventgroup Entry",
     "status": "valid"
@@ -3954,7 +3963,7 @@
     "id": "feat_req_someipsd_322",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2381,
+    "line_number": 2412,
     "text": "SubscribeEventgroup entries shall set the entry fields in the following way: * Type shall be set to 0x06 (SubscribeEventgroup). * Service ID shall be set to the Service ID of the service instance that includes the eventgroup subscribed to. * Instance ID shall be set to the Instance ID of the service instance that includes the eventgroup subscribed to. * Major Version shall be set to the Major Version of the service instance of the eventgroup subscribed to. * Eventgroup ID shall be set to the Eve",
     "section": "SubscribeEventgroup Entry",
     "status": "valid"
@@ -3963,7 +3972,7 @@
     "id": "feat_req_someipsd_682",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2407,
+    "line_number": 2438,
     "text": "SubscribeEventgroup entries shall reference one or two IPv4 and/or one or two IPv6 Endpoint Options (one for UDP, one for TCP).",
     "section": "SubscribeEventgroup Entry",
     "status": "valid"
@@ -3972,7 +3981,7 @@
     "id": "feat_req_someipsd_332",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2426,
+    "line_number": 2457,
     "text": "The StopSubscribeEventgroup entry type shall be used to stop subscribing to eventgroups.",
     "section": "StopSubscribeEventgroup Entry",
     "status": "valid"
@@ -3981,7 +3990,7 @@
     "id": "feat_req_someipsd_333",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2437,
+    "line_number": 2468,
     "text": "StopSubscribeEventgroup entries shall set the entry fields exactly like the SubscribeEventgroup entry they are stopping, except: * TTL shall be set to 0x000000.",
     "section": "StopSubscribeEventgroup Entry",
     "status": "valid"
@@ -3990,7 +3999,7 @@
     "id": "feat_req_someipsd_1177",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2452,
+    "line_number": 2483,
     "text": "A StopSubscribeEventgroup Entry shall reference the same options the SubscribeEventgroup Entry referenced. This includes but is not limited to Endpoint and Configuration options.",
     "section": "StopSubscribeEventgroup Entry",
     "status": "valid"
@@ -3999,7 +4008,7 @@
     "id": "feat_req_someipsd_613",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2471,
+    "line_number": 2502,
     "text": "The SubscribeEventgroupAck entry type shall be used to indicate that SubscribeEventgroup entry was accepted.",
     "section": "Subscribe Eventgroup Acknowledgement (SubscribeEventgroupAck) Entry",
     "status": "valid"
@@ -4008,7 +4017,7 @@
     "id": "feat_req_someipsd_614",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2482,
+    "line_number": 2513,
     "text": "SubscribeEventgroupAck entries shall set the entry fields in the following way: * Type shall be set to 0x07 (SubscribeEventgroupAck). * Service ID, Instance ID, Major Version, Eventgroup ID, TTL, Reserved, Initial Data Requested Flag, Reserved2 and Counter shall be the same values as in the SubscribeEventgroup that is being responded to.",
     "section": "Subscribe Eventgroup Acknowledgement (SubscribeEventgroupAck) Entry",
     "status": "valid"
@@ -4017,7 +4026,7 @@
     "id": "feat_req_someipsd_763",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2498,
+    "line_number": 2529,
     "text": "SubscribeEventgroupAck entries referencing events and notification events that are transported via multicast shall reference an IPv4 Multicast Option and/or and IPv6 Multicast Option. The Multicast Options state to which Multicast address and port the events and notification events will be sent to.",
     "section": "Subscribe Eventgroup Acknowledgement (SubscribeEventgroupAck) Entry",
     "status": "valid"
@@ -4026,7 +4035,7 @@
     "id": "feat_req_someipsd_618",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2517,
+    "line_number": 2548,
     "text": "The SubscribeEventgroupNack entry type shall be used to indicate that SubscribeEventgroup entry was NOT accepted.",
     "section": "Subscribe Eventgroup Negative Acknowledgement (SubscribeEventgroupNack) Entry",
     "status": "valid"
@@ -4035,7 +4044,7 @@
     "id": "feat_req_someipsd_1137",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2528,
+    "line_number": 2559,
     "text": "Reasons to not accept a SubscribeEventgroup include (but are not limited to): * Combination of Service ID, Instance ID, Eventgroup ID, and Major Version is unknown * Required TCP-connection was not opened by client * Problems with the referenced options occurred * Resource problems at the server * Subscription was denied by Security or ACL",
     "section": "Subscribe Eventgroup Negative Acknowledgement (SubscribeEventgroupNack) Entry",
     "status": "valid"
@@ -4044,7 +4053,7 @@
     "id": "feat_req_someipsd_619",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2547,
+    "line_number": 2578,
     "text": "SubscribeEventgroupNack entries shall set the entry fields in the following way: * Type shall be set to 0x07 (SubscribeEventgroupAck). * Service ID, Instance ID, Major Version, Eventgroup ID, Counter and Reserved shall be the same values as in the SubscribeEventgroup that is being responded to. * The TTL shall be set to 0x000000.",
     "section": "Subscribe Eventgroup Negative Acknowledgement (SubscribeEventgroupNack) Entry",
     "status": "valid"
@@ -4053,7 +4062,7 @@
     "id": "feat_req_someipsd_869",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2564,
+    "line_number": 2595,
     "text": "When the client receives a SubscribeEventgroupNack as response to a SubscribeEventgroup for which a TCP connection is required, the client shall check the TCP connection and shall restart the TCP connection if needed. Note: Checking the TCP connection may involve a TCP Keep Alive or a SOME/IP Magic Cookie Message.",
     "section": "Subscribe Eventgroup Negative Acknowledgement (SubscribeEventgroupNack) Entry",
     "status": "valid"
@@ -4062,7 +4071,7 @@
     "id": "feat_req_someipsd_870",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 2577,
+    "line_number": 2608,
     "text": "Rationale for :need:`feat_req_someipsd_869`: The server might have lost the TCP connection and the client has not. Checking the TCP connection might include the following: * Checking whether data is received for e.g. other eventgroups. * Sending out a Magic Cookie message and waiting for the TCP ACK. * Reestablishing the TCP connection.",
     "section": "Subscribe Eventgroup Negative Acknowledgement (SubscribeEventgroupNack) Entry",
     "status": "valid"
@@ -4071,7 +4080,7 @@
     "id": "feat_req_someipsd_68",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2614,
+    "line_number": 2645,
     "text": "For each Service Instance or Eventgroup the SOME/IP-SD shall have at least these three phases in regard to sending entries: * Initial Wait Phase * Repetition Phase * Main Phase",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4080,7 +4089,7 @@
     "id": "feat_req_someipsd_864",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 2631,
+    "line_number": 2662,
     "text": "An actual implemented state machine will need more than just states for these three phases. E.g. local services can be still down and remote services can be already known (no finds needed anymore).",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4089,7 +4098,7 @@
     "id": "feat_req_someipsd_72",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2642,
+    "line_number": 2673,
     "text": "As soon as the system has started and the link on one external interface needed for a Service Instance is up (server) or requested (client), the SOME/IP-SD enters the Initial Wait Phase for this service instance.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4098,7 +4107,7 @@
     "id": "feat_req_someipsd_773",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 2653,
+    "line_number": 2684,
     "text": "\"The system has started\" means that the needed applications as well as available external sensors and actuators have started and deliver valid data. Basically, the whole functionality needed by the service instance has to be ready to offer a service. Likewise, finding a service only makes sense after the application which requires the service is ready.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4107,7 +4116,7 @@
     "id": "feat_req_someipsd_62",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2664,
+    "line_number": 2695,
     "text": "The SOME/IP-SD implementation shall wait based on the INITIAL_DELAY after entering the Initial Wait Phase and before sending the first messages for the Service Instance.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4116,7 +4125,7 @@
     "id": "feat_req_someipsd_63",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2675,
+    "line_number": 2706,
     "text": "INITIAL_DELAY shall be defined as a minimum and a maximum delay.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4125,7 +4134,7 @@
     "id": "feat_req_someipsd_64",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2686,
+    "line_number": 2717,
     "text": "The wait time shall be determined by choosing a random value between the minimum and maximum of INITIAL_DELAY.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4134,7 +4143,7 @@
     "id": "feat_req_someipsd_65",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2697,
+    "line_number": 2728,
     "text": "The SOME/IP-SD shall use the same random value for multiple entries of different types in order to pack them together for a reduced number of messages.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4143,7 +4152,7 @@
     "id": "feat_req_someipsd_836",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2708,
+    "line_number": 2739,
     "text": "The SOME/IP-SD shall pack entries together no matter whether any delay is involved or not. For example, all SubscribeEventgroup entries of a message shall be responded combined in single message which carries all SubscribeEventgroupAck or SubscribeEventgroupNack entries, respectively.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4152,7 +4161,7 @@
     "id": "feat_req_someipsd_66",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2719,
+    "line_number": 2750,
     "text": "After sending the first message the Repetition Phase of this Service Instance/these Service Instances is entered.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4161,7 +4170,7 @@
     "id": "feat_req_someipsd_67",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2730,
+    "line_number": 2761,
     "text": "The SOME/IP-SD implementation shall wait in the Repetition Phase based on REPETITIONS_BASE_DELAY.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4170,7 +4179,7 @@
     "id": "feat_req_someipsd_76",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2741,
+    "line_number": 2772,
     "text": "After each message sent in the Repetition Phase the delay shall be doubled.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4179,7 +4188,7 @@
     "id": "feat_req_someipsd_73",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2752,
+    "line_number": 2783,
     "text": "The SOME/IP-SD shall send out only up to REPETITIONS_MAX entries during the Repetition Phase.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4188,7 +4197,7 @@
     "id": "feat_req_someipsd_867",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2763,
+    "line_number": 2794,
     "text": "Sending FindService entries shall be stopped after receiving the corresponding OfferService entries by jumping to the Main Phase in which no FindService entries are sent.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4197,7 +4206,7 @@
     "id": "feat_req_someipsd_74",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2774,
+    "line_number": 2805,
     "text": "If REPETITIONS_MAX is set to 0, the Repetition Phase shall be skipped and the Main Phase is entered for the Service Instance after the Initial Wait Phase.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4206,7 +4215,7 @@
     "id": "feat_req_someipsd_75",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2785,
+    "line_number": 2816,
     "text": "After the Repetition Phase the Main Phase is being entered for a Service Instance.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4215,7 +4224,7 @@
     "id": "feat_req_someipsd_80",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2796,
+    "line_number": 2827,
     "text": "After entering the Main Phase 1*CYCLIC_OFFER_DELAY is waited before sending the first message.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4224,7 +4233,7 @@
     "id": "feat_req_someipsd_79",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2809,
+    "line_number": 2840,
     "text": "In the Main Phase OfferService messages shall be sent cyclically if a CYCLIC_OFFER_DELAY is configured, while the service instance is available.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4233,7 +4242,7 @@
     "id": "feat_req_someipsd_81",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2820,
+    "line_number": 2851,
     "text": "After a message for a specific service instance the SOME/IP-SD waits for 1*CYCLIC_OFFER_DELAY before sending the next message for this service instance.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4242,7 +4251,7 @@
     "id": "feat_req_someipsd_866",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2833,
+    "line_number": 2864,
     "text": "For FindService entries no cyclic messages are allowed in Main Phase.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4251,7 +4260,7 @@
     "id": "feat_req_someipsd_631",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2844,
+    "line_number": 2875,
     "text": "Requests/Subscriptions entries shall not be triggered cyclically but shall be triggered by OfferService entries, which are sent cyclically.",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4260,7 +4269,7 @@
     "id": "feat_req_someipsd_77",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 2855,
+    "line_number": 2886,
     "text": "Example: Initial Wait Phase: * Wait for random_delay in Range(INITIAL_DELAY_MIN, _MAX) * Send message (FindService and OfferService entries) Repetition Phase (REPETITIONS_BASE_DELAY=100ms, REPETITIONS_MAX=2): * Wait 2^0*100ms * Send message (FindService and OfferService entries) * Wait 2^1*100ms * Send message (FindService and OfferService entries) * Wait 2^2*100ms Main Phase (as long message is active and CYCLIC_OFFER_DELAY is defined): * Send message (OfferService entries) * Wait CYCLIC_OFFER_",
     "section": "Startup Behavior",
     "status": "valid"
@@ -4269,7 +4278,7 @@
     "id": "feat_req_someipsd_83",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2894,
+    "line_number": 2925,
     "text": "The SOME/IP-SD shall delay responses to entries that were transported in a multicast/broadcast SOME/IP-SD message using the configuration item REQUEST_RESPONSE_DELAY in order to prevent multicast-response bursts. This applies to responses to FindService entries, i.e. OfferService entries.",
     "section": "Response Behavior",
     "status": "valid"
@@ -4278,7 +4287,7 @@
     "id": "feat_req_someipsd_766",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2907,
+    "line_number": 2938,
     "text": "The REQUEST_RESPONSE_DELAY shall also apply to unicast messages triggered by multicast messages in order to prevent multicast-response bursts. This applies to SubscribeEventgroup in response to OfferService, for example.",
     "section": "Response Behavior",
     "status": "valid"
@@ -4287,7 +4296,7 @@
     "id": "feat_req_someipsd_624",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2920,
+    "line_number": 2951,
     "text": "The REQUEST_RESPONSE_DELAY shall not apply if unicast messages are responded with unicast messages.",
     "section": "Response Behavior",
     "status": "valid"
@@ -4296,7 +4305,7 @@
     "id": "feat_req_someipsd_84",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2931,
+    "line_number": 2962,
     "text": "REQUEST_RESPONSE_DELAY shall be specified by a minimum and a maximum.",
     "section": "Response Behavior",
     "status": "valid"
@@ -4305,7 +4314,7 @@
     "id": "feat_req_someipsd_85",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2942,
+    "line_number": 2973,
     "text": "The actual delay shall be randomly chosen between minimum and maximum of REQUEST_RESPONSE_DELAY.",
     "section": "Response Behavior",
     "status": "valid"
@@ -4314,7 +4323,7 @@
     "id": "feat_req_someipsd_824",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2953,
+    "line_number": 2984,
     "text": "For basic implementations all FindService entries (no matter of the state of the Unicast Flag) shall be responded with OfferService entries transported using unicast.",
     "section": "Response Behavior",
     "status": "valid"
@@ -4323,7 +4332,7 @@
     "id": "feat_req_someipsd_826",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2964,
+    "line_number": 2995,
     "text": "For optimization purpose the following behaviors may optionally be supported:",
     "section": "Response Behavior",
     "status": "valid"
@@ -4332,7 +4341,7 @@
     "id": "feat_req_someipsd_89",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2975,
+    "line_number": 3006,
     "text": "* FindService messages received with the Unicast Flag set to 1 in main phase, shall be responded to with a unicast response if the last offer was sent less than 1/2 CYCLIC_OFFER_DELAY ago.",
     "section": "Response Behavior",
     "status": "valid"
@@ -4341,7 +4350,7 @@
     "id": "feat_req_someipsd_90",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 2988,
+    "line_number": 3019,
     "text": "* FindService messages received with the Unicast Flag set to 1 in main phase, shall be responded to with a multicast response if the last offer was sent 1/2 CYCLIC_OFFER_DELAY or longer ago.",
     "section": "Response Behavior",
     "status": "valid"
@@ -4350,7 +4359,7 @@
     "id": "feat_req_someipsd_91",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3001,
+    "line_number": 3032,
     "text": "* FindService messages received with Unicast Flag set to 0 (multicast), shall be responded to with a multicast response. Note: This was only needed in earlier migration scenarios and will go away in the future).",
     "section": "Response Behavior",
     "status": "valid"
@@ -4359,7 +4368,7 @@
     "id": "feat_req_someipsd_820",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3024,
+    "line_number": 3055,
     "text": "When a server service instance of an ECU is being stopped, a StopOfferService entry shall be sent out.",
     "section": "Shutdown Behavior",
     "status": "valid"
@@ -4368,7 +4377,7 @@
     "id": "feat_req_someipsd_830",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3035,
+    "line_number": 3066,
     "text": "When a server sends out a StopOfferService entry all subscriptions for this service instance shall be deleted on the server side.",
     "section": "Shutdown Behavior",
     "status": "valid"
@@ -4377,7 +4386,7 @@
     "id": "feat_req_someipsd_1297",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3046,
+    "line_number": 3077,
     "text": "When a server receives a StopSubscribeEventgroup entry by a client, this client shall be deleted from the subscription list of the eventgroup and the server shall free its resources accordingly.",
     "section": "Shutdown Behavior",
     "status": "valid"
@@ -4386,7 +4395,7 @@
     "id": "feat_req_someipsd_831",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3057,
+    "line_number": 3088,
     "text": "When a client receives a StopOfferService entry, all subscriptions for this service instance shall be deleted on the client side and the client shall free its resources accordingly (i.e. close sockets and reset to default/wildcard).",
     "section": "Shutdown Behavior",
     "status": "valid"
@@ -4395,7 +4404,7 @@
     "id": "feat_req_someipsd_834",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3068,
+    "line_number": 3099,
     "text": "When a client receives a StopOfferService entry, the client shall not send out FindService entries but wait for OfferService entry or change of status (application, network management, Ethernet link, or similar).",
     "section": "Shutdown Behavior",
     "status": "valid"
@@ -4404,7 +4413,7 @@
     "id": "feat_req_someipsd_822",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3079,
+    "line_number": 3110,
     "text": "When a client service instance of an ECU is being stopped (i.e. the service instance is released), the SD shall send out StopSubscribeEventgroup entries for all subscribed Eventgroups.",
     "section": "Shutdown Behavior",
     "status": "valid"
@@ -4413,7 +4422,7 @@
     "id": "feat_req_someipsd_821",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3090,
+    "line_number": 3121,
     "text": "When the whole ECU is being shut down, StopOfferService entries shall be sent out for all service entries and StopSubscribeEventgroup entries for Eventgroups.",
     "section": "Shutdown Behavior",
     "status": "valid"
@@ -4422,7 +4431,7 @@
     "id": "feat_req_someipsd_628",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3109,
+    "line_number": 3140,
     "text": "In this section the state machines of the client and server are shown.",
     "section": "State Machines",
     "status": "valid"
@@ -4431,7 +4440,7 @@
     "id": "feat_req_someipsd_629",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3120,
+    "line_number": 3151,
     "text": "SOME/IP Services State Machine Server",
     "section": "State Machines",
     "status": "valid"
@@ -4440,7 +4449,7 @@
     "id": "feat_req_someipsd_630",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3134,
+    "line_number": 3165,
     "text": "SOME/IP Services State Machine Client",
     "section": "State Machines",
     "status": "valid"
@@ -4449,7 +4458,7 @@
     "id": "feat_req_someipsd_1220",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3156,
+    "line_number": 3187,
     "text": "Error checking of SOME/IP-SD messages shall first check the SOME/IP header as outlined earlier :need:`feat_req_someip_717`. SOME/IP-SD messages are treated as events in this regard.",
     "section": "Error Handling",
     "status": "valid"
@@ -4458,7 +4467,7 @@
     "id": "feat_req_someipsd_1164",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3167,
+    "line_number": 3198,
     "text": "Figure :need:`feat_req_someipsd_1163` shows a simplified illustration of the error handling of received SOME/IP-SD messages. The following steps shall be taken: * Check that at least enough bytes for an empty SOME/IP-SD message are available * Check that enough bytes for the entries and options array are available * For each entry that can be parsed: * Check if the Service ID of this entry is known * Check if the Instance ID of this entry is known for this service * Check if the Major Version of",
     "section": "Error Handling",
     "status": "valid"
@@ -4467,7 +4476,7 @@
     "id": "feat_req_someipsd_1233",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3197,
+    "line_number": 3228,
     "text": "A valid IP address in this context has the following characteristics: * Its value is in a configured range or the local subnet to which SOME/IP sends messages * Is not the receiver's own IP address * Is no multicast address * Is not 127.0.0.1",
     "section": "Error Handling",
     "status": "valid"
@@ -4476,7 +4485,7 @@
     "id": "feat_req_someipsd_1163",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3215,
+    "line_number": 3246,
     "text": "Figure: Error handling of received SOME/IP-SD message",
     "section": "Error Handling",
     "status": "valid"
@@ -4485,7 +4494,7 @@
     "id": "feat_req_someipsd_102",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3229,
+    "line_number": 3260,
     "text": "Check the referenced Options of each received entry: * The referenced options exist. * The entry references all required options (e.g. a provided eventgroup that uses unicast requires a unicast endpoint option in a received Subscribe Eventgroup entry). * The entry only references supported options (e.g. a required eventgroup that does not support multicast data reception does not support multicast endpoint options in a Subscribe Eventgroup ACK entry). * There are no conflicts between the options",
     "section": "Error Handling",
     "status": "valid"
@@ -4494,7 +4503,7 @@
     "id": "feat_req_someipsd_105",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3252,
+    "line_number": 3283,
     "text": "Check if a security association is already established.",
     "section": "Error Handling",
     "status": "valid"
@@ -4503,7 +4512,7 @@
     "id": "feat_req_someipsd_106",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3263,
+    "line_number": 3294,
     "text": "If the checks in Figure :need:`feat_req_someipsd_1163` fail for a received Find entry, the entry shall be ignored, except when Endpoint or Multicast Options are referenced, in which case only the Options shall be ignored according to :need:`feat_req_someipsd_878`.",
     "section": "Error Handling",
     "status": "valid"
@@ -4512,7 +4521,7 @@
     "id": "feat_req_someipsd_499",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3282,
+    "line_number": 3313,
     "text": "Besides SOME/IP other communication protocols are used within the vehicle; e.g. for Network Management, Diagnosis, or Flash Updates. Such communication protocols might need to communicate a service instance or have eventgroups as well.",
     "section": "Announcing non-SOME/IP protocols with SOME/IP-SD",
     "status": "valid"
@@ -4521,7 +4530,7 @@
     "id": "feat_req_someipsd_500",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3293,
+    "line_number": 3324,
     "text": "For Non-SOME/IP protocols a special Service ID shall be used and further information shall be added using the configuration option: * Service ID shall be set to 0xFFFE (reserved) * Instance ID shall be used as described for SOME/IP services and eventgroups. * The Configuration Option shall be added and shall contain at least an entry with key \"otherserv\" and a configurable non-empty value.",
     "section": "Announcing non-SOME/IP protocols with SOME/IP-SD",
     "status": "valid"
@@ -4530,7 +4539,7 @@
     "id": "feat_req_someipsd_1227",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3310,
+    "line_number": 3341,
     "text": "If multiple Non-SOME/IP services are announced, each shall have its own OfferService Entry, so individual TTLs are possible.",
     "section": "Announcing non-SOME/IP protocols with SOME/IP-SD",
     "status": "valid"
@@ -4539,7 +4548,7 @@
     "id": "feat_req_someipsd_1228",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3321,
+    "line_number": 3352,
     "text": "Only one single \"otherserv\" configuration option per OfferService Entry is permitted.",
     "section": "Announcing non-SOME/IP protocols with SOME/IP-SD",
     "status": "valid"
@@ -4548,7 +4557,7 @@
     "id": "feat_req_someipsd_502",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3332,
+    "line_number": 3363,
     "text": "SOME/IP services shall not use the otherserv-string in the Configuration Option.",
     "section": "Announcing non-SOME/IP protocols with SOME/IP-SD",
     "status": "valid"
@@ -4557,7 +4566,7 @@
     "id": "feat_req_someipsd_503",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3343,
+    "line_number": 3374,
     "text": "For FindService/OfferService/RequestService entries the otherserv-string shall be used when announcing non-SOME/IP service instances.",
     "section": "Announcing non-SOME/IP protocols with SOME/IP-SD",
     "status": "valid"
@@ -4566,7 +4575,7 @@
     "id": "feat_req_someipsd_501",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3354,
+    "line_number": 3385,
     "text": "Example for valid otherserv-string: \"otherserv=internaldiag\". * Example for an invalid otherserv-string: \"otherserv\". * Example for an invalid otherserv-string: \"otherserv=\".",
     "section": "Announcing non-SOME/IP protocols with SOME/IP-SD",
     "status": "valid"
@@ -4575,7 +4584,7 @@
     "id": "feat_req_someipsd_575",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3370,
+    "line_number": 3401,
     "text": "Figure: SOME/IP-SD example PDU for Non-SOME/IP-SD",
     "section": "Announcing non-SOME/IP protocols with SOME/IP-SD",
     "status": "valid"
@@ -4584,7 +4593,7 @@
     "id": "feat_req_someipsd_419",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3392,
+    "line_number": 3423,
     "text": "In contrast to the SOME/IP request/response mechanism there are cases in which a client requires a set of parameters from a server, but does not want to request that information each time it is required. These are called notifications and concern events and fields.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4593,7 +4602,7 @@
     "id": "feat_req_someipsd_422",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3403,
+    "line_number": 3434,
     "text": "All clients needing events and/or notification events shall register using the SOME/IP-SD at run-time with a server.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4602,7 +4611,7 @@
     "id": "feat_req_someipsd_425",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3414,
+    "line_number": 3445,
     "text": "Figure: Notification interaction (extremely simplified)",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4611,7 +4620,7 @@
     "id": "feat_req_someipsd_428",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3428,
+    "line_number": 3459,
     "text": "With the SOME/IP-SD entry OfferService the server offers to push notifications to clients; thus, it shall be used as trigger for Subscriptions.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4620,7 +4629,7 @@
     "id": "feat_req_someipsd_429",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3439,
+    "line_number": 3470,
     "text": "When a server of a notification service starts up (e.g. after reset), it shall send a SOME/IP-SD OfferService into the network to discover all instances interested in the events and fields offered.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4629,7 +4638,7 @@
     "id": "feat_req_someipsd_430",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3450,
+    "line_number": 3481,
     "text": "Each client in SD based notification implements the specific service-interfaces for the notification they wish to receive and signal their wish of receiving such notifications using the SOME/IP-SD SubscribeEventgroup entries.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4638,7 +4647,7 @@
     "id": "feat_req_someipsd_431",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3461,
+    "line_number": 3492,
     "text": "Each client shall respond to a SOME/IP-SD OfferService entry from the server with a SOME/IP-SD SubscribeEventgroup entry as long as the client is still interested in receiving the notifications/events of this eventgroup. If the client is able to reliably detect the reboot of the server using the SOME/IP-SD messages reboot flag, the client shall only respond to OfferService messages after the server reboots, if configured to do so (TTL set to maximum value). The client shall make sure that this w",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4647,7 +4656,7 @@
     "id": "feat_req_someipsd_1191",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3474,
+    "line_number": 3505,
     "text": "The client shall explicitly request Initial Events by setting the Initial Data Requested Flag, if it has no active subscription to the Eventgroup.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4656,7 +4665,7 @@
     "id": "feat_req_someipsd_1192",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3485,
+    "line_number": 3516,
     "text": "If the client sends out additional SubscribeEventgroup entries and the TTL of the previous Subscribe has not expired yet, the client shall not request Initial Events.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4665,7 +4674,7 @@
     "id": "feat_req_someipsd_1193",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3496,
+    "line_number": 3527,
     "text": "Reasons for the client to explicitly request Initial Events include but are not limited to: * The client is currently not subscribed to the Eventgroup. * The client has seen a link-down/link-up after the last SubscribeEventgroup entry. * The client has not received a SubscribeEventgroupAck after the last regular SubscribeEventgroup (see :need:`feat_req_someipsd_844`). * The client has detected a Reboot of the Server of this Services (see :need:`feat_req_someipsd_871`).",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4674,7 +4683,7 @@
     "id": "feat_req_someipsd_1168",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3514,
+    "line_number": 3545,
     "text": "If the client subscribes to two or more eventgroups including one or more identical events or fields, the server shall not send duplicated events or notification events for the field. This does mean regular events and not initial events. See :need:`feat_req_someipsd_1166` and :need:`feat_req_someipsd_1167`.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4683,7 +4692,7 @@
     "id": "feat_req_someipsd_632",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3527,
+    "line_number": 3558,
     "text": "Publish / Subscribe with link loss at client (figure ignores timings)",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4692,7 +4701,7 @@
     "id": "feat_req_someipsd_432",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3541,
+    "line_number": 3572,
     "text": "The server sending OfferService entries as implicit Publishes has to keep state of SubscribeEventgroup messages for this eventgroup instance in order to know if notifications/events have to be sent.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4701,7 +4710,7 @@
     "id": "feat_req_someipsd_433",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3552,
+    "line_number": 3583,
     "text": "A client shall deregister from a server by sending a SOME/IP-SD SubscribeEventgroup message with TTL=0 (StopSubscribeEventgroup).",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4710,7 +4719,7 @@
     "id": "feat_req_someipsd_634",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3563,
+    "line_number": 3594,
     "text": "Figure: Publish/Subscribe Registration/Deregistration behavior (figure ignoring timings)",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4719,7 +4728,7 @@
     "id": "feat_req_someipsd_435",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3576,
+    "line_number": 3607,
     "text": "The SOME/IP-SD on the server shall delete the subscription, if a relevant SOME/IP error is received after sending an event or notification event. The error includes but is not limited to not being able to reach the communication partner and errors of the TCP connection.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4728,7 +4737,7 @@
     "id": "feat_req_someipsd_437",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3589,
+    "line_number": 3620,
     "text": "If the server loses its link on the relevant Ethernet interface, it shall delete all the registered notifications and close the TCP connection for those notifications as well.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4737,7 +4746,7 @@
     "id": "feat_req_someipsd_436",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3600,
+    "line_number": 3631,
     "text": "If the Ethernet link status of the server becomes up again, it shall trigger a SOME/IP-SD OfferService message.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4746,7 +4755,7 @@
     "id": "feat_req_someipsd_633",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3611,
+    "line_number": 3642,
     "text": "Publish / Subscribe with link loss at server (figure ignores timings)",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4755,7 +4764,7 @@
     "id": "feat_req_someipsd_439",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3625,
+    "line_number": 3656,
     "text": "After having not received a notification/event of an eventgroup subscribed to for a certain time the ECU shall send a new SubscribeEventgroup entry. The timeout shall be configurable for each eventgroup.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4764,7 +4773,7 @@
     "id": "feat_req_someipsd_832",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3636,
+    "line_number": 3667,
     "text": "This timeout feature might be based on the cycle times of cyclic SD-messages, e.g. OfferService entries or messages protected by alive counters (functional safety).",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4773,7 +4782,7 @@
     "id": "feat_req_someipsd_440",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3647,
+    "line_number": 3678,
     "text": "A link-up event on the clients Ethernet link shall start the Initial Wait Phase (consider UDP-NM and others). SOME/IP-SD SubscribeEventgroup entry shall be sent out as described above.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4782,7 +4791,7 @@
     "id": "feat_req_someipsd_1182",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3658,
+    "line_number": 3689,
     "text": "The client shall have its UDP port open and ready to receive messages before sending a SubscribeEventgroup entry, if unreliable events and notification events exist in the interface specification (e.g. FIBEX or ARXML).",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4791,7 +4800,7 @@
     "id": "feat_req_someipsd_767",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3669,
+    "line_number": 3700,
     "text": "The client shall open a TCP connection to the server and should be ready to receive message on that connection before sending the SubscribeEventgroup entry, if reliable events and notification events exist in the interface specification (e.g. FIBEX or ARXML).",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4800,7 +4809,7 @@
     "id": "feat_req_someipsd_441",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3680,
+    "line_number": 3711,
     "text": "After a client has sent a SubscribeEventgroup entry the server shall send a SubscribeEventgroupAck entry considering the specified delay behavior. Note: The delay behavior is only relevant, if the SubscribeEventgroup was sent via Multicast, which should not be the case anymore.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4809,7 +4818,7 @@
     "id": "feat_req_someipsd_844",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3693,
+    "line_number": 3724,
     "text": "The client shall wait for the SubscribeEventgroupAck entry acknowledging a SubscribeEventgroup entry. If this SubscribeEventgroupAck entry does not arrive before the next SubscribeEventgroup entry is sent, the client shall do the following: * if the \"Explicit Initial Data Control Flag\" of the Server is set to 0, send a StopSubscribeEventgroup entry and a SubscribeEventgroup entry in the same SOME/IP-SD message the SubscribeEventgroup entry would have been sent with. * if the \"Explicit Initial Da",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4818,7 +4827,7 @@
     "id": "feat_req_someipsd_1178",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3711,
+    "line_number": 3742,
     "text": "The Stop Subscribe and Subscribe entry sent because of :need:`feat_req_someipsd_844` shall be directly behind each other in the same SD message (no other entry between them).",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4827,7 +4836,7 @@
     "id": "feat_req_someipsd_1171",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3722,
+    "line_number": 3753,
     "text": "The :need:`feat_req_someipsd_844` shall not lead to closing and reopening TCP connections.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4836,7 +4845,7 @@
     "id": "feat_req_someipsd_1169",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3733,
+    "line_number": 3764,
     "text": "The :need:`feat_req_someipsd_844` shall not be applied to OfferService entries that are a reaction to FindService entries. That means that the SubscribeEventgroupAck entry of a SubscribeEventgroup entry that was triggered by unicast OfferService entry is not monitored as well as upon an unicast OfferService entry the StopSubscribeEventgroup entry/SubscribeEventgroup entry is not sent.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4845,7 +4854,7 @@
     "id": "feat_req_someipsd_1176",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3744,
+    "line_number": 3775,
     "text": "The :need:`feat_req_someipsd_844` shall not be applied to SubscribeEventgroups that were not triggered directly by a Multicast OfferService.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4854,7 +4863,7 @@
     "id": "feat_req_someipsd_691",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3755,
+    "line_number": 3786,
     "text": "If the initial value is of concern \u2013 i.e. for fields \u2013 and the client has the Explicit Initial Data Control Flag set to 0, the server shall send the first notification events (i.e. initial events) immediately after sending the SubscribeEventgroupAck. The client shall repeat the SubscribeEventgroup entry, if it did not receive the notification events within a configurable time.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4863,7 +4872,7 @@
     "id": "feat_req_someipsd_833",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3766,
+    "line_number": 3797,
     "text": "This means: * It is not allowed to send initial values of events upon subscriptions (pure event and not field). * The event messages of field notifiers shall be sent on subscriptions (field and not pure event). * If a subscription was already valid and is updated by a SubscribeEventgroup entry, no initial events shall be sent. * Receiving StopSubscribeEventgroup / SubscribeEventgroup combinations trigger initial events of field notifiers.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4872,7 +4881,7 @@
     "id": "feat_req_someipsd_107",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3784,
+    "line_number": 3815,
     "text": "The initial events should be sent after the SubscribeEventgroupAck.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4881,7 +4890,7 @@
     "id": "feat_req_someipsd_1167",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3795,
+    "line_number": 3826,
     "text": "If a client subscribes to different eventgroups of the same service instance that all include the same field in different SOME/IP-SD messages, the server shall send out the initial events for this field for every subscription separately.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4890,7 +4899,7 @@
     "id": "feat_req_someipsd_1166",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3806,
+    "line_number": 3837,
     "text": "If a client subscribes to different eventgroups of the same service instance that all include the same field in the same SOME/IP-SD message, the server may choose to not send out the initial event for this field more than once. Note: This means the server can optimize by sending the initial events only once, if supported by its architecture.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4899,7 +4908,7 @@
     "id": "feat_req_someipsd_625",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3819,
+    "line_number": 3850,
     "text": "Publish / Subscribe State Diagram (server behavior for unicast eventgroups)",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4908,7 +4917,7 @@
     "id": "feat_req_someipsd_626",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3833,
+    "line_number": 3864,
     "text": "Publish / Subscribe State Diagram (server behavior for multicast eventgroups)",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4917,7 +4926,7 @@
     "id": "feat_req_someipsd_823",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3847,
+    "line_number": 3878,
     "text": "Publish / Subscribe State Diagram (server behavior for adaptive unicast/multicast eventgroups)",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4926,7 +4935,7 @@
     "id": "feat_req_someipsd_442",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3861,
+    "line_number": 3892,
     "text": "Publish/Subscribe State Diagram (overall behavior)",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4935,7 +4944,7 @@
     "id": "feat_req_someipsd_444",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3875,
+    "line_number": 3906,
     "text": "An implicit registration of a client to receive notifications from a server shall be supported. Meaning the mechanism is pre-configured.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4944,7 +4953,7 @@
     "id": "feat_req_someipsd_445",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3886,
+    "line_number": 3917,
     "text": "To allow for cleanup of stale client registrations (to avoid that the list of listeners fills over time), a cleanup mechanism is required.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4953,7 +4962,7 @@
     "id": "feat_req_someipsd_818",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3897,
+    "line_number": 3928,
     "text": "The following entries shall be transported by unicast only: * SubscribeEventgroup * StopSubscribeEventgroup * SubscribeEventgroupAck * SubscribeEventgroupNack",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4962,7 +4971,7 @@
     "id": "feat_req_someipsd_828",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3915,
+    "line_number": 3946,
     "text": "When sending a SubscribeEventgroup entry as reaction of receiving an OfferService entry, the timer controlling cyclic SubscribeEventgroups entries shall be reset.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4971,7 +4980,7 @@
     "id": "feat_req_someipsd_829",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3926,
+    "line_number": 3957,
     "text": "If no cyclic SubscribeEventgroups are configured, the timer for cyclic SubscribeEventgroups stays turned off.",
     "section": "Publish/Subscribe with SOME/IP and SOME/IP-SD",
     "status": "valid"
@@ -4980,7 +4989,7 @@
     "id": "feat_req_someipsd_777",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 3945,
+    "line_number": 3976,
     "text": "This section describes how the Endpoints encoded in the Endpoint and Multicast Options shall be set and used.",
     "section": "Endpoint Handling for Services and Events",
     "status": "valid"
@@ -4989,7 +4998,7 @@
     "id": "feat_req_someipsd_778",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3956,
+    "line_number": 3987,
     "text": "The SOME/IP-SD shall overwrite IP Addresses and Port Numbers with those transported in Endpoint and Multicast Options if the statically configured values are different from those in these options.",
     "section": "Endpoint Handling for Services and Events",
     "status": "valid"
@@ -4998,7 +5007,7 @@
     "id": "feat_req_someipsd_780",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3975,
+    "line_number": 4006,
     "text": "OfferService entries shall reference up to 1 UDP Endpoint Option and up to 1 TCP Endpoint Option. Both shall be of the same version Internet Protocol (IPv4 or IPv6).",
     "section": "Service Endpoints",
     "status": "valid"
@@ -5007,7 +5016,7 @@
     "id": "feat_req_someipsd_779",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3986,
+    "line_number": 4017,
     "text": "The referenced Endpoint Options of the OfferService entries denote the IP Address and Port Numbers the service instance is reachable at the server.",
     "section": "Service Endpoints",
     "status": "valid"
@@ -5016,7 +5025,7 @@
     "id": "feat_req_someipsd_781",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 3997,
+    "line_number": 4028,
     "text": "The referenced Endpoint Options of the OfferService entries also denote the IP Address and Port Numbers the service instance sends the events from.",
     "section": "Service Endpoints",
     "status": "valid"
@@ -5025,7 +5034,7 @@
     "id": "feat_req_someipsd_797",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4008,
+    "line_number": 4039,
     "text": "Events of this service instance shall not be sent from any other Endpoint than those given in the Endpoint Options of the OfferService entries.",
     "section": "Service Endpoints",
     "status": "valid"
@@ -5034,7 +5043,7 @@
     "id": "feat_req_someipsd_782",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4019,
+    "line_number": 4050,
     "text": "If an ECU offers multiple service instances, SOME/IP messages of these service instances shall be differentiated by the information transported in the Endpoint Options referenced by the OfferService entries.",
     "section": "Service Endpoints",
     "status": "valid"
@@ -5043,7 +5052,7 @@
     "id": "feat_req_someipsd_783",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4030,
+    "line_number": 4061,
     "text": "Therefore transporting an Instance ID in the SOME/IP header is not required.",
     "section": "Service Endpoints",
     "status": "valid"
@@ -5052,7 +5061,7 @@
     "id": "feat_req_someipsd_877",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4041,
+    "line_number": 4072,
     "text": "A sender shall not reference Endpoint Options nor Multicast Options in a FindService Entry.",
     "section": "Service Endpoints",
     "status": "valid"
@@ -5061,7 +5070,7 @@
     "id": "feat_req_someipsd_878",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4052,
+    "line_number": 4083,
     "text": "A receiver shall ignore Endpoint Options and Multicast Options in a FindService Entry.",
     "section": "Service Endpoints",
     "status": "valid"
@@ -5070,7 +5079,7 @@
     "id": "feat_req_someipsd_879",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4063,
+    "line_number": 4094,
     "text": "Other Options (neither Endpoint nor Multicast Options), shall still be allowed to be used in a FindService Entry.",
     "section": "Service Endpoints",
     "status": "valid"
@@ -5079,7 +5088,7 @@
     "id": "feat_req_someipsd_786",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4082,
+    "line_number": 4113,
     "text": "SubscribeEventgroup entries shall reference up to 1 UDP Endpoint Option and up to 1 TCP Endpoint Option for the Internet Protocol used (IPv4 or IPv6).",
     "section": "Eventgroup Endpoints",
     "status": "valid"
@@ -5088,7 +5097,7 @@
     "id": "feat_req_someipsd_787",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4093,
+    "line_number": 4124,
     "text": "The Endpoint Options referenced in the SubscribeEventgroup entries are also used to send unicast UDP or TCP SOME/IP events for this Service Instance.",
     "section": "Eventgroup Endpoints",
     "status": "valid"
@@ -5097,7 +5106,7 @@
     "id": "feat_req_someipsd_798",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4104,
+    "line_number": 4135,
     "text": "Thus the Endpoint Options referenced in the SubscribeEventgroup entries are the IP Address and the Port Numbers on the client side.",
     "section": "Eventgroup Endpoints",
     "status": "valid"
@@ -5106,7 +5115,7 @@
     "id": "feat_req_someipsd_788",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4115,
+    "line_number": 4146,
     "text": "TCP events are transported using the TCP connection the client has opened to the server before sending the SubscribeEventgroup entry. See :need:`feat_req_someipsd_752`.",
     "section": "Eventgroup Endpoints",
     "status": "valid"
@@ -5115,7 +5124,7 @@
     "id": "feat_req_someipsd_793",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4126,
+    "line_number": 4157,
     "text": "The initial events shall be transported using unicast from Server to Client.",
     "section": "Eventgroup Endpoints",
     "status": "valid"
@@ -5124,7 +5133,7 @@
     "id": "feat_req_someipsd_789",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4137,
+    "line_number": 4168,
     "text": "SubscribeEventgroupAck entries shall reference up to 1 Multicast Option for the Internet Protocol used (IPv4 or IPv6).",
     "section": "Eventgroup Endpoints",
     "status": "valid"
@@ -5133,7 +5142,7 @@
     "id": "feat_req_someipsd_790",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4148,
+    "line_number": 4179,
     "text": "The Multicast Option shall be set to UDP as transport protocol.",
     "section": "Eventgroup Endpoints",
     "status": "valid"
@@ -5142,7 +5151,7 @@
     "id": "feat_req_someipsd_791",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4159,
+    "line_number": 4190,
     "text": "The client shall open the Endpoint specified in the Multicast Option referenced by the SubscribeEventgroupAck entry as fast as possible to not miss multicast events.",
     "section": "Eventgroup Endpoints",
     "status": "valid"
@@ -5151,7 +5160,7 @@
     "id": "feat_req_someipsd_796",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4178,
+    "line_number": 4209,
     "text": "Figure :need:`feat_req_someipsd_795` shows an example with the different Endpoint and a Multicast Option: * The server offers the Service Instance on server UDP-Endpoint SU and server TCP-Endpoint ST * The client opens a TCP connection * The client sends a SubscribeEventgroup entry with client UDP-Endpoint CU (unicast) and a client TCP-Endpoint CT. * The server responds with a SubscribeEventgroupAck entry with Multicast MU Then the following operations happen: * The client calls a method on the ",
     "section": "Example",
     "status": "valid"
@@ -5160,7 +5169,7 @@
     "id": "feat_req_someipsd_795",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4209,
+    "line_number": 4240,
     "text": "Figure: Publish/Subscribe Example for Endpoint Options and the usage of ports.",
     "section": "Example",
     "status": "valid"
@@ -5169,7 +5178,7 @@
     "id": "feat_req_someipsd_1135",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4231,
+    "line_number": 4262,
     "text": "A SOME/IP-SD implementation shall always check that the IP Addresses received in Endpoint options and SD Endpoint options are topological correct (reference IP Addresses in the IP subnet for which SOME/IP-SD is used) and shall ignore IP Addresses that are not topological correct as well as the entries referencing those options. Note: This means that only Clients and Servers in the same subset are accessible.",
     "section": "Security Considerations",
     "status": "valid"
@@ -5178,7 +5187,7 @@
     "id": "feat_req_someipsd_1136",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4244,
+    "line_number": 4275,
     "text": "An example for checking the IP Addresses (Endpoint-IP) for topological correctness is: SOME/IP-SD-IP-Address AND Netmask = Endpoint-IP AND Netmask.",
     "section": "Security Considerations",
     "status": "valid"
@@ -5187,7 +5196,7 @@
     "id": "feat_req_someipsd_1149",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4256,
+    "line_number": 4287,
     "text": "It shall be possible to turn off the checking of topological correctness via configuration.",
     "section": "Security Considerations",
     "status": "valid"
@@ -5196,7 +5205,7 @@
     "id": "feat_req_someipsd_807",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4275,
+    "line_number": 4306,
     "text": "In this section the mandatory feature set of the SOME/IP-SD and the relevant configuration constraints are discussed. This allow for bare minimum implementations without optional or informational features that might not be required for current use cases.",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5205,7 +5214,7 @@
     "id": "feat_req_someipsd_815",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4286,
+    "line_number": 4317,
     "text": "The following information is defined as compliance check list(s). If a feature is not implemented, the implementation is considered not to comply with the SOME/IP-SDs basic feature set.",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5214,7 +5223,7 @@
     "id": "feat_req_someipsd_1195",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4297,
+    "line_number": 4328,
     "text": "The following information does not allow implementers to ignore requirements of this specification.",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5223,7 +5232,7 @@
     "id": "feat_req_someipsd_808",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4308,
+    "line_number": 4339,
     "text": "The following entry types shall be implemented: * FindService * OfferService * StopOfferService * SubscribeEventgroup * StopSubscribeEventgroup * SubscribeEventgroupAck * SubscribeEventgroupNack",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5232,7 +5241,7 @@
     "id": "feat_req_someipsd_809",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4329,
+    "line_number": 4360,
     "text": "The following option types shall be implemented, when IPv4 is required: * IPv4 Endpoint Option * IPv4 Multicast Option * Configuration Option * IPv4 SD Endpoint Option (receiving at least)",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5241,7 +5250,7 @@
     "id": "feat_req_someipsd_810",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4347,
+    "line_number": 4378,
     "text": "The following option types shall be implemented, if IPv6 is required: * IPv6 Endpoint Option * IPv6 Multicast Option * Configuration Option * IPv6 SD Endpoint Option (receiving at least)",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5250,7 +5259,7 @@
     "id": "feat_req_someipsd_857",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4365,
+    "line_number": 4396,
     "text": "The following option types shall be implemented, if non-SOME/IP services or additional configuration parameters are required: * Configuration Option",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5259,7 +5268,7 @@
     "id": "feat_req_someipsd_811",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4380,
+    "line_number": 4411,
     "text": "The following behaviors/reactions shall be implemented on the server side: * The server shall offer services including the Initial Wait Phase, the Repetition Phase, and the Main Phase depending on the configuration. * The server shall offer services using Multicast (Repetition Phase and Main Phase). * The server does not need to respond to a FindService in the Repetition Phase. * The server shall respond to a FindService in the Main Phase with an OfferService using Unicast (the optimization base",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5268,7 +5277,7 @@
     "id": "feat_req_someipsd_812",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4403,
+    "line_number": 4434,
     "text": "The following behaviors/reactions shall be implemented on the Client side: * The Client shall find services using a FindService entry and Multicast only in the repetition phase. * The Client shall stop finding a service if the regular OfferService arrives. * The Client shall react to the Servers OfferService with a unicast SD message that includes all SubscribeEventgroups of the services offered in the message of the Server that the client currently wants to subscribe to. * The Client shall inte",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5277,7 +5286,7 @@
     "id": "feat_req_someipsd_816",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4421,
+    "line_number": 4452,
     "text": "The following behavior and configuration constraints shall be supported by the client: * The client shall even handle eventgroups if only the TTL of the SD Timings is specified. This means that of all the timings for the Initial Wait Phase, the Repetition Phase, and the Main Phase only TTL is configured. This means the client shall only react on the OfferService by the server. * The client shall respond to an OfferService with a SubscribeEventgroup even without configuration of the Request-Respo",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5286,7 +5295,7 @@
     "id": "feat_req_someipsd_813",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4437,
+    "line_number": 4468,
     "text": "The Client and Server shall implement the Reboot Detection as specified in this document and react accordingly. This includes but is not limited to: * Setting Session ID and Reboot Flag according to this specification. * Keeping a Session ID counter only used for sending Multicast SD messages. * Keeping Session ID counters for every Unicast relation for sending Unicast SD messages. * Understanding Session ID and Reboot Flag according to this specification. * Keeping a Multicast Session ID counte",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5295,7 +5304,7 @@
     "id": "feat_req_someipsd_814",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4459,
+    "line_number": 4490,
     "text": "The Client and Server shall implement the \"Endpoint Handling for Service and Events\". This includes but is not limited to: * Adding 1 Endpoint Option UDP to an OfferService if UDP is needed. * Adding 1 Endpoint Option TCP to an OfferService if TCP is needed. * Adding 1 Endpoint Option UDP to SubscribeEventgroup, if events over UDP are required. * Adding 1 Endpoint Option TCP to SubscribeEventgroup, if events over TCP are required. * Adding 1 Multicast Option UDP to SubscribeEventgroupAck, if mul",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5304,7 +5313,7 @@
     "id": "feat_req_someipsd_1194",
     "reqtype": "Requirement",
     "source_file": "someip-sd.rst",
-    "line_number": 4481,
+    "line_number": 4512,
     "text": "The Client and Server shall implement the explicit requesting of Initial Events.",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5313,7 +5322,7 @@
     "id": "feat_req_someipsd_946",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4492,
+    "line_number": 4523,
     "text": "Allowed SOME/IP-SD Option types in relation to Entry types.",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5322,7 +5331,7 @@
     "id": "feat_req_someipsd_1179",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4551,
+    "line_number": 4582,
     "text": "Note: A SubscribeEventgroup without Endpoint Options is only allowed for an Eventgroup with Multicast Events only.",
     "section": "Mandatory Feature Set and Basic Behavior",
     "status": "valid"
@@ -5331,7 +5340,7 @@
     "id": "feat_req_someipsd_838",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4570,
+    "line_number": 4601,
     "text": "In this section SOME/IP-SD in cases of errors (e.g. lost or corrupted packets) is discussed. This is also understood as rationale for the mechanisms used and the configuration possible.",
     "section": "SOME/IP-SD Mechanisms and Errors",
     "status": "valid"
@@ -5340,7 +5349,7 @@
     "id": "feat_req_someipsd_842",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4581,
+    "line_number": 4612,
     "text": "Soft State Protocol SOME/IP-SD was designed as soft state protocol, that means that entries come with a lifetime and need to be refreshed to stay valid (setting the TTL to the maximum value shall turn this off). Using cyclic OfferService entries and the TTL as aging mechanism SOME/IP-SD shall cope with many different cases of errors. Examples: * If a client or server leaves without sending a Stop entry or this Stop entry got lost, the system will fix itself after the TTL expiration. * If an Offe",
     "section": "SOME/IP-SD Mechanisms and Errors",
     "status": "valid"
@@ -5349,7 +5358,7 @@
     "id": "feat_req_someipsd_840",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4604,
+    "line_number": 4635,
     "text": "Initial Wait Phase The Initial Wait Phase was introduced for two reasons: deskewing events of starting ECUs to avoid traffic bursts and allowing ECUs to collect multiple entries in SD messages.",
     "section": "SOME/IP-SD Mechanisms and Errors",
     "status": "valid"
@@ -5358,7 +5367,7 @@
     "id": "feat_req_someipsd_839",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4617,
+    "line_number": 4648,
     "text": "Repetition Phase The Repetition Phase was introduced to allow for fast synchronization of clients and servers. If the clients startup later, it will find the server very fast. And if the server starts up later, the client is found very fast. The Repetition Phase increases the time between two messages exponentially to avoid that overload situations keep the system from synchronization. An example configuration could be REPETITIONS_BASE_DELAY=30ms and REPETITIONS_MAX=3.",
     "section": "SOME/IP-SD Mechanisms and Errors",
     "status": "valid"
@@ -5367,7 +5376,7 @@
     "id": "feat_req_someipsd_841",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4632,
+    "line_number": 4663,
     "text": "Main Phase In the Main Phase the SD tries to stabilize the state and thus decreases the rate of packets by sending no FindServices anymore and only offers in the cyclic interval (e.g. every 1s).",
     "section": "SOME/IP-SD Mechanisms and Errors",
     "status": "valid"
@@ -5376,7 +5385,7 @@
     "id": "feat_req_someipsd_843",
     "reqtype": "Information",
     "source_file": "someip-sd.rst",
-    "line_number": 4645,
+    "line_number": 4676,
     "text": "Request-Response-Delay SOME/IP-SD shall allow to be configured to delay the response to entries in multicast messages by the Request-Response-Delay (in FIBEX called Query-Response-Delay). This is useful in large systems with many ECUs. When sending a SD message with many entries in it, a lot of responses from different ECUs arrive at the same time and put a large stress on the ECU receiving all these responses.",
     "section": "SOME/IP-SD Mechanisms and Errors",
     "status": "valid"

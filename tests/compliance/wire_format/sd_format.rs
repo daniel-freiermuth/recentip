@@ -19,14 +19,14 @@ use crate::covers;
 use crate::helpers::DEFAULT_SD_MULTICAST;
 
 /// feat_req_someipsd_141: SD Service ID is 0xFFFF
-/// feat_req_someipsd_142: SD Method ID is 0x8100
+/// feat_req_someipsd_26: SD Method ID is 0x8100
 /// feat_req_someipsd_144: SD Client ID is 0x0000
 /// feat_req_someip_103: SD uses NOTIFICATION (0x02) message type
 #[test_log::test]
 fn sd_offer_wire_format() {
     covers!(
         feat_req_someipsd_141,
-        feat_req_someipsd_142,
+        feat_req_someipsd_26,
         feat_req_someipsd_144,
         feat_req_someip_103
     );
@@ -91,7 +91,7 @@ fn sd_offer_wire_format() {
             );
             assert_eq!(
                 header.method_id, 0x8100,
-                "SD Method ID must be 0x8100 (feat_req_someipsd_142)"
+                "SD Method ID must be 0x8100 (feat_req_someipsd_26)"
             );
             assert_eq!(
                 header.client_id, 0x0000,
