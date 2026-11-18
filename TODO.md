@@ -81,7 +81,8 @@ Implementation approach:
 
 Items not yet scheduled:
 
-- Investigate: a dedicated UDP subscription socket reused by another service (`find_reusable_subscription_endpoint`) forwards every notification to the socket owner's `events_tx` without checking `service_id` — the reusing service's subscription may never receive its events
+- `subscription_endpoint_usage` is keyed by (`service_id`, `instance_id`) without major version: unsubscribing v1 unregisters a port that v2 of the same service still shares
+- `expire_client_subscriptions_to_rebooted_peer` (`src/runtime/event_loop.rs`) never removes anything: `handle_peer_reboot` calls it after `expire_services_from_rebooted_peer`, which already removed every subscription it would select (same SD-source-IP and pending-ACK predicate), so replacing its body with `()` survives the full suite (cargo-mutants). Delete it, or merge it into `expire_services_from_rebooted_peer`; if it ever removes subscriptions, it must call `prune_udp_subscription_routes` afterwards
 - **Server-side static binding API** - Add `runtime.bind()` for server-side services without SD (parallel to client-side `OfferedService::new()`)
 - Multi-homed host testing infrastructure (Vagrant/Docker/netns options)
 - Port rotation tests
@@ -118,7 +119,7 @@ Items not yet scheduled:
 
 | Category | Status |
 |----------|--------|
-| **Total tests** | 547 pass, 11 skipped (nextest) |
+| **Total tests** | 592 pass, 11 skipped (nextest) |
 | **Ignored (stubs)** | 9 TP tests, needs implementation |
 | **Ignored (design choice)** | 1 test (`subscribe_to_unknown_eventgroup_should_nack`) |
 | **Ignored (network)** | 1 test (`udp_events_real_network`) |
